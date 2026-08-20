@@ -11,7 +11,7 @@
 ## 2. Current Status
 
 **Current Milestone:** M0 — Project Foundation
-**Status:** NOT STARTED
+**Status:** DONE
 
 Milestone 状态统一使用 `NOT STARTED`、`IN PROGRESS`、`DONE`，不维护百分比进度。
 

@@ -1,1 +1,37 @@
+# 本地 IDE 配置
 .idea/
+
+# 本地环境变量与虚拟环境
+.env
+.env.*
+!.env.example
+.venv/
+venv/
+
+# Python 运行与工具缓存
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.pyre/
+.pytype/
+
+# 测试覆盖率与构建产物
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+build/
+dist/
+*.egg-info/
+.tox/
+.nox/
+.hypothesis/
+
+# 本地运行日志
+*.log
+
+# 操作系统文件
+.DS_Store
