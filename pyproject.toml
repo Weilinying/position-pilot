@@ -26,6 +26,7 @@ package = false
 
 [tool.pytest.ini_options]
 addopts = "-ra"
+markers = ["integration: 需要显式 PostgreSQL 测试数据库的集成测试"]
 pythonpath = ["backend"]
 testpaths = ["tests"]
 

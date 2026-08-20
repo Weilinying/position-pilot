@@ -1,6 +1,7 @@
-"""数据库基础设施测试。"""
+"""数据库基础设施与 M1 元数据测试。"""
 
 from position_pilot.database import Base, create_database_engine
+from position_pilot.infrastructure import models
 
 
 def test_create_database_engine_uses_psycopg_postgresql_dialect() -> None:
@@ -15,7 +16,9 @@ def test_create_database_engine_uses_psycopg_postgresql_dialect() -> None:
     engine.dispose()
 
 
-def test_m0_metadata_contains_no_business_tables() -> None:
-    """M0 只能提供空的 Migration 元数据基线。"""
+def test_m1_metadata_contains_only_ledger_source_of_truth_tables() -> None:
+    """M1 只能持久化 User 与 Transaction，不建立 Cash / Position 投影表。"""
 
-    assert Base.metadata.tables == {}
+    assert models.UserModel.__tablename__ == "users"
+    assert models.TransactionModel.__tablename__ == "transactions"
+    assert set(Base.metadata.tables) == {"users", "transactions"}

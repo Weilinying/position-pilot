@@ -2,13 +2,13 @@
 
 from sqlalchemy import create_engine
 from sqlalchemy.engine import Engine
-from sqlalchemy.orm import DeclarativeBase
+from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 from position_pilot.config import get_settings
 
 
 class Base(DeclarativeBase):
-    """M0 的空 ORM 元数据基线，后续 Schema 必须通过 Migration 引入。"""
+    """所有 SQLAlchemy 持久化 Model 的共同元数据。"""
 
 
 def get_database_url() -> str:
@@ -25,3 +25,9 @@ def create_database_engine(database_url: str) -> Engine:
     """
 
     return create_engine(database_url, pool_pre_ping=True)
+
+
+def create_session_factory(engine: Engine) -> sessionmaker[Session]:
+    """创建同步 Session Factory，每次 Application 操作独占一个 Session。"""
+
+    return sessionmaker(bind=engine, expire_on_commit=False)
