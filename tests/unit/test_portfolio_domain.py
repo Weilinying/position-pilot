@@ -20,6 +20,7 @@ from position_pilot.domain.portfolio import (
     TransactionAction,
     User,
     calculate_amount,
+    calculate_commission,
     rebuild_portfolio,
 )
 
@@ -62,7 +63,7 @@ def make_transaction(
 
 
 def test_transaction_amount_is_derived_and_not_a_create_input() -> None:
-    """amount 应只读派生，不能出现在 Transaction 写入参数中。"""
+    """amount 与 commission 应只读派生，不能出现在 Transaction 写入参数中。"""
 
     transaction = make_transaction(
         sequence=1,
@@ -72,8 +73,32 @@ def test_transaction_amount_is_derived_and_not_a_create_input() -> None:
     )
 
     assert transaction.amount == Decimal("99.22500000")
+    assert transaction.commission == Decimal("0.99225000")
     assert "amount" not in signature(Transaction.create).parameters
+    assert "commission" not in signature(Transaction.create).parameters
     assert calculate_amount(Decimal("220.5"), Decimal("0.45")) == Decimal("99.22500000")
+
+
+@pytest.mark.parametrize(
+    ("price", "shares", "expected"),
+    [
+        ("100", "50", "0.35000000"),
+        ("100", "200", "0.70000000"),
+        ("0.2", "10", "0.02000000"),
+        ("10", "0.5", "0.05000000"),
+        ("0.75", "0.05", "0.01000000"),
+    ],
+)
+def test_calculates_ibkr_tiered_first_band_commission(
+    price: str,
+    shares: str,
+    expected: str,
+) -> None:
+    """整股最低/最高限制与小数股规则应确定性执行。"""
+
+    amount = calculate_amount(Decimal(price), Decimal(shares))
+
+    assert calculate_commission(amount, Decimal(shares)) == Decimal(expected)
 
 
 def test_rebuilds_weighted_average_cost_and_cash() -> None:
@@ -90,9 +115,9 @@ def test_rebuilds_weighted_average_cost_and_cash() -> None:
     position = state.get_position("goog", PositionType.LONG_TERM)
     assert position is not None
     assert position.shares == Decimal("30.00000000")
-    assert position.cost_basis == Decimal("500.00000000")
-    assert position.average_cost == Decimal("16.66666667")
-    assert state.cash.available_cash == Decimal("500.00000000")
+    assert position.cost_basis == Decimal("500.70000000")
+    assert position.average_cost == Decimal("16.69000000")
+    assert state.cash.available_cash == Decimal("499.30000000")
     assert state.transaction_count == 2
 
 
@@ -134,9 +159,9 @@ def test_partial_sell_preserves_average_cost_and_updates_cash() -> None:
     position = state.get_position("GOOG", PositionType.LONG_TERM)
     assert position is not None
     assert position.shares == Decimal("6.00000000")
-    assert position.cost_basis == Decimal("60.00000000")
-    assert position.average_cost == Decimal("10.00000000")
-    assert state.cash.available_cash == Decimal("960.00000000")
+    assert position.cost_basis == Decimal("60.21000000")
+    assert position.average_cost == Decimal("10.03500000")
+    assert state.cash.available_cash == Decimal("959.30000000")
 
 
 def test_full_sell_removes_only_matching_position() -> None:
@@ -171,7 +196,7 @@ def test_buy_rejects_insufficient_cash() -> None:
         )
 
     assert error.value.available == Decimal("100.00000000")
-    assert error.value.required == Decimal("120.00000000")
+    assert error.value.required == Decimal("120.35000000")
 
 
 def test_sell_rejects_oversell_for_matching_position_type() -> None:

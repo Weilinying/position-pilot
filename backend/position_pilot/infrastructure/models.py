@@ -28,6 +28,23 @@ amount = round(price * shares, 8) -
         ELSE 0
     END
 """
+COMMISSION_RAW_SQL = """
+CASE
+    WHEN shares = trunc(shares)
+    THEN LEAST(GREATEST(shares * 0.0035, 0.35), amount * 0.01)
+    ELSE GREATEST(amount * 0.01, 0.01)
+END
+"""
+COMMISSION_DERIVATION_CHECK = f"""
+commission = round(({COMMISSION_RAW_SQL}), 8) -
+    CASE
+        WHEN ({COMMISSION_RAW_SQL}) * 100000000
+            - trunc(({COMMISSION_RAW_SQL}) * 100000000) = 0.5
+            AND mod(trunc(({COMMISSION_RAW_SQL}) * 100000000), 2) = 0
+        THEN 0.00000001
+        ELSE 0
+    END
+"""
 
 
 class UserModel(Base):
@@ -54,6 +71,7 @@ class TransactionModel(Base):
         CheckConstraint("price > 0", name="ck_transactions_price_positive"),
         CheckConstraint("shares > 0", name="ck_transactions_shares_positive"),
         CheckConstraint("amount > 0", name="ck_transactions_amount_positive"),
+        CheckConstraint("commission >= 0", name="ck_transactions_commission_non_negative"),
         CheckConstraint("action IN ('BUY', 'SELL')", name="transaction_action"),
         CheckConstraint(
             "position_type IN ('LONG_TERM', 'SWING')",
@@ -62,6 +80,14 @@ class TransactionModel(Base):
         CheckConstraint(
             AMOUNT_DERIVATION_CHECK,
             name="ck_transactions_amount_derived",
+        ),
+        CheckConstraint(
+            COMMISSION_DERIVATION_CHECK,
+            name="ck_transactions_commission_derived",
+        ),
+        CheckConstraint(
+            "fee_schedule = 'IBKR_PRO_TIERED_US_2026_08'",
+            name="ck_transactions_fee_schedule_supported",
         ),
         Index(
             "ix_transactions_user_ticker_position_type",
@@ -82,6 +108,8 @@ class TransactionModel(Base):
     price: Mapped[Decimal] = mapped_column(Numeric(28, 8))
     shares: Mapped[Decimal] = mapped_column(Numeric(28, 8))
     amount: Mapped[Decimal] = mapped_column(Numeric(28, 8))
+    commission: Mapped[Decimal] = mapped_column(Numeric(28, 8))
+    fee_schedule: Mapped[str] = mapped_column(String(40))
     position_type: Mapped[str] = mapped_column(String(9))
     occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     reason: Mapped[str | None] = mapped_column(Text)

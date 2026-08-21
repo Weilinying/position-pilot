@@ -38,20 +38,22 @@ ordered Transaction Ledger
 CashBalance + Position[]
 ```
 
-PostgreSQL 只保存 `users` 与 `transactions`。Cash、Position、Shares、Cost Basis 和 Average Cost 不保存冗余投影，而是在读取时按每个 User 的连续 Transaction sequence 重建。
+PostgreSQL 只保存 `users` 与 `transactions`。Cash、Position、Shares、Cost Basis 和 Average Cost 不保存冗余投影，而是在读取时按每个 User 的连续经济 sequence 重建。sequence 由 `occurred_at` 派生；历史补录会在同一事务内重新编号后续记录。
 
 同一 Ticker 的 `LONG_TERM` 与 `SWING` 使用独立 Position Key。BUY / SELL、Available Cash、Oversell 与 Average Cost 都由普通 Python / Decimal 代码计算，不依赖 LLM。
 
 ## 4. Transaction 写入流程
 
 ```text
-RecordTransactionCommand（无 amount）
+RecordTransactionCommand（无 amount / commission / sequence）
         ↓
 锁定 User 数据库行
         ↓
-按 sequence 读取完整 Ledger
+读取完整 Ledger
         ↓
-领域层派生 amount = price × shares
+按 occurred_at 派生经济 sequence
+        ↓
+领域层派生 amount 与版本化 IBKR 基础佣金
         ↓
 重放并校验 Cash / Position
         ↓
@@ -67,11 +69,12 @@ User 行锁串行化同一用户的写入，避免两个并发请求基于相同
 - `backend/position_pilot/application/portfolio_service.py`：Use Case、写入 Command 和 Unit of Work Contract。
 - `backend/position_pilot/infrastructure/models.py`：User / Transaction SQLAlchemy Model 与数据库约束。
 - `backend/position_pilot/infrastructure/unit_of_work.py`：同步 SQLAlchemy 持久化实现和领域映射。
-- `alembic/versions/`：M1 Schema 与金额舍入约束 Migration。
+- `alembic/versions/`：M1 Schema、金额舍入与手续费约束 Migration。
 
 ## 6. 当前限制
 
 - M1 没有 Portfolio REST API 或认证；后续调用方通过 Application Service 使用 Structured State。
 - 当前没有 Cash / Position Projection；只有实际性能问题出现后才考虑可重建投影或快照。
-- 不处理手续费、税费、多币种、拆股、公司行动、转仓或外部券商同步。
+- 手续费只实现 `IBKR_PRO_TIERED_US_2026_08` 第一档基础佣金，不模拟月累计量跨档、执行场所、清算、监管或 pass-through fees。
+- 不处理税费、多币种、拆股、公司行动、转仓或外部券商同步。
 - 不包含 Market Data、Agent Routing、LLM 或投资建议生成。

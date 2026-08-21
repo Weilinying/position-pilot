@@ -1,7 +1,7 @@
 """Portfolio Structured State 与确定性计算。"""
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from decimal import ROUND_HALF_EVEN, Decimal, DecimalException
 from enum import StrEnum
@@ -20,6 +20,11 @@ MAX_PERSISTED_DECIMAL = Decimal("99999999999999999999.99999999")
 TICKER_PATTERN = re.compile(r"^[A-Z][A-Z0-9.-]{0,9}$")
 MAX_DISPLAY_NAME_LENGTH = 200
 MAX_REASON_LENGTH = 1000
+COMMISSION_SCHEDULE = "IBKR_PRO_TIERED_US_2026_08"
+IBKR_TIERED_PER_SHARE = Decimal("0.0035")
+IBKR_TIERED_MINIMUM = Decimal("0.35")
+IBKR_TIERED_MAXIMUM_RATE = Decimal("0.01")
+IBKR_FRACTIONAL_MINIMUM = Decimal("0.01")
 
 
 class TransactionAction(StrEnum):
@@ -78,6 +83,30 @@ def calculate_amount(price: Decimal, shares: Decimal) -> Decimal:
     except DecimalException as error:
         raise InvalidPortfolioValue("amount 超出可支持范围") from error
     return normalize_decimal(amount, field_name="amount")
+
+
+def calculate_commission(amount: Decimal, shares: Decimal) -> Decimal:
+    """按已批准的 IBKR Pro Tiered 第一档计算基础佣金。"""
+
+    normalized_amount = normalize_decimal(amount, field_name="amount")
+    normalized_shares = normalize_decimal(shares, field_name="shares")
+    if normalized_shares == normalized_shares.to_integral_value():
+        per_share_commission = normalized_shares * IBKR_TIERED_PER_SHARE
+        raw_commission = min(
+            max(per_share_commission, IBKR_TIERED_MINIMUM),
+            normalized_amount * IBKR_TIERED_MAXIMUM_RATE,
+        )
+    else:
+        raw_commission = max(
+            normalized_amount * IBKR_TIERED_MAXIMUM_RATE,
+            IBKR_FRACTIONAL_MINIMUM,
+        )
+
+    try:
+        commission = raw_commission.quantize(DECIMAL_QUANTUM, rounding=ROUND_HALF_EVEN)
+    except DecimalException as error:
+        raise InvalidPortfolioValue("commission 超出可支持范围") from error
+    return normalize_decimal(commission, field_name="commission", allow_zero=True)
 
 
 def normalize_ticker(ticker: str) -> str:
@@ -139,7 +168,7 @@ class User:
 
 @dataclass(frozen=True, slots=True)
 class Transaction:
-    """不可变 Ledger Record，amount 只能由 price 与 shares 派生。"""
+    """不可变 Ledger Record，金额、佣金与经济顺序均由系统派生。"""
 
     id: UUID
     user_id: UUID
@@ -149,6 +178,8 @@ class Transaction:
     price: Decimal
     shares: Decimal
     amount: Decimal
+    commission: Decimal
+    fee_schedule: str
     position_type: PositionType
     occurred_at: datetime
     reason: str | None
@@ -167,6 +198,12 @@ class Transaction:
         if self.amount != derived_amount:
             raise InvalidPortfolioValue("amount 必须等于 price × shares 的派生结果")
         object.__setattr__(self, "amount", derived_amount)
+        derived_commission = calculate_commission(derived_amount, self.shares)
+        if self.commission != derived_commission:
+            raise InvalidPortfolioValue("commission 必须由已批准费率派生")
+        if self.fee_schedule != COMMISSION_SCHEDULE:
+            raise InvalidPortfolioValue("fee_schedule 不受支持")
+        object.__setattr__(self, "commission", derived_commission)
         object.__setattr__(self, "occurred_at", normalize_timestamp(self.occurred_at))
 
         if self.reason is not None:
@@ -190,7 +227,9 @@ class Transaction:
         reason: str | None = None,
         transaction_id: UUID | None = None,
     ) -> Self:
-        """从写入字段创建 Transaction，调用方无法传入 amount。"""
+        """从写入字段创建 Transaction，调用方无法传入派生金额或佣金。"""
+
+        amount = calculate_amount(price, shares)
 
         return cls(
             id=transaction_id or uuid4(),
@@ -200,11 +239,27 @@ class Transaction:
             action=action,
             price=price,
             shares=shares,
-            amount=calculate_amount(price, shares),
+            amount=amount,
+            commission=calculate_commission(amount, shares),
+            fee_schedule=COMMISSION_SCHEDULE,
             position_type=position_type,
             occurred_at=occurred_at or datetime.now(UTC),
             reason=reason,
         )
+
+
+def resequence_transactions(transactions: list[Transaction]) -> list[Transaction]:
+    """按交易发生时间派生连续经济顺序，并稳定保留同一时间的原相对顺序。"""
+
+    ordered = sorted(
+        transactions, key=lambda transaction: (transaction.occurred_at, transaction.sequence)
+    )
+    return [
+        transaction
+        if transaction.sequence == economic_sequence
+        else replace(transaction, sequence=economic_sequence)
+        for economic_sequence, transaction in enumerate(ordered, start=1)
+    ]
 
 
 @dataclass(frozen=True, slots=True)
@@ -257,7 +312,7 @@ class _PositionAccumulator:
 
 
 def rebuild_portfolio(user: User, transactions: list[Transaction]) -> PortfolioState:
-    """按 Ledger sequence 重建 Cash、Position 与 Average Cost。
+    """按经济 sequence 重建 Cash、Position 与 Average Cost。
 
     参数:
         user: Ledger 所有者及 Initial Cash。
@@ -283,24 +338,25 @@ def rebuild_portfolio(user: User, transactions: list[Transaction]) -> PortfolioS
         position = positions.get(key)
 
         if transaction.action is TransactionAction.BUY:
-            if transaction.amount > available_cash:
-                raise InsufficientCash(available=available_cash, required=transaction.amount)
-            available_cash -= transaction.amount
+            cash_required = transaction.amount + transaction.commission
+            if cash_required > available_cash:
+                raise InsufficientCash(available=available_cash, required=cash_required)
+            available_cash -= cash_required
             if position is None:
                 positions[key] = _PositionAccumulator(
                     shares=transaction.shares,
-                    cost_basis=transaction.amount,
+                    cost_basis=cash_required,
                 )
             else:
                 position.shares += transaction.shares
-                position.cost_basis += transaction.amount
+                position.cost_basis += cash_required
             continue
 
         available_shares = position.shares if position is not None else Decimal("0")
         if transaction.shares > available_shares:
             raise InsufficientShares(available=available_shares, required=transaction.shares)
 
-        available_cash += transaction.amount
+        available_cash += transaction.amount - transaction.commission
         if transaction.shares == available_shares:
             del positions[key]
             continue

@@ -11,6 +11,8 @@ M1 的目标是在不依赖 LLM 的情况下，可靠维护并恢复 User、Tran
 - Transaction Ledger 与 User Initial Cash 是持久化事实。
 - Cash 与 Position 从 Ledger 确定性重建，不建立冗余投影表。
 - Transaction 写入只接收 price / shares，amount 只读派生并持久化。
+- sequence 按 occurred_at 派生为经济顺序，不接受用户输入；历史补录会重新派生后续序号。
+- commission 按版本化 IBKR Pro Tiered 美国股票第一档规则只读派生并持久化。
 - 金融数值使用 Decimal 与 `NUMERIC(28, 8)`，最多 8 位小数。
 - BUY 检查 Available Cash，SELL 检查同 Position Type 的 Shares。
 - 部分 SELL 不改变 Average Cost，全部卖出移除 Position。
@@ -31,7 +33,7 @@ M1 的目标是在不依赖 LLM 的情况下，可靠维护并恢复 User、Tran
 
 - 不建立 Cash / Position 物化投影表。
 - 不实现 REST Portfolio API、认证、前端或用户管理界面。
-- 不处理手续费、税费、汇率、拆股、公司行动、转仓或多币种。
+- 不处理 IBKR 月累计量跨档、第三方费用、税费、汇率、拆股、公司行动、转仓或多币种。
 - 不实现 Market Data、LLM、Investment Agent、News 或 Agent Tool。
 - 不进入 M2 或后续 Milestone。
 
@@ -40,9 +42,11 @@ M1 的目标是在不依赖 LLM 的情况下，可靠维护并恢复 User、Tran
 - 同一 Ticker 的 `LONG_TERM` / `SWING` 可以独立 BUY / SELL。
 - BUY / SELL 后 Shares、Cost Basis、Average Cost 和 Available Cash 正确。
 - Transaction amount 只能由 price / shares 派生，写入 Command 不含 amount。
+- Transaction commission 只能由已批准的费率规则派生，写入 Command 不含 commission。
+- Transaction sequence 按经济时间连续派生，写入 Command 不含 sequence。
 - Insufficient Cash、Oversell、非法数值和未知 User 有明确失败状态。
 - Transaction 按稳定顺序可追溯，Portfolio 可从 PostgreSQL 持久化状态恢复。
-- 同一用户写入在数据库事务中锁定 User，避免并发校验使用过期状态。
+- 两个真实 PostgreSQL Transaction 并发写入同一用户时，第二个写入等待 User 行锁，并在获取锁后基于最新 Ledger 重新校验。
 - Database Schema 只通过 Alembic Migration 创建。
 - pytest、Ruff format / lint、mypy 与 PostgreSQL 在线验证通过。
 - 没有 M2 或未来能力。

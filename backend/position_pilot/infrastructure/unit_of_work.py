@@ -4,7 +4,7 @@ from types import TracebackType
 from typing import Self
 from uuid import UUID
 
-from sqlalchemy import Select, select
+from sqlalchemy import Select, select, update
 from sqlalchemy.orm import Session, sessionmaker
 
 from position_pilot.domain.portfolio import PositionType, Transaction, TransactionAction, User
@@ -34,6 +34,8 @@ def _to_transaction(model: TransactionModel) -> Transaction:
         price=model.price,
         shares=model.shares,
         amount=model.amount,
+        commission=model.commission,
+        fee_schedule=model.fee_schedule,
         position_type=PositionType(model.position_type),
         occurred_at=model.occurred_at,
         reason=model.reason,
@@ -103,7 +105,7 @@ class SqlAlchemyPortfolioUnitOfWork:
         return [_to_transaction(model) for model in self.session.scalars(statement)]
 
     def add_transaction(self, transaction: Transaction) -> None:
-        """追加由领域层生成的只读 amount Ledger Record。"""
+        """追加由领域层生成的只读金额与佣金 Ledger Record。"""
 
         self.session.add(
             TransactionModel(
@@ -115,11 +117,36 @@ class SqlAlchemyPortfolioUnitOfWork:
                 price=transaction.price,
                 shares=transaction.shares,
                 amount=transaction.amount,
+                commission=transaction.commission,
+                fee_schedule=transaction.fee_schedule,
                 position_type=transaction.position_type.value,
                 occurred_at=transaction.occurred_at,
                 reason=transaction.reason,
             )
         )
+
+    def synchronize_sequences(self, transactions: list[Transaction]) -> None:
+        """两阶段更新经济 sequence，避免重新编号时触发唯一约束。"""
+
+        if not transactions:
+            return
+        temporary_offset = len(transactions) + max(
+            transaction.sequence for transaction in transactions
+        )
+        for transaction in transactions:
+            self.session.execute(
+                update(TransactionModel)
+                .where(TransactionModel.id == transaction.id)
+                .values(sequence=transaction.sequence + temporary_offset)
+            )
+        self.session.flush()
+        for transaction in transactions:
+            self.session.execute(
+                update(TransactionModel)
+                .where(TransactionModel.id == transaction.id)
+                .values(sequence=transaction.sequence)
+            )
+        self.session.flush()
 
     def commit(self) -> None:
         """提交当前数据库事务。"""
