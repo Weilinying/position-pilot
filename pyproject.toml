@@ -26,7 +26,10 @@ package = false
 
 [tool.pytest.ini_options]
 addopts = "-ra"
-markers = ["integration: 需要显式 PostgreSQL 测试数据库的集成测试"]
+markers = [
+    "integration: 需要显式外部服务或 PostgreSQL 的集成测试",
+    "online: 需要显式 Credential 与网络授权的在线测试",
+]
 pythonpath = ["backend"]
 testpaths = ["tests"]
 

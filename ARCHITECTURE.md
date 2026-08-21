@@ -2,7 +2,7 @@
 
 ## 1. 当前范围
 
-本文档描述 M1 完成后的实际系统结构。当前系统只包含工程基础与 Portfolio Structured State，不包含 REST Portfolio API、Market Data、LLM 或 Investment Agent。
+本文档描述 M2 实现中的实际系统结构。当前系统包含工程基础、Portfolio Structured State 与最小 Market Data，不包含 Portfolio / Market Data REST API、LLM 或 Investment Agent。
 
 ## 2. 依赖方向
 
@@ -18,11 +18,20 @@ Domain / deterministic Portfolio replay
 Infrastructure / SQLAlchemy Unit of Work
       ↓
 PostgreSQL User + Transaction Ledger
+
+Market data callers
+      ↓
+Application / MarketDataService + Provider Protocol
+      ↓
+Integrations / Alpaca REST Adapter
+      ↓
+Alpaca Market Data API v2
 ```
 
 - `domain/` 不依赖 FastAPI、SQLAlchemy 或具体数据库。
 - `application/` 定义写入 Command、Use Case 和 Unit of Work Protocol，只依赖 Domain。
 - `infrastructure/` 实现 SQLAlchemy Model、映射与 Unit of Work，依赖 Application Contract 所需的 Domain 类型。
+- `integrations/` 实现外部 Provider Adapter，只向 Application 返回稳定 Market Data Schema。
 - `alembic/` 是唯一正常 Database Schema 变更路径。
 - `main.py` 目前只暴露不耦合数据库的 `GET /health`。
 
@@ -77,4 +86,23 @@ User 行锁串行化同一用户的写入，避免两个并发请求基于相同
 - 当前没有 Cash / Position Projection；只有实际性能问题出现后才考虑可重建投影或快照。
 - 手续费只实现 `IBKR_PRO_TIERED_US_2026_08` 第一档基础佣金，不模拟月累计量跨档、执行场所、清算、监管或 pass-through fees。
 - 不处理税费、多币种、拆股、公司行动、转仓或外部券商同步。
-- 不包含 Market Data、Agent Routing、LLM 或投资建议生成。
+- Current Quote 默认来自 Alpaca Basic 的实时 IEX feed，只代表单一交易所覆盖；Historical Daily OHLCV 来自至少延迟 15 分钟的 SIP feed。
+- 不包含 WebSocket、行情缓存或持久化、技术指标、VIX、Market Regime、News 或 Fundamentals。
+- 不包含 Market Data REST API、Agent Routing、LLM 或投资建议生成。
+
+## 7. Market Data Boundary
+
+```text
+Ticker / HistoricalBarsQuery
+        ↓ Application validation
+MarketDataProvider Protocol
+        ↓
+AlpacaMarketDataProvider
+        ↓
+MarketDataResult[MarketQuote | HistoricalBars]
+```
+
+- `domain/market_data.py` 保存 Provider-neutral Quote、OHLCV、Coverage 和 Result Status，不包含 Alpaca JSON 或 HTTP 状态码。
+- `application/market_data_service.py` 校验 Ticker、时间范围和 limit，只依赖 Provider Protocol。
+- `integrations/alpaca_market_data.py` 负责 Credential、REST、IEX / SIP feed、分页以及 HTTP / Payload Failure 映射。
+- 正常空结果使用 `NO_DATA`；认证、限流、Provider 不可用和非法响应具有不同状态，失败结果不携带伪造数据。
