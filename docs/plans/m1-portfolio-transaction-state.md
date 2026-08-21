@@ -70,3 +70,44 @@ Atomic Commits → Human Acceptance
 ```
 
 M1 的核心计算、应用写入和持久化接口互相依赖，默认由主线程串行实现，避免并行修改同一领域边界。
+
+## 7. Completion Summary
+
+**Status:** DONE（Human Acceptance：2026-08-21）
+
+### Implemented
+
+- Transaction Ledger 与 User Initial Cash 作为持久化 Source of Truth。
+- `LONG_TERM` / `SWING` 独立 Position，以及确定性的 Cash、Shares、Cost Basis 和 Average Cost 重放。
+- `amount = price × shares` 的只读派生、持久化和数据库约束。
+- 按 `occurred_at` 派生的经济 sequence，以及历史交易补录后的稳定重新编号。
+- 版本化 IBKR Pro Tiered 美国股票第一档基础佣金；BUY 手续费计入 Cost Basis，SELL 手续费从现金收入扣除。
+- PostgreSQL User 行锁保护同一用户写入，并由真实双事务集成测试验证等待和提交后重新校验。
+- 非破坏性 Alembic Migration、SQLAlchemy Unit of Work 和 PostgreSQL 持久化恢复。
+
+### Plan Adjustments
+
+- 原计划将手续费列为 Non-Goal；Human Review 后根据明确需求将版本化 IBKR 基础佣金纳入 M1。
+- 原实现的 sequence 表示 Ledger 写入顺序；Human Review 后改为只读派生的经济交易顺序。
+- 并发验证由仅检查 `for_update=True` 的 Unit Test 补强为真实 PostgreSQL transaction integration test。
+
+### Deferred
+
+- Cash Adjustment、税费、汇率、拆股、公司行动、转仓和多币种。
+- IBKR 月累计量跨档、执行场所、清算、监管和 pass-through fees。
+- Cash / Position 物化投影、Portfolio REST API、认证和用户管理界面。
+- Market Data、LLM、Investment Agent、News 和 Agent Tool。
+
+### Verification
+
+- pytest：37 passed，包含 6 个 PostgreSQL integration cases。
+- Ruff format：PASS。
+- Ruff lint：PASS。
+- mypy strict：PASS。
+- Alembic：在线升级至 `20260821_0003`，offline SQL 生成通过，`alembic check` 无待生成变更。
+- Docker Compose config 与 `uv sync --frozen`：PASS。
+- 主线程 Automated Review findings 已修复并完成受影响检查的复验。
+
+### Decision
+
+- ADR 0003：Transaction Ledger、派生 Portfolio State、经济 sequence 与版本化基础佣金。

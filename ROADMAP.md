@@ -11,7 +11,7 @@
 ## 2. Current Status
 
 **Current Milestone:** M1 — Portfolio & Transaction State
-**Status:** IN PROGRESS
+**Status:** DONE
 
 Milestone 状态统一使用 `NOT STARTED`、`IN PROGRESS`、`DONE`，不维护百分比进度。
 
