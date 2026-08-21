@@ -60,12 +60,14 @@ V1 优先实现 Structured Memory。总可投资资金、剩余现金、Portfoli
   "action": "BUY",
   "price": 220.5,
   "shares": 0.45,
-  "amount": 100,
+  "amount": 99.225,
   "position_type": "LONG_TERM",
   "timestamp": "2026-08-19T10:30:00Z",
   "reason": "首次建立长期仓"
 }
 ```
+
+`amount` 是由 `price × shares` 确定性计算的只读成交金额，不是独立用户输入。Transaction 对现金的实际影响可以包含当前已批准规则产生的交易成本，但 `PROJECT.md` 不绑定具体券商或费率实现。
 
 当前持仓、平均成本、现金变化和仓位比例必须由确定性业务代码计算，不依赖 LLM 从聊天历史推断。
 

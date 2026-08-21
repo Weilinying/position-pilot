@@ -8,7 +8,7 @@
 
 M1 需要持久化 User、Transaction、Cash 和 Position，并保证 Shares、Average Cost 与 Available Cash 由确定性代码产生。`ROADMAP.md` 将 Position Persistence Strategy 留到 M1 决定。
 
-`PROJECT.md` 的 Transaction 示例同时包含 `price`、`shares` 和 `amount`，但示例数值不满足 `amount = price × shares`。如果允许三者独立输入，Cash 与 Average Cost 将存在多个相互冲突的事实来源。
+M1 设计阶段发现，当时 `PROJECT.md` 的 Transaction 示例同时包含 `price`、`shares` 和 `amount`，但示例数值不满足 `amount = price × shares`。如果允许三者独立输入，Cash 与 Average Cost 将存在多个相互冲突的事实来源。接受本 ADR 后，`PROJECT.md` 示例已同步修正为派生金额。
 
 ## 候选方案
 
