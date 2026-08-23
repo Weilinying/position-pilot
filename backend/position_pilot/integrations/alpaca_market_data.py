@@ -1,10 +1,12 @@
 """Alpaca Market Data API v2 REST Adapter。"""
 
 import json
+import ssl
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal, DecimalException
+from enum import StrEnum
 from http.client import HTTPResponse
 from typing import Protocol
 from urllib.error import HTTPError, URLError
@@ -40,8 +42,27 @@ class JsonHttpResponse:
     payload: object
 
 
+class HttpTransportFailureKind(StrEnum):
+    """不包含 URL、Credential 或底层异常文本的 Transport 错误类别。"""
+
+    TLS_CERTIFICATE_ERROR = "TLS_CERTIFICATE_ERROR"
+    TIMEOUT = "TIMEOUT"
+    NETWORK_ERROR = "NETWORK_ERROR"
+
+
 class HttpTransportUnavailable(RuntimeError):
-    """网络、DNS、连接或读取失败。"""
+    """携带安全错误类别的网络、TLS、连接或读取失败。"""
+
+    def __init__(self, kind: HttpTransportFailureKind) -> None:
+        self.kind = kind
+        super().__init__(kind.value)
+
+
+@dataclass(frozen=True, slots=True)
+class HttpTransportFailure:
+    """Adapter 可安全转换为稳定 Provider Result 的 Transport Failure。"""
+
+    kind: HttpTransportFailureKind
 
 
 class JsonHttpTransport(Protocol):
@@ -78,8 +99,10 @@ class UrllibJsonHttpTransport:
                 status_code=error.code,
                 payload=self._decode_json(error),
             )
-        except (URLError, TimeoutError, OSError) as error:
-            raise HttpTransportUnavailable("Alpaca network request failed") from error
+        except URLError as error:
+            raise HttpTransportUnavailable(self._classify_failure(error.reason)) from error
+        except (TimeoutError, OSError) as error:
+            raise HttpTransportUnavailable(self._classify_failure(error)) from error
 
     @staticmethod
     def _decode_json(response: HTTPResponse | HTTPError) -> object:
@@ -87,6 +110,16 @@ class UrllibJsonHttpTransport:
             return json.loads(response.read().decode("utf-8"))
         except (UnicodeDecodeError, json.JSONDecodeError):
             return None
+
+    @staticmethod
+    def _classify_failure(error: object) -> HttpTransportFailureKind:
+        """只暴露可操作的安全类别，不向上层转发底层异常文本。"""
+
+        if isinstance(error, ssl.SSLCertVerificationError):
+            return HttpTransportFailureKind.TLS_CERTIFICATE_ERROR
+        if isinstance(error, TimeoutError):
+            return HttpTransportFailureKind.TIMEOUT
+        return HttpTransportFailureKind.NETWORK_ERROR
 
 
 class AlpacaMarketDataProvider:
@@ -121,6 +154,11 @@ class AlpacaMarketDataProvider:
             f"/v2/stocks/{quote(ticker, safe='')}/snapshot",
             {"feed": CURRENT_FEED.lower(), "currency": "USD"},
         )
+        if isinstance(response, HttpTransportFailure):
+            return MarketDataResult.failure(
+                MarketDataStatus.PROVIDER_UNAVAILABLE,
+                self._transport_failure_message(response.kind),
+            )
         failure = self._response_failure(response)
         if failure is not None:
             return MarketDataResult.failure(*failure)
@@ -206,6 +244,11 @@ class AlpacaMarketDataProvider:
                 f"/v2/stocks/{quote(query.ticker, safe='')}/bars",
                 parameters,
             )
+            if isinstance(response, HttpTransportFailure):
+                return MarketDataResult.failure(
+                    MarketDataStatus.PROVIDER_UNAVAILABLE,
+                    self._transport_failure_message(response.kind),
+                )
             failure = self._response_failure(response)
             if failure is not None:
                 return MarketDataResult.failure(*failure)
@@ -257,7 +300,11 @@ class AlpacaMarketDataProvider:
             )
         return MarketDataResult.success(historical_bars)
 
-    def _get(self, path: str, parameters: Mapping[str, str]) -> JsonHttpResponse:
+    def _get(
+        self,
+        path: str,
+        parameters: Mapping[str, str],
+    ) -> JsonHttpResponse | HttpTransportFailure:
         url = f"{self._base_url}{path}?{urlencode(parameters)}"
         try:
             return self._transport.get_json(
@@ -269,8 +316,18 @@ class AlpacaMarketDataProvider:
                 },
                 timeout_seconds=self._timeout_seconds,
             )
-        except HttpTransportUnavailable:
-            return JsonHttpResponse(status_code=503, payload=None)
+        except HttpTransportUnavailable as error:
+            return HttpTransportFailure(error.kind)
+
+    @staticmethod
+    def _transport_failure_message(kind: HttpTransportFailureKind) -> str:
+        """返回可操作但不包含 Credential、URL 或底层异常内容的错误消息。"""
+
+        if kind is HttpTransportFailureKind.TLS_CERTIFICATE_ERROR:
+            return "Alpaca TLS 证书校验失败，请检查 Python CA 根证书配置"
+        if kind is HttpTransportFailureKind.TIMEOUT:
+            return "Alpaca 请求超时"
+        return "Alpaca 网络连接失败"
 
     @staticmethod
     def _response_failure(

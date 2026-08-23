@@ -27,13 +27,24 @@ def get_online_provider() -> AlpacaMarketDataProvider:
     )
 
 
-def test_alpaca_current_quote_and_historical_bars_online() -> None:
-    """真实 Provider 应返回带市场时间的 Quote 与至少一根 SIP Daily Bar。"""
+def test_alpaca_current_quote_online() -> None:
+    """真实 Provider 应返回带市场时间的 IEX Quote。"""
+
+    provider = get_online_provider()
+    quote_result = provider.get_current_quote("GOOG")
+
+    assert quote_result.status is MarketDataStatus.OK, (
+        f"{quote_result.status}: {quote_result.message}"
+    )
+    assert quote_result.data is not None
+    assert quote_result.data.last_trade_at.tzinfo is UTC
+
+
+def test_alpaca_historical_bars_online() -> None:
+    """真实 Provider 应返回至少一根延迟 SIP Daily Bar。"""
 
     provider = get_online_provider()
     now = datetime.now(UTC)
-
-    quote_result = provider.get_current_quote("GOOG")
     bars_result = provider.get_historical_bars(
         HistoricalBarsQuery(
             ticker="GOOG",
@@ -43,9 +54,6 @@ def test_alpaca_current_quote_and_historical_bars_online() -> None:
         )
     )
 
-    assert quote_result.status is MarketDataStatus.OK
-    assert quote_result.data is not None
-    assert quote_result.data.last_trade_at.tzinfo is UTC
-    assert bars_result.status is MarketDataStatus.OK
+    assert bars_result.status is MarketDataStatus.OK, f"{bars_result.status}: {bars_result.message}"
     assert bars_result.data is not None
     assert bars_result.data.bars

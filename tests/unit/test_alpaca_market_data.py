@@ -1,5 +1,6 @@
 """Alpaca Market Data Adapter 测试。"""
 
+import ssl
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -10,8 +11,10 @@ from position_pilot.application.market_data_service import HistoricalBarsQuery
 from position_pilot.domain.market_data import MarketDataCoverage, MarketDataStatus
 from position_pilot.integrations.alpaca_market_data import (
     AlpacaMarketDataProvider,
+    HttpTransportFailureKind,
     HttpTransportUnavailable,
     JsonHttpResponse,
+    UrllibJsonHttpTransport,
 )
 
 NOW = datetime(2026, 8, 21, 12, 0, tzinfo=UTC)
@@ -45,7 +48,10 @@ class FakeJsonTransport:
 
 
 class UnavailableTransport:
-    """模拟 DNS、连接或读取失败。"""
+    """模拟不暴露底层异常内容的 Transport Failure。"""
+
+    def __init__(self, kind: HttpTransportFailureKind) -> None:
+        self._kind = kind
 
     def get_json(
         self,
@@ -54,7 +60,10 @@ class UnavailableTransport:
         headers: Mapping[str, str],
         timeout_seconds: float,
     ) -> JsonHttpResponse:
-        raise HttpTransportUnavailable("offline")
+        try:
+            raise RuntimeError("test-secret must not leak")
+        except RuntimeError as error:
+            raise HttpTransportUnavailable(self._kind) from error
 
 
 def make_provider(
@@ -175,12 +184,48 @@ def test_maps_http_status_without_exposing_provider_payload(
     assert "test-secret" not in result.message
 
 
-def test_network_failure_is_provider_unavailable() -> None:
-    """网络失败不得伪装成无行情。"""
+@pytest.mark.parametrize(
+    ("kind", "expected_message"),
+    [
+        (
+            HttpTransportFailureKind.TLS_CERTIFICATE_ERROR,
+            "Alpaca TLS 证书校验失败，请检查 Python CA 根证书配置",
+        ),
+        (HttpTransportFailureKind.TIMEOUT, "Alpaca 请求超时"),
+        (HttpTransportFailureKind.NETWORK_ERROR, "Alpaca 网络连接失败"),
+    ],
+)
+def test_transport_failures_are_safe_and_actionable(
+    kind: HttpTransportFailureKind,
+    expected_message: str,
+) -> None:
+    """Transport Failure 应保留安全类别，且不得泄露底层异常内容。"""
 
-    result = make_provider(UnavailableTransport()).get_current_quote("GOOG")
+    result = make_provider(UnavailableTransport(kind)).get_current_quote("GOOG")
 
     assert result.status is MarketDataStatus.PROVIDER_UNAVAILABLE
+    assert result.message == expected_message
+    assert "test-secret" not in result.message
+
+
+@pytest.mark.parametrize(
+    ("error", "expected"),
+    [
+        (
+            ssl.SSLCertVerificationError(1, "test-secret certificate detail"),
+            HttpTransportFailureKind.TLS_CERTIFICATE_ERROR,
+        ),
+        (TimeoutError("test-secret timeout detail"), HttpTransportFailureKind.TIMEOUT),
+        (OSError("test-secret network detail"), HttpTransportFailureKind.NETWORK_ERROR),
+    ],
+)
+def test_transport_classifies_low_level_failures_without_forwarding_details(
+    error: object,
+    expected: HttpTransportFailureKind,
+) -> None:
+    """底层异常只应转换成固定类别，不把异常文本作为业务消息。"""
+
+    assert UrllibJsonHttpTransport._classify_failure(error) is expected
 
 
 def test_missing_credentials_fail_before_network_call() -> None:
