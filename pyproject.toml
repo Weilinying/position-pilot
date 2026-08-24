@@ -29,6 +29,7 @@ addopts = "-ra"
 markers = [
     "integration: 需要显式外部服务或 PostgreSQL 的集成测试",
     "online: 需要显式 Credential 与网络授权的在线测试",
+    "behavioral: 使用真实模型验证 Tool Selection、Grounding 与 Personalization",
 ]
 pythonpath = ["backend"]
 testpaths = ["tests"]
