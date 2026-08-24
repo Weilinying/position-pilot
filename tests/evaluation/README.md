@@ -22,6 +22,9 @@ uv run pytest tests/evaluation/test_real_model_behavior.py -s
 - FACT / INFERENCE / UNKNOWN 是否在语义上自然区分，而不是机械套用固定标题。
 - 是否避免把当前价格低于 Average Cost 直接推导为风险收益比更好；Average Cost 只是用户历史成本，不是市场估值或未来收益概率；
 - 是否避免默认整股交易；`fractionable` 必须来自确定性 Asset / Broker Capability，当前缺失时应保持 `UNKNOWN`。
+- 是否只使用 Context 已提供的确定性金融数值；不得自行计算仓位权重、盈亏金额或比例、现金占比、可购买股数及交易后比例。
+- `low_cash_personalization` / `high_cash_personalization` 使用完全相同的问题，人工比较 Cash 变化是否真正改变分析。
+- `long_term_position_personalization` / `swing_position_personalization` 使用完全相同的问题，人工比较 Position Type 是否真正改变分析重点。
 
 M3 不提供 Asset Trading Capability。`tradable` 与 `fractionable` 是后续接入 Broker / Asset Metadata 时的明确扩展点；Behavioral Eval 不允许模型根据训练知识猜测这些字段，也不要求为了该能力接入真实 Alpaca。
 

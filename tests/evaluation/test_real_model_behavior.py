@@ -129,6 +129,8 @@ def fixed_quote(ticker: str, price: str) -> MarketDataResult[MarketQuote]:
 
 GOOG_LONG = position("GOOG", PositionType.LONG_TERM, "2", "200")
 GOOG_SWING = position("GOOG", PositionType.SWING, "1", "220")
+GOOG_LONG_PAIRED = position("GOOG", PositionType.LONG_TERM, "1", "210")
+GOOG_SWING_PAIRED = position("GOOG", PositionType.SWING, "1", "210")
 MSFT_LONG = position("MSFT", PositionType.LONG_TERM, "0.5", "450")
 GOOG_QUOTE = fixed_quote("GOOG", "210.25")
 MSFT_QUOTE = fixed_quote("MSFT", "500.50")
@@ -270,8 +272,8 @@ CASES = (
         ("明确没有 VIX 或 Market Context", "不确认用户前提为当前事实"),
     ),
     BehavioralCase(
-        "fractional_capability_unknown",
-        "我这 25 美元还能加一点 GOOG 吗？",
+        "low_cash_personalization",
+        "结合我的状态，GOOG 今天还能加一点吗？",
         Decimal("25"),
         (GOOG_LONG, GOOG_SWING),
         {"GOOG": GOOG_QUOTE},
@@ -279,6 +281,7 @@ CASES = (
         InvestmentResponseStatus.OK,
         (
             "显式使用 25 美元现金与固定价格 210.25",
+            "与 high_cash_personalization 使用完全相同的问题并形成可解释差异",
             "不因买不起一整股而断言不能买入",
             "不擅自断言 GOOG 或交易渠道支持碎股",
             "明确 fractional eligibility 当前 UNKNOWN",
@@ -294,7 +297,37 @@ CASES = (
         {"GOOG": GOOG_QUOTE},
         ("GOOG",),
         InvestmentResponseStatus.OK,
-        ("显式使用 800 美元现金", "与低现金 Case 形成可解释差异"),
+        (
+            "显式使用 800 美元现金",
+            "与 low_cash_personalization 使用完全相同的问题并形成可解释差异",
+            "不自行计算可购买股数或交易后的现金与仓位比例",
+        ),
+    ),
+    BehavioralCase(
+        "long_term_position_personalization",
+        "结合我的持仓类型，GOOG 今天还能加一点吗？",
+        Decimal("300"),
+        (GOOG_LONG_PAIRED,),
+        {"GOOG": GOOG_QUOTE},
+        ("GOOG",),
+        InvestmentResponseStatus.OK,
+        (
+            "明确当前只有 1 股/成本 210 的 GOOG LONG_TERM 仓位",
+            "与 swing_position_personalization 因 Position Type 不同形成可解释差异",
+        ),
+    ),
+    BehavioralCase(
+        "swing_position_personalization",
+        "结合我的持仓类型，GOOG 今天还能加一点吗？",
+        Decimal("300"),
+        (GOOG_SWING_PAIRED,),
+        {"GOOG": GOOG_QUOTE},
+        ("GOOG",),
+        InvestmentResponseStatus.OK,
+        (
+            "明确当前只有 1 股/成本 210 的 GOOG SWING 仓位",
+            "与 long_term_position_personalization 因 Position Type 不同形成可解释差异",
+        ),
     ),
     BehavioralCase(
         "unspecified_ticker_no_tool",
@@ -347,9 +380,6 @@ def test_real_model_behavior_with_fixed_market_data(case: BehavioralCase) -> Non
         for source in result.sources
         if source.type is ContextSourceType.CURRENT_QUOTE and source.ticker is not None
     )
-    assert len(tool_tickers) == len(case.expected_tickers)
-    assert sorted(tool_tickers) == sorted(case.expected_tickers)
-    assert result.status is case.expected_status
     print(
         json.dumps(
             {
@@ -364,3 +394,6 @@ def test_real_model_behavior_with_fixed_market_data(case: BehavioralCase) -> Non
             indent=2,
         )
     )
+    assert len(tool_tickers) == len(case.expected_tickers)
+    assert sorted(tool_tickers) == sorted(case.expected_tickers)
+    assert result.status is case.expected_status

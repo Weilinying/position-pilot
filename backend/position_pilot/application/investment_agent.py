@@ -39,9 +39,13 @@ SYSTEM_PROMPT = "\n".join(
         "当前价格只能来自成功的 Tool Result。",
         "News、Earnings、Fundamentals、VIX、Market Regime 和 Transaction History 当前不可用。",
         "3. 按回答所需的证据决定是否调用工具，而不是要求某个工具能够独立回答整个问题。",
-        "当 Current Quote 能提供重要、当前且可验证的市场事实时，应调用 get_current_quote；即使完整回答仍需要尚不可用的 News、Earnings、Fundamentals、Market Context 或 Price History，也不应因此放弃获取有价值的 Quote。",
-        "Quote 只能支持当前市场状态相关事实，不得用于推断价格异动原因、财报质量、长期基本面或历史趋势。无法由现有工具或 Portfolio Snapshot 支持的信息必须标记为 UNKNOWN。",
-        "如果 Portfolio Snapshot 已足以回答，且 Current Quote 不增加实质信息，则无需调用。不得仅因出现 ticker 而机械调用工具。",
+        "当 Current Quote 能提供重要、当前且可验证的市场事实时，应调用 get_current_quote。",
+        "即使完整回答仍需要尚不可用的 News、Earnings、Fundamentals、Market Context 或",
+        "Price History，也不应因此放弃获取有价值的 Quote。",
+        "Quote 只能支持当前市场状态相关事实，不得用于推断价格异动原因、财报质量、",
+        "长期基本面或历史趋势。无法由现有工具或 Portfolio Snapshot 支持的信息必须标记为 UNKNOWN。",
+        "如果 Portfolio Snapshot 已足以回答，且 Current Quote 不增加实质信息，则无需调用。",
+        "不得仅因出现 ticker 而机械调用工具。",
         "4. Tool Result 为 NO_DATA 或 Provider Failure 时，明确说明当前行情事实不可用。",
         "不得使用训练知识补造价格。",
         "5. 在语义上区分已知事实、基于事实的推断和未知信息，不机械套用固定标题。",
@@ -56,7 +60,10 @@ SYSTEM_PROMPT = "\n".join(
         "不得自行假设只能整股交易，也不得自行假设支持碎股。",
         "不得用 cash 小于 share price 推导无法买入。",
         "应说明若交易渠道支持碎股，小额现金仍可能形成仓位，但 fractional eligibility 当前未知。",
-        "具体可购买股数必须由确定性代码计算，不得由 LLM 自行计算。",
+        "10. 任何可由确定性代码计算的金融数值都不得自行计算，只能使用 Context 明确提供的结果。",
+        "这包括可购买股数、盈亏金额或比例、仓位权重、现金占比和交易后的新仓位比例。",
+        "M3 提供 position cost_basis 与 total_position_cost_basis，但不提供精确 allocation ratio。",
+        "未由 Context 提供的确定性计算结果必须保持 UNKNOWN，不得估算或心算。",
     )
 )
 
@@ -145,6 +152,7 @@ class PortfolioSnapshot:
 
     user_id: UUID
     available_cash: Decimal
+    total_position_cost_basis: Decimal
     positions: tuple[PortfolioPositionSnapshot, ...]
     positions_are_complete: bool = True
 
@@ -168,6 +176,10 @@ class PortfolioSnapshot:
         return cls(
             user_id=state.user_id,
             available_cash=state.cash.available_cash,
+            total_position_cost_basis=sum(
+                (position.cost_basis for position in positions),
+                start=Decimal("0"),
+            ),
             positions=positions,
         )
 
@@ -175,8 +187,8 @@ class PortfolioSnapshot:
         """显式声明 Positions 完整及缺席 Ticker 的含义。"""
 
         return {
-            "user_id": str(self.user_id),
             "available_cash": str(self.available_cash),
+            "total_position_cost_basis": str(self.total_position_cost_basis),
             "positions_are_complete_current_set": self.positions_are_complete,
             "missing_ticker_means_no_current_position": True,
             "positions": [position.as_dict() for position in self.positions],
@@ -279,33 +291,49 @@ class InvestmentAgent:
             return tool_call_failure
 
         tool_messages: list[LLMMessage] = []
+        market_results_by_ticker: dict[str, MarketDataResult[MarketQuote]] = {}
         degraded = False
         for tool_call in first_message.tool_calls:
             ticker = tool_call.arguments["ticker"]
             assert isinstance(ticker, str)
-            market_result = self._market_data.get_current_quote(ticker)
-            if market_result.status in {
-                MarketDataStatus.INVALID_SYMBOL,
-                MarketDataStatus.INVALID_REQUEST,
-            }:
-                failure = InvestmentRequestFailure(
-                    InvestmentFailureCode.INVALID_TOOL_CALL,
-                    f"{CURRENT_QUOTE_TOOL_NAME} ticker 参数无效",
-                )
-                self._log_failure(failure, started_at)
-                return failure
+            normalized_ticker = ticker.strip().upper()
+            is_duplicate = normalized_ticker in market_results_by_ticker
+            if is_duplicate:
+                market_result = market_results_by_ticker[normalized_ticker]
+            else:
+                market_result = self._market_data.get_current_quote(normalized_ticker)
+                if market_result.status in {
+                    MarketDataStatus.INVALID_SYMBOL,
+                    MarketDataStatus.INVALID_REQUEST,
+                }:
+                    failure = InvestmentRequestFailure(
+                        InvestmentFailureCode.INVALID_TOOL_CALL,
+                        f"{CURRENT_QUOTE_TOOL_NAME} ticker 参数无效",
+                    )
+                    self._log_failure(failure, started_at)
+                    return failure
+                market_results_by_ticker[normalized_ticker] = market_result
             tool_message, source = self._market_tool_result(tool_call, market_result)
             tool_messages.append(tool_message)
-            sources.append(source)
-            degraded = degraded or market_result.status is not MarketDataStatus.OK
-            LOGGER.info(
-                "investment_agent_tool_completed",
-                extra={
-                    "tool_name": CURRENT_QUOTE_TOOL_NAME,
-                    "ticker": source.ticker,
-                    "tool_status": market_result.status.value,
-                },
-            )
+            if is_duplicate:
+                LOGGER.info(
+                    "investment_agent_tool_deduplicated",
+                    extra={
+                        "tool_name": CURRENT_QUOTE_TOOL_NAME,
+                        "ticker": normalized_ticker,
+                    },
+                )
+            else:
+                sources.append(source)
+                degraded = degraded or market_result.status is not MarketDataStatus.OK
+                LOGGER.info(
+                    "investment_agent_tool_completed",
+                    extra={
+                        "tool_name": CURRENT_QUOTE_TOOL_NAME,
+                        "ticker": source.ticker,
+                        "tool_status": market_result.status.value,
+                    },
+                )
 
         final_result = self._llm_provider.complete(
             (*initial_messages, first_message, *tool_messages),
@@ -329,7 +357,11 @@ class InvestmentAgent:
             self._require_final_content(final_message),
             tuple(sources),
         )
-        self._log_success(answer, started_at, tool_call_count=len(first_message.tool_calls))
+        self._log_success(
+            answer,
+            started_at,
+            tool_call_count=len(market_results_by_ticker),
+        )
         return answer
 
     @staticmethod

@@ -212,7 +212,9 @@ def test_always_injects_complete_portfolio_snapshot_without_transaction_history(
     assert snapshot["positions_are_complete_current_set"] is True
     assert snapshot["missing_ticker_means_no_current_position"] is True
     assert "transactions" not in snapshot
+    assert "user_id" not in snapshot
     assert snapshot["available_cash"] == "300"
+    assert snapshot["total_position_cost_basis"] == "620"
     assert [position["position_type"] for position in snapshot["positions"]] == [
         "LONG_TERM",
         "SWING",
@@ -223,7 +225,8 @@ def test_always_injects_complete_portfolio_snapshot_without_transaction_history(
     assert "fractionable" in system_prompt
     assert "当前均为 UNKNOWN" in system_prompt
     assert "不得自行假设只能整股交易" in system_prompt
-    assert "具体可购买股数必须由确定性代码计算" in system_prompt
+    assert "任何可由确定性代码计算的金融数值都不得自行计算" in system_prompt
+    assert "不提供精确 allocation ratio" in system_prompt
     assert portfolio_reader.requested_user_ids == [USER_ID]
     assert market_data.requested_tickers == []
     assert result.status is InvestmentResponseStatus.OK
@@ -270,6 +273,35 @@ def test_executes_up_to_three_quotes_in_one_round_then_requests_final_response()
     ]
     assert len(tool_results) == 3
     assert [source.ticker for source in result.sources[1:]] == ["GOOG", "MSFT", "NVDA"]
+
+
+def test_deduplicates_normalized_quote_calls_but_answers_each_tool_call() -> None:
+    """同一 Ticker 的大小写或空白变体只消耗一次 Provider 调用。"""
+
+    agent, _, market_data, llm = make_agent(
+        [
+            tool_message(
+                ("call-1", "GOOG"),
+                ("call-2", "goog"),
+                ("call-3", " GoOg "),
+            ),
+            final_message("复用同一份 GOOG Quote"),
+        ],
+        market_results={"GOOG": quote("GOOG", "210")},
+    )
+
+    result = assert_answer(agent.answer(USER_ID, "GOOG 现在多少钱？"))
+
+    assert market_data.requested_tickers == ["GOOG"]
+    tool_results = [
+        message for message in llm.completions[1].messages if message.role is LLMRole.TOOL
+    ]
+    assert [message.tool_call_id for message in tool_results] == [
+        "call-1",
+        "call-2",
+        "call-3",
+    ]
+    assert [source.ticker for source in result.sources[1:]] == ["GOOG"]
 
 
 def test_rejects_more_than_three_tool_calls_before_market_execution() -> None:
@@ -426,7 +458,7 @@ def test_market_validation_failure_from_model_ticker_is_invalid_tool_call(
         expected_requests: list[str] = []
     else:
         call = LLMToolCall("call-1", "get_current_quote", {"ticker": invalid_ticker})
-        expected_requests = [invalid_ticker]
+        expected_requests = [invalid_ticker.upper()]
     agent, _, market_data, _ = make_agent(
         [LLMResult.success(LLMMessage(LLMRole.ASSISTANT, None, (call,)))],
         market_results={

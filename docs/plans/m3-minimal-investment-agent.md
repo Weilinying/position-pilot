@@ -19,6 +19,8 @@ M3 完成第一个 Stateful Investment Vertical Slice，验证 Portfolio Snapsho
 - `OK` / `DEGRADED` 由确定性 Application Code 计算。
 - M3 不提供 Asset Trading Capability；`tradable` 与 `fractionable` 保留为后续确定性 Provider 扩展点，当前缺失时均为 `UNKNOWN`。
 - Average Cost 只表示用户历史成本，不等同于市场估值或未来收益概率。
+- Snapshot 提供当前所需的确定性 `cost_basis` 与 `total_position_cost_basis`；其它未提供的确定性金融数值由 Agent 保持 `UNKNOWN`，不得交给 LLM 计算。
+- 语义相同的重复 Quote Call 按规范化 Ticker 复用一次 Provider Result，同时满足每个 Native Tool Call 的响应协议。
 
 ## 3. Scope
 
@@ -49,6 +51,7 @@ M3 完成第一个 Stateful Investment Vertical Slice，验证 Portfolio Snapsho
 - 一个 Tool Round 可执行最多三个 Quote；Tool Result 返回后再次请求 Tool 必须明确失败。
 - 当前金融事实只来自 Portfolio Snapshot 或 Tool Result；缺失的当前 Context 明确为 `UNKNOWN`。
 - 未提供 `fractionable` 时不得默认整股或碎股交易，不得以 Cash 低于单股价格直接推导无法买入；具体可购买股数不交给 LLM 计算。
+- 发给外部 LLM 的 Snapshot 不包含内部 `user_id`；相同问题的 Cash 与 Position Type A/B Cases 能供 Human Review 比较实际回答差异。
 - Market Data Failure 与 LLM Provider Failure 明确区分，只有前者可以产生 `DEGRADED` Final Response。
 - `OK` / `DEGRADED`、Source Tracking 和 Request Failure 由确定性代码产生。
 - LLM Provider Contract 不包含 Aliyun/OpenAI-compatible 类型或模型绑定命名。
