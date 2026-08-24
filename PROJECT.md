@@ -131,7 +131,7 @@ V1 已确定使用 Python、FastAPI、Pydantic、PostgreSQL 和 pytest。
 
 ## 10. 尚未确定的技术问题
 
-PositionPilot 自身的 Agent Orchestration 尚未确定，候选包括 Native Tool Calling 与 LangGraph。M2 已选择 Alpaca Market Data API v2 REST 作为 Market Data Provider，具体覆盖与限制见 ADR 0004；LLM Provider、News Provider 和 Financial Data Provider 尚未确定。
+PositionPilot 自身的 Agent Orchestration 已在 M3 Human Review 中确定使用 Single Agent + Native Function Calling，M3 不引入 LangGraph。M2 已选择 Alpaca Market Data API v2 REST 作为 Market Data Provider，具体覆盖与限制见 ADR 0004；M3 已选择阿里云 Model Studio 作为 V1 默认 LLM Provider，并保持 Provider / Model 可配置和与 Agent / Domain 解耦；News Provider 和 Financial Data Provider 尚未确定。
 
 “尚未确定”本身是一种有效状态。开发过程中不得因为需要继续编码，就未经评估默认选择某个 Framework 或 Provider。进入相关 Milestone 后，应根据真实需求、Technical Spike 或可验证比较做出决策，并在必要时记录 ADR。
 

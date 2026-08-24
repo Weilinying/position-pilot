@@ -10,7 +10,7 @@
 
 ## 2. Current Status
 
-**Current Milestone:** M2 — Minimal Market Data
+**Current Milestone:** M3 — Minimal Investment Agent
 **Status:** IN PROGRESS
 
 Milestone 状态统一使用 `NOT STARTED`、`IN PROGRESS`、`DONE`，不维护百分比进度。
@@ -94,9 +94,15 @@ M0～M3 应尽快形成第一个端到端可用闭环；M4～M6 再逐步增加�
 
 **Scope**
 
-先支持最小流程：User Question → Portfolio Context + Current Market Data → LLM → Personalized Response。此阶段暂不要求完整 News、Fundamentals、VIX、Market Regime 或复杂 Technical Analysis。
+先支持最小流程：User Question → Portfolio Context + Current Market Data → LLM → Personalized Response。M3 使用 Single Agent 和 Native Function Calling 完成最小 Agent Tool Use，不引入 LangGraph。Portfolio Structured State 是核心用户上下文，Current Quote 是最小 Market Tool 能力；LLM Provider 与 Agent / Domain 保持解耦，具体 Provider / Model 属于实现配置。
 
-PositionPilot 自身的 Agent Orchestration 在进入 M3 时评估，优先使用能够满足当前闭环的最简单方案。
+当前金融事实必须来自 Structured State 或 Tool Result。Market Data 缺失、为 `UNKNOWN` 或 Provider Failure 时，LLM 不得自行补造当前市场事实。
+
+M3 不引入 News、Fundamentals、VIX、Market Regime、Conversation Memory、Multi-Agent 或复杂 Technical Analysis。
+
+M3 建立 Minimal Agent Behavioral Evaluation，不评价股价预测能力或最终投资收益。使用约 10～20 个小规模、固定、可重复的代表性场景，优先使用 Fake / Stub Portfolio 与 Market Data，验证 Portfolio 使用、必要且参数正确的 Current Quote Tool Call、避免无意义 Tool Call、不虚构 Position 或当前价格、Provider / LLM Failure Handling，以及当前金融事实能否追溯到 Structured State 或 Tool Result。确定性行为可以自动检查，自然语言分析质量可以保留 Human Review。
+
+M3 不建设完整 Evaluation Framework、公开金融 Benchmark 集成、LLM-as-a-Judge、多模型 Benchmark、历史投资收益回测或金融预测准确率评价。
 
 **Done**
 
@@ -105,9 +111,10 @@ PositionPilot 自身的 Agent Orchestration 在进入 M3 时评估，优先使�
 * 不重复询问已经持久化的信息；
 * 对相同问题，不同 Portfolio、Available Cash 或 Position Type 能产生合理且可解释的分析差异；
 * `LONG_TERM` / `SWING` 在相关场景下会真实影响 Response；
-* 当前金融事实来自 Tool，而不是模型训练知识；
-* Tool / LLM Failure 有合理处理；
-* 存在基础 Agent Evaluation Cases；
+* 当前金融事实来自 Structured State 或 Tool Result，而不是模型训练知识；
+* Market Data Missing / `UNKNOWN` 或 Provider Failure 时不虚构当前市场事实；
+* Tool / LLM Failure 有明确且可验证的处理；
+* Minimal Agent Behavioral Evaluation 包含约 10～20 个固定、可重复的代表性场景，覆盖 Portfolio Awareness、Tool Use、Groundedness 和核心 Failure Handling；
 * 端到端 Vertical Slice 可运行。
 
 ## M4 — Investment Context Expansion
@@ -120,7 +127,7 @@ PositionPilot 自身的 Agent Orchestration 在进入 M3 时评估，优先使�
 
 根据 Evaluation Case 或已观察到的 Failure Mode，逐步加入 Market Context、News、Fundamentals / Earnings 和必要 Asset Indicators。每增加一类 Context，都必须说明它解决什么问题，并验证其是否改善 V1 核心场景。
 
-M4 不以“覆盖所有可能的金融信息”为目标。无法通过 Evaluation 或真实使用证明价值的 Context 不进入稳定能力。
+M3 建立的 Evaluation Cases 随新增 Context 逐步扩展，用于验证新增 Context 是否解决已有 Failure Mode 并实际改善回答。M4 不以“覆盖所有可能的金融信息”或建设完整 Evaluation Platform 为目标；无法通过 Evaluation 或真实使用证明价值的 Context 不进入稳定能力。
 
 **Done**
 
@@ -141,6 +148,8 @@ M4 不以“覆盖所有可能的金融信息”为目标。无法通过 Evaluat
 
 建立 Context-Aware Routing；必要时加入 Transaction Context 与 Asset Context。不同问题应选择不同的最小充分 Context，同时关注无意义 Tool Call、Latency 和 Token / API Cost。
 
+Evaluation 持续验证 Context Selection、最小充分 Context、无意义 Tool Call，以及 Portfolio / Position Type 是否真实影响 Routing。Routing / Tool Selection 的问题应能通过 Logging 与 Evaluation 定位，不为此引入复杂 Agent Framework。
+
 **Done**
 
 * 相同问题在不同 Portfolio Context 下可产生合理不同的分析；
@@ -155,11 +164,13 @@ M4 不以“覆盖所有可能的金融信息”为目标。无法通过 Evaluat
 
 **Goal**
 
-把“Agent 看起来能用”转变成可以重复验证的 V1 系统。
+把“Agent 看起来能工作”推进到“核心 V1 行为能够被稳定、重复地验证”。
 
 **Scope**
 
-建立规模可控的 Evaluation Dataset，覆盖 Entry / Add Position、Market Drop Explanation、Post-Earnings Holding、Position Reduction、不同 Cash、`LONG_TERM` / `SWING`、不同 Market Regime、Provider Failure 和 Missing Data，并补齐必要的 Error Handling、Logging、Tests 和明显技术债。
+M6 不从零开始 Evaluation，而是在 M3～M5 已积累的 Behavioral Eval Cases 基础上，将其扩展、整理为可重复运行的 V1 Evaluation Dataset。Dataset 覆盖 Entry / Add Position、Market Drop Explanation、Post-Earnings Holding、Position Reduction、不同 Available Cash、`LONG_TERM` / `SWING`、不同 Market Context / Market Regime、Provider Failure、Missing / `UNKNOWN` Data、Context Selection、Tool Use、当前金融事实来源和核心 Failure Handling，并补齐必要的 Error Handling、Logging、Tests 和明显技术债。
+
+根据 V1 Model Selection 或质量验证的实际需要，可以评估 Model / Provider 横向比较、Latency / Token / API Cost、Recommendation Consistency，以及更系统的人工 Rubric 或自动评分。公开金融 Benchmark、历史投资 Backtesting 和完整 LLM-as-a-Judge 系统不作为 V1 强制 Done Criteria，不为了建设 Benchmark Platform 而建设。
 
 **Done**
 
