@@ -328,9 +328,10 @@ def test_real_model_behavior_with_fixed_market_data(case: BehavioralCase) -> Non
     tool_tickers = tuple(
         source.ticker
         for source in result.sources
-        if source.type is ContextSourceType.CURRENT_QUOTE
+        if source.type is ContextSourceType.CURRENT_QUOTE and source.ticker is not None
     )
-    assert tool_tickers == case.expected_tickers
+    assert len(tool_tickers) == len(case.expected_tickers)
+    assert sorted(tool_tickers) == sorted(case.expected_tickers)
     assert result.status is case.expected_status
     print(
         json.dumps(

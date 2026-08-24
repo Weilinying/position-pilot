@@ -259,9 +259,7 @@ def test_executes_up_to_three_quotes_in_one_round_then_requests_final_response()
     assert len(llm.completions) == 2
     assert llm.completions[1].tools == ()
     tool_results = [
-        message
-        for message in llm.completions[1].messages
-        if message.role is LLMRole.TOOL
+        message for message in llm.completions[1].messages if message.role is LLMRole.TOOL
     ]
     assert len(tool_results) == 3
     assert [source.ticker for source in result.sources[1:]] == ["GOOG", "MSFT", "NVDA"]
@@ -368,9 +366,7 @@ def test_llm_provider_failure_is_request_failure_without_final_answer(
 ) -> None:
     """LLM Failure 与 Market Failure 不同，不能降级伪造 Final Answer。"""
 
-    agent, _, market_data, _ = make_agent(
-        [LLMResult.failure(llm_status, "固定 LLM Failure")]
-    )
+    agent, _, market_data, _ = make_agent([LLMResult.failure(llm_status, "固定 LLM Failure")])
 
     failure = assert_failure(agent.answer(USER_ID, "GOOG 现在能买吗？"))
 

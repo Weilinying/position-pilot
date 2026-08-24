@@ -6,7 +6,11 @@ from uuid import UUID
 
 import pytest
 
-from position_pilot.application.investment_agent import InvestmentAgent, InvestmentAnswer
+from position_pilot.application.investment_agent import (
+    ContextSourceType,
+    InvestmentAgent,
+    InvestmentAnswer,
+)
 from position_pilot.application.market_data_service import MarketDataService
 from position_pilot.domain.portfolio import CashBalance, PortfolioState
 from position_pilot.integrations.aliyun_llm import AliyunLLMProvider
@@ -64,3 +68,9 @@ def test_real_llm_and_market_data_complete_single_agent_round() -> None:
 
     assert isinstance(result, InvestmentAnswer)
     assert result.answer
+    quote_sources = [
+        source for source in result.sources if source.type is ContextSourceType.CURRENT_QUOTE
+    ]
+    assert len(quote_sources) == 1
+    assert quote_sources[0].ticker == "GOOG"
+    assert quote_sources[0].provider == "ALPACA"

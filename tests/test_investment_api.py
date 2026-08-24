@@ -147,6 +147,7 @@ def test_returns_degraded_as_successful_safe_answer(client: TestClient) -> None:
 @pytest.mark.parametrize(
     ("failure_code", "expected_status"),
     [
+        (InvestmentFailureCode.INVALID_QUESTION, 422),
         (InvestmentFailureCode.INVALID_TOOL_CALL, 502),
         (InvestmentFailureCode.TOOL_CALL_LIMIT_EXCEEDED, 502),
         (InvestmentFailureCode.TOOL_ROUND_LIMIT_EXCEEDED, 502),
@@ -171,9 +172,7 @@ def test_maps_request_failure_to_stable_http_error(
     )
 
     assert response.status_code == expected_status
-    assert response.json() == {
-        "detail": {"code": failure_code.value, "message": "安全错误"}
-    }
+    assert response.json() == {"detail": {"code": failure_code.value, "message": "安全错误"}}
 
 
 def test_maps_missing_portfolio_user_to_404(client: TestClient) -> None:
@@ -206,9 +205,7 @@ def test_rejects_invalid_request_before_agent_call(
 ) -> None:
     """API Validation 不得把非法输入交给 Agent 或 LLM。"""
 
-    agent = FakeInvestmentAgent(
-        InvestmentAnswer(InvestmentResponseStatus.OK, "answer", ())
-    )
+    agent = FakeInvestmentAgent(InvestmentAnswer(InvestmentResponseStatus.OK, "answer", ()))
     override_agent(agent)
 
     response = client.post("/v1/investment/questions", json=payload)

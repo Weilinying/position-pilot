@@ -6,7 +6,6 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import StrEnum
 from http.client import HTTPResponse
-from time import monotonic
 from typing import Protocol
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
@@ -147,7 +146,6 @@ class AliyunLLMProvider(LLMProvider):
             payload["tools"] = [self._serialize_tool(tool) for tool in tools]
             payload["parallel_tool_calls"] = True
 
-        started_at = monotonic()
         try:
             response = self._transport.post_json(
                 f"{self._base_url}/chat/completions",
@@ -164,19 +162,15 @@ class AliyunLLMProvider(LLMProvider):
                 LLMStatus.PROVIDER_UNAVAILABLE,
                 self._transport_failure_message(error.kind),
             )
-        finally:
-            # 预留局部变量便于调试性能，但不记录 Message 或 Credential。
-            _ = monotonic() - started_at
-
         failure = self._response_failure(response)
         if failure is not None:
             return LLMResult.failure(*failure)
         try:
             message = self._parse_completion_message(response.payload)
-        except (TypeError, ValueError, json.JSONDecodeError) as error:
+        except (TypeError, ValueError, json.JSONDecodeError):
             return LLMResult.failure(
                 LLMStatus.INVALID_PROVIDER_RESPONSE,
-                f"LLM response 格式无效：{error}",
+                "LLM Provider response 格式无效",
             )
         return LLMResult.success(message)
 

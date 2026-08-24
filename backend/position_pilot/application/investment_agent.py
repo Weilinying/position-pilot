@@ -232,7 +232,10 @@ class InvestmentAgent:
         portfolio = self._portfolio_reader.get_portfolio(user_id)
         snapshot = PortfolioSnapshot.from_state(portfolio)
         sources: list[ContextSource] = [
-            ContextSource(ContextSourceType.PORTFOLIO_SNAPSHOT, MarketDataStatus.OK.value)
+            ContextSource(
+                ContextSourceType.PORTFOLIO_SNAPSHOT,
+                InvestmentResponseStatus.OK.value,
+            )
         ]
         initial_messages = self._initial_messages(snapshot, normalized_question)
         LOGGER.info(
@@ -427,13 +430,9 @@ class InvestmentAgent:
             return None
         code_by_status = {
             LLMStatus.INVALID_REQUEST: InvestmentFailureCode.LLM_INVALID_REQUEST,
-            LLMStatus.AUTHENTICATION_FAILED: (
-                InvestmentFailureCode.LLM_AUTHENTICATION_FAILED
-            ),
+            LLMStatus.AUTHENTICATION_FAILED: (InvestmentFailureCode.LLM_AUTHENTICATION_FAILED),
             LLMStatus.RATE_LIMITED: InvestmentFailureCode.LLM_RATE_LIMITED,
-            LLMStatus.PROVIDER_UNAVAILABLE: (
-                InvestmentFailureCode.LLM_PROVIDER_UNAVAILABLE
-            ),
+            LLMStatus.PROVIDER_UNAVAILABLE: (InvestmentFailureCode.LLM_PROVIDER_UNAVAILABLE),
             LLMStatus.INVALID_PROVIDER_RESPONSE: (
                 InvestmentFailureCode.LLM_INVALID_PROVIDER_RESPONSE
             ),

@@ -126,6 +126,11 @@ def _source_response(source: ContextSource) -> ContextSourceResponse:
 
 
 def _raise_request_failure(failure: InvestmentRequestFailure) -> None:
+    if failure.code is InvestmentFailureCode.INVALID_QUESTION:
+        _raise_api_error(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            InvestmentErrorDetail(code=failure.code.value, message=failure.message),
+        )
     provider_unavailable_codes = {
         InvestmentFailureCode.LLM_AUTHENTICATION_FAILED,
         InvestmentFailureCode.LLM_RATE_LIMITED,

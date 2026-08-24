@@ -43,9 +43,7 @@ class FakeLLMTransport:
         payload: Mapping[str, object],
         timeout_seconds: float,
     ) -> LLMJsonHttpResponse:
-        self.requests.append(
-            RecordedLLMRequest(url, dict(headers), dict(payload), timeout_seconds)
-        )
+        self.requests.append(RecordedLLMRequest(url, dict(headers), dict(payload), timeout_seconds))
         return self.responses.pop(0)
 
 
@@ -104,11 +102,7 @@ def test_serializes_generic_messages_tools_and_configured_model() -> None:
         [
             LLMJsonHttpResponse(
                 200,
-                {
-                    "choices": [
-                        {"message": {"role": "assistant", "content": "无需行情即可回答"}}
-                    ]
-                },
+                {"choices": [{"message": {"role": "assistant", "content": "无需行情即可回答"}}]},
             )
         ]
     )
@@ -176,9 +170,10 @@ def test_parses_multiple_function_calls_into_generic_schema() -> None:
     )
 
     assert result.completion is not None
-    assert [
-        call.arguments["ticker"] for call in result.completion.message.tool_calls
-    ] == ["GOOG", "MSFT"]
+    assert [call.arguments["ticker"] for call in result.completion.message.tool_calls] == [
+        "GOOG",
+        "MSFT",
+    ]
 
 
 def test_serializes_assistant_tool_call_and_tool_result_for_final_completion() -> None:
@@ -291,6 +286,7 @@ def test_rejects_invalid_provider_response(payload: object) -> None:
 
     assert result.status is LLMStatus.INVALID_PROVIDER_RESPONSE
     assert result.completion is None
+    assert result.error_message == "LLM Provider response 格式无效"
 
 
 def test_transport_failure_does_not_leak_chained_exception() -> None:

@@ -15,9 +15,7 @@ class Settings(BaseSettings):
     alpaca_api_secret_key: SecretStr | None = None
     alpaca_data_base_url: AnyHttpUrl = AnyHttpUrl("https://data.alpaca.markets")
     alpaca_request_timeout_seconds: float = 10.0
-    llm_base_url: AnyHttpUrl = AnyHttpUrl(
-        "https://dashscope.aliyuncs.com/compatible-mode/v1"
-    )
+    llm_base_url: AnyHttpUrl = AnyHttpUrl("https://dashscope.aliyuncs.com/compatible-mode/v1")
     llm_api_key: SecretStr | None = None
     llm_model: str = "qwen3.7-plus"
     llm_request_timeout_seconds: float = 30.0
