@@ -34,6 +34,8 @@ M3 需要完成第一个 Stateful Investment Vertical Slice，让 Single Investm
 - M3 使用 Native Function Calling，不引入 LangGraph。
 - 每个请求最多一个 Tool Round；该 Round 最多包含三个 `get_current_quote` 调用。Tool Result 返回后必须生成 Final Response，不允许第二轮 Tool Call。
 - Portfolio Snapshot 在首次 LLM 调用前由 Application 必定读取并注入，不作为可选 Tool。Snapshot 明确声明 Position 列表是完整的当前持仓集合，未出现的 Ticker 表示当前无持仓。
+- Application 自动生成当前 Evaluation 已证明需要的轻量 Deterministic Derived Facts，并注入结构化 Context Capability Manifest。LLM 只解释已提供事实，不负责金融数值计算，也不得用训练知识补足不可用能力。
+- Portfolio-level Ticker 聚合不覆盖 `LONG_TERM` / `SWING` Position 语义；历史成本权重与当前市值权重明确区分。
 - Transaction History 不在 M3 默认 Context 中；后续仅由真实需求、Evaluation Failure 或新的 Context Retrieval 能力引入。
 - Application 只依赖通用 `LLMProvider`。Message、Tool Definition、Tool Call 和 Completion Result 使用项目自身的 Application Schema。
 - 初始 Integration Adapter 使用阿里云 Model Studio OpenAI-compatible API；Provider 请求、响应、Credential 和错误映射只存在于 Adapter。
@@ -47,11 +49,13 @@ M3 需要完成第一个 Stateful Investment Vertical Slice，让 Single Investm
 - Portfolio Snapshot 必定注入可以避免模型遗漏结构化用户事实，也不需要在 M3 增加确定性 Ticker Extraction。
 - 通用 LLM Contract 保持 Agent、Domain 与具体 Provider / Model 解耦，便于测试和后续替换。
 - 固定 Tool Round 与调用上限让成本、Latency 和错误边界可预测。
+- Derived Facts 直接由已有 Portfolio 与 Quote 生成，不增加 Calculator Tool、Tool Routing 或外部数据依赖。
 
 ## Trade-off
 
 - Native Function Calling 的 Tool Selection 质量依赖真实模型，Fake LLM 测试只能验证 Orchestration，不能证明模型行为正确。
 - M3 只有 Portfolio Snapshot 与 Current Quote，无法高质量回答依赖 News、Earnings、Fundamentals 或整体 Market Context 的问题；这些信息必须表达为 `UNKNOWN`。
+- M3 不具备 Asset Metadata，无法确认真实交易资格或可执行购买数量；Cash 与 Quote 的数值关系不能被解释为订单一定可执行。
 - 默认 Provider 会形成运维依赖，但 Application Contract 与模型配置保持独立，降低未来替换成本。
 - 单个 Tool Round 不支持需要多阶段检索的问题；这是 M3 的有意范围限制。
 

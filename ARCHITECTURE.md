@@ -100,7 +100,9 @@ User 行锁串行化同一用户的写入，避免两个并发请求基于相同
 - Current Quote 默认来自 Alpaca Basic 的实时 IEX feed，只代表单一交易所覆盖；Historical Daily OHLCV 来自至少延迟 15 分钟的 SIP feed。
 - 不包含 WebSocket、行情缓存或持久化、技术指标、VIX、Market Regime、News 或 Fundamentals。
 - Portfolio Snapshot 是 M3 必定注入的完整当前持仓集合，不默认包含 Transaction History。
-- 发给 LLM 的 Snapshot 不包含内部 User ID，并提供由代码计算的 `total_position_cost_basis`；未提供的仓位权重、盈亏比例等确定性数值保持 `UNKNOWN`。
+- 发给 LLM 的 Snapshot 不包含内部 User ID，并提供由代码计算的 Ticker 数量、总持仓历史成本和按 Ticker 聚合、保留两位小数的历史成本权重百分比。历史成本权重不包含 Available Cash，也不表示当前市值权重；原始 `LONG_TERM` / `SWING` Position 继续独立保留。
+- Quote 成功后，Application 自动提供 Cash 与单股价格、当前价格与各 Position Average Cost 的确定性关系；真实可执行购买数量始终保持 `UNKNOWN`。LLM 不自行计算未提供的金融数值。
+- 每次请求注入结构化 Context Capability Manifest。M3 只有 Current Quote 数据来源可用；Price History、News、Earnings、Fundamentals、Market Context、Technical Analysis、Asset Metadata 和 Sector Classification 均不可用。
 - Agent 每个请求只允许一个 Tool Round，每轮最多三个 Current Quote；不支持 Conversation Memory 或多阶段检索。
 - 同一轮内大小写或空白不同的重复 Ticker 共用一次 Market Provider Result，但每个 Native Tool Call 都获得对应 Tool Message。
 - 超出 Portfolio Snapshot 与 Current Quote 的当前事实保持 `UNKNOWN`。

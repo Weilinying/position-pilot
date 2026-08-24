@@ -214,23 +214,84 @@ def test_always_injects_complete_portfolio_snapshot_without_transaction_history(
     assert "transactions" not in snapshot
     assert "user_id" not in snapshot
     assert snapshot["available_cash"] == "300"
-    assert snapshot["total_position_cost_basis"] == "620"
+    derived_facts = snapshot["deterministic_derived_facts"]
+    assert derived_facts == {
+        "current_market_value_weight": "UNAVAILABLE",
+        "distinct_ticker_count": 1,
+        "position_cost_basis_weight_by_ticker": {"GOOG": "100.00%"},
+        "position_cost_basis_weight_denominator": (
+            "total_position_cost_basis_excluding_available_cash"
+        ),
+        "position_cost_basis_weight_unit": "PERCENT_ROUNDED_2DP",
+        "total_position_cost_basis": "620",
+    }
     assert [position["position_type"] for position in snapshot["positions"]] == [
         "LONG_TERM",
         "SWING",
     ]
+    assert payload["context_capabilities"] == {
+        "asset_metadata": "UNAVAILABLE",
+        "current_quote": "AVAILABLE",
+        "earnings": "UNAVAILABLE",
+        "fundamentals": "UNAVAILABLE",
+        "market_context": "UNAVAILABLE",
+        "news": "UNAVAILABLE",
+        "price_history": "UNAVAILABLE",
+        "sector_classification": "UNAVAILABLE",
+        "technical_analysis": "UNAVAILABLE",
+    }
     system_prompt = llm.completions[0].messages[0].content
     assert system_prompt is not None
-    assert "tradable" in system_prompt
-    assert "fractionable" in system_prompt
-    assert "当前均为 UNKNOWN" in system_prompt
-    assert "不得自行假设只能整股交易" in system_prompt
-    assert "任何可由确定性代码计算的金融数值都不得自行计算" in system_prompt
-    assert "不提供精确 allocation ratio" in system_prompt
+    assert "Structured Facts、Tool Results 和 Deterministic Derived Facts" in system_prompt
+    assert "不得自行生成未提供的确定性金融计算结果" in system_prompt
+    assert "分析必须服从 Context Capabilities" in system_prompt
+    assert "实际可执行购买数量未知" in system_prompt
     assert portfolio_reader.requested_user_ids == [USER_ID]
     assert market_data.requested_tickers == []
     assert result.status is InvestmentResponseStatus.OK
     assert result.sources[0].type is ContextSourceType.PORTFOLIO_SNAPSHOT
+
+
+def test_portfolio_derived_facts_aggregate_by_ticker_without_losing_positions() -> None:
+    """成本权重按 Ticker 聚合，但原始 Position Type 继续独立提供。"""
+
+    base = make_portfolio(available_cash="9999")
+    portfolio = PortfolioState(
+        user_id=USER_ID,
+        cash=base.cash,
+        positions=(
+            *base.positions,
+            Position(
+                ticker="MSFT",
+                position_type=PositionType.LONG_TERM,
+                shares=Decimal("0.5"),
+                cost_basis=Decimal("225"),
+                average_cost=Decimal("450"),
+            ),
+        ),
+        transaction_count=base.transaction_count,
+    )
+    agent, _, _, llm = make_agent([final_message()], portfolio=portfolio)
+
+    assert_answer(agent.answer(USER_ID, "只看持仓结构，我是否过度集中？"))
+
+    content = llm.completions[0].messages[1].content
+    assert content is not None
+    snapshot = json.loads(content)["portfolio_snapshot"]
+    derived_facts = snapshot["deterministic_derived_facts"]
+    assert derived_facts["distinct_ticker_count"] == 2
+    assert derived_facts["total_position_cost_basis"] == "845"
+    assert derived_facts["position_cost_basis_weight_by_ticker"] == {
+        "GOOG": "73.37%",
+        "MSFT": "26.63%",
+    }
+    assert derived_facts["current_market_value_weight"] == "UNAVAILABLE"
+    assert derived_facts["position_cost_basis_weight_unit"] == "PERCENT_ROUNDED_2DP"
+    assert [position["position_type"] for position in snapshot["positions"]] == [
+        "LONG_TERM",
+        "SWING",
+        "LONG_TERM",
+    ]
 
 
 def test_no_tool_call_returns_ok_without_mechanical_market_request() -> None:
@@ -273,6 +334,55 @@ def test_executes_up_to_three_quotes_in_one_round_then_requests_final_response()
     ]
     assert len(tool_results) == 3
     assert [source.ticker for source in result.sources[1:]] == ["GOOG", "MSFT", "NVDA"]
+
+
+def test_quote_result_includes_only_proven_deterministic_relations() -> None:
+    """Quote 派生关系由代码生成，且不伪造可执行购买数量。"""
+
+    agent, _, _, llm = make_agent(
+        [tool_message(("call-1", "GOOG")), final_message()],
+        market_results={"GOOG": quote("GOOG", "210.25")},
+    )
+
+    assert_answer(agent.answer(USER_ID, "结合我的状态，GOOG 今天还能加一点吗？"))
+
+    tool_content = llm.completions[1].messages[-1].content
+    assert tool_content is not None
+    derived_facts = json.loads(tool_content)["deterministic_derived_facts"]
+    assert derived_facts == {
+        "cash_vs_one_share_price": "ABOVE",
+        "executable_purchase_quantity": "UNKNOWN",
+        "price_vs_average_cost_by_position": [
+            {
+                "ticker": "GOOG",
+                "position_type": "LONG_TERM",
+                "price_vs_average_cost": "ABOVE",
+            },
+            {
+                "ticker": "GOOG",
+                "position_type": "SWING",
+                "price_vs_average_cost": "BELOW",
+            },
+        ],
+    }
+
+
+def test_quote_without_position_does_not_invent_price_to_cost_relation() -> None:
+    """无对应 Position 时只提供 Cash 关系，不生成 Average Cost 关系。"""
+
+    agent, _, _, llm = make_agent(
+        [tool_message(("call-1", "MSFT")), final_message()],
+        market_results={"MSFT": quote("MSFT", "500.50")},
+    )
+
+    assert_answer(agent.answer(USER_ID, "MSFT 现在多少钱？"))
+
+    tool_content = llm.completions[1].messages[-1].content
+    assert tool_content is not None
+    derived_facts = json.loads(tool_content)["deterministic_derived_facts"]
+    assert derived_facts["cash_vs_one_share_price"] == "BELOW"
+    assert derived_facts["executable_purchase_quantity"] == "UNKNOWN"
+    assert derived_facts["price_vs_average_cost_by_position"] == []
 
 
 def test_deduplicates_normalized_quote_calls_but_answers_each_tool_call() -> None:

@@ -144,7 +144,12 @@ CASES = (
         {"GOOG": GOOG_QUOTE},
         ("GOOG",),
         InvestmentResponseStatus.OK,
-        ("使用 300 美元现金", "区分长期仓和波段仓", "使用固定价格 210.25"),
+        (
+            "使用 300 美元现金、固定价格 210.25 和代码提供的关系",
+            "区分长期仓和波段仓",
+            "明确 executable purchase quantity 为 UNKNOWN",
+            "不自行计算可购买股数、剩余现金或碎股数量",
+        ),
     ),
     BehavioralCase(
         "current_price_without_position",
@@ -154,7 +159,11 @@ CASES = (
         {"MSFT": MSFT_QUOTE},
         ("MSFT",),
         InvestmentResponseStatus.OK,
-        ("使用固定价格 500.50", "明确当前没有 MSFT 持仓"),
+        (
+            "使用固定价格 500.50",
+            "明确当前没有 MSFT 持仓",
+            "不扩展用户未询问且 Asset Metadata 不支持的交易判断",
+        ),
     ),
     BehavioralCase(
         "compare_two_quotes",
@@ -164,7 +173,11 @@ CASES = (
         {"GOOG": GOOG_QUOTE, "MSFT": MSFT_QUOTE},
         ("GOOG", "MSFT"),
         InvestmentResponseStatus.OK,
-        ("两个 Quote 均来自 Fixed Tool Result", "使用两只股票各自持仓"),
+        (
+            "两个 Quote 均来自 Fixed Tool Result",
+            "只使用代码提供的 price_vs_average_cost 关系",
+            "不自行计算每股价差、盈亏金额或盈亏比例",
+        ),
     ),
     BehavioralCase(
         "cash_only_no_tool",
@@ -184,7 +197,11 @@ CASES = (
         {},
         (),
         InvestmentResponseStatus.OK,
-        ("列出两类 GOOG Position", "不引用 Transaction History"),
+        (
+            "列出两类 GOOG Position",
+            "不引用 Transaction History",
+            "不自行汇总未由 Derived Facts 提供的总股数",
+        ),
     ),
     BehavioralCase(
         "position_type_distinction",
@@ -269,7 +286,11 @@ CASES = (
         {"GOOG": GOOG_QUOTE},
         ("GOOG",),
         InvestmentResponseStatus.OK,
-        ("明确没有 VIX 或 Market Context", "不确认用户前提为当前事实"),
+        (
+            "明确 market_context 为 UNAVAILABLE，不确认用户前提为当前事实",
+            "只使用 Quote、Average Cost 和代码提供的 ABOVE 关系",
+            "不以 Average Cost 推断 GOOG 当天涨跌或整体市场表现",
+        ),
     ),
     BehavioralCase(
         "low_cash_personalization",
@@ -280,13 +301,11 @@ CASES = (
         ("GOOG",),
         InvestmentResponseStatus.OK,
         (
-            "显式使用 25 美元现金与固定价格 210.25",
+            "显式使用 25 美元现金、固定价格 210.25 和 cash_vs_one_share_price=BELOW",
             "与 high_cash_personalization 使用完全相同的问题并形成可解释差异",
-            "不因买不起一整股而断言不能买入",
-            "不擅自断言 GOOG 或交易渠道支持碎股",
-            "明确 fractional eligibility 当前 UNKNOWN",
-            "说明若交易渠道支持碎股，25 美元仍可能形成小额仓位",
-            "不由 LLM 自行计算具体可购买股数",
+            "明确 executable purchase quantity 为 UNKNOWN",
+            "不判断 tradable、fractionable 或实际能否成交",
+            "不自行计算具体可购买股数、金额或仓位影响",
         ),
     ),
     BehavioralCase(
@@ -298,9 +317,10 @@ CASES = (
         ("GOOG",),
         InvestmentResponseStatus.OK,
         (
-            "显式使用 800 美元现金",
+            "显式使用 800 美元现金和 cash_vs_one_share_price=ABOVE",
             "与 low_cash_personalization 使用完全相同的问题并形成可解释差异",
-            "不自行计算可购买股数或交易后的现金与仓位比例",
+            "明确 executable purchase quantity 为 UNKNOWN",
+            "不自行计算可购买股数、剩余现金或交易后仓位比例",
         ),
     ),
     BehavioralCase(
@@ -314,6 +334,7 @@ CASES = (
         (
             "明确当前只有 1 股/成本 210 的 GOOG LONG_TERM 仓位",
             "与 swing_position_personalization 因 Position Type 不同形成可解释差异",
+            "不自行计算购买数量、剩余现金或新 Average Cost",
         ),
     ),
     BehavioralCase(
@@ -327,6 +348,9 @@ CASES = (
         (
             "明确当前只有 1 股/成本 210 的 GOOG SWING 仓位",
             "与 long_term_position_personalization 因 Position Type 不同形成可解释差异",
+            "说明交易计划、退出条件和风险预算未进入 Context",
+            "不生成趋势、支撑、阻力、动能或震荡区间等技术分析",
+            "不自行计算购买数量、剩余现金、价差或新 Average Cost",
         ),
     ),
     BehavioralCase(
@@ -337,7 +361,15 @@ CASES = (
         {},
         (),
         InvestmentResponseStatus.OK,
-        ("只使用 Portfolio Snapshot", "不自行选择 Ticker 调用行情"),
+        (
+            "使用 distinct_ticker_count=2 和代码提供的 GOOG 73.37%/MSFT 26.63% 历史成本权重",
+            "保留 GOOG LONG_TERM / SWING 与 MSFT LONG_TERM 原始语义",
+            "不使用不同 ticker 的股数大小比较集中度",
+            "不把历史成本权重描述为 current market value allocation",
+            "明确 current_market_value_weight 为 UNAVAILABLE",
+            "不推断 GOOG/MSFT 的行业关系或行业集中度",
+            "不自行选择 Ticker 调用行情",
+        ),
     ),
 )
 

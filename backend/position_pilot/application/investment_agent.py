@@ -4,12 +4,16 @@ import json
 import logging
 from dataclasses import dataclass
 from datetime import datetime
-from decimal import Decimal
 from enum import StrEnum
 from time import monotonic
 from typing import Protocol
 from uuid import UUID
 
+from position_pilot.application.investment_context import (
+    M3_CONTEXT_CAPABILITIES,
+    PortfolioSnapshot,
+    QuoteDerivedFacts,
+)
 from position_pilot.application.llm import (
     LLMMessage,
     LLMProvider,
@@ -20,7 +24,7 @@ from position_pilot.application.llm import (
     LLMToolDefinition,
 )
 from position_pilot.domain.market_data import MarketDataResult, MarketDataStatus, MarketQuote
-from position_pilot.domain.portfolio import PortfolioState, PositionType
+from position_pilot.domain.portfolio import PortfolioState
 
 LOGGER = logging.getLogger(__name__)
 CURRENT_QUOTE_TOOL_NAME = "get_current_quote"
@@ -30,40 +34,17 @@ MAX_QUESTION_LENGTH = 4_000
 SYSTEM_PROMPT = "\n".join(
     (
         "你是 PositionPilot 的 Single Investment Agent。",
-        "",
-        "必须遵守：",
-        "1. Portfolio Snapshot 是确定性代码提供的当前用户事实。",
-        "positions 是完整的当前持仓集合；未出现的 ticker 表示当前无持仓。",
-        "不得虚构仓位、现金、成本或 Position Type。",
-        "2. M3 只有 Portfolio Snapshot 与 get_current_quote。",
-        "当前价格只能来自成功的 Tool Result。",
-        "News、Earnings、Fundamentals、VIX、Market Regime 和 Transaction History 当前不可用。",
-        "3. 按回答所需的证据决定是否调用工具，而不是要求某个工具能够独立回答整个问题。",
-        "当 Current Quote 能提供重要、当前且可验证的市场事实时，应调用 get_current_quote。",
-        "即使完整回答仍需要尚不可用的 News、Earnings、Fundamentals、Market Context 或",
-        "Price History，也不应因此放弃获取有价值的 Quote。",
-        "Quote 只能支持当前市场状态相关事实，不得用于推断价格异动原因、财报质量、",
-        "长期基本面或历史趋势。无法由现有工具或 Portfolio Snapshot 支持的信息必须标记为 UNKNOWN。",
-        "如果 Portfolio Snapshot 已足以回答，且 Current Quote 不增加实质信息，则无需调用。",
-        "不得仅因出现 ticker 而机械调用工具。",
-        "4. Tool Result 为 NO_DATA 或 Provider Failure 时，明确说明当前行情事实不可用。",
-        "不得使用训练知识补造价格。",
-        "5. 在语义上区分已知事实、基于事实的推断和未知信息，不机械套用固定标题。",
-        "6. 回答应体现 Available Cash、Position 和 LONG_TERM / SWING 差异。",
-        "不要重复询问 Snapshot 已提供的信息。",
-        "7. 超出当前 Context 能力的问题应说明 UNKNOWN 边界。",
-        "不得把训练知识表述为当前金融事实。",
-        "8. Average Cost 只是用户历史成本，不是市场估值或未来收益概率。",
-        "不得仅因当前价格低于 Average Cost 就断言风险收益比更好。",
-        "9. Asset Trading Capability 的确定性字段为 tradable 与 fractionable。",
-        "M3 尚未提供这两个字段，因此当前均为 UNKNOWN。",
-        "不得自行假设只能整股交易，也不得自行假设支持碎股。",
-        "不得用 cash 小于 share price 推导无法买入。",
-        "应说明若交易渠道支持碎股，小额现金仍可能形成仓位，但 fractional eligibility 当前未知。",
-        "10. 任何可由确定性代码计算的金融数值都不得自行计算，只能使用 Context 明确提供的结果。",
-        "这包括可购买股数、盈亏金额或比例、仓位权重、现金占比和交易后的新仓位比例。",
-        "M3 提供 position cost_basis 与 total_position_cost_basis，但不提供精确 allocation ratio。",
-        "未由 Context 提供的确定性计算结果必须保持 UNKNOWN，不得估算或心算。",
+        "1. 只能使用 Structured Facts、Tool Results 和 Deterministic Derived Facts。",
+        "2. 不得自行生成未提供的确定性金融计算结果；缺失结果必须保持 UNKNOWN。",
+        "3. 分析必须服从 Context Capabilities；UNAVAILABLE 或 UNKNOWN 不得用训练知识补足。",
+        "Context Capability 只表示某类数据来源是否可用，不表示具体 ticker 的属性或状态。",
+        "4. Portfolio positions 是完整当前持仓集合；缺少 ticker 表示当前无该持仓。",
+        "必须保留 LONG_TERM / SWING 语义，不得让 ticker 聚合覆盖 Position Type。",
+        "5. 问题需要当前 Quote 这一证据时才调用 get_current_quote；Quote 不能解释异动原因。",
+        "6. 当前价格只来自成功 Tool Result；Tool Failure 或缺失 Context 必须明确为 UNKNOWN。",
+        "7. 回答自然地区分事实、推断和未知信息，不要求固定标题。",
+        "禁止示例：cash=300 且 price=210.25，就自行声称可买 1 股、剩余 89.75。",
+        "允许示例：若 executable_purchase_quantity 未提供，明确实际可执行购买数量未知。",
     )
 )
 
@@ -122,77 +103,6 @@ class ContextSourceType(StrEnum):
 
     PORTFOLIO_SNAPSHOT = "PORTFOLIO_SNAPSHOT"
     CURRENT_QUOTE = "CURRENT_QUOTE"
-
-
-@dataclass(frozen=True, slots=True)
-class PortfolioPositionSnapshot:
-    """发送给 LLM 的单个当前 Position 事实。"""
-
-    ticker: str
-    position_type: PositionType
-    shares: Decimal
-    average_cost: Decimal
-    cost_basis: Decimal
-
-    def as_dict(self) -> dict[str, object]:
-        """使用字符串保留 Decimal 精度。"""
-
-        return {
-            "ticker": self.ticker,
-            "position_type": self.position_type.value,
-            "shares": str(self.shares),
-            "average_cost": str(self.average_cost),
-            "cost_basis": str(self.cost_basis),
-        }
-
-
-@dataclass(frozen=True, slots=True)
-class PortfolioSnapshot:
-    """M3 必定注入且不包含 Transaction History 的完整当前持仓快照。"""
-
-    user_id: UUID
-    available_cash: Decimal
-    total_position_cost_basis: Decimal
-    positions: tuple[PortfolioPositionSnapshot, ...]
-    positions_are_complete: bool = True
-
-    @classmethod
-    def from_state(cls, state: PortfolioState) -> "PortfolioSnapshot":
-        """从确定性 Portfolio State 创建稳定 Snapshot。"""
-
-        positions = tuple(
-            PortfolioPositionSnapshot(
-                ticker=position.ticker,
-                position_type=position.position_type,
-                shares=position.shares,
-                average_cost=position.average_cost,
-                cost_basis=position.cost_basis,
-            )
-            for position in sorted(
-                state.positions,
-                key=lambda item: (item.ticker, item.position_type.value),
-            )
-        )
-        return cls(
-            user_id=state.user_id,
-            available_cash=state.cash.available_cash,
-            total_position_cost_basis=sum(
-                (position.cost_basis for position in positions),
-                start=Decimal("0"),
-            ),
-            positions=positions,
-        )
-
-    def as_dict(self) -> dict[str, object]:
-        """显式声明 Positions 完整及缺席 Ticker 的含义。"""
-
-        return {
-            "available_cash": str(self.available_cash),
-            "total_position_cost_basis": str(self.total_position_cost_basis),
-            "positions_are_complete_current_set": self.positions_are_complete,
-            "missing_ticker_means_no_current_position": True,
-            "positions": [position.as_dict() for position in self.positions],
-        }
 
 
 @dataclass(frozen=True, slots=True)
@@ -313,7 +223,11 @@ class InvestmentAgent:
                     self._log_failure(failure, started_at)
                     return failure
                 market_results_by_ticker[normalized_ticker] = market_result
-            tool_message, source = self._market_tool_result(tool_call, market_result)
+            tool_message, source = self._market_tool_result(
+                tool_call,
+                market_result,
+                snapshot,
+            )
             tool_messages.append(tool_message)
             if is_duplicate:
                 LOGGER.info(
@@ -372,6 +286,7 @@ class InvestmentAgent:
         content = json.dumps(
             {
                 "question": question,
+                "context_capabilities": M3_CONTEXT_CAPABILITIES.as_dict(),
                 "portfolio_snapshot": snapshot.as_dict(),
             },
             ensure_ascii=False,
@@ -414,6 +329,7 @@ class InvestmentAgent:
     def _market_tool_result(
         tool_call: LLMToolCall,
         result: MarketDataResult[MarketQuote],
+        snapshot: PortfolioSnapshot,
     ) -> tuple[LLMMessage, ContextSource]:
         if result.status is MarketDataStatus.OK:
             quote = result.data
@@ -433,6 +349,10 @@ class InvestmentAgent:
                 "currency": quote.currency,
                 "is_delayed": quote.is_delayed,
                 "fetched_at": quote.fetched_at.isoformat(),
+                "deterministic_derived_facts": QuoteDerivedFacts.from_quote(
+                    snapshot,
+                    quote,
+                ).as_dict(),
             }
             source = ContextSource(
                 type=ContextSourceType.CURRENT_QUOTE,
