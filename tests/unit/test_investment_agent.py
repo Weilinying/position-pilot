@@ -217,6 +217,13 @@ def test_always_injects_complete_portfolio_snapshot_without_transaction_history(
         "LONG_TERM",
         "SWING",
     ]
+    system_prompt = llm.completions[0].messages[0].content
+    assert system_prompt is not None
+    assert "tradable" in system_prompt
+    assert "fractionable" in system_prompt
+    assert "当前均为 UNKNOWN" in system_prompt
+    assert "不得自行假设只能整股交易" in system_prompt
+    assert "具体可购买股数必须由确定性代码计算" in system_prompt
     assert portfolio_reader.requested_user_ids == [USER_ID]
     assert market_data.requested_tickers == []
     assert result.status is InvestmentResponseStatus.OK

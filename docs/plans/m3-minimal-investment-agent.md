@@ -17,6 +17,8 @@ M3 完成第一个 Stateful Investment Vertical Slice，验证 Portfolio Snapsho
 - Market Data Failure 可以安全降级为 `DEGRADED`；LLM Provider Failure 必须返回 Request Failure。
 - `FACT`、`INFERENCE`、`UNKNOWN` 是语义边界，不强制固定回答标题。
 - `OK` / `DEGRADED` 由确定性 Application Code 计算。
+- M3 不提供 Asset Trading Capability；`tradable` 与 `fractionable` 保留为后续确定性 Provider 扩展点，当前缺失时均为 `UNKNOWN`。
+- Average Cost 只表示用户历史成本，不等同于市场估值或未来收益概率。
 
 ## 3. Scope
 
@@ -33,6 +35,7 @@ M3 完成第一个 Stateful Investment Vertical Slice，验证 Portfolio Snapsho
 
 - 不实现 News、Fundamentals、Earnings、VIX、Market Regime、Conversation Memory 或复杂 Technical Analysis。
 - 不默认注入 Transaction History，不实现新的 Context Retrieval Tool。
+- 不接入 Trading / Asset Metadata Provider，不判断具体标的是否支持 Fractional Shares，也不计算可购买股数。
 - 不引入 LangGraph、Multi-Agent、Vector Database、Cache、Queue 或后台任务。
 - 不建设完整 Evaluation Framework、LLM-as-a-Judge、多模型 Benchmark、历史回测或金融预测准确率评价。
 - 不把开发用投资问答 API 视为已具备生产 Authentication / Authorization。
@@ -45,6 +48,7 @@ M3 完成第一个 Stateful Investment Vertical Slice，验证 Portfolio Snapsho
 - Tool 名称、Ticker、Arguments、每轮调用数量和 Round Limit 均由 Application 校验。
 - 一个 Tool Round 可执行最多三个 Quote；Tool Result 返回后再次请求 Tool 必须明确失败。
 - 当前金融事实只来自 Portfolio Snapshot 或 Tool Result；缺失的当前 Context 明确为 `UNKNOWN`。
+- 未提供 `fractionable` 时不得默认整股或碎股交易，不得以 Cash 低于单股价格直接推导无法买入；具体可购买股数不交给 LLM 计算。
 - Market Data Failure 与 LLM Provider Failure 明确区分，只有前者可以产生 `DEGRADED` Final Response。
 - `OK` / `DEGRADED`、Source Tracking 和 Request Failure 由确定性代码产生。
 - LLM Provider Contract 不包含 Aliyun/OpenAI-compatible 类型或模型绑定命名。

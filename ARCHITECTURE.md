@@ -102,6 +102,7 @@ User 行锁串行化同一用户的写入，避免两个并发请求基于相同
 - Portfolio Snapshot 是 M3 必定注入的完整当前持仓集合，不默认包含 Transaction History。
 - Agent 每个请求只允许一个 Tool Round，每轮最多三个 Current Quote；不支持 Conversation Memory 或多阶段检索。
 - 超出 Portfolio Snapshot 与 Current Quote 的当前事实保持 `UNKNOWN`。
+- M3 尚无 Trading / Asset Metadata Context；未来 Capability 扩展点为确定性的 `tradable` 与 `fractionable`。当前不得由 LLM 假设整股或碎股资格，也不由 LLM 计算具体可购买股数。
 
 ## 7. Market Data Boundary
 
