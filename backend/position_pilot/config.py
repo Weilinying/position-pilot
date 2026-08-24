@@ -15,6 +15,12 @@ class Settings(BaseSettings):
     alpaca_api_secret_key: SecretStr | None = None
     alpaca_data_base_url: AnyHttpUrl = AnyHttpUrl("https://data.alpaca.markets")
     alpaca_request_timeout_seconds: float = 10.0
+    llm_base_url: AnyHttpUrl = AnyHttpUrl(
+        "https://dashscope.aliyuncs.com/compatible-mode/v1"
+    )
+    llm_api_key: SecretStr | None = None
+    llm_model: str = "qwen3.7-plus"
+    llm_request_timeout_seconds: float = 30.0
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -48,6 +54,34 @@ class Settings(BaseSettings):
         if value.scheme != "https":
             raise ValueError("ALPACA_DATA_BASE_URL 必须使用 HTTPS")
         return value
+
+    @field_validator("llm_request_timeout_seconds")
+    @classmethod
+    def require_positive_llm_timeout(cls, value: float) -> float:
+        """限制 LLM 请求等待时间，避免 Agent Request 无限阻塞。"""
+
+        if not isfinite(value) or value <= 0 or value > 120:
+            raise ValueError("LLM_REQUEST_TIMEOUT_SECONDS 必须在 0 到 120 秒之间")
+        return value
+
+    @field_validator("llm_base_url")
+    @classmethod
+    def require_https_llm_url(cls, value: AnyHttpUrl) -> AnyHttpUrl:
+        """防止 LLM Credential 与 Portfolio Context 通过明文 HTTP 发送。"""
+
+        if value.scheme != "https":
+            raise ValueError("LLM_BASE_URL 必须使用 HTTPS")
+        return value
+
+    @field_validator("llm_model")
+    @classmethod
+    def require_nonempty_llm_model(cls, value: str) -> str:
+        """模型是可覆盖配置，但不能为空或只包含空白。"""
+
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("LLM_MODEL 不能为空")
+        return normalized
 
 
 @lru_cache

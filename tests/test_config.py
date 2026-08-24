@@ -83,3 +83,70 @@ def test_settings_requires_https_alpaca_url(monkeypatch: pytest.MonkeyPatch) -> 
 
     with pytest.raises(ValidationError, match="必须使用 HTTPS"):
         Settings(_env_file=None)  # type: ignore[call-arg]
+
+
+def test_settings_uses_configurable_generic_llm_defaults(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """默认模型属于通用环境配置，不成为业务类型。"""
+
+    monkeypatch.setenv(
+        "DATABASE_URL",
+        "postgresql+psycopg://position_pilot:secret@localhost:5432/position_pilot",
+    )
+
+    settings = Settings(_env_file=None)  # type: ignore[call-arg]
+
+    assert str(settings.llm_base_url) == (
+        "https://dashscope.aliyuncs.com/compatible-mode/v1"
+    )
+    assert settings.llm_model == "qwen3.7-plus"
+    assert settings.llm_api_key is None
+
+
+def test_settings_reads_llm_api_key_as_secret(monkeypatch: pytest.MonkeyPatch) -> None:
+    """LLM Credential 应从通用变量读取且 repr 不暴露明文。"""
+
+    monkeypatch.setenv(
+        "DATABASE_URL",
+        "postgresql+psycopg://position_pilot:secret@localhost:5432/position_pilot",
+    )
+    monkeypatch.setenv("LLM_API_KEY", "llm-secret")
+    monkeypatch.setenv("LLM_MODEL", " replacement-model ")
+
+    settings = Settings(_env_file=None)  # type: ignore[call-arg]
+
+    assert settings.llm_api_key is not None
+    assert settings.llm_api_key.get_secret_value() == "llm-secret"
+    assert settings.llm_model == "replacement-model"
+    assert "llm-secret" not in repr(settings)
+
+
+@pytest.mark.parametrize("timeout", ["0", "nan", "121"])
+def test_settings_rejects_invalid_llm_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+    timeout: str,
+) -> None:
+    """LLM Timeout 必须处于有限安全范围。"""
+
+    monkeypatch.setenv(
+        "DATABASE_URL",
+        "postgresql+psycopg://position_pilot:secret@localhost:5432/position_pilot",
+    )
+    monkeypatch.setenv("LLM_REQUEST_TIMEOUT_SECONDS", timeout)
+
+    with pytest.raises(ValidationError, match="LLM_REQUEST_TIMEOUT_SECONDS"):
+        Settings(_env_file=None)  # type: ignore[call-arg]
+
+
+def test_settings_requires_https_llm_url(monkeypatch: pytest.MonkeyPatch) -> None:
+    """LLM Credential 与 Portfolio Context 不得通过明文 HTTP 发送。"""
+
+    monkeypatch.setenv(
+        "DATABASE_URL",
+        "postgresql+psycopg://position_pilot:secret@localhost:5432/position_pilot",
+    )
+    monkeypatch.setenv("LLM_BASE_URL", "http://llm.example.test/v1")
+
+    with pytest.raises(ValidationError, match="LLM_BASE_URL"):
+        Settings(_env_file=None)  # type: ignore[call-arg]
