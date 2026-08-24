@@ -1,6 +1,6 @@
 # PositionPilot
 
-当前仓库包含可运行的 Python 工程基础、健康检查、本地 PostgreSQL 17 开发环境、M1 Portfolio / Transaction Structured State，以及 M2 最小 Market Data；尚不包含 LLM 或 Investment Agent。
+当前仓库包含可运行的 Python 工程基础、Portfolio / Transaction Structured State、最小 Market Data，以及 M3 Single Investment Agent Vertical Slice。
 
 ## 前置条件
 
@@ -54,6 +54,30 @@ RUN_ALPACA_ONLINE_TESTS=1 uv run pytest tests/integration/test_alpaca_market_dat
 ```
 
 默认测试不会访问 Alpaca。Provider 选择、数据覆盖限制和备选方案见 [`ADR 0004`](docs/adr/0004-alpaca-market-data-provider.md)。
+
+## Minimal Investment Agent
+
+M3 使用 Single Agent + Native Function Calling。Portfolio Snapshot 必定注入，Current Quote 由 Agent 按需调用；默认 LLM Provider 为阿里云 Model Studio，业务层只依赖通用 `LLMProvider`。
+
+在本地 `.env` 配置 `LLM_API_KEY` 后，可以调用开发用问答接口：
+
+```bash
+curl -X POST http://127.0.0.1:8000/v1/investment/questions \
+  -H 'Content-Type: application/json' \
+  -d '{"user_id":"<existing-user-uuid>","question":"GOOG 今天还能加一点吗？"}'
+```
+
+`LLM_BASE_URL`、`LLM_MODEL` 和 `LLM_REQUEST_TIMEOUT_SECONDS` 均可覆盖。当前接口没有 Authentication / Authorization，只适合本地或开发环境，不应直接公开部署。
+
+真实模型 Behavioral Eval 使用固定 Fake Market Data，不进入默认 CI：
+
+```bash
+RUN_REAL_LLM_BEHAVIORAL_EVAL=1 \
+LLM_API_KEY=<local-secret> \
+uv run pytest tests/evaluation/test_real_model_behavior.py -s
+```
+
+详细 Human Rubric 与真实 Provider Smoke Test 说明见 [`tests/evaluation/README.md`](tests/evaluation/README.md)，Agent / LLM 决策见 [`ADR 0005`](docs/adr/0005-native-function-calling-and-llm-provider-boundary.md)。
 
 停止本地数据库：
 
