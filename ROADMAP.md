@@ -10,8 +10,8 @@
 
 ## 2. Current Status
 
-**Current Milestone:** M3 — Minimal Investment Agent
-**Status:** DONE
+**Current Milestone:** M4 — Investment Context Expansion
+**Status:** IN PROGRESS
 
 Milestone 状态统一使用 `NOT STARTED`、`IN PROGRESS`、`DONE`，不维护百分比进度。
 
@@ -125,12 +125,15 @@ M3 不建设完整 Evaluation Framework、公开金融 Benchmark 集成、LLM-as
 
 **Scope**
 
+M4 开始阶段先完成独立的 Cash Adjustment Vertical Slice，再进入外部 Investment Context 扩展。该 Slice 使用 `initial_cash + immutable Cash Events + immutable Transactions` 作为 Portfolio Source of Truth，支持 Portfolio 创建后的 `DEPOSIT` / `WITHDRAWAL`、确定性 Available Cash 重建和不足现金校验；不通过修改历史 `initial_cash` 或伪造 BUY / SELL 表示资金调整。
+
 根据 Evaluation Case 或已观察到的 Failure Mode，逐步加入 Market Context、News、Fundamentals / Earnings 和必要 Asset Indicators。每增加一类 Context，都必须说明它解决什么问题，并验证其是否改善 V1 核心场景。
 
 M3 建立的 Evaluation Cases 随新增 Context 逐步扩展，用于验证新增 Context 是否解决已有 Failure Mode 并实际改善回答。M4 不以“覆盖所有可能的金融信息”或建设完整 Evaluation Platform 为目标；无法通过 Evaluation 或真实使用证明价值的 Context 不进入稳定能力。
 
 **Done**
 
+* Cash Adjustment Vertical Slice 已完成，Portfolio Snapshot 能从 Initial Cash、Cash Event Ledger 和 Transaction Ledger 稳定恢复 Position 与 Available Cash；
 * V1 核心场景所需的主要外部 Context 已通过实际需求逐步覆盖；
 * 每类稳定 Context 至少对应明确的 Evaluation Case 或真实 Failure Mode；
 * Market / News / Fundamentals / Asset Data 边界清晰；

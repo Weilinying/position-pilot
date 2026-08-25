@@ -50,6 +50,8 @@ Decision Context
 
 V1 优先实现 Structured Memory。总可投资资金、剩余现金、Portfolio、Transaction History、Average Cost 和 Position Type 属于结构化事实，应持久化到关系型数据库并作为 Source of Truth。
 
+`initial_cash` 只表示 Portfolio 创建时的初始资金。创建后的追加资金投入与资金取出使用独立、不可变的 Cash Event Ledger，当前只支持 `DEPOSIT` 与 `WITHDRAWAL`；不得通过修改历史 `initial_cash` 或伪造 BUY / SELL Transaction 改变资金历史。Available Cash 由 Initial Cash、Cash Events、Transactions 与现有交易成本规则确定性重建，Withdrawal 不得产生负现金。
+
 同一 Ticker 可以同时存在 `LONG_TERM` 和 `SWING` 两类仓位。两者必须在数据结构和分析逻辑中保持区别，因为长期投资 Thesis 与波段交易 Plan 的目标、风险管理方式和退出条件不同。
 
 示例 Transaction：
@@ -69,7 +71,7 @@ V1 优先实现 Structured Memory。总可投资资金、剩余现金、Portfoli
 
 `amount` 是由 `price × shares` 确定性计算的只读成交金额，不是独立用户输入。Transaction 对现金的实际影响可以包含当前已批准规则产生的交易成本，但 `PROJECT.md` 不绑定具体券商或费率实现。
 
-当前持仓、平均成本、现金变化和仓位比例必须由确定性业务代码计算，不依赖 LLM 从聊天历史推断。
+当前持仓、平均成本、现金变化和仓位比例必须由确定性业务代码计算，不依赖 LLM 从聊天历史推断。Cash Event 只影响现金，不改变 Position Shares、Cost Basis 或 Average Cost。
 
 Semantic Memory，例如“用户偏好分批建仓”或“用户长期看好某类资产”，不属于 V1 必需能力。只有出现明确的非结构化长期检索需求时，再评估 Semantic Memory 或 Vector Database。
 
