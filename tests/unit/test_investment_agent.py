@@ -208,6 +208,11 @@ def test_always_injects_complete_portfolio_snapshot_without_transaction_history(
     user_content = llm.completions[0].messages[1].content
     assert user_content is not None
     payload = json.loads(user_content)
+    assert payload["decision_context"] == {
+        "trading_plan": "UNKNOWN",
+        "exit_conditions": "UNKNOWN",
+        "risk_budget": "UNKNOWN",
+    }
     snapshot = payload["portfolio_snapshot"]
     assert snapshot["positions_are_complete_current_set"] is True
     assert snapshot["missing_ticker_means_no_current_position"] is True
@@ -224,6 +229,20 @@ def test_always_injects_complete_portfolio_snapshot_without_transaction_history(
         ),
         "position_cost_basis_weight_unit": "PERCENT_ROUNDED_2DP",
         "total_position_cost_basis": "620",
+        "total_shares_by_ticker": {"GOOG": "3"},
+        "total_shares_by_ticker_scope": "same_ticker_aggregation_only",
+        "available_cash_weight": "UNAVAILABLE",
+        "total_portfolio_value": "UNAVAILABLE",
+        "portfolio_concentration_assessment": {
+            "status": "UNKNOWN",
+            "reason": "concentration_policy_and_user_risk_profile_unavailable",
+        },
+    }
+    assert payload["response_contract"] == {
+        "new_financial_calculations": "PROHIBITED",
+        "training_knowledge_as_missing_context": "PROHIBITED",
+        "unprovided_thresholds_or_rules": "PROHIBITED",
+        "use_only_explicit_facts_and_relations": True,
     }
     assert [position["position_type"] for position in snapshot["positions"]] == [
         "LONG_TERM",
@@ -246,6 +265,7 @@ def test_always_injects_complete_portfolio_snapshot_without_transaction_history(
     assert "不得自行生成未提供的确定性金融计算结果" in system_prompt
     assert "分析必须服从 Context Capabilities" in system_prompt
     assert "实际可执行购买数量未知" in system_prompt
+    assert "是否加仓、减仓或建仓，本身即需要 Current Quote" in system_prompt
     assert portfolio_reader.requested_user_ids == [USER_ID]
     assert market_data.requested_tickers == []
     assert result.status is InvestmentResponseStatus.OK
@@ -281,11 +301,22 @@ def test_portfolio_derived_facts_aggregate_by_ticker_without_losing_positions() 
     derived_facts = snapshot["deterministic_derived_facts"]
     assert derived_facts["distinct_ticker_count"] == 2
     assert derived_facts["total_position_cost_basis"] == "845"
+    assert derived_facts["total_shares_by_ticker"] == {
+        "GOOG": "3",
+        "MSFT": "0.5",
+    }
+    assert derived_facts["total_shares_by_ticker_scope"] == "same_ticker_aggregation_only"
     assert derived_facts["position_cost_basis_weight_by_ticker"] == {
         "GOOG": "73.37%",
         "MSFT": "26.63%",
     }
     assert derived_facts["current_market_value_weight"] == "UNAVAILABLE"
+    assert derived_facts["available_cash_weight"] == "UNAVAILABLE"
+    assert derived_facts["total_portfolio_value"] == "UNAVAILABLE"
+    assert derived_facts["portfolio_concentration_assessment"] == {
+        "status": "UNKNOWN",
+        "reason": "concentration_policy_and_user_risk_profile_unavailable",
+    }
     assert derived_facts["position_cost_basis_weight_unit"] == "PERCENT_ROUNDED_2DP"
     assert [position["position_type"] for position in snapshot["positions"]] == [
         "LONG_TERM",
@@ -350,8 +381,20 @@ def test_quote_result_includes_only_proven_deterministic_relations() -> None:
     assert tool_content is not None
     derived_facts = json.loads(tool_content)["deterministic_derived_facts"]
     assert derived_facts == {
-        "cash_vs_one_share_price": "ABOVE",
-        "executable_purchase_quantity": "UNKNOWN",
+        "cash_vs_one_share_price": {
+            "relation": "ABOVE",
+            "meaning": "numeric_comparison_only",
+            "supports_purchase_execution_conclusion": False,
+            "prohibited_interpretations": [
+                "cash_is_sufficient_or_insufficient_to_buy",
+                "can_or_cannot_buy_one_share",
+                "cash_covers_or_does_not_cover_one_share",
+            ],
+        },
+        "executable_purchase_quantity": {
+            "status": "UNKNOWN",
+            "reason": "asset_metadata_and_order_capabilities_unavailable",
+        },
         "price_vs_average_cost_by_position": [
             {
                 "ticker": "GOOG",
@@ -364,6 +407,14 @@ def test_quote_result_includes_only_proven_deterministic_relations() -> None:
                 "price_vs_average_cost": "BELOW",
             },
         ],
+    }
+    tool_payload = json.loads(tool_content)
+    assert tool_payload["response_contract"] == {
+        "cash_quote_relation_allowed_use": "repeat_relation_only",
+        "cross_ticker_quote_comparison": "PROHIBITED_UNLESS_PROVIDED",
+        "new_financial_calculations": "PROHIBITED",
+        "purchase_execution_conclusion": "PROHIBITED",
+        "required_purchase_execution_status": "UNKNOWN",
     }
 
 
@@ -380,8 +431,20 @@ def test_quote_without_position_does_not_invent_price_to_cost_relation() -> None
     tool_content = llm.completions[1].messages[-1].content
     assert tool_content is not None
     derived_facts = json.loads(tool_content)["deterministic_derived_facts"]
-    assert derived_facts["cash_vs_one_share_price"] == "BELOW"
-    assert derived_facts["executable_purchase_quantity"] == "UNKNOWN"
+    assert derived_facts["cash_vs_one_share_price"] == {
+        "relation": "BELOW",
+        "meaning": "numeric_comparison_only",
+        "supports_purchase_execution_conclusion": False,
+        "prohibited_interpretations": [
+            "cash_is_sufficient_or_insufficient_to_buy",
+            "can_or_cannot_buy_one_share",
+            "cash_covers_or_does_not_cover_one_share",
+        ],
+    }
+    assert derived_facts["executable_purchase_quantity"] == {
+        "status": "UNKNOWN",
+        "reason": "asset_metadata_and_order_capabilities_unavailable",
+    }
     assert derived_facts["price_vs_average_cost_by_position"] == []
 
 
@@ -555,6 +618,107 @@ def test_second_tool_round_is_rejected_even_when_model_requests_valid_tool() -> 
 
     assert failure.code is InvestmentFailureCode.TOOL_ROUND_LIMIT_EXCEEDED
     assert market_data.requested_tickers == ["GOOG"]
+
+
+def test_guard_repairs_invalid_tool_final_once_without_tools() -> None:
+    """首次 Final Answer 越界时只允许一次无 Tool Response Correction。"""
+
+    agent, _, market_data, llm = make_agent(
+        [
+            tool_message(("call-1", "GOOG")),
+            final_message("现金足够覆盖至少一股 GOOG。"),
+            final_message("现金数值高于单股报价，实际可执行购买数量为 UNKNOWN。"),
+        ],
+        market_results={"GOOG": quote("GOOG", "210.25")},
+    )
+
+    result = assert_answer(agent.answer(USER_ID, "GOOG 今天还能加一点吗？"))
+
+    assert result.answer == "现金数值高于单股报价，实际可执行购买数量为 UNKNOWN。"
+    assert market_data.requested_tickers == ["GOOG"]
+    assert len(llm.completions) == 3
+    repair_completion = llm.completions[2]
+    assert repair_completion.tools == ()
+    assert repair_completion.messages[-2].content == "现金足够覆盖至少一股 GOOG。"
+    repair_content = repair_completion.messages[-1].content
+    assert repair_content is not None
+    repair_payload = json.loads(repair_content)
+    assert repair_payload["task"] == "REPAIR_FINAL_RESPONSE"
+    assert repair_payload["guard_violations"][0]["code"] == "BUYING_POWER_CLAIM"
+
+
+def test_guard_repairs_direct_answer_without_restarting_agent() -> None:
+    """No-Tool Answer 也复用原 Context 修正，不重新执行 Tool Selection。"""
+
+    agent, _, market_data, llm = make_agent(
+        [
+            final_message("常见集中度阈值是 20%。"),
+            final_message("当前集中度结论为 UNKNOWN。"),
+        ]
+    )
+
+    result = assert_answer(agent.answer(USER_ID, "我是否过度集中？"))
+
+    assert result.answer == "当前集中度结论为 UNKNOWN。"
+    assert market_data.requested_tickers == []
+    assert len(llm.completions) == 2
+    assert llm.completions[1].tools == ()
+    assert all(message.role is not LLMRole.TOOL for message in llm.completions[1].messages)
+
+
+def test_guard_returns_request_failure_after_one_unsuccessful_repair() -> None:
+    """一次 Repair 后仍越界时不得把不合规 Answer 返回用户。"""
+
+    agent, _, market_data, llm = make_agent(
+        [
+            tool_message(("call-1", "GOOG")),
+            final_message("现金足够覆盖至少一股 GOOG。"),
+            final_message("现金足够购买一股 GOOG。"),
+        ],
+        market_results={"GOOG": quote("GOOG", "210.25")},
+    )
+
+    failure = assert_failure(agent.answer(USER_ID, "GOOG 今天还能加一点吗？"))
+
+    assert failure.code is InvestmentFailureCode.LLM_INVALID_PROVIDER_RESPONSE
+    assert market_data.requested_tickers == ["GOOG"]
+    assert len(llm.completions) == 3
+
+
+def test_guard_rejects_tool_call_from_repair_completion() -> None:
+    """Repair 即使返回合法 Tool Call 也不能开启第二个 Tool Round。"""
+
+    agent, _, market_data, llm = make_agent(
+        [
+            final_message("常见集中度阈值是 20%。"),
+            tool_message(("repair-call", "GOOG")),
+        ]
+    )
+
+    failure = assert_failure(agent.answer(USER_ID, "我是否过度集中？"))
+
+    assert failure.code is InvestmentFailureCode.LLM_INVALID_PROVIDER_RESPONSE
+    assert market_data.requested_tickers == []
+    assert len(llm.completions) == 2
+    assert llm.completions[1].tools == ()
+
+
+def test_guard_repair_provider_failure_keeps_llm_failure_taxonomy() -> None:
+    """Repair 的 Provider Failure 仍使用既有 LLM Request Failure 映射。"""
+
+    agent, _, market_data, llm = make_agent(
+        [
+            final_message("常见集中度阈值是 20%。"),
+            LLMResult.failure(LLMStatus.RATE_LIMITED, "Repair 固定限流"),
+        ]
+    )
+
+    failure = assert_failure(agent.answer(USER_ID, "我是否过度集中？"))
+
+    assert failure.code is InvestmentFailureCode.LLM_RATE_LIMITED
+    assert market_data.requested_tickers == []
+    assert len(llm.completions) == 2
+    assert llm.completions[1].tools == ()
 
 
 @pytest.mark.parametrize("invalid_ticker", ["not/a/ticker", " "])

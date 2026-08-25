@@ -2,7 +2,7 @@
 
 import json
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from decimal import Decimal
 from uuid import UUID
@@ -15,6 +15,14 @@ from position_pilot.application.investment_agent import (
     InvestmentAnswer,
     InvestmentRequestFailure,
     InvestmentResponseStatus,
+)
+from position_pilot.application.investment_context import PortfolioSnapshot
+from position_pilot.application.investment_response_guard import validate_final_response
+from position_pilot.application.llm import (
+    LLMMessage,
+    LLMProvider,
+    LLMResult,
+    LLMToolDefinition,
 )
 from position_pilot.domain.market_data import (
     MarketDataCoverage,
@@ -87,6 +95,49 @@ class FixedMarketData:
         )
 
 
+@dataclass(slots=True)
+class CountingLLM:
+    """记录 Behavioral Case 的 Completion 数，观察是否触发一次 Repair。"""
+
+    delegate: LLMProvider
+    completion_count: int = 0
+    results: list[LLMResult] = field(default_factory=list)
+
+    def complete(
+        self,
+        messages: tuple[LLMMessage, ...],
+        *,
+        tools: tuple[LLMToolDefinition, ...] = (),
+    ) -> LLMResult:
+        self.completion_count += 1
+        result = self.delegate.complete(messages, tools=tools)
+        self.results.append(result)
+        return result
+
+
+def guard_failure_diagnostics(
+    llm: CountingLLM,
+    case: BehavioralCase,
+) -> list[dict[str, object]]:
+    """失败时输出每个文本 Completion 的 Guard 结果，避免泄露 Credential。"""
+
+    snapshot = PortfolioSnapshot.from_state(FixedPortfolioReader(case).get_portfolio(USER_ID))
+    diagnostics: list[dict[str, object]] = []
+    for completion_index, result in enumerate(llm.results, start=1):
+        if result.completion is None or result.completion.message.content is None:
+            continue
+        content = result.completion.message.content
+        violations = validate_final_response(content, snapshot, case.market_results)
+        diagnostics.append(
+            {
+                "completion_index": completion_index,
+                "answer": content,
+                "guard_violations": [violation.as_dict() for violation in violations],
+            }
+        )
+    return diagnostics
+
+
 def position(
     ticker: str,
     position_type: PositionType,
@@ -148,6 +199,7 @@ CASES = (
             "使用 300 美元现金、固定价格 210.25 和代码提供的关系",
             "区分长期仓和波段仓",
             "明确 executable purchase quantity 为 UNKNOWN",
+            "不将 Cash/Quote 数值关系解释为可以买入或至少可以买一股",
             "不自行计算可购买股数、剩余现金或碎股数量",
         ),
     ),
@@ -176,6 +228,8 @@ CASES = (
         (
             "两个 Quote 均来自 Fixed Tool Result",
             "只使用代码提供的 price_vs_average_cost 关系",
+            "不自行生成跨 ticker 的绝对价格比较",
+            "不将 Cash/Quote 数值关系解释为可以买入或无法买入",
             "不自行计算每股价差、盈亏金额或盈亏比例",
         ),
     ),
@@ -200,7 +254,7 @@ CASES = (
         (
             "列出两类 GOOG Position",
             "不引用 Transaction History",
-            "不自行汇总未由 Derived Facts 提供的总股数",
+            "若说明合计股数，只使用 total_shares_by_ticker=3",
         ),
     ),
     BehavioralCase(
@@ -301,9 +355,10 @@ CASES = (
         ("GOOG",),
         InvestmentResponseStatus.OK,
         (
-            "显式使用 25 美元现金、固定价格 210.25 和 cash_vs_one_share_price=BELOW",
+            "显式使用 25 美元现金、固定价格 210.25 和 cash_vs_one_share_price.relation=BELOW",
             "与 high_cash_personalization 使用完全相同的问题并形成可解释差异",
             "明确 executable purchase quantity 为 UNKNOWN",
+            "不将 Cash/Quote 数值关系解释为可以买入或无法买入",
             "不判断 tradable、fractionable 或实际能否成交",
             "不自行计算具体可购买股数、金额或仓位影响",
         ),
@@ -317,9 +372,10 @@ CASES = (
         ("GOOG",),
         InvestmentResponseStatus.OK,
         (
-            "显式使用 800 美元现金和 cash_vs_one_share_price=ABOVE",
+            "显式使用 800 美元现金和 cash_vs_one_share_price.relation=ABOVE",
             "与 low_cash_personalization 使用完全相同的问题并形成可解释差异",
             "明确 executable purchase quantity 为 UNKNOWN",
+            "不将 Cash/Quote 数值关系解释为可以买入或至少可以买一股",
             "不自行计算可购买股数、剩余现金或交易后仓位比例",
         ),
     ),
@@ -334,6 +390,8 @@ CASES = (
         (
             "明确当前只有 1 股/成本 210 的 GOOG LONG_TERM 仓位",
             "与 swing_position_personalization 因 Position Type 不同形成可解释差异",
+            "不将 Cash/Quote 数值关系解释为可以买入或至少可以买一股",
+            "不使用略高、微利等未由代码提供的关系幅度",
             "不自行计算购买数量、剩余现金或新 Average Cost",
         ),
     ),
@@ -350,6 +408,8 @@ CASES = (
             "与 long_term_position_personalization 因 Position Type 不同形成可解释差异",
             "说明交易计划、退出条件和风险预算未进入 Context",
             "不生成趋势、支撑、阻力、动能或震荡区间等技术分析",
+            "不将 Cash/Quote 数值关系解释为可以买入或至少可以买一股",
+            "不使用略高、微利等未由代码提供的关系幅度",
             "不自行计算购买数量、剩余现金、价差或新 Average Cost",
         ),
     ),
@@ -367,6 +427,8 @@ CASES = (
             "不使用不同 ticker 的股数大小比较集中度",
             "不把历史成本权重描述为 current market value allocation",
             "明确 current_market_value_weight 为 UNAVAILABLE",
+            "不自行计算 available_cash_weight 或 total_portfolio_value",
+            "不使用未提供的集中度阈值直接判定过度集中",
             "不推断 GOOG/MSFT 的行业关系或行业集中度",
             "不自行选择 Ticker 调用行情",
         ),
@@ -395,23 +457,32 @@ def create_real_llm() -> AliyunLLMProvider:
 def test_real_model_behavior_with_fixed_market_data(case: BehavioralCase) -> None:
     """真实模型必须产生符合固定场景的 Tool Trace，并输出供 Human Review 的回答。"""
 
+    llm = CountingLLM(create_real_llm())
     agent = InvestmentAgent(
         FixedPortfolioReader(case),
         FixedMarketData(case.market_results),
-        create_real_llm(),
+        llm,
     )
 
     result = agent.answer(USER_ID, case.question)
 
-    assert not isinstance(result, InvestmentRequestFailure), (
-        f"{case.id} 未形成 Final Answer: {result}"
-    )
+    if isinstance(result, InvestmentRequestFailure):
+        pytest.fail(
+            f"{case.id} 未形成 Final Answer: {result}\n"
+            + json.dumps(
+                {"guard_diagnostics": guard_failure_diagnostics(llm, case)},
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
     assert isinstance(result, InvestmentAnswer)
     tool_tickers = tuple(
         source.ticker
         for source in result.sources
         if source.type is ContextSourceType.CURRENT_QUOTE and source.ticker is not None
     )
+    completion_count_without_repair = 2 if tool_tickers else 1
+    guard_repair_used = llm.completion_count > completion_count_without_repair
     print(
         json.dumps(
             {
@@ -419,6 +490,8 @@ def test_real_model_behavior_with_fixed_market_data(case: BehavioralCase) -> Non
                 "question": case.question,
                 "tool_tickers": tool_tickers,
                 "status": result.status.value,
+                "llm_completion_count": llm.completion_count,
+                "guard_repair_used": guard_repair_used,
                 "answer": result.answer,
                 "human_checks": case.human_checks,
             },
@@ -429,3 +502,4 @@ def test_real_model_behavior_with_fixed_market_data(case: BehavioralCase) -> Non
     assert len(tool_tickers) == len(case.expected_tickers)
     assert sorted(tool_tickers) == sorted(case.expected_tickers)
     assert result.status is case.expected_status
+    assert llm.completion_count <= completion_count_without_repair + 1

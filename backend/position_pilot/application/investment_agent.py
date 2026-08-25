@@ -13,6 +13,13 @@ from position_pilot.application.investment_context import (
     M3_CONTEXT_CAPABILITIES,
     PortfolioSnapshot,
     QuoteDerivedFacts,
+    m3_decision_context,
+    m3_response_contract,
+    quote_response_contract,
+)
+from position_pilot.application.investment_response_guard import (
+    build_repair_instruction,
+    validate_final_response,
 )
 from position_pilot.application.llm import (
     LLMMessage,
@@ -40,17 +47,28 @@ SYSTEM_PROMPT = "\n".join(
         "Context Capability 只表示某类数据来源是否可用，不表示具体 ticker 的属性或状态。",
         "4. Portfolio positions 是完整当前持仓集合；缺少 ticker 表示当前无该持仓。",
         "必须保留 LONG_TERM / SWING 语义，不得让 ticker 聚合覆盖 Position Type。",
-        "5. 问题需要当前 Quote 这一证据时才调用 get_current_quote；Quote 不能解释异动原因。",
+        (
+            "5. 判断需要当前价格、Cash/Quote 关系或 Quote/Average Cost 关系时，"
+            "必须调用 get_current_quote。"
+        ),
+        "询问今天或现在是否加仓、减仓或建仓，本身即需要 Current Quote；无需用户另行要求报价。",
+        "若判断 Current Quote 必要且 Tool 可用，必须立即调用，不得询问用户是否需要调用。",
+        "Quote 对异动原因或最新财报不提供新证据时不得调用。",
         "6. 当前价格只来自成功 Tool Result；Tool Failure 或缺失 Context 必须明确为 UNKNOWN。",
         "7. 回答自然地区分事实、推断和未知信息，不要求固定标题。",
-        "禁止示例：cash=300 且 price=210.25，就自行声称可买 1 股、剩余 89.75。",
-        "允许示例：若 executable_purchase_quantity 未提供，明确实际可执行购买数量未知。",
+        "cash_vs_one_share_price 只表示数值关系，不表示交易资格、能否成交或可买至少一股。",
+        "executable_purchase_quantity=UNKNOWN 时，只能说明实际可执行购买数量未知。",
     )
 )
 
 CURRENT_QUOTE_TOOL = LLMToolDefinition(
     name=CURRENT_QUOTE_TOOL_NAME,
-    description="获取美股或美国上市 ETF 的当前 Quote；只有问题需要当前价格时才调用。",
+    description=(
+        "获取美股或美国上市 ETF 的当前 Quote；回答需要当前价格、Cash/Quote 或 "
+        "Quote/Average Cost 关系时立即调用；今天或现在是否加仓、减仓或建仓属于此类。"
+        "不得要求用户再次确认。"
+        "不能用于解释异动原因或最新财报。"
+    ),
     parameters={
         "type": "object",
         "properties": {
@@ -187,9 +205,18 @@ class InvestmentAgent:
         first_message = self._completion_message(first_result)
 
         if not first_message.tool_calls:
+            guarded_content = self._guard_or_repair(
+                messages_before_final=initial_messages,
+                final_message=first_message,
+                snapshot=snapshot,
+                market_results_by_ticker={},
+            )
+            if isinstance(guarded_content, InvestmentRequestFailure):
+                self._log_failure(guarded_content, started_at)
+                return guarded_content
             answer = InvestmentAnswer(
                 InvestmentResponseStatus.OK,
-                self._require_final_content(first_message),
+                guarded_content,
                 tuple(sources),
             )
             self._log_success(answer, started_at, tool_call_count=0)
@@ -266,9 +293,19 @@ class InvestmentAgent:
             self._log_failure(failure, started_at)
             return failure
 
+        guarded_content = self._guard_or_repair(
+            messages_before_final=(*initial_messages, first_message, *tool_messages),
+            final_message=final_message,
+            snapshot=snapshot,
+            market_results_by_ticker=market_results_by_ticker,
+        )
+        if isinstance(guarded_content, InvestmentRequestFailure):
+            self._log_failure(guarded_content, started_at)
+            return guarded_content
+
         answer = InvestmentAnswer(
             InvestmentResponseStatus.DEGRADED if degraded else InvestmentResponseStatus.OK,
-            self._require_final_content(final_message),
+            guarded_content,
             tuple(sources),
         )
         self._log_success(
@@ -277,6 +314,71 @@ class InvestmentAgent:
             tool_call_count=len(market_results_by_ticker),
         )
         return answer
+
+    def _guard_or_repair(
+        self,
+        *,
+        messages_before_final: tuple[LLMMessage, ...],
+        final_message: LLMMessage,
+        snapshot: PortfolioSnapshot,
+        market_results_by_ticker: dict[str, MarketDataResult[MarketQuote]],
+    ) -> str | InvestmentRequestFailure:
+        """确定性检查 Final Response，并最多执行一次 No-Tool Repair。"""
+
+        content = self._require_final_content(final_message)
+        violations = validate_final_response(content, snapshot, market_results_by_ticker)
+        if not violations:
+            return content
+
+        LOGGER.warning(
+            "investment_agent_response_guard_failed",
+            extra={
+                "repair_attempt": 0,
+                "violation_codes": [violation.code.value for violation in violations],
+            },
+        )
+        repair_message = LLMMessage(
+            LLMRole.USER,
+            json.dumps(
+                build_repair_instruction(violations),
+                ensure_ascii=False,
+                sort_keys=True,
+            ),
+        )
+        repair_result = self._llm_provider.complete(
+            (*messages_before_final, final_message, repair_message),
+            tools=(),
+        )
+        repair_failure = self._from_llm_failure(repair_result)
+        if repair_failure is not None:
+            return repair_failure
+        repaired_message = self._completion_message(repair_result)
+        if repaired_message.tool_calls:
+            return InvestmentRequestFailure(
+                InvestmentFailureCode.LLM_INVALID_PROVIDER_RESPONSE,
+                "Response Repair 不得请求 Tool",
+            )
+
+        repaired_content = self._require_final_content(repaired_message)
+        remaining_violations = validate_final_response(
+            repaired_content,
+            snapshot,
+            market_results_by_ticker,
+        )
+        if remaining_violations:
+            LOGGER.warning(
+                "investment_agent_response_guard_failed",
+                extra={
+                    "repair_attempt": 1,
+                    "violation_codes": [violation.code.value for violation in remaining_violations],
+                },
+            )
+            return InvestmentRequestFailure(
+                InvestmentFailureCode.LLM_INVALID_PROVIDER_RESPONSE,
+                "LLM Final Response 在一次 Repair 后仍违反 Grounding Contract",
+            )
+        LOGGER.info("investment_agent_response_repaired", extra={"repair_attempt": 1})
+        return repaired_content
 
     @staticmethod
     def _initial_messages(
@@ -287,7 +389,9 @@ class InvestmentAgent:
             {
                 "question": question,
                 "context_capabilities": M3_CONTEXT_CAPABILITIES.as_dict(),
+                "decision_context": m3_decision_context(),
                 "portfolio_snapshot": snapshot.as_dict(),
+                "response_contract": m3_response_contract(),
             },
             ensure_ascii=False,
             sort_keys=True,
@@ -353,6 +457,7 @@ class InvestmentAgent:
                     snapshot,
                     quote,
                 ).as_dict(),
+                "response_contract": quote_response_contract(),
             }
             source = ContextSource(
                 type=ContextSourceType.CURRENT_QUOTE,

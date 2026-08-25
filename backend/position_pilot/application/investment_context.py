@@ -59,6 +59,27 @@ class DecimalRelation(StrEnum):
 M3_CONTEXT_CAPABILITIES = ContextCapabilities()
 
 
+def m3_response_contract() -> dict[str, object]:
+    """返回 M3 Final Response 必须遵守的结构化边界。"""
+
+    return {
+        "new_financial_calculations": "PROHIBITED",
+        "unprovided_thresholds_or_rules": "PROHIBITED",
+        "training_knowledge_as_missing_context": "PROHIBITED",
+        "use_only_explicit_facts_and_relations": True,
+    }
+
+
+def m3_decision_context() -> dict[str, str]:
+    """声明 M3 尚未获得的用户级持仓决策事实。"""
+
+    return {
+        "trading_plan": "UNKNOWN",
+        "exit_conditions": "UNKNOWN",
+        "risk_budget": "UNKNOWN",
+    }
+
+
 @dataclass(frozen=True, slots=True)
 class PortfolioPositionSnapshot:
     """发送给 LLM 的单个当前 Position 事实。"""
@@ -87,6 +108,7 @@ class PortfolioDerivedFacts:
 
     distinct_ticker_count: int
     total_position_cost_basis: Decimal
+    total_shares_by_ticker: tuple[tuple[str, Decimal], ...]
     position_cost_basis_weight_by_ticker: tuple[tuple[str, Decimal], ...]
 
     @classmethod
@@ -97,9 +119,13 @@ class PortfolioDerivedFacts:
         """按 Ticker 聚合历史成本，分母明确排除 Available Cash。"""
 
         cost_basis_by_ticker: dict[str, Decimal] = {}
+        shares_by_ticker: dict[str, Decimal] = {}
         for position in positions:
             cost_basis_by_ticker[position.ticker] = (
                 cost_basis_by_ticker.get(position.ticker, Decimal("0")) + position.cost_basis
+            )
+            shares_by_ticker[position.ticker] = (
+                shares_by_ticker.get(position.ticker, Decimal("0")) + position.shares
             )
         total_position_cost_basis = sum(
             cost_basis_by_ticker.values(),
@@ -117,6 +143,7 @@ class PortfolioDerivedFacts:
         return cls(
             distinct_ticker_count=len(cost_basis_by_ticker),
             total_position_cost_basis=total_position_cost_basis,
+            total_shares_by_ticker=tuple(sorted(shares_by_ticker.items())),
             position_cost_basis_weight_by_ticker=weights,
         )
 
@@ -126,6 +153,10 @@ class PortfolioDerivedFacts:
         return {
             "distinct_ticker_count": self.distinct_ticker_count,
             "total_position_cost_basis": str(self.total_position_cost_basis),
+            "total_shares_by_ticker": {
+                ticker: str(shares) for ticker, shares in self.total_shares_by_ticker
+            },
+            "total_shares_by_ticker_scope": "same_ticker_aggregation_only",
             "position_cost_basis_weight_by_ticker": {
                 ticker: f"{weight}%" for ticker, weight in self.position_cost_basis_weight_by_ticker
             },
@@ -134,6 +165,12 @@ class PortfolioDerivedFacts:
             ),
             "position_cost_basis_weight_unit": "PERCENT_ROUNDED_2DP",
             "current_market_value_weight": "UNAVAILABLE",
+            "available_cash_weight": "UNAVAILABLE",
+            "total_portfolio_value": "UNAVAILABLE",
+            "portfolio_concentration_assessment": {
+                "status": "UNKNOWN",
+                "reason": "concentration_policy_and_user_risk_profile_unavailable",
+            },
         }
 
 
@@ -241,12 +278,36 @@ class QuoteDerivedFacts:
         """输出不包含购买股数或 Position Sizing 的派生事实。"""
 
         return {
-            "cash_vs_one_share_price": self.cash_vs_one_share_price.value,
-            "executable_purchase_quantity": self.executable_purchase_quantity,
+            "cash_vs_one_share_price": {
+                "relation": self.cash_vs_one_share_price.value,
+                "meaning": "numeric_comparison_only",
+                "supports_purchase_execution_conclusion": False,
+                "prohibited_interpretations": [
+                    "cash_is_sufficient_or_insufficient_to_buy",
+                    "can_or_cannot_buy_one_share",
+                    "cash_covers_or_does_not_cover_one_share",
+                ],
+            },
+            "executable_purchase_quantity": {
+                "status": self.executable_purchase_quantity,
+                "reason": "asset_metadata_and_order_capabilities_unavailable",
+            },
             "price_vs_average_cost_by_position": [
                 relation.as_dict() for relation in self.price_vs_average_cost_by_position
             ],
         }
+
+
+def quote_response_contract() -> dict[str, object]:
+    """在最接近 Final Completion 的 Tool Result 中重申可验证边界。"""
+
+    return {
+        "cross_ticker_quote_comparison": "PROHIBITED_UNLESS_PROVIDED",
+        "new_financial_calculations": "PROHIBITED",
+        "purchase_execution_conclusion": "PROHIBITED",
+        "cash_quote_relation_allowed_use": "repeat_relation_only",
+        "required_purchase_execution_status": "UNKNOWN",
+    }
 
 
 def _decimal_relation(left: Decimal, right: Decimal) -> DecimalRelation:
