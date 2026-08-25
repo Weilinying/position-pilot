@@ -4,6 +4,8 @@
 
 **Status:** IN PROGRESS
 
+**Cash Adjustment Slice:** IMPLEMENTED（等待 Human Acceptance）
+
 M4 在扩展 Market Context、News、Fundamentals / Earnings 或 Asset Indicators 前，先完成一个独立的 Cash Adjustment Vertical Slice。该 Slice 解决 Portfolio 创建后无法追加或取出投资预算的问题，并保持 M1 已建立的 immutable ledger 与 deterministic replay 原则。
 
 ## 2. 已批准语义
@@ -80,3 +82,37 @@ Cash Event 与 Transaction 共同影响同一个 Available Cash 不变量，Doma
 - PostgreSQL Integration Tests 验证 Migration 后持久化恢复、数据库约束、Transaction/Cash Event 混合 Ledger 和失败回滚。
 - Agent Regression Test 验证 Cash Event 调整后的 Available Cash 进入现有 Portfolio Snapshot，且不引入 Cash Event History。
 - 完成实现后运行完整 pytest、Ruff lint / format check、mypy strict、Migration 检查与 `git diff --check`。
+
+## 8. Cash Adjustment Completion Summary
+
+### Implemented
+
+- `initial_cash` 保持创建时事实，新增独立 frozen `CashEvent` 与 `DEPOSIT` / `WITHDRAWAL` 类型。
+- Transaction 与 Cash Event 按实际发生时间 combined replay；CashBalance 派生 Available Cash、Total Deposits 与 Total Withdrawals，Position 只由 Transaction 改变。
+- 新增 `cash_events` Migration、SQLAlchemy Model、独立 sequence、正金额/类型/外键/唯一约束与 Unit of Work 映射。
+- Cash Event 与 Transaction 写入均使用 User 行锁和完整 ledger 重放；失败时不追加、不 Commit。
+- `POST /v1/portfolios/{user_id}/cash-events` 返回 201、不可变事件及同事务重建的 Available Cash；未知 User、超额 Withdrawal 与非法输入使用不同失败状态。
+- Investment Agent 继续只接收当前 Portfolio Snapshot，不注入 Cash Event History，但 Available Cash 自动反映 Cash Events。
+
+### Automated Review
+
+- 修正旧数据库元数据测试，使 `cash_events` 被认定为 Source-of-Truth Ledger 表，同时继续禁止 Cash / Position Projection。
+- 将通用 API 错误模型从 Investment 专属命名调整为共享边界命名。
+- 修正 Architecture 中把 M4 Cash Event 事实误写成 M1 原始事实的表述。
+- 补强 Cash Event owner / sequence 损坏、发生时间与原因规范化、Command 不接受 ID / sequence 的边界测试。
+
+### Verification
+
+- 默认 pytest：177 passed，30 skipped。跳过项为显式启用的真实模型、在线 Market Data 与需要 `TEST_DATABASE_URL` 的 10 条 PostgreSQL Integration Tests。
+- Cash Adjustment 定向 Domain / Service / API / Agent Tests：64 passed。
+- Ruff format check / lint：PASS。
+- mypy strict：PASS（41 source files）。
+- `uv lock --check`、`git diff --check`、Alembic head / history：PASS。
+- 使用不读取 Repository `.env` 的显式离线配置生成 Alembic 全量 PostgreSQL SQL：PASS。
+- 当前 Docker daemon 未运行，且没有显式 `TEST_DATABASE_URL`，因此本次未实际执行 PostgreSQL Integration Tests。
+
+### Decision Records
+
+- 本设计是 ADR 0003 immutable ledger 与 deterministic replay 原则的自然延伸，没有新增 ADR。
+- 新增 Engineering Note：`docs/engineering-notes/m4-cash-adjustment-ledger-extension.md`。
+- M4 原有 Investment Context Expansion 尚未开始，Roadmap 保持 M4 `IN PROGRESS`。

@@ -2,7 +2,7 @@
 
 ## 1. 当前范围
 
-本文档描述 M3 实现中的实际系统结构。当前系统包含工程基础、Portfolio Structured State、最小 Market Data，以及 Single Investment Agent 的第一个端到端 Vertical Slice。
+本文档描述 M4 Cash Adjustment Vertical Slice 完成后的实际系统结构。当前系统包含工程基础、Portfolio Structured State、Cash Event Ledger、最小 Market Data，以及 Single Investment Agent 的第一个端到端 Vertical Slice；M4 原有 Investment Context Expansion 尚未开始。
 
 ## 2. 依赖方向
 
@@ -24,7 +24,13 @@ Domain / deterministic Portfolio replay
       ↑
 Infrastructure / SQLAlchemy Unit of Work
       ↓
-PostgreSQL User + Transaction Ledger
+PostgreSQL User + Transaction Ledger + Cash Event Ledger
+
+POST /v1/portfolios/{user_id}/cash-events
+      ↓
+PortfolioService.record_cash_event
+      ↓
+User row lock → combined ledger replay → append Cash Event
 
 Market data callers
       ↓
@@ -44,19 +50,19 @@ Alpaca Market Data API v2
 
 ## 3. Portfolio Source of Truth
 
-M1 使用以下持久化事实：
+M4 在 M1 Transaction Ledger 基础上使用以下持久化事实：
 
 ```text
 User.initial_cash
-        +
-ordered Transaction Ledger
-        ↓ deterministic replay
+        + ordered Transaction Ledger
+        + ordered Cash Event Ledger
+        ↓ combined deterministic replay
 CashBalance + Position[]
 ```
 
-PostgreSQL 只保存 `users` 与 `transactions`。Cash、Position、Shares、Cost Basis 和 Average Cost 不保存冗余投影，而是在读取时按每个 User 的连续经济 sequence 重建。sequence 由 `occurred_at` 派生；历史补录会在同一事务内重新编号后续记录。
+PostgreSQL 保存 `users`、`transactions` 与 `cash_events`。Cash、Position、Shares、Cost Basis 和 Average Cost 不保存冗余投影，而是在读取时合并重建。Transaction 与 Cash Event 各自维护由 `occurred_at` 派生的连续 sequence；历史补录会在同一事务内重新编号同类后续记录。跨表按 `occurred_at` 排序，同一时间固定先处理 Cash Event，再处理 Transaction。
 
-同一 Ticker 的 `LONG_TERM` 与 `SWING` 使用独立 Position Key。BUY / SELL、Available Cash、Oversell 与 Average Cost 都由普通 Python / Decimal 代码计算，不依赖 LLM。
+同一 Ticker 的 `LONG_TERM` 与 `SWING` 使用独立 Position Key。BUY / SELL、DEPOSIT / WITHDRAWAL、Available Cash、Oversell 与 Average Cost 都由普通 Python / Decimal 代码计算，不依赖 LLM。Cash Event 只改变 CashBalance，不改变 Position。
 
 ## 4. Transaction 写入流程
 
@@ -78,24 +84,46 @@ RecordTransactionCommand（无 amount / commission / sequence）
 
 User 行锁串行化同一用户的写入，避免两个并发请求基于相同旧 Cash 或 Shares 同时通过。不同 User 不共享该锁。
 
-## 5. 主要模块
+## 5. Cash Event 写入流程
 
-- `backend/position_pilot/domain/portfolio.py`：领域实体、枚举、Decimal 规则和 Ledger 重放。
+```text
+RecordCashEventCommand（DEPOSIT / WITHDRAWAL + amount + occurred_at）
+        ↓
+锁定 User 数据库行
+        ↓
+读取完整 Transaction 与 Cash Event Ledger
+        ↓
+重放并校验当前 Cash / Position
+        ↓
+按 occurred_at 重新派生 Cash Event sequence
+        ↓
+合并重放；Withdrawal 不足时失败且不追加
+        ↓
+同一数据库事务追加 Cash Event
+```
+
+Cash Event amount 必须为正数且最多 8 位小数。`initial_cash` 不在该流程中更新；Application 没有 Cash Event 更新或删除接口，领域记录使用 frozen dataclass 保持 immutable ledger semantics。
+
+## 6. 主要模块
+
+- `backend/position_pilot/domain/portfolio.py`：领域实体、枚举、Decimal 规则以及 Transaction / Cash Event combined replay。
 - `backend/position_pilot/domain/errors.py`：明确的领域失败状态。
-- `backend/position_pilot/application/portfolio_service.py`：Use Case、写入 Command 和 Unit of Work Contract。
+- `backend/position_pilot/application/portfolio_service.py`：Transaction / Cash Event Use Case、写入 Command 和 Unit of Work Contract。
 - `backend/position_pilot/application/llm.py`：Provider-neutral Message、Tool、Completion 与 Failure Contract。
 - `backend/position_pilot/application/investment_agent.py`：Portfolio Snapshot、单轮 Native Function Calling、Source Tracking 与 Request Failure。
 - `backend/position_pilot/application/investment_response_guard.py`：Final Response 的确定性 Context Contract 检查与一次性 Repair 指令。
-- `backend/position_pilot/infrastructure/models.py`：User / Transaction SQLAlchemy Model 与数据库约束。
+- `backend/position_pilot/infrastructure/models.py`：User / Transaction / Cash Event SQLAlchemy Model 与数据库约束。
 - `backend/position_pilot/infrastructure/unit_of_work.py`：同步 SQLAlchemy 持久化实现和领域映射。
 - `backend/position_pilot/integrations/aliyun_llm.py`：阿里云 Model Studio OpenAI-compatible Adapter。
 - `backend/position_pilot/bootstrap.py`：Portfolio、Market Data 与 LLM Provider 的依赖装配。
-- `alembic/versions/`：M1 Schema、金额舍入与手续费约束 Migration。
+- `alembic/versions/`：M1 Schema、金额舍入、手续费约束与 M4 Cash Event Migration。
 
-## 6. 当前限制
+## 7. 当前限制
 
 - 投资问答 API 由调用方提供 `user_id`，当前没有 Authentication / Authorization，只适合本地或开发环境。
 - 当前没有 Cash / Position Projection；只有实际性能问题出现后才考虑可重建投影或快照。
+- Cash Event 只支持 `DEPOSIT` 与 `WITHDRAWAL`；不支持 Dividend、Fee、Interest、Tax、Margin、多币种、Broker Synchronization 或投资收益率计算。
+- Transaction 与 Cash Event 还没有跨表全局 sequence；相同 `occurred_at` 使用 Cash Event 优先的固定重放顺序。只有后续现金流类型或对账需求证明必要时才重新评估全局 Event Store。
 - 手续费只实现 `IBKR_PRO_TIERED_US_2026_08` 第一档基础佣金，不模拟月累计量跨档、执行场所、清算、监管或 pass-through fees。
 - 不处理税费、多币种、拆股、公司行动、转仓或外部券商同步。
 - Current Quote 默认来自 Alpaca Basic 的实时 IEX feed，只代表单一交易所覆盖；Historical Daily OHLCV 来自至少延迟 15 分钟的 SIP feed。
@@ -111,7 +139,7 @@ User 行锁串行化同一用户的写入，避免两个并发请求基于相同
 - 超出 Portfolio Snapshot 与 Current Quote 的当前事实保持 `UNKNOWN`。
 - M3 尚无 Trading / Asset Metadata Context；未来 Capability 扩展点为确定性的 `tradable` 与 `fractionable`。当前不得由 LLM 假设整股或碎股资格，也不由 LLM 计算具体可购买股数。
 
-## 7. Market Data Boundary
+## 8. Market Data Boundary
 
 ```text
 Ticker / HistoricalBarsQuery
@@ -128,7 +156,7 @@ MarketDataResult[MarketQuote | HistoricalBars]
 - `integrations/alpaca_market_data.py` 负责 Credential、REST、IEX / SIP feed、分页以及 HTTP / Payload Failure 映射。
 - 正常空结果使用 `NO_DATA`；认证、限流、Provider 不可用和非法响应具有不同状态，失败结果不携带伪造数据。
 
-## 8. Investment Agent 与 LLM Boundary
+## 9. Investment Agent 与 LLM Boundary
 
 ```text
 PortfolioState
