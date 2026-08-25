@@ -5,15 +5,15 @@ from logging.config import fileConfig
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
-import position_pilot.infrastructure.models
-from position_pilot.database import Base, get_database_url
+from position_pilot.database import get_database_url
+from position_pilot.infrastructure import models
 
 config = context.config
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-target_metadata = Base.metadata
+target_metadata = models.Base.metadata
 
 
 def run_migrations_offline() -> None:
