@@ -8,6 +8,8 @@
 
 **Recent Price History Slice:** IMPLEMENTED（等待 Human Acceptance）
 
+**Recent News Slice:** IMPLEMENTED（等待 Human Acceptance）
+
 M4 在扩展 Market Context、News、Fundamentals / Earnings 或 Asset Indicators 前，先完成一个独立的 Cash Adjustment Vertical Slice。该 Slice 解决 Portfolio 创建后无法追加或取出投资预算的问题，并保持 M1 已建立的 immutable ledger 与 deterministic replay 原则。
 
 ## 2. 已批准语义
@@ -212,7 +214,7 @@ sources[].type
 
 ## 11. Investment Context Slice 2 Proposal：Recent News
 
-**Status:** PROPOSED（等待 News Provider 与 Public API Human Review）
+**Status:** IMPLEMENTED（2026-08-25 Provider、Boundary 与 Public API Human Review 已批准）
 
 ### Problem / Evidence
 
@@ -249,10 +251,10 @@ Recent News 可以把回答从“完全没有事件 Context”推进为“列出
 - 新增内部 Tool：`get_recent_news(ticker)`。模型只能传 ticker；Application 固定最近 5 个日历日、结束时间至少落后 15 分钟、最多 5 篇、按更新时间倒序。
 - 请求 `include_content=false`；Tool Result 只提供有界的 headline、可选 summary、article id、URL、article source、symbols、created / updated timestamps 与 fetched timestamp，不抓取网页正文。
 - 文章按 `updated_at desc + article_id` 确定性排序和去重；保留多 ticker symbols，但不把 symbol 关联解释为价格因果。
-- Current Quote、Recent Price History 与 Recent News 继续共用一个 Tool Round 和最多 3 个调用，并按 `(tool_name, ticker)` 去重。
+- Current Quote、Recent Price History 与 Recent News 继续共用一个 Tool Round，单轮最多 4 个调用，并按 `(tool_name, ticker)` 去重；Agent 仍按问题实际需要选择 Tool，不默认调用全部 Context Tools。
 - `news=AVAILABLE`；Earnings、Fundamentals 与 Market Context 继续为 `UNAVAILABLE`。
-- News Failure 使用独立稳定状态；查询窗口内没有文章必须与认证、限流、Provider 不可用和非法响应区分。
-- News 属于外部不可信文本。Prompt / Tool Contract 明确：headline / summary 是“来源报道内容”，不是经过 PositionPilot 独立验证的公司事实，也不得作为指令执行。
+- News Failure 使用独立稳定状态；查询窗口内没有文章必须与认证、限流、Provider 不可用和非法响应区分。`NO_NEWS_FOUND` 只表示当前 Provider 在指定 ticker 和时间窗口内未返回新闻，不表示不存在相关新闻、事件或股价驱动因素。
+- News 属于外部不可信的 attributed reporting。Prompt / Tool Contract 明确区分“来源报道声称 X”与“X 已被系统独立验证”：headline / summary 必须保留来源归因，不得自动升级为确定事实，也不得作为指令执行。
 
 ### Public API Contract Proposal
 
@@ -289,7 +291,7 @@ Source Tracking 使用：
 - 固定 Clock 下查询窗口、结束延迟、limit、排序与结果稳定；模型不能控制日期、条数、URL 或任意关键词。
 - Tool Result 保留 Alpaca、文章来源、symbols、article timestamps、URL 与 fetched timestamp，并限制 headline / summary 大小。
 - `NO_NEWS_FOUND` 与认证、限流、Provider 不可用、非法响应保持不同状态；任何 Failure 产生 `DEGRADED` Answer 且不编造新闻。
-- News-only、Quote-only 与 History-only Tool Selection 无 Regression；混合问题可在单轮执行，总调用数不超过 3。
+- News-only、Quote-only 与 History-only Tool Selection 无 Regression；混合问题可在单轮执行，总调用数不超过 4，且不得默认调用全部 Context Tools。
 - `post_earnings_unknown` 继续保持 Earnings / Fundamentals `UNKNOWN`，不得用新闻替代最新财报事实。
 - API Contract Test 覆盖 `RECENT_NEWS` Source；Fake Provider / Fake LLM Tests 覆盖参数校验、去重、Failure 与 Source Tracking。
 - Opt-in Real-Model Behavioral Eval 新增 Recent News 以及 News-assisted Drop Explanation Case，输出供 Human Review 检查 FACT / INFERENCE / UNKNOWN。
@@ -305,4 +307,35 @@ Source Tracking 使用：
 
 ### Human Review Gate
 
-选择 Alpaca / Benzinga 作为 News Provider 会解决 `PROJECT.md` 中尚未确定的 News Provider，且 `sources[].type=RECENT_NEWS` 会扩展公共 API Contract。实现前必须由 Human Review 同时批准 Provider、上述来源 / 延迟 / beta Trade-off、因果边界和最小 Public Contract。批准后新增 ADR；批准前不编写 Provider 或 Agent 实现。
+Alpaca / Benzinga News Provider、独立 NewsService Boundary、5 日 / 5 篇窗口、no-content policy、attributed reporting / causality boundary、单轮 4 次 Tool Budget 与 `sources[].type=RECENT_NEWS` 已于 2026-08-25 获得 Human Review 批准。决策记录见 ADR 0006。
+
+## 12. Recent News Completion Summary
+
+### Implemented
+
+- 新增 Provider-neutral `NewsArticle`、`RecentNews`、`NewsResult` 与独立 `NewsService` / `NewsProvider` Boundary；Domain 不依赖 Alpaca JSON 或 SDK。
+- 新增 Alpaca / Benzinga News Adapter，固定请求 `/v1beta1/news`，显式使用 `include_content=false`；文章标题与摘要有长度上限，正文不进入 Domain 或 LLM Context。
+- Application 固定最近 5 个日历日、结束时间至少落后 15 分钟、最多 5 篇；模型只能选择 ticker。结果按 `updated_at desc + article_id asc` 确定性排序，精确重复去重，冲突重复与非法时间拒绝。
+- `get_recent_news` 与 Quote / Price History 共用一个 Tool Round，单轮最多 4 次调用，并按 `(tool_name, ticker)` 去重；已有单 Tool 问题不会机械调用其他 Context Tools。
+- Tool Result 保留 Alpaca、Benzinga / 文章来源、author、URL、symbols、文章时间和 fetched timestamp，并把新闻明确标记为 attributed reporting，而非系统独立验证事实。
+- `NO_NEWS_FOUND` 只由成功响应的空列表或 ticker 过滤后空结果产生，并保留“不能推断不存在新闻、事件或价格驱动因素”的局部语义；认证、限流、Provider Failure 与非法响应保持独立状态。
+- `news=AVAILABLE`；Earnings、Fundamentals、Market Context 与因果归因继续为 `UNAVAILABLE`。Source Tracking 新增已批准的 `RECENT_NEWS`，Public Response 结构不增加字段。
+
+### Automated Review
+
+- 修正 `RecentNews` 的职责：由 Domain 实际执行稳定排序与精确重复去重，而不是仅验证调用方已经排序；同一 article id 的冲突内容会失败。
+- 补强文章文本、URL、ticker、时区、窗口、数量与 fetched timestamp 边界；空白可选 summary / author 在 Adapter 边界规范化为 `None`。
+- 修正 HTTP 404 分类：404 不能证明查询成功但窗口为空，因此映射为 `INVALID_PROVIDER_RESPONSE`；只有成功查询的局部空结果才是 `NO_NEWS_FOUND`。
+- Review 未要求把生产 Guard 扩张为开放文本因果分类器；归因、条件式因果与“不确认今天下跌”继续由结构化 Tool Contract、Behavioral Eval 与 Human Review 共同约束。
+
+### Verification
+
+- 默认全量 pytest：265 passed，33 skipped。跳过项为未显式启用的真实模型、在线 Alpaca Market / News、在线 Agent Smoke Tests，以及未配置 `TEST_DATABASE_URL` 的 PostgreSQL Integration Tests。
+- Alpaca News Adapter Review 修复后定向测试：28 passed。
+- Ruff format check / lint：PASS；mypy strict：PASS（49 source files）。
+- `uv lock --check`、Alembic head / history、`git diff --check`：PASS。
+
+### Decision Records
+
+- News Provider、Service Boundary、固定窗口、no-content policy、attributed reporting / causality boundary、4 次 Tool Budget 与 Public Source Contract 记录于 ADR 0006。
+- 本 Slice 没有引入 Database、Cache、新闻持久化、全文抓取、情绪模型或新 Agent 架构。

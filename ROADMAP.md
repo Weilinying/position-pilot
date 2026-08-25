@@ -131,6 +131,8 @@ M4 开始阶段先完成独立的 Cash Adjustment Vertical Slice，再进入外�
 
 第一个外部 Context Slice 复用 M2 已批准的 Alpaca Historical Daily OHLCV，为 Agent 提供固定近期窗口的 Price History 区间事实；它不升级为 Technical Analysis、交易信号或预测。
 
+第二个外部 Context Slice 使用有界、可归因的 Recent News，改善近期事件问题；新闻报道不自动升级为独立验证事实，也不证明价格变化的唯一因果。
+
 M3 建立的 Evaluation Cases 随新增 Context 逐步扩展，用于验证新增 Context 是否解决已有 Failure Mode 并实际改善回答。M4 不以“覆盖所有可能的金融信息”或建设完整 Evaluation Platform 为目标；无法通过 Evaluation 或真实使用证明价值的 Context 不进入稳定能力。
 
 **Done**

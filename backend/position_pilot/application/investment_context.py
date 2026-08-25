@@ -65,6 +65,7 @@ class PriceDirection(StrEnum):
 
 
 M4_CONTEXT_CAPABILITIES = ContextCapabilities(
+    news=ContextCapabilityStatus.AVAILABLE,
     price_history=ContextCapabilityStatus.AVAILABLE,
 )
 

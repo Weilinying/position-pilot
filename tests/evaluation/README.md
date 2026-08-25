@@ -1,6 +1,6 @@
 # M4 Opt-in Real-Model Behavioral Evaluation
 
-本目录的 Cases 使用真实 `AliyunLLMProvider` 与固定 Fake Market Data，验证真实模型的 Tool Selection、Portfolio Awareness、Grounding 和 Personalization。它们不属于默认 CI，也不把 Fake LLM Orchestration Test 误称为模型行为验证。
+本目录的 Cases 使用真实 `AliyunLLMProvider` 与固定 Fake Market / News Data，验证真实模型的 Tool Selection、Portfolio Awareness、Grounding 和 Personalization。它们不属于默认 CI，也不把 Fake LLM Orchestration Test 误称为模型行为验证。
 
 运行前显式导出通用 LLM 配置，并启用开关：
 
@@ -18,8 +18,10 @@ uv run pytest tests/evaluation/test_real_model_behavior.py -s
 - 是否正确区分 `LONG_TERM` / `SWING`；
 - 是否把 Fake Quote 当作唯一当前价格来源；
 - 近期价格问题是否只使用 Fake Historical Daily Bars 的代码派生事实，且不把最新历史收盘价当作 Current Quote；
+- Recent News 问题是否只调用实际需要的 News Tool，并把 headline / summary 表述为有来源归因的报道，而不是系统独立验证事实；
+- `drop_reason_unknown` 是否不确认用户“今天下跌”的前提，并只把报道与价格变化的关系表述为条件式 `INFERENCE`，不声称唯一原因；
 - Missing / Provider Failure 时是否拒绝编造当前价格；
-- News、Earnings、Market Context 等当前未提供的信息是否明确保持 `UNKNOWN`；
+- Earnings、Market Context 等当前未提供的信息是否明确保持 `UNKNOWN`；News 不得替代结构化财报。
 - FACT / INFERENCE / UNKNOWN 是否在语义上自然区分，而不是机械套用固定标题。
 - 是否避免把当前价格低于 Average Cost 直接推导为风险收益比更好；Average Cost 只是用户历史成本，不是市场估值或未来收益概率；
 - 是否避免默认整股交易；`fractionable` 必须来自确定性 Asset / Broker Capability，当前缺失时应保持 `UNKNOWN`。
@@ -30,6 +32,6 @@ uv run pytest tests/evaluation/test_real_model_behavior.py -s
 - `low_cash_personalization` / `high_cash_personalization` 使用完全相同的问题，人工比较 Cash 变化是否真正改变分析。
 - `long_term_position_personalization` / `swing_position_personalization` 使用完全相同的问题，人工比较 Position Type 是否真正改变分析重点。
 
-Context Capability 表示系统是否拥有某类数据来源，不表示某个 ticker 的具体属性。M4 的 `price_history` 为 `AVAILABLE`，但 `technical_analysis` 与 `asset_metadata` 仍为 `UNAVAILABLE`，因此不提供技术信号、`tradable`、`fractionable` 或可执行购买数量；Behavioral Eval 不允许模型根据训练知识猜测这些事实。
+Context Capability 表示系统是否拥有某类数据来源，不表示某个 ticker 的具体属性。M4 的 `price_history` 与 `news` 为 `AVAILABLE`，但 News 只是 attributed reporting；`technical_analysis` 与 `asset_metadata` 仍为 `UNAVAILABLE`，因此不提供独立事实核验、技术信号、`tradable`、`fractionable` 或可执行购买数量。Behavioral Eval 不允许模型根据训练知识猜测这些事实。
 
 真实 LLM + 真实 Market Data 另见 `tests/integration/test_investment_agent_online.py`，只作为少量 Smoke Test，不作为本 Behavioral Eval 的主要依据。

@@ -25,6 +25,7 @@ from position_pilot.application.llm import (
     LLMToolDefinition,
 )
 from position_pilot.application.market_data_service import HistoricalBarsQuery
+from position_pilot.application.news_service import NewsQuery
 from position_pilot.domain.market_data import (
     HistoricalBars,
     MarketDataCoverage,
@@ -33,6 +34,7 @@ from position_pilot.domain.market_data import (
     MarketQuote,
     OHLCVBar,
 )
+from position_pilot.domain.news import NewsArticle, NewsResult, NewsStatus, RecentNews
 from position_pilot.domain.portfolio import (
     CashBalance,
     PortfolioState,
@@ -68,6 +70,8 @@ class BehavioralCase:
     human_checks: tuple[str, ...]
     historical_results: dict[str, MarketDataResult[HistoricalBars]] = field(default_factory=dict)
     expected_history_tickers: tuple[str, ...] = ()
+    news_results: dict[str, NewsResult[RecentNews]] = field(default_factory=dict)
+    expected_news_tickers: tuple[str, ...] = ()
 
 
 class FixedPortfolioReader:
@@ -111,6 +115,19 @@ class FixedMarketData:
         return self._historical_results.get(
             query.ticker.strip().upper(),
             MarketDataResult.failure(MarketDataStatus.NO_DATA, "固定场景没有该历史行情"),
+        )
+
+
+class FixedNews:
+    """为 Behavioral Eval 返回固定 attributed reporting。"""
+
+    def __init__(self, results: dict[str, NewsResult[RecentNews]]) -> None:
+        self._results = results
+
+    def get_recent_news(self, query: NewsQuery) -> NewsResult[RecentNews]:
+        return self._results.get(
+            query.ticker.strip().upper(),
+            NewsResult.failure(NewsStatus.NO_NEWS_FOUND, "固定窗口没有返回报道"),
         )
 
 
@@ -245,6 +262,31 @@ def fixed_history(ticker: str) -> MarketDataResult[HistoricalBars]:
     )
 
 
+def fixed_news(ticker: str) -> NewsResult[RecentNews]:
+    """创建不包含独立事实核验或因果结论的固定报道。"""
+
+    return NewsResult.success(
+        RecentNews(
+            ticker=ticker,
+            articles=(
+                NewsArticle(
+                    article_id="eval-news-1",
+                    headline="Alphabet announces a product update",
+                    summary="Benzinga reports details of an Alphabet product update.",
+                    author="Fixed Reporter",
+                    url="https://news.example.test/eval-news-1",
+                    source="BENZINGA",
+                    symbols=(ticker,),
+                    created_at=NOW - timedelta(hours=3),
+                    updated_at=NOW - timedelta(hours=2),
+                ),
+            ),
+            provider="ALPACA",
+            fetched_at=NOW,
+        )
+    )
+
+
 GOOG_LONG = position("GOOG", PositionType.LONG_TERM, "2", "200")
 GOOG_SWING = position("GOOG", PositionType.SWING, "1", "220")
 GOOG_LONG_PAIRED = position("GOOG", PositionType.LONG_TERM, "1", "210")
@@ -253,6 +295,7 @@ MSFT_LONG = position("MSFT", PositionType.LONG_TERM, "0.5", "450")
 GOOG_QUOTE = fixed_quote("GOOG", "210.25")
 MSFT_QUOTE = fixed_quote("MSFT", "500.50")
 GOOG_HISTORY = fixed_history("GOOG")
+GOOG_NEWS = fixed_news("GOOG")
 
 CASES = (
     BehavioralCase(
@@ -379,11 +422,14 @@ CASES = (
         (),
         InvestmentResponseStatus.OK,
         (
-            "不编造 GOOG 下跌原因",
-            "明确没有 News 和 Market Context",
-            "不使用训练知识冒充当前市场原因",
-            "不为了出现 ticker 而机械调用 Quote",
+            "调用 GOOG Recent News，且不机械调用 Current Quote 或 Price History",
+            "将 Benzinga headline/summary 明确归因为来源报道，而非系统独立验证事实",
+            "不确认用户前提中的今天下跌，因为缺少 intraday change",
+            "只把报道与价格变化的关系表述为条件式 INFERENCE，不写成原因事实或唯一原因",
+            "明确 Market Context 仍为 UNAVAILABLE",
         ),
+        news_results={"GOOG": GOOG_NEWS},
+        expected_news_tickers=("GOOG",),
     ),
     BehavioralCase(
         "post_earnings_unknown",
@@ -519,6 +565,24 @@ CASES = (
         historical_results={"GOOG": GOOG_HISTORY},
         expected_history_tickers=("GOOG",),
     ),
+    BehavioralCase(
+        "recent_news",
+        "GOOG 最近有什么新闻？只告诉我来源可追溯的报道。",
+        Decimal("300"),
+        (GOOG_LONG,),
+        {},
+        (),
+        InvestmentResponseStatus.OK,
+        (
+            "只调用 GOOG Recent News",
+            "明确使用 Alpaca 提供、Benzinga 署名的 attributed reporting",
+            "使用“Benzinga 报道”而不是把 headline/summary 自动升级为确定事实",
+            "不调用 Current Quote、Price History 或未提供的 Earnings",
+            "不生成价格因果、预测或交易信号",
+        ),
+        news_results={"GOOG": GOOG_NEWS},
+        expected_news_tickers=("GOOG",),
+    ),
 )
 
 
@@ -548,6 +612,7 @@ def test_real_model_behavior_with_fixed_market_data(case: BehavioralCase) -> Non
         FixedPortfolioReader(case),
         FixedMarketData(case.market_results, case.historical_results),
         llm,
+        news=FixedNews(case.news_results),
         clock=lambda: NOW + timedelta(minutes=30),
     )
 
@@ -573,7 +638,12 @@ def test_real_model_behavior_with_fixed_market_data(case: BehavioralCase) -> Non
         for source in result.sources
         if source.type is ContextSourceType.PRICE_HISTORY and source.ticker is not None
     )
-    completion_count_without_repair = 2 if tool_tickers or history_tickers else 1
+    news_tickers = tuple(
+        source.ticker
+        for source in result.sources
+        if source.type is ContextSourceType.RECENT_NEWS and source.ticker is not None
+    )
+    completion_count_without_repair = 2 if tool_tickers or history_tickers or news_tickers else 1
     guard_repair_used = llm.completion_count > completion_count_without_repair
     print(
         json.dumps(
@@ -582,6 +652,7 @@ def test_real_model_behavior_with_fixed_market_data(case: BehavioralCase) -> Non
                 "question": case.question,
                 "tool_tickers": tool_tickers,
                 "history_tickers": history_tickers,
+                "news_tickers": news_tickers,
                 "status": result.status.value,
                 "llm_completion_count": llm.completion_count,
                 "guard_repair_used": guard_repair_used,
@@ -596,5 +667,7 @@ def test_real_model_behavior_with_fixed_market_data(case: BehavioralCase) -> Non
     assert sorted(tool_tickers) == sorted(case.expected_tickers)
     assert len(history_tickers) == len(case.expected_history_tickers)
     assert sorted(history_tickers) == sorted(case.expected_history_tickers)
+    assert len(news_tickers) == len(case.expected_news_tickers)
+    assert sorted(news_tickers) == sorted(case.expected_news_tickers)
     assert result.status is case.expected_status
     assert llm.completion_count <= completion_count_without_repair + 1

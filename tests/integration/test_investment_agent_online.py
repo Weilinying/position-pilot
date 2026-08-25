@@ -12,9 +12,11 @@ from position_pilot.application.investment_agent import (
     InvestmentAnswer,
 )
 from position_pilot.application.market_data_service import MarketDataService
+from position_pilot.application.news_service import NewsService
 from position_pilot.domain.portfolio import CashBalance, PortfolioState
 from position_pilot.integrations.aliyun_llm import AliyunLLMProvider
 from position_pilot.integrations.alpaca_market_data import AlpacaMarketDataProvider
+from position_pilot.integrations.alpaca_news import AlpacaNewsProvider
 
 pytestmark = [pytest.mark.integration, pytest.mark.online]
 
@@ -62,7 +64,15 @@ def test_real_llm_and_market_data_complete_single_agent_round() -> None:
             timeout_seconds=float(os.getenv("ALPACA_REQUEST_TIMEOUT_SECONDS", "10")),
         )
     )
-    agent = InvestmentAgent(FixedEmptyPortfolioReader(), market_data, llm)
+    news = NewsService(
+        AlpacaNewsProvider(
+            api_key_id=alpaca_key,
+            api_secret_key=alpaca_secret,
+            base_url=os.getenv("ALPACA_DATA_BASE_URL", "https://data.alpaca.markets"),
+            timeout_seconds=float(os.getenv("ALPACA_REQUEST_TIMEOUT_SECONDS", "10")),
+        )
+    )
+    agent = InvestmentAgent(FixedEmptyPortfolioReader(), market_data, llm, news=news)
 
     result = agent.answer(USER_ID, "GOOG 当前价格是多少？我目前有持仓吗？")
 
