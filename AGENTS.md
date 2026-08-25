@@ -4,7 +4,7 @@
 
 本文件规定 Coding Agent 在 PositionPilot Repository 中必须遵守的开发、测试、Review 和 Git 规则。
 
-文档职责：`PROJECT.md` 定义产品与 V1 边界；`ROADMAP.md` 定义 V1 Milestone；`docs/plans/` 保存复杂 Milestone 的执行计划；`docs/adr/` 记录重要技术与架构决策；`ARCHITECTURE.md` 在骨架稳定后描述系统当前实际架构；本文件只规定开发行为。
+文档职责：`PROJECT.md` 定义产品与 V1 边界；`ROADMAP.md` 定义 V1 Milestone；`docs/plans/` 保存复杂 Milestone 的执行计划；`docs/adr/` 记录重要技术与架构决策；`docs/engineering-notes/` 记录值得长期保留的 Failure、设计权衡和实现边界；`ARCHITECTURE.md` 在骨架稳定后描述系统当前实际架构；本文件只规定开发行为。
 
 执行非简单任务前，必须阅读 `PROJECT.md`、本文件以及任务相关代码和测试。仅当任务涉及 Milestone 规划、范围判断或跨模块 Feature 时读取 `ROADMAP.md` 的相关 Milestone；仅按需读取相关 ADR 和 `docs/plans/`。不要只根据最新 Prompt 开发而忽略已有约束。
 
@@ -119,6 +119,8 @@ Database Schema 变化必须通过 Migration 管理，不得把手工修改数�
 
 API Key、Database Credential、Authentication Token 和其他 Secret 不得硬编码或进入 Git Commit。运行时配置使用 Environment Variables 或已批准方案；Repository 维护 `.env.example`，但不得包含真实 Secret。
 
+Coding Agent 禁止读取仓库中的 `.env` 或 `.env.*` 文件内容，以避免 API Key、Credential 或其他 Secret 泄露；`.env.example` 除外。不得使用 `cat`、`sed`、`rg`、脚本或其他方式输出、解析或间接读取这些文件。
+
 核心 Agent / Tool 流程应提供足够的结构化日志，以定位 Context Selection、Tool Call、Tool / Provider Failure 和关键 Latency；不得记录 Secret 或没有调试必要的敏感用户数据。V1 不因 Logging 需求自动引入完整 Observability Platform。
 
 ## 11. Testing
@@ -135,15 +137,32 @@ Unit Test 不依赖真实 LLM API 或真实金融 API，外部 Provider 应 Mock
 
 一个 Commit 对应一个独立、完整、可解释且可验证的 Logical Change。一个 Commit 可以修改多个强相关文件，但不得混入无关 Feature、顺手重构或全仓库格式化；一个 Feature 或 Milestone Workstream 可以包含多个 Atomic Commits。
 
-Commit 前运行与该变化相关的测试。Commit Message 使用 Conventional Commits，如 `feat:`、`fix:`、`refactor:`、`test:`、`docs:`、`chore:`，禁止无信息量描述。架构选择理由写入 ADR，不塞进 Commit Message。
+### Milestone 自动开发
 
-在明确授权进行 Milestone 自动开发时，AI 可以创建 Feature Branch 并产生 Atomic Commits。普通交互式修改没有明确要求时不默认 Commit。
+当用户明确要求“开始、实现、完成、继续开发某个 Milestone”时，默认视为已授权该 Milestone 的本地 Git 工作流，除非用户明确要求不要进行 Git 操作。
 
-Milestone 或 Workstream 进入 Human Acceptance 前，Git History 应保持清晰、可解释。若开发过程中产生临时 Checkpoint Commit，应在不破坏协作和共享历史的前提下整理为有意义的 Atomic Commits；不得擅自改写已经共享、Push 或被其他 Agent 依赖的历史。
+开始 Milestone 前：
+- 检查当前 Git 状态；
+- 不得覆盖用户已有的未提交修改；
+- 如当前不在适合直接开发的 Feature Branch，应为该 Milestone 创建独立 Branch。
 
-未经明确授权，不得 Push / Merge `main`、Force Push、重写共享历史、删除远程 Branch 或修改其他 Agent 已完成的历史 Commit。Milestone 完成后，应先通过 Automated Review、Tests 和 Human Acceptance，再合并到 `main`。
+开发过程中：
+- 每完成一个独立、完整且通过相关测试与 Review 的 Logical Change，应创建 Atomic Commit；
+- Commit Message 使用 Conventional Commits，如 `feat:`、`fix:`、`refactor:`、`test:`、`docs:`、`chore:`；
+- 不为了制造 Commit 数量机械拆分修改；
+- 不提交已知无法通过相关验证的中间状态。
 
-## 13. Roadmap、Plan、ADR 与 Architecture
+Milestone 完成后：
+- 保持本地 Commit History 清晰；
+- 汇总 Branch 名称和本次产生的 Commits；
+- 在 Human Acceptance 前不得自动 Merge 到 `main`。
+- 当用户明确完成或通过当前 Milestone 的 Human Review / Human Acceptance 时，视为已授权将当前 Milestone Branch 的全部修改合并到本地 `main`；Agent 应在最终验证通过后直接完成合并，无需再次请求 Merge 授权。
+- 合并完成后应确认 Milestone Branch 的全部提交均已进入本地 `main`，并汇总 Merge 结果；除非用户另有明确要求，不得因此自动 Push、删除 Branch 或改写历史。
+
+未经明确授权，不得 Push 远程仓库、Merge `main`、Force Push、重写已共享历史或删除远程 Branch。
+
+普通单次问答、局部修改或用户未要求完整执行 Milestone 的任务，不默认创建 Branch 或 Commit。
+## 13. Roadmap、Plan、ADR、Engineering Notes 与 Architecture
 
 `ROADMAP.md` 只定义 V1 Milestone 的 Goal、Scope 和 Done Criteria。仅在 Milestone 规划、范围判断或跨模块 Feature 中读取相关部分，不要求普通任务全文加载。
 
@@ -151,12 +170,24 @@ Milestone 或 Workstream 进入 Human Acceptance 前，Git History 应保持清�
 
 `docs/adr/` 只记录重要且具有长期影响的技术或架构选择。ADR 应说明背景、候选方案、最终选择、理由、Trade-off 和重新考虑条件，不记录普通 Feature 流水账。技术尚未决定时保持“未决定”。
 
-`ARCHITECTURE.md` 在第一版工程骨架稳定后建立，用于描述系统当前实际结构；主要模块边界变化时应同步检查是否需要更新。
+`docs/engineering-notes/` 记录不足以上升为 ADR、但值得长期保留的工程判断，例如系统性 Eval / Bug Failure、重要设计权衡、Scope Trade-off、Agent 行为边界和非直观实现决策。
 
+满足以下情况之一时，应检查是否需要新增或更新 Engineering Note：
+- Eval 或 Bug 暴露出可重复的系统性 Failure Mode；
+- 在多个合理方案之间做出有意义的取舍；
+- 明确划分 Prompt、Tool、Code、Memory 或 Context 的职责边界；
+- 明确决定暂不实现某项看似合理的能力；
+- 实现方式不直观，未来仅阅读代码难以理解其原因。
+
+Engineering Note 应保持简短，优先记录 `Problem → Decision → Alternatives / Trade-off → Trigger / Future`。普通 Bug Fix、显然的实现细节和可直接从代码或 Git History 理解的修改不单独记录。
+
+任务完成或 Automated Review 后，应检查本次修改是否产生新的 ADR、Engineering Note 或 Architecture 更新需求，但不得为了完成流程机械创建文档。
+
+`ARCHITECTURE.md` 在第一版工程骨架稳定后建立，用于描述系统当前实际结构；主要模块边界变化时应同步检查是否需要更新。
 ## 14. 完成任务
 
 任务完成前应确认 Acceptance Criteria 已满足、相关 Tests 和已配置质量检查已经运行、Automated Review 中需要解决的问题已处理、Review 后的修改已重新验证、实际行为符合预期且没有无关修改。
 
-非简单任务最终简要说明：实现了什么、为什么这样实现、涉及哪些文件、运行了哪些检查、仍有哪些已知限制，以及是否产生新的 ADR / Plan / Commit 或触发 Human Review Gate。
+非简单任务最终简要说明：实现了什么、为什么这样实现、涉及哪些文件、运行了哪些检查、仍有哪些已知限制，以及是否产生新的 ADR / Engineering Note / Plan / Commit 或触发 Human Review Gate。
 
 **Simple first. Reuse existing logic. Test it. Review it. Test again. Then evolve.**
