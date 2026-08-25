@@ -7,8 +7,15 @@ from uuid import UUID
 from sqlalchemy import Select, select, update
 from sqlalchemy.orm import Session, sessionmaker
 
-from position_pilot.domain.portfolio import PositionType, Transaction, TransactionAction, User
-from position_pilot.infrastructure.models import TransactionModel, UserModel
+from position_pilot.domain.portfolio import (
+    CashEvent,
+    CashEventType,
+    PositionType,
+    Transaction,
+    TransactionAction,
+    User,
+)
+from position_pilot.infrastructure.models import CashEventModel, TransactionModel, UserModel
 
 
 def _to_user(model: UserModel) -> User:
@@ -37,6 +44,20 @@ def _to_transaction(model: TransactionModel) -> Transaction:
         commission=model.commission,
         fee_schedule=model.fee_schedule,
         position_type=PositionType(model.position_type),
+        occurred_at=model.occurred_at,
+        reason=model.reason,
+    )
+
+
+def _to_cash_event(model: CashEventModel) -> CashEvent:
+    """将 ORM Cash Event 转换为经过领域校验的 Ledger Record。"""
+
+    return CashEvent(
+        id=model.id,
+        user_id=model.user_id,
+        sequence=model.sequence,
+        event_type=CashEventType(model.event_type),
+        amount=model.amount,
         occurred_at=model.occurred_at,
         reason=model.reason,
     )
@@ -125,6 +146,31 @@ class SqlAlchemyPortfolioUnitOfWork:
             )
         )
 
+    def list_cash_events(self, user_id: UUID) -> list[CashEvent]:
+        """按稳定 sequence 读取 User 的完整 Cash Event Ledger。"""
+
+        statement = (
+            select(CashEventModel)
+            .where(CashEventModel.user_id == user_id)
+            .order_by(CashEventModel.sequence)
+        )
+        return [_to_cash_event(model) for model in self.session.scalars(statement)]
+
+    def add_cash_event(self, cash_event: CashEvent) -> None:
+        """追加领域层已校验的不可变 Cash Event。"""
+
+        self.session.add(
+            CashEventModel(
+                id=cash_event.id,
+                user_id=cash_event.user_id,
+                sequence=cash_event.sequence,
+                event_type=cash_event.event_type.value,
+                amount=cash_event.amount,
+                occurred_at=cash_event.occurred_at,
+                reason=cash_event.reason,
+            )
+        )
+
     def synchronize_sequences(self, transactions: list[Transaction]) -> None:
         """两阶段更新经济 sequence，避免重新编号时触发唯一约束。"""
 
@@ -145,6 +191,27 @@ class SqlAlchemyPortfolioUnitOfWork:
                 update(TransactionModel)
                 .where(TransactionModel.id == transaction.id)
                 .values(sequence=transaction.sequence)
+            )
+        self.session.flush()
+
+    def synchronize_cash_event_sequences(self, cash_events: list[CashEvent]) -> None:
+        """两阶段更新 Cash Event sequence，避免历史补录触发唯一约束。"""
+
+        if not cash_events:
+            return
+        temporary_offset = len(cash_events) + max(event.sequence for event in cash_events)
+        for cash_event in cash_events:
+            self.session.execute(
+                update(CashEventModel)
+                .where(CashEventModel.id == cash_event.id)
+                .values(sequence=cash_event.sequence + temporary_offset)
+            )
+        self.session.flush()
+        for cash_event in cash_events:
+            self.session.execute(
+                update(CashEventModel)
+                .where(CashEventModel.id == cash_event.id)
+                .values(sequence=cash_event.sequence)
             )
         self.session.flush()
 

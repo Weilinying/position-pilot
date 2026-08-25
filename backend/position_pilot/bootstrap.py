@@ -13,13 +13,20 @@ from position_pilot.integrations.alpaca_market_data import create_alpaca_market_
 
 
 @lru_cache
-def get_investment_agent() -> InvestmentAgent:
-    """按已批准依赖方向装配进程内共享 InvestmentAgent。"""
+def get_portfolio_service() -> PortfolioService:
+    """装配进程内共享的 Portfolio Application Service。"""
 
     settings = get_settings()
     engine = create_database_engine(str(settings.database_url))
     session_factory = create_session_factory(engine)
-    portfolio_service = PortfolioService(SqlAlchemyPortfolioUnitOfWorkFactory(session_factory))
+    return PortfolioService(SqlAlchemyPortfolioUnitOfWorkFactory(session_factory))
+
+
+@lru_cache
+def get_investment_agent() -> InvestmentAgent:
+    """按已批准依赖方向装配进程内共享 InvestmentAgent。"""
+
+    settings = get_settings()
     market_data_service = MarketDataService(create_alpaca_market_data_provider(settings))
     llm_provider = create_aliyun_llm_provider(settings)
-    return InvestmentAgent(portfolio_service, market_data_service, llm_provider)
+    return InvestmentAgent(get_portfolio_service(), market_data_service, llm_provider)

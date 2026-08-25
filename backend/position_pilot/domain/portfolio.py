@@ -34,6 +34,13 @@ class TransactionAction(StrEnum):
     SELL = "SELL"
 
 
+class CashEventType(StrEnum):
+    """Portfolio 创建后的确定性现金调整类型。"""
+
+    DEPOSIT = "DEPOSIT"
+    WITHDRAWAL = "WITHDRAWAL"
+
+
 class PositionType(StrEnum):
     """同一 Ticker 下必须独立维护的持仓意图。"""
 
@@ -126,6 +133,17 @@ def normalize_timestamp(value: datetime) -> datetime:
     return value.astimezone(UTC)
 
 
+def normalize_reason(reason: str | None) -> str | None:
+    """规范化可选 Ledger 原因并限制持久化长度。"""
+
+    if reason is None:
+        return None
+    normalized = reason.strip()
+    if len(normalized) > MAX_REASON_LENGTH:
+        raise InvalidPortfolioValue("reason 最多支持 1000 个字符")
+    return normalized or None
+
+
 @dataclass(frozen=True, slots=True)
 class User:
     """Portfolio Ledger 的所有者及初始现金事实。"""
@@ -206,11 +224,7 @@ class Transaction:
         object.__setattr__(self, "commission", derived_commission)
         object.__setattr__(self, "occurred_at", normalize_timestamp(self.occurred_at))
 
-        if self.reason is not None:
-            reason = self.reason.strip()
-            if len(reason) > MAX_REASON_LENGTH:
-                raise InvalidPortfolioValue("reason 最多支持 1000 个字符")
-            object.__setattr__(self, "reason", reason or None)
+        object.__setattr__(self, "reason", normalize_reason(self.reason))
 
     @classmethod
     def create(
@@ -248,6 +262,52 @@ class Transaction:
         )
 
 
+@dataclass(frozen=True, slots=True)
+class CashEvent:
+    """不可变 Cash Event Ledger Record。"""
+
+    id: UUID
+    user_id: UUID
+    sequence: int
+    event_type: CashEventType
+    amount: Decimal
+    occurred_at: datetime
+    reason: str | None
+
+    def __post_init__(self) -> None:
+        if self.sequence < 1:
+            raise InvalidLedger("Cash Event sequence 必须从 1 开始")
+        if not isinstance(self.event_type, CashEventType):
+            raise InvalidPortfolioValue("event_type 必须是 DEPOSIT 或 WITHDRAWAL")
+        object.__setattr__(self, "amount", normalize_decimal(self.amount, field_name="amount"))
+        object.__setattr__(self, "occurred_at", normalize_timestamp(self.occurred_at))
+        object.__setattr__(self, "reason", normalize_reason(self.reason))
+
+    @classmethod
+    def create(
+        cls,
+        *,
+        user_id: UUID,
+        sequence: int,
+        event_type: CashEventType,
+        amount: Decimal,
+        occurred_at: datetime,
+        reason: str | None = None,
+        cash_event_id: UUID | None = None,
+    ) -> Self:
+        """从显式发生时间与正数金额创建 Cash Event。"""
+
+        return cls(
+            id=cash_event_id or uuid4(),
+            user_id=user_id,
+            sequence=sequence,
+            event_type=event_type,
+            amount=amount,
+            occurred_at=occurred_at,
+            reason=reason,
+        )
+
+
 def resequence_transactions(transactions: list[Transaction]) -> list[Transaction]:
     """按交易发生时间派生连续经济顺序，并稳定保留同一时间的原相对顺序。"""
 
@@ -262,6 +322,16 @@ def resequence_transactions(transactions: list[Transaction]) -> list[Transaction
     ]
 
 
+def resequence_cash_events(cash_events: list[CashEvent]) -> list[CashEvent]:
+    """按事件发生时间派生独立、连续且稳定的 Cash Event sequence。"""
+
+    ordered = sorted(cash_events, key=lambda event: (event.occurred_at, event.sequence))
+    return [
+        event if event.sequence == economic_sequence else replace(event, sequence=economic_sequence)
+        for economic_sequence, event in enumerate(ordered, start=1)
+    ]
+
+
 @dataclass(frozen=True, slots=True)
 class CashBalance:
     """从 Initial Cash 与 Ledger 派生的现金状态。"""
@@ -269,6 +339,8 @@ class CashBalance:
     user_id: UUID
     initial_cash: Decimal
     available_cash: Decimal
+    total_deposits: Decimal = Decimal("0")
+    total_withdrawals: Decimal = Decimal("0")
 
 
 @dataclass(frozen=True, slots=True)
@@ -284,12 +356,13 @@ class Position:
 
 @dataclass(frozen=True, slots=True)
 class PortfolioState:
-    """Transaction Ledger 重放后的完整 Structured State。"""
+    """Transaction 与 Cash Event Ledger 重放后的完整 Structured State。"""
 
     user_id: UUID
     cash: CashBalance
     positions: tuple[Position, ...]
     transaction_count: int
+    cash_event_count: int = 0
 
     def get_position(self, ticker: str, position_type: PositionType) -> Position | None:
         """按规范化 Ticker 与 Position Type 查找持仓。"""
@@ -311,29 +384,64 @@ class _PositionAccumulator:
     cost_basis: Decimal
 
 
-def rebuild_portfolio(user: User, transactions: list[Transaction]) -> PortfolioState:
-    """按经济 sequence 重建 Cash、Position 与 Average Cost。
+def rebuild_portfolio(
+    user: User,
+    transactions: list[Transaction],
+    cash_events: list[CashEvent] | None = None,
+) -> PortfolioState:
+    """按实际发生时间重建 Cash、Position 与 Average Cost。
 
     参数:
         user: Ledger 所有者及 Initial Cash。
         transactions: 该用户的完整 Transaction Ledger。
+        cash_events: 该用户的完整 Cash Event Ledger。
 
     异常:
         InvalidLedger: Ledger 所有者或 sequence 不一致。
-        InsufficientCash: 历史 BUY 超过当时可用现金。
+        InsufficientCash: 历史 BUY 或 WITHDRAWAL 超过当时可用现金。
         InsufficientShares: 历史 SELL 超过对应仓位 Shares。
     """
 
     ordered_transactions = sorted(transactions, key=lambda transaction: transaction.sequence)
-    available_cash = user.initial_cash
-    positions: dict[tuple[str, PositionType], _PositionAccumulator] = {}
-
+    ordered_cash_events = sorted(cash_events or [], key=lambda event: event.sequence)
     for expected_sequence, transaction in enumerate(ordered_transactions, start=1):
         if transaction.user_id != user.id:
             raise InvalidLedger("Ledger 包含其他 User 的 Transaction")
         if transaction.sequence != expected_sequence:
             raise InvalidLedger("Transaction sequence 必须连续且唯一")
+    for expected_sequence, cash_event in enumerate(ordered_cash_events, start=1):
+        if cash_event.user_id != user.id:
+            raise InvalidLedger("Ledger 包含其他 User 的 Cash Event")
+        if cash_event.sequence != expected_sequence:
+            raise InvalidLedger("Cash Event sequence 必须连续且唯一")
 
+    # 跨表没有全局 sequence；同一时间固定先处理现金事件，保证重建结果稳定。
+    ledger_records: list[Transaction | CashEvent] = sorted(
+        [*ordered_transactions, *ordered_cash_events],
+        key=lambda record: (
+            record.occurred_at,
+            0 if isinstance(record, CashEvent) else 1,
+            record.sequence,
+        ),
+    )
+    available_cash = user.initial_cash
+    total_deposits = Decimal("0")
+    total_withdrawals = Decimal("0")
+    positions: dict[tuple[str, PositionType], _PositionAccumulator] = {}
+
+    for record in ledger_records:
+        if isinstance(record, CashEvent):
+            if record.event_type is CashEventType.DEPOSIT:
+                available_cash += record.amount
+                total_deposits += record.amount
+                continue
+            if record.amount > available_cash:
+                raise InsufficientCash(available=available_cash, required=record.amount)
+            available_cash -= record.amount
+            total_withdrawals += record.amount
+            continue
+
+        transaction = record
         key = (transaction.ticker, transaction.position_type)
         position = positions.get(key)
 
@@ -396,7 +504,16 @@ def rebuild_portfolio(user: User, transactions: list[Transaction]) -> PortfolioS
                 DECIMAL_QUANTUM,
                 rounding=ROUND_HALF_EVEN,
             ),
+            total_deposits=total_deposits.quantize(
+                DECIMAL_QUANTUM,
+                rounding=ROUND_HALF_EVEN,
+            ),
+            total_withdrawals=total_withdrawals.quantize(
+                DECIMAL_QUANTUM,
+                rounding=ROUND_HALF_EVEN,
+            ),
         ),
         positions=derived_positions,
         transaction_count=len(ordered_transactions),
+        cash_event_count=len(ordered_cash_events),
     )

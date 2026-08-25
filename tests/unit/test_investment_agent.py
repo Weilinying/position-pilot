@@ -32,9 +32,15 @@ from position_pilot.domain.market_data import (
 )
 from position_pilot.domain.portfolio import (
     CashBalance,
+    CashEvent,
+    CashEventType,
     PortfolioState,
     Position,
     PositionType,
+    Transaction,
+    TransactionAction,
+    User,
+    rebuild_portfolio,
 )
 
 USER_ID = UUID("00000000-0000-0000-0000-000000000001")
@@ -270,6 +276,46 @@ def test_always_injects_complete_portfolio_snapshot_without_transaction_history(
     assert market_data.requested_tickers == []
     assert result.status is InvestmentResponseStatus.OK
     assert result.sources[0].type is ContextSourceType.PORTFOLIO_SNAPSHOT
+
+
+def test_cash_event_adjusted_cash_reaches_agent_snapshot_without_ledger_history() -> None:
+    """Agent 应读取 Cash Event 重建后的现金，但不注入 Cash Event History。"""
+
+    user = User.create(
+        user_id=USER_ID,
+        display_name="Cash Context User",
+        initial_cash=Decimal("1000"),
+        created_at=datetime(2026, 8, 20, 8, 0, tzinfo=UTC),
+    )
+    cash_event = CashEvent.create(
+        user_id=USER_ID,
+        sequence=1,
+        event_type=CashEventType.DEPOSIT,
+        amount=Decimal("500"),
+        occurred_at=datetime(2026, 8, 21, 8, 0, tzinfo=UTC),
+    )
+    transaction = Transaction.create(
+        user_id=USER_ID,
+        sequence=1,
+        ticker="GOOG",
+        action=TransactionAction.BUY,
+        price=Decimal("100"),
+        shares=Decimal("1"),
+        position_type=PositionType.LONG_TERM,
+        occurred_at=datetime(2026, 8, 22, 8, 0, tzinfo=UTC),
+    )
+    portfolio = rebuild_portfolio(user, [transaction], [cash_event])
+    agent, _, _, llm = make_agent([final_message()], portfolio=portfolio)
+
+    assert_answer(agent.answer(USER_ID, "我还有多少可用现金？"))
+
+    content = llm.completions[0].messages[1].content
+    assert content is not None
+    snapshot = json.loads(content)["portfolio_snapshot"]
+    assert snapshot["available_cash"] == "1399.65000000"
+    assert "cash_events" not in snapshot
+    assert snapshot["positions"][0]["shares"] == "1.00000000"
+    assert snapshot["positions"][0]["average_cost"] == "100.35000000"
 
 
 def test_portfolio_derived_facts_aggregate_by_ticker_without_losing_positions() -> None:

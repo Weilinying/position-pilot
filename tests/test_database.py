@@ -16,9 +16,10 @@ def test_create_database_engine_uses_psycopg_postgresql_dialect() -> None:
     engine.dispose()
 
 
-def test_m1_metadata_contains_only_ledger_source_of_truth_tables() -> None:
-    """M1 只能持久化 User 与 Transaction，不建立 Cash / Position 投影表。"""
+def test_metadata_contains_only_portfolio_source_of_truth_tables() -> None:
+    """只持久化 User 与两类 Ledger，不建立 Cash / Position 投影表。"""
 
     assert models.UserModel.__tablename__ == "users"
     assert models.TransactionModel.__tablename__ == "transactions"
-    assert set(Base.metadata.tables) == {"users", "transactions"}
+    assert models.CashEventModel.__tablename__ == "cash_events"
+    assert set(Base.metadata.tables) == {"users", "transactions", "cash_events"}

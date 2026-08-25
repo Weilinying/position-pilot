@@ -14,10 +14,18 @@ from position_pilot.application.errors import UserNotFound
 from position_pilot.application.portfolio_service import (
     CreateUserCommand,
     PortfolioService,
+    RecordCashEventCommand,
     RecordTransactionCommand,
 )
 from position_pilot.domain.errors import InsufficientCash
-from position_pilot.domain.portfolio import PositionType, Transaction, TransactionAction, User
+from position_pilot.domain.portfolio import (
+    CashEvent,
+    CashEventType,
+    PositionType,
+    Transaction,
+    TransactionAction,
+    User,
+)
 
 OCCURRED_AT = datetime(2026, 8, 20, 12, 0, tzinfo=UTC)
 
@@ -28,6 +36,7 @@ class FakeStore:
 
     users: dict[UUID, User] = field(default_factory=dict)
     transactions: dict[UUID, list[Transaction]] = field(default_factory=dict)
+    cash_events: dict[UUID, list[CashEvent]] = field(default_factory=dict)
     lock_requests: list[UUID] = field(default_factory=list)
     commit_count: int = 0
 
@@ -57,6 +66,7 @@ class FakeUnitOfWork:
     def add_user(self, user: User) -> None:
         self._store.users[user.id] = user
         self._store.transactions[user.id] = []
+        self._store.cash_events[user.id] = []
 
     def list_transactions(self, user_id: UUID) -> list[Transaction]:
         return sorted(
@@ -66,6 +76,12 @@ class FakeUnitOfWork:
 
     def add_transaction(self, transaction: Transaction) -> None:
         self._store.transactions[transaction.user_id].append(transaction)
+
+    def list_cash_events(self, user_id: UUID) -> list[CashEvent]:
+        return sorted(self._store.cash_events[user_id], key=lambda event: event.sequence)
+
+    def add_cash_event(self, cash_event: CashEvent) -> None:
+        self._store.cash_events[cash_event.user_id].append(cash_event)
 
     def synchronize_sequences(self, transactions: list[Transaction]) -> None:
         """用重新派生的 Transaction 替换已存在记录。"""
@@ -77,6 +93,17 @@ class FakeUnitOfWork:
         self._store.transactions[user_id] = [
             replacements.get(transaction.id, transaction)
             for transaction in self._store.transactions[user_id]
+        ]
+
+    def synchronize_cash_event_sequences(self, cash_events: list[CashEvent]) -> None:
+        """用重新派生的 Cash Event 替换已存在记录。"""
+
+        if not cash_events:
+            return
+        user_id = cash_events[0].user_id
+        replacements = {event.id: event for event in cash_events}
+        self._store.cash_events[user_id] = [
+            replacements.get(event.id, event) for event in self._store.cash_events[user_id]
         ]
 
     def commit(self) -> None:
@@ -106,6 +133,14 @@ def test_record_command_does_not_accept_amount() -> None:
     assert "amount" not in signature(RecordTransactionCommand).parameters
     assert "commission" not in signature(RecordTransactionCommand).parameters
     assert "sequence" not in signature(RecordTransactionCommand).parameters
+
+
+def test_cash_event_command_does_not_accept_ledger_identity_or_sequence() -> None:
+    """Cash Event ID 与 sequence 必须由系统产生，不能由调用方指定。"""
+
+    assert "id" not in signature(RecordCashEventCommand).parameters
+    assert "cash_event_id" not in signature(RecordCashEventCommand).parameters
+    assert "sequence" not in signature(RecordCashEventCommand).parameters
 
 
 def test_creates_user_and_recovers_initial_cash() -> None:
@@ -167,6 +202,96 @@ def test_records_transactions_with_lock_and_derived_financial_fields() -> None:
     assert recovered.transaction_count == 2
     assert len(recovered.positions) == 2
     assert recovered.cash.available_cash == Decimal("799.43275000")
+
+
+def test_records_cash_events_with_lock_and_rebuilds_available_cash() -> None:
+    """Cash Event 写入应锁定 User，并返回同事务重建后的现金状态。"""
+
+    service, store = make_service()
+    user = service.create_user(
+        CreateUserCommand(display_name="Alice", initial_cash=Decimal("1000"))
+    )
+
+    deposit = service.record_cash_event(
+        RecordCashEventCommand(
+            user_id=user.id,
+            event_type=CashEventType.DEPOSIT,
+            amount=Decimal("500"),
+            occurred_at=OCCURRED_AT,
+            reason="追加投资预算",
+        )
+    )
+    withdrawal = service.record_cash_event(
+        RecordCashEventCommand(
+            user_id=user.id,
+            event_type=CashEventType.WITHDRAWAL,
+            amount=Decimal("200"),
+            occurred_at=datetime(2026, 8, 21, 12, 0, tzinfo=UTC),
+        )
+    )
+
+    state = service.get_portfolio(user.id)
+
+    assert deposit.cash_event.amount == Decimal("500.00000000")
+    assert deposit.portfolio.cash.available_cash == Decimal("1500.00000000")
+    assert withdrawal.portfolio.cash.available_cash == Decimal("1300.00000000")
+    assert state.cash.total_deposits == Decimal("500.00000000")
+    assert state.cash.total_withdrawals == Decimal("200.00000000")
+    assert state.cash_event_count == 2
+    assert store.lock_requests == [user.id, user.id]
+    assert store.commit_count == 3
+
+
+def test_failed_withdrawal_is_not_added_or_committed() -> None:
+    """超额 Withdrawal 必须在 Ledger 追加与 Commit 前失败。"""
+
+    service, store = make_service()
+    user = service.create_user(CreateUserCommand(display_name="Alice", initial_cash=Decimal("100")))
+
+    with pytest.raises(InsufficientCash) as error:
+        service.record_cash_event(
+            RecordCashEventCommand(
+                user_id=user.id,
+                event_type=CashEventType.WITHDRAWAL,
+                amount=Decimal("101"),
+                occurred_at=OCCURRED_AT,
+            )
+        )
+
+    assert error.value.available == Decimal("100.00000000")
+    assert service.list_cash_events(user.id) == ()
+    assert store.commit_count == 1
+
+
+def test_backdated_cash_event_resequences_independent_ledger() -> None:
+    """Cash Event 历史补录应重新派生自身 sequence。"""
+
+    service, _ = make_service()
+    user = service.create_user(CreateUserCommand(display_name="Alice", initial_cash=Decimal("100")))
+    later = service.record_cash_event(
+        RecordCashEventCommand(
+            user_id=user.id,
+            event_type=CashEventType.DEPOSIT,
+            amount=Decimal("20"),
+            occurred_at=datetime(2026, 8, 22, 12, 0, tzinfo=UTC),
+        )
+    )
+    earlier = service.record_cash_event(
+        RecordCashEventCommand(
+            user_id=user.id,
+            event_type=CashEventType.DEPOSIT,
+            amount=Decimal("10"),
+            occurred_at=OCCURRED_AT,
+        )
+    )
+
+    cash_events = service.list_cash_events(user.id)
+
+    assert earlier.cash_event.sequence == 1
+    assert [(event.id, event.sequence) for event in cash_events] == [
+        (earlier.cash_event.id, 1),
+        (later.cash_event.id, 2),
+    ]
 
 
 def test_backdated_transaction_resequences_by_economic_time() -> None:
@@ -231,7 +356,7 @@ def test_failed_transaction_is_not_added_or_committed() -> None:
     assert store.commit_count == 1
 
 
-@pytest.mark.parametrize("operation", ["portfolio", "transactions"])
+@pytest.mark.parametrize("operation", ["portfolio", "transactions", "cash_events"])
 def test_read_operations_reject_unknown_user(operation: str) -> None:
     """未知 User 必须产生明确 Application Error。"""
 
@@ -241,8 +366,10 @@ def test_read_operations_reject_unknown_user(operation: str) -> None:
     with pytest.raises(UserNotFound) as error:
         if operation == "portfolio":
             service.get_portfolio(user_id)
-        else:
+        elif operation == "transactions":
             service.list_transactions(user_id)
+        else:
+            service.list_cash_events(user_id)
 
     assert error.value.user_id == user_id
 
@@ -266,4 +393,23 @@ def test_record_transaction_rejects_unknown_user() -> None:
         )
 
     assert store.transactions == {}
+    assert store.commit_count == 0
+
+
+def test_record_cash_event_rejects_unknown_user() -> None:
+    """未知 User 不得创建孤立 Cash Event。"""
+
+    service, store = make_service()
+
+    with pytest.raises(UserNotFound):
+        service.record_cash_event(
+            RecordCashEventCommand(
+                user_id=uuid4(),
+                event_type=CashEventType.DEPOSIT,
+                amount=Decimal("10"),
+                occurred_at=OCCURRED_AT,
+            )
+        )
+
+    assert store.cash_events == {}
     assert store.commit_count == 0

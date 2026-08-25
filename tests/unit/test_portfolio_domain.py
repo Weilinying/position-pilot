@@ -15,6 +15,8 @@ from position_pilot.domain.errors import (
     InvalidPortfolioValue,
 )
 from position_pilot.domain.portfolio import (
+    CashEvent,
+    CashEventType,
     PositionType,
     Transaction,
     TransactionAction,
@@ -47,6 +49,7 @@ def make_transaction(
     shares: str,
     position_type: PositionType = PositionType.LONG_TERM,
     ticker: str = "GOOG",
+    occurred_at: datetime = OCCURRED_AT,
 ) -> Transaction:
     """创建确定时间的测试 Transaction。"""
 
@@ -58,7 +61,25 @@ def make_transaction(
         price=Decimal(price),
         shares=Decimal(shares),
         position_type=position_type,
-        occurred_at=OCCURRED_AT,
+        occurred_at=occurred_at,
+    )
+
+
+def make_cash_event(
+    *,
+    sequence: int,
+    event_type: CashEventType,
+    amount: str,
+    occurred_at: datetime = OCCURRED_AT,
+) -> CashEvent:
+    """创建固定 User 的 Cash Event。"""
+
+    return CashEvent.create(
+        user_id=USER_ID,
+        sequence=sequence,
+        event_type=event_type,
+        amount=Decimal(amount),
+        occurred_at=occurred_at,
     )
 
 
@@ -119,6 +140,193 @@ def test_rebuilds_weighted_average_cost_and_cash() -> None:
     assert position.average_cost == Decimal("16.69000000")
     assert state.cash.available_cash == Decimal("499.30000000")
     assert state.transaction_count == 2
+
+
+def test_rebuilds_cash_adjustment_vertical_slice_to_1100() -> None:
+    """Deposit、净交易现金流与 Withdrawal 应按实际时间稳定合并重放。"""
+
+    state = rebuild_portfolio(
+        make_user(),
+        [
+            make_transaction(
+                sequence=1,
+                action=TransactionAction.BUY,
+                price="594.05940594",
+                shares="0.5",
+                occurred_at=datetime(2026, 8, 21, 12, 0, tzinfo=UTC),
+            ),
+            make_transaction(
+                sequence=2,
+                action=TransactionAction.SELL,
+                price="404.04040404",
+                shares="0.25",
+                occurred_at=datetime(2026, 8, 22, 12, 0, tzinfo=UTC),
+            ),
+        ],
+        [
+            make_cash_event(
+                sequence=1,
+                event_type=CashEventType.DEPOSIT,
+                amount="500",
+                occurred_at=datetime(2026, 8, 20, 12, 0, tzinfo=UTC),
+            ),
+            make_cash_event(
+                sequence=2,
+                event_type=CashEventType.WITHDRAWAL,
+                amount="200",
+                occurred_at=datetime(2026, 8, 23, 12, 0, tzinfo=UTC),
+            ),
+        ],
+    )
+
+    position = state.get_position("GOOG", PositionType.LONG_TERM)
+    assert state.cash.available_cash == Decimal("1100.00000000")
+    assert state.cash.total_deposits == Decimal("500.00000000")
+    assert state.cash.total_withdrawals == Decimal("200.00000000")
+    assert state.transaction_count == 2
+    assert state.cash_event_count == 2
+    assert position is not None
+    assert position.shares == Decimal("0.25000000")
+
+
+def test_cash_events_do_not_change_position_financials() -> None:
+    """Cash Event 只能改变 Cash，不得改变 Shares、Cost Basis 或 Average Cost。"""
+
+    transaction = make_transaction(
+        sequence=1,
+        action=TransactionAction.BUY,
+        price="10",
+        shares="10",
+        occurred_at=datetime(2026, 8, 21, 12, 0, tzinfo=UTC),
+    )
+    without_cash_events = rebuild_portfolio(make_user(), [transaction])
+    with_cash_events = rebuild_portfolio(
+        make_user(),
+        [transaction],
+        [
+            make_cash_event(
+                sequence=1,
+                event_type=CashEventType.DEPOSIT,
+                amount="500",
+            )
+        ],
+    )
+
+    assert with_cash_events.positions == without_cash_events.positions
+    assert (
+        with_cash_events.cash.available_cash - without_cash_events.cash.available_cash
+        == Decimal("500.00000000")
+    )
+
+
+def test_withdrawal_rejects_insufficient_cash() -> None:
+    """Withdrawal 不得令 Available Cash 变为负数。"""
+
+    with pytest.raises(InsufficientCash) as error:
+        rebuild_portfolio(
+            make_user("100"),
+            [],
+            [
+                make_cash_event(
+                    sequence=1,
+                    event_type=CashEventType.WITHDRAWAL,
+                    amount="101",
+                )
+            ],
+        )
+
+    assert error.value.available == Decimal("100.00000000")
+    assert error.value.required == Decimal("101.00000000")
+
+
+def test_cash_event_rebuild_is_deterministic_and_uses_stable_same_time_order() -> None:
+    """同一组 Ledger 重建必须稳定，且同时间 Cash Event 先于 BUY 生效。"""
+
+    transaction = make_transaction(
+        sequence=1,
+        action=TransactionAction.BUY,
+        price="150",
+        shares="1",
+    )
+    cash_event = make_cash_event(
+        sequence=1,
+        event_type=CashEventType.DEPOSIT,
+        amount="100",
+    )
+
+    first = rebuild_portfolio(make_user("100"), [transaction], [cash_event])
+    second = rebuild_portfolio(make_user("100"), [transaction], [cash_event])
+
+    assert first == second
+    assert first.cash.available_cash == Decimal("49.65000000")
+
+
+@pytest.mark.parametrize("amount", ["0", "-1", "1.000000001"])
+def test_rejects_invalid_cash_event_amount(amount: str) -> None:
+    """Cash Event amount 必须是最多 8 位小数的正数。"""
+
+    with pytest.raises(InvalidPortfolioValue):
+        make_cash_event(sequence=1, event_type=CashEventType.DEPOSIT, amount=amount)
+
+
+def test_rejects_unknown_cash_event_type_and_naive_timestamp() -> None:
+    """未知类型与无时区发生时间不得进入 Cash Event Ledger。"""
+
+    with pytest.raises(InvalidPortfolioValue, match="event_type"):
+        CashEvent.create(
+            user_id=USER_ID,
+            sequence=1,
+            event_type=cast(CashEventType, "DIVIDEND"),
+            amount=Decimal("1"),
+            occurred_at=OCCURRED_AT,
+        )
+    with pytest.raises(InvalidPortfolioValue, match="timestamp"):
+        CashEvent.create(
+            user_id=USER_ID,
+            sequence=1,
+            event_type=CashEventType.DEPOSIT,
+            amount=Decimal("1"),
+            occurred_at=datetime(2026, 8, 20, 12, 0),
+        )
+
+
+def test_cash_event_normalizes_reason_and_timestamp() -> None:
+    """Cash Event 应保留规范化原因并把实际发生时间统一为 UTC。"""
+
+    cash_event = CashEvent.create(
+        user_id=USER_ID,
+        sequence=1,
+        event_type=CashEventType.DEPOSIT,
+        amount=Decimal("1"),
+        occurred_at=datetime.fromisoformat("2026-08-20T20:00:00+08:00"),
+        reason="  追加投资预算  ",
+    )
+
+    assert cash_event.occurred_at == OCCURRED_AT
+    assert cash_event.occurred_at.tzinfo is UTC
+    assert cash_event.reason == "追加投资预算"
+
+
+def test_rejects_invalid_cash_event_ledger_owner_and_sequence() -> None:
+    """Cash Event Ledger 的所有者与 sequence 损坏必须明确暴露。"""
+
+    wrong_owner = CashEvent.create(
+        user_id=UUID("00000000-0000-0000-0000-000000000002"),
+        sequence=1,
+        event_type=CashEventType.DEPOSIT,
+        amount=Decimal("1"),
+        occurred_at=OCCURRED_AT,
+    )
+    gap = make_cash_event(
+        sequence=2,
+        event_type=CashEventType.DEPOSIT,
+        amount="1",
+    )
+
+    with pytest.raises(InvalidLedger, match="其他 User"):
+        rebuild_portfolio(make_user(), [], [wrong_owner])
+    with pytest.raises(InvalidLedger, match="Cash Event sequence"):
+        rebuild_portfolio(make_user(), [], [gap])
 
 
 def test_long_term_and_swing_are_independent_for_same_ticker() -> None:

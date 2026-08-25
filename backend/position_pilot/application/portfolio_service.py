@@ -10,12 +10,15 @@ from uuid import UUID
 
 from position_pilot.application.errors import UserNotFound
 from position_pilot.domain.portfolio import (
+    CashEvent,
+    CashEventType,
     PortfolioState,
     PositionType,
     Transaction,
     TransactionAction,
     User,
     rebuild_portfolio,
+    resequence_cash_events,
     resequence_transactions,
 )
 
@@ -41,6 +44,12 @@ class PortfolioUnitOfWork(Protocol):
     def add_transaction(self, transaction: Transaction) -> None: ...
 
     def synchronize_sequences(self, transactions: list[Transaction]) -> None: ...
+
+    def list_cash_events(self, user_id: UUID) -> list[CashEvent]: ...
+
+    def add_cash_event(self, cash_event: CashEvent) -> None: ...
+
+    def synchronize_cash_event_sequences(self, cash_events: list[CashEvent]) -> None: ...
 
     def commit(self) -> None: ...
 
@@ -70,6 +79,25 @@ class RecordTransactionCommand:
     reason: str | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class RecordCashEventCommand:
+    """追加 Cash Event Ledger Record 的显式输入。"""
+
+    user_id: UUID
+    event_type: CashEventType
+    amount: Decimal
+    occurred_at: datetime
+    reason: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class CashAdjustmentResult:
+    """同一事务内产生的 Cash Event 与重建后 Portfolio。"""
+
+    cash_event: CashEvent
+    portfolio: PortfolioState
+
+
 class PortfolioService:
     """协调领域计算与 Portfolio 持久化事务。"""
 
@@ -97,8 +125,9 @@ class PortfolioService:
                 raise UserNotFound(command.user_id)
 
             transactions = unit_of_work.list_transactions(user.id)
+            cash_events = unit_of_work.list_cash_events(user.id)
             # 重新派生顺序前先验证已持久化 Ledger，避免意外掩盖 sequence 损坏。
-            rebuild_portfolio(user, transactions)
+            rebuild_portfolio(user, transactions, cash_events)
             transaction = Transaction.create(
                 user_id=user.id,
                 sequence=len(transactions) + 1,
@@ -113,7 +142,7 @@ class PortfolioService:
 
             # sequence 是经济顺序的只读投影；历史补录会移动其后的派生序号。
             ordered_transactions = resequence_transactions([*transactions, transaction])
-            rebuild_portfolio(user, ordered_transactions)
+            rebuild_portfolio(user, ordered_transactions, cash_events)
             persisted_transaction = next(
                 candidate for candidate in ordered_transactions if candidate.id == transaction.id
             )
@@ -130,6 +159,46 @@ class PortfolioService:
             unit_of_work.commit()
             return persisted_transaction
 
+    def record_cash_event(self, command: RecordCashEventCommand) -> CashAdjustmentResult:
+        """锁定 User、校验完整 State 并原子追加 Cash Event。"""
+
+        with self._unit_of_work_factory() as unit_of_work:
+            user = unit_of_work.get_user(command.user_id, for_update=True)
+            if user is None:
+                raise UserNotFound(command.user_id)
+
+            transactions = unit_of_work.list_transactions(user.id)
+            cash_events = unit_of_work.list_cash_events(user.id)
+            rebuild_portfolio(user, transactions, cash_events)
+            cash_event = CashEvent.create(
+                user_id=user.id,
+                sequence=len(cash_events) + 1,
+                event_type=command.event_type,
+                amount=command.amount,
+                occurred_at=command.occurred_at,
+                reason=command.reason,
+            )
+            ordered_cash_events = resequence_cash_events([*cash_events, cash_event])
+            portfolio = rebuild_portfolio(user, transactions, ordered_cash_events)
+            persisted_cash_event = next(
+                candidate for candidate in ordered_cash_events if candidate.id == cash_event.id
+            )
+            persisted_by_id = {candidate.id: candidate for candidate in cash_events}
+            existing_cash_events = [
+                candidate for candidate in ordered_cash_events if candidate.id != cash_event.id
+            ]
+            if any(
+                candidate.sequence != persisted_by_id[candidate.id].sequence
+                for candidate in existing_cash_events
+            ):
+                unit_of_work.synchronize_cash_event_sequences(existing_cash_events)
+            unit_of_work.add_cash_event(persisted_cash_event)
+            unit_of_work.commit()
+            return CashAdjustmentResult(
+                cash_event=persisted_cash_event,
+                portfolio=portfolio,
+            )
+
     def get_portfolio(self, user_id: UUID) -> PortfolioState:
         """从持久化 Ledger 恢复当前 Portfolio State。"""
 
@@ -138,7 +207,8 @@ class PortfolioService:
             if user is None:
                 raise UserNotFound(user_id)
             transactions = unit_of_work.list_transactions(user.id)
-            return rebuild_portfolio(user, transactions)
+            cash_events = unit_of_work.list_cash_events(user.id)
+            return rebuild_portfolio(user, transactions, cash_events)
 
     def list_transactions(self, user_id: UUID) -> tuple[Transaction, ...]:
         """按 Ledger sequence 返回可追溯 Transaction。"""
@@ -148,3 +218,12 @@ class PortfolioService:
             if user is None:
                 raise UserNotFound(user_id)
             return tuple(unit_of_work.list_transactions(user.id))
+
+    def list_cash_events(self, user_id: UUID) -> tuple[CashEvent, ...]:
+        """按独立 Ledger sequence 返回可追溯 Cash Events。"""
+
+        with self._unit_of_work_factory() as unit_of_work:
+            user = unit_of_work.get_user(user_id)
+            if user is None:
+                raise UserNotFound(user_id)
+            return tuple(unit_of_work.list_cash_events(user.id))

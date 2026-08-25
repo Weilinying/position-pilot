@@ -17,17 +17,19 @@ from sqlalchemy.orm import Session, sessionmaker
 from position_pilot.application.portfolio_service import (
     CreateUserCommand,
     PortfolioService,
+    RecordCashEventCommand,
     RecordTransactionCommand,
 )
 from position_pilot.database import create_database_engine, create_session_factory
 from position_pilot.domain.errors import InsufficientCash
 from position_pilot.domain.portfolio import (
     COMMISSION_SCHEDULE,
+    CashEventType,
     PositionType,
     TransactionAction,
     User,
 )
-from position_pilot.infrastructure.models import TransactionModel, UserModel
+from position_pilot.infrastructure.models import CashEventModel, TransactionModel, UserModel
 from position_pilot.infrastructure.unit_of_work import (
     SqlAlchemyPortfolioUnitOfWork,
     SqlAlchemyPortfolioUnitOfWorkFactory,
@@ -166,6 +168,151 @@ def test_persists_and_recovers_portfolio_from_transaction_ledger() -> None:
     finally:
         with engine.begin() as connection:
             connection.execute(delete(TransactionModel).where(TransactionModel.user_id == user.id))
+            connection.execute(delete(UserModel).where(UserModel.id == user.id))
+        engine.dispose()
+
+
+def test_persists_and_recovers_combined_cash_and_transaction_ledgers() -> None:
+    """新 Service 应从两类不可变 Ledger 恢复同一 Cash 与 Position Snapshot。"""
+
+    engine = create_database_engine(get_test_database_url())
+    session_factory = create_session_factory(engine)
+    service = PortfolioService(SqlAlchemyPortfolioUnitOfWorkFactory(session_factory))
+    user = service.create_user(
+        CreateUserCommand(display_name="Cash Event User", initial_cash=Decimal("1000"))
+    )
+
+    try:
+        service.record_cash_event(
+            RecordCashEventCommand(
+                user_id=user.id,
+                event_type=CashEventType.DEPOSIT,
+                amount=Decimal("500"),
+                occurred_at=datetime(2026, 8, 20, 8, 0, tzinfo=UTC),
+            )
+        )
+        service.record_transaction(
+            RecordTransactionCommand(
+                user_id=user.id,
+                ticker="GOOG",
+                action=TransactionAction.BUY,
+                price=Decimal("594.05940594"),
+                shares=Decimal("0.5"),
+                position_type=PositionType.LONG_TERM,
+                occurred_at=datetime(2026, 8, 21, 8, 0, tzinfo=UTC),
+            )
+        )
+        service.record_transaction(
+            RecordTransactionCommand(
+                user_id=user.id,
+                ticker="GOOG",
+                action=TransactionAction.SELL,
+                price=Decimal("404.04040404"),
+                shares=Decimal("0.25"),
+                position_type=PositionType.LONG_TERM,
+                occurred_at=datetime(2026, 8, 22, 8, 0, tzinfo=UTC),
+            )
+        )
+        service.record_cash_event(
+            RecordCashEventCommand(
+                user_id=user.id,
+                event_type=CashEventType.WITHDRAWAL,
+                amount=Decimal("200"),
+                occurred_at=datetime(2026, 8, 23, 8, 0, tzinfo=UTC),
+            )
+        )
+
+        recovered_service = PortfolioService(
+            SqlAlchemyPortfolioUnitOfWorkFactory(create_session_factory(engine))
+        )
+        state = recovered_service.get_portfolio(user.id)
+        cash_events = recovered_service.list_cash_events(user.id)
+        position = state.get_position("GOOG", PositionType.LONG_TERM)
+
+        assert state.cash.initial_cash == Decimal("1000.00000000")
+        assert state.cash.total_deposits == Decimal("500.00000000")
+        assert state.cash.total_withdrawals == Decimal("200.00000000")
+        assert state.cash.available_cash == Decimal("1100.00000000")
+        assert state.transaction_count == 2
+        assert state.cash_event_count == 2
+        assert position is not None and position.shares == Decimal("0.25000000")
+        assert [event.event_type for event in cash_events] == [
+            CashEventType.DEPOSIT,
+            CashEventType.WITHDRAWAL,
+        ]
+    finally:
+        with engine.begin() as connection:
+            connection.execute(delete(CashEventModel).where(CashEventModel.user_id == user.id))
+            connection.execute(delete(TransactionModel).where(TransactionModel.user_id == user.id))
+            connection.execute(delete(UserModel).where(UserModel.id == user.id))
+        engine.dispose()
+
+
+def test_failed_withdrawal_does_not_persist_cash_event() -> None:
+    """不足现金失败后数据库不得出现无效 Cash Event。"""
+
+    engine = create_database_engine(get_test_database_url())
+    session_factory = create_session_factory(engine)
+    service = PortfolioService(SqlAlchemyPortfolioUnitOfWorkFactory(session_factory))
+    user = service.create_user(
+        CreateUserCommand(display_name="Withdrawal User", initial_cash=Decimal("100"))
+    )
+
+    try:
+        with pytest.raises(InsufficientCash):
+            service.record_cash_event(
+                RecordCashEventCommand(
+                    user_id=user.id,
+                    event_type=CashEventType.WITHDRAWAL,
+                    amount=Decimal("101"),
+                    occurred_at=datetime(2026, 8, 25, 8, 0, tzinfo=UTC),
+                )
+            )
+
+        assert service.list_cash_events(user.id) == ()
+    finally:
+        with engine.begin() as connection:
+            connection.execute(delete(CashEventModel).where(CashEventModel.user_id == user.id))
+            connection.execute(delete(UserModel).where(UserModel.id == user.id))
+        engine.dispose()
+
+
+@pytest.mark.parametrize(
+    ("event_type", "amount"),
+    [("DIVIDEND", Decimal("1")), (CashEventType.DEPOSIT.value, Decimal("0"))],
+)
+def test_database_rejects_invalid_cash_event_fields(
+    event_type: str,
+    amount: Decimal,
+) -> None:
+    """绕过 Application 时，数据库仍应拒绝未来类型与非正金额。"""
+
+    engine = create_database_engine(get_test_database_url())
+    session_factory = create_session_factory(engine)
+    service = PortfolioService(SqlAlchemyPortfolioUnitOfWorkFactory(session_factory))
+    user = service.create_user(
+        CreateUserCommand(display_name="Cash Constraint User", initial_cash=Decimal("100"))
+    )
+
+    try:
+        with session_factory() as session:
+            session.add(
+                CashEventModel(
+                    id=user.id,
+                    user_id=user.id,
+                    sequence=1,
+                    event_type=event_type,
+                    amount=amount,
+                    occurred_at=datetime(2026, 8, 25, 8, 0, tzinfo=UTC),
+                    reason=None,
+                )
+            )
+            with pytest.raises(IntegrityError):
+                session.commit()
+            session.rollback()
+    finally:
+        with engine.begin() as connection:
+            connection.execute(delete(CashEventModel).where(CashEventModel.user_id == user.id))
             connection.execute(delete(UserModel).where(UserModel.id == user.id))
         engine.dispose()
 

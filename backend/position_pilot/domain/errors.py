@@ -16,7 +16,7 @@ class InvalidLedger(PortfolioError):
 
 
 class InsufficientCash(PortfolioError):
-    """BUY 所需现金超过当前可用现金。"""
+    """BUY 或 WITHDRAWAL 所需现金超过当前可用现金。"""
 
     def __init__(self, *, available: Decimal, required: Decimal) -> None:
         self.available = available

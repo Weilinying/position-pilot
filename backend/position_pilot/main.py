@@ -1,6 +1,7 @@
 """FastAPI 应用入口。"""
 
 from datetime import datetime
+from decimal import Decimal
 from typing import Annotated
 from uuid import UUID
 
@@ -18,7 +19,13 @@ from position_pilot.application.investment_agent import (
     InvestmentRequestFailure,
     InvestmentResponseStatus,
 )
-from position_pilot.bootstrap import get_investment_agent
+from position_pilot.application.portfolio_service import (
+    PortfolioService,
+    RecordCashEventCommand,
+)
+from position_pilot.bootstrap import get_investment_agent, get_portfolio_service
+from position_pilot.domain.errors import InsufficientCash, InvalidPortfolioValue
+from position_pilot.domain.portfolio import CashEventType
 
 
 class HealthResponse(BaseModel):
@@ -66,11 +73,48 @@ class InvestmentQuestionResponse(BaseModel):
     sources: tuple[ContextSourceResponse, ...]
 
 
-class InvestmentErrorDetail(BaseModel):
+class ApiErrorDetail(BaseModel):
     """无法形成 Final Answer 时的稳定错误内容。"""
 
     code: str
     message: str
+
+
+class CashEventRequest(BaseModel):
+    """Portfolio 创建后追加不可变现金调整的输入。"""
+
+    event_type: CashEventType
+    amount: Decimal = Field(gt=0, max_digits=28, decimal_places=8)
+    occurred_at: datetime
+    reason: str | None = Field(default=None, max_length=1000)
+
+    @field_validator("occurred_at")
+    @classmethod
+    def require_timezone(cls, value: datetime) -> datetime:
+        """实际发生时间必须携带明确时区。"""
+
+        if value.tzinfo is None or value.utcoffset() is None:
+            raise ValueError("occurred_at 必须包含时区")
+        return value
+
+
+class CashEventResponse(BaseModel):
+    """API 暴露的不可变 Cash Event Ledger Record。"""
+
+    id: UUID
+    user_id: UUID
+    sequence: int
+    event_type: CashEventType
+    amount: Decimal
+    occurred_at: datetime
+    reason: str | None
+
+
+class CashAdjustmentResponse(BaseModel):
+    """Cash Event 写入结果及同事务重建后的现金状态。"""
+
+    cash_event: CashEventResponse
+    available_cash: Decimal
 
 
 app = FastAPI(title="PositionPilot")
@@ -87,6 +131,69 @@ def get_investment_agent_dependency() -> InvestmentAgent:
     """延迟装配外部依赖，允许测试安全替换。"""
 
     return get_investment_agent()
+
+
+def get_portfolio_service_dependency() -> PortfolioService:
+    """延迟装配 Portfolio Service，允许 API Contract Test 替换。"""
+
+    return get_portfolio_service()
+
+
+@app.post(
+    "/v1/portfolios/{user_id}/cash-events",
+    response_model=CashAdjustmentResponse,
+    status_code=status.HTTP_201_CREATED,
+    responses={
+        404: {"description": "Portfolio User 不存在"},
+        409: {"description": "Withdrawal 超过当前可用现金"},
+        422: {"description": "Cash Event 输入不满足领域约束"},
+    },
+)
+def record_cash_event(
+    user_id: UUID,
+    request: CashEventRequest,
+    portfolio_service: Annotated[PortfolioService, Depends(get_portfolio_service_dependency)],
+) -> CashAdjustmentResponse:
+    """追加 DEPOSIT / WITHDRAWAL 并返回确定性 Cash Snapshot。"""
+
+    try:
+        result = portfolio_service.record_cash_event(
+            RecordCashEventCommand(
+                user_id=user_id,
+                event_type=request.event_type,
+                amount=request.amount,
+                occurred_at=request.occurred_at,
+                reason=request.reason,
+            )
+        )
+    except UserNotFound:
+        _raise_api_error(
+            status.HTTP_404_NOT_FOUND,
+            ApiErrorDetail(code="USER_NOT_FOUND", message="Portfolio User 不存在"),
+        )
+    except InsufficientCash as error:
+        _raise_api_error(
+            status.HTTP_409_CONFLICT,
+            ApiErrorDetail(code="INSUFFICIENT_CASH", message=str(error)),
+        )
+    except InvalidPortfolioValue as error:
+        _raise_api_error(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            ApiErrorDetail(code="INVALID_CASH_EVENT", message=str(error)),
+        )
+
+    return CashAdjustmentResponse(
+        cash_event=CashEventResponse(
+            id=result.cash_event.id,
+            user_id=result.cash_event.user_id,
+            sequence=result.cash_event.sequence,
+            event_type=result.cash_event.event_type,
+            amount=result.cash_event.amount,
+            occurred_at=result.cash_event.occurred_at,
+            reason=result.cash_event.reason,
+        ),
+        available_cash=result.portfolio.cash.available_cash,
+    )
 
 
 @app.post(
@@ -109,7 +216,7 @@ def answer_investment_question(
     except UserNotFound:
         _raise_api_error(
             status.HTTP_404_NOT_FOUND,
-            InvestmentErrorDetail(code="USER_NOT_FOUND", message="Portfolio User 不存在"),
+            ApiErrorDetail(code="USER_NOT_FOUND", message="Portfolio User 不存在"),
         )
     if isinstance(result, InvestmentRequestFailure):
         _raise_request_failure(result)
@@ -129,7 +236,7 @@ def _raise_request_failure(failure: InvestmentRequestFailure) -> None:
     if failure.code is InvestmentFailureCode.INVALID_QUESTION:
         _raise_api_error(
             status.HTTP_422_UNPROCESSABLE_CONTENT,
-            InvestmentErrorDetail(code=failure.code.value, message=failure.message),
+            ApiErrorDetail(code=failure.code.value, message=failure.message),
         )
     provider_unavailable_codes = {
         InvestmentFailureCode.LLM_AUTHENTICATION_FAILED,
@@ -143,9 +250,9 @@ def _raise_request_failure(failure: InvestmentRequestFailure) -> None:
     )
     _raise_api_error(
         status_code,
-        InvestmentErrorDetail(code=failure.code.value, message=failure.message),
+        ApiErrorDetail(code=failure.code.value, message=failure.message),
     )
 
 
-def _raise_api_error(status_code: int, detail: InvestmentErrorDetail) -> None:
+def _raise_api_error(status_code: int, detail: ApiErrorDetail) -> None:
     raise HTTPException(status_code=status_code, detail=detail.model_dump())

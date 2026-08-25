@@ -113,3 +113,30 @@ class TransactionModel(Base):
     position_type: Mapped[str] = mapped_column(String(9))
     occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     reason: Mapped[str | None] = mapped_column(Text)
+
+
+class CashEventModel(Base):
+    """Portfolio 创建后的不可变 Cash Event Ledger。"""
+
+    __tablename__ = "cash_events"
+    __table_args__ = (
+        UniqueConstraint("user_id", "sequence", name="uq_cash_events_user_sequence"),
+        CheckConstraint("sequence > 0", name="ck_cash_events_sequence_positive"),
+        CheckConstraint("amount > 0", name="ck_cash_events_amount_positive"),
+        CheckConstraint(
+            "event_type IN ('DEPOSIT', 'WITHDRAWAL')",
+            name="cash_event_type",
+        ),
+        Index("ix_cash_events_user_occurred_at", "user_id", "occurred_at"),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    user_id: Mapped[UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    sequence: Mapped[int] = mapped_column(BigInteger)
+    event_type: Mapped[str] = mapped_column(String(10))
+    amount: Mapped[Decimal] = mapped_column(Numeric(28, 8))
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    reason: Mapped[str | None] = mapped_column(Text)
