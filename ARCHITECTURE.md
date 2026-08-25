@@ -85,6 +85,7 @@ User 行锁串行化同一用户的写入，避免两个并发请求基于相同
 - `backend/position_pilot/application/portfolio_service.py`：Use Case、写入 Command 和 Unit of Work Contract。
 - `backend/position_pilot/application/llm.py`：Provider-neutral Message、Tool、Completion 与 Failure Contract。
 - `backend/position_pilot/application/investment_agent.py`：Portfolio Snapshot、单轮 Native Function Calling、Source Tracking 与 Request Failure。
+- `backend/position_pilot/application/investment_response_guard.py`：Final Response 的确定性 Context Contract 检查与一次性 Repair 指令。
 - `backend/position_pilot/infrastructure/models.py`：User / Transaction SQLAlchemy Model 与数据库约束。
 - `backend/position_pilot/infrastructure/unit_of_work.py`：同步 SQLAlchemy 持久化实现和领域映射。
 - `backend/position_pilot/integrations/aliyun_llm.py`：阿里云 Model Studio OpenAI-compatible Adapter。
@@ -101,9 +102,11 @@ User 行锁串行化同一用户的写入，避免两个并发请求基于相同
 - 不包含 WebSocket、行情缓存或持久化、技术指标、VIX、Market Regime、News 或 Fundamentals。
 - Portfolio Snapshot 是 M3 必定注入的完整当前持仓集合，不默认包含 Transaction History。
 - 发给 LLM 的 Snapshot 不包含内部 User ID，并提供由代码计算的 Ticker 数量、总持仓历史成本和按 Ticker 聚合、保留两位小数的历史成本权重百分比。历史成本权重不包含 Available Cash，也不表示当前市值权重；原始 `LONG_TERM` / `SWING` Position 继续独立保留。
-- Quote 成功后，Application 自动提供 Cash 与单股价格、当前价格与各 Position Average Cost 的确定性关系；真实可执行购买数量始终保持 `UNKNOWN`。LLM 不自行计算未提供的金融数值。
+- Quote 成功后，Application 自动提供 Cash 与单股价格、当前价格与各 Position Average Cost 的确定性关系；Cash/Quote 关系被明确标记为纯数值比较，不能支持交易执行结论，真实可执行购买数量始终保持 `UNKNOWN`。Portfolio Context 还提供当前 Eval 已证明需要的同 Ticker 股数汇总，并将现金权重、总组合价值、当前市值权重和缺少策略阈值时的集中度结论显式标为 `UNAVAILABLE` 或 `UNKNOWN`。Final Response 的结构化 Contract 会在初始 Context 和 Quote Tool Result 中声明不得新增计算、阈值或交易执行结论，LLM 不自行计算未提供的金融数值。
 - 每次请求注入结构化 Context Capability Manifest。M3 只有 Current Quote 数据来源可用；Price History、News、Earnings、Fundamentals、Market Context、Technical Analysis、Asset Metadata 和 Sector Classification 均不可用。
+- M3 Decision Context 将 Trading Plan、Exit Conditions 与 Risk Budget 显式标记为 `UNKNOWN`；它们不是 Conversation Memory，也不由模型从通用知识补足。
 - Agent 每个请求只允许一个 Tool Round，每轮最多三个 Current Quote；不支持 Conversation Memory 或多阶段检索。
+- Final Response 返回用户前经过确定性 Guard。首次越界只允许一次不带 Tool Choice 的 Response Repair；Repair 后仍越界返回 `LLM_INVALID_PROVIDER_RESPONSE`。Guard 只阻断高置信的数值、购买能力和显式结构化关系值违规，不从开放文本推断操作数，也不替代 Human Behavioral Review。
 - 同一轮内大小写或空白不同的重复 Ticker 共用一次 Market Provider Result，但每个 Native Tool Call 都获得对应 Tool Message。
 - 超出 Portfolio Snapshot 与 Current Quote 的当前事实保持 `UNKNOWN`。
 - M3 尚无 Trading / Asset Metadata Context；未来 Capability 扩展点为确定性的 `tradable` 与 `fractionable`。当前不得由 LLM 假设整股或碎股资格，也不由 LLM 计算具体可购买股数。
@@ -135,6 +138,13 @@ InvestmentAgent
 AliyunLLMProvider
       ↓ OpenAI-compatible HTTPS
 Alibaba Cloud Model Studio
+
+Final LLM Response
+      ↓ deterministic Grounding Guard
+Pass → User
+Fail → one no-tool Repair → Guard
+      ↓ still fails
+LLM_INVALID_PROVIDER_RESPONSE
 ```
 
 - Snapshot 明确声明 Positions 是完整当前集合；未出现的 Ticker 表示当前无持仓。M3 不额外执行确定性 Ticker Extraction。

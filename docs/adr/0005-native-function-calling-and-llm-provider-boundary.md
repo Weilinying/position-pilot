@@ -35,6 +35,8 @@ M3 需要完成第一个 Stateful Investment Vertical Slice，让 Single Investm
 - 每个请求最多一个 Tool Round；该 Round 最多包含三个 `get_current_quote` 调用。Tool Result 返回后必须生成 Final Response，不允许第二轮 Tool Call。
 - Portfolio Snapshot 在首次 LLM 调用前由 Application 必定读取并注入，不作为可选 Tool。Snapshot 明确声明 Position 列表是完整的当前持仓集合，未出现的 Ticker 表示当前无持仓。
 - Application 自动生成当前 Evaluation 已证明需要的轻量 Deterministic Derived Facts，并注入结构化 Context Capability Manifest。LLM 只解释已提供事实，不负责金融数值计算，也不得用训练知识补足不可用能力。
+- Final Response 返回用户前由确定性 Grounding Guard 检查高置信的 Contract 越界：未提供的金融数值、明确购买能力结论，以及显式复述且与代码相反的结构化关系值。Guard 不从开放自然语言推断操作数，也不判断投资观点是否合理。
+- 首次 Guard Failure 最多触发一次 `tools=()` 的 Response Repair。Repair 复用原 Context、Tool Results、无效回答和结构化违规信息，不重新执行 Agent 或 Tool Selection；Repair 后仍失败则返回 `LLM_INVALID_PROVIDER_RESPONSE`。
 - Portfolio-level Ticker 聚合不覆盖 `LONG_TERM` / `SWING` Position 语义；历史成本权重与当前市值权重明确区分。
 - Transaction History 不在 M3 默认 Context 中；后续仅由真实需求、Evaluation Failure 或新的 Context Retrieval 能力引入。
 - Application 只依赖通用 `LLMProvider`。Message、Tool Definition、Tool Call 和 Completion Result 使用项目自身的 Application Schema。
@@ -50,6 +52,7 @@ M3 需要完成第一个 Stateful Investment Vertical Slice，让 Single Investm
 - 通用 LLM Contract 保持 Agent、Domain 与具体 Provider / Model 解耦，便于测试和后续替换。
 - 固定 Tool Round 与调用上限让成本、Latency 和错误边界可预测。
 - Derived Facts 直接由已有 Portfolio 与 Quote 生成，不增加 Calculator Tool、Tool Routing 或外部数据依赖。
+- 真实 Evaluation 已证明模型即使能复述 Prompt Policy，仍可能输出相反的确定性推导；Guard 将该边界从 Prompt 约定提升为 Application 可执行约束，一次 Repair 在不形成循环的前提下改善用户体验。
 
 ## Trade-off
 
@@ -58,6 +61,7 @@ M3 需要完成第一个 Stateful Investment Vertical Slice，让 Single Investm
 - M3 不具备 Asset Metadata，无法确认真实交易资格或可执行购买数量；Cash 与 Quote 的数值关系不能被解释为订单一定可执行。
 - 默认 Provider 会形成运维依赖，但 Application Contract 与模型配置保持独立，降低未来替换成本。
 - 单个 Tool Round 不支持需要多阶段检索的问题；这是 M3 的有意范围限制。
+- Guard 只能覆盖明确可编码的 M3 Contract 越界，关系幅度、跨 Ticker 自然语言比较等模糊语义保留给 Human Behavioral Review；Repair 最多增加一次 LLM Latency 与 API Cost。
 
 ## Evaluation
 
