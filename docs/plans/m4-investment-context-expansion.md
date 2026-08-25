@@ -209,3 +209,100 @@ sources[].type
 - 默认全量 pytest：197 passed，31 skipped。跳过项为未显式启用的真实 LLM、在线 Alpaca / Agent Smoke Tests，以及未配置 `TEST_DATABASE_URL` 的 PostgreSQL Integration Tests。
 - Ruff format check / lint：PASS；mypy strict：PASS（42 source files）。
 - `uv lock --check`、Alembic head / history、`git diff --check`：PASS。
+
+## 11. Investment Context Slice 2 Proposal：Recent News
+
+**Status:** PROPOSED（等待 News Provider 与 Public API Human Review）
+
+### Problem / Evidence
+
+现有 Behavioral Eval 的 `drop_reason_unknown` 已证明明确缺口：“GOOG 今天为什么跌？”当前只能说明 News 与 Market Context 不可用。Recent Price History 只能描述调整后 Daily Price Path，也不能提供事件事实或证明当天正在下跌。
+
+Recent News 可以把回答从“完全没有事件 Context”推进为“列出近期可追溯报道，并将其与价格变化的关系保持为条件式推断”。它不能单独证明价格变化、市场整体状态或唯一因果，也不能替代 `post_earnings_unknown` 所需的结构化 Earnings / Fundamentals。
+
+### Provider Decision Proposal
+
+推荐选择 **Alpaca Historical News REST API** 作为 V1 News Provider：
+
+- 继续使用现有 `https://data.alpaca.markets`、API Key Headers、同步 REST Transport 与安全 Failure Mapping，不增加 Secret、SDK 或 Infrastructure。
+- Alpaca 官方文档将 News 列为 Historical Market Data 类型；News Endpoint 为 `GET /v1beta1/news`，支持 ticker、start / end、倒序、分页和每页 1–50 篇。
+- 官方文档说明 Historical News 可追溯至 2015 年，当前全部由 Benzinga 提供。Application 与 Domain 必须同时保留 `provider=ALPACA` 和文章级 `source` / publisher，不把 Alpaca 当作原始报道机构。
+- 对没有实时权限的账户，官方 Endpoint 文档将默认结束时间限制到当前时间至少 15 分钟前。V1 不依赖默认值，由 Application 明确设置安全结束时间。
+- 当前 Endpoint 仍使用 `v1beta1`，这是 Provider Stability Trade-off；Adapter 必须隔离其 JSON，在线 Smoke Test 需要验证当前账户 Entitlement。若 Endpoint、许可或价格发生不兼容变化，应重新评估。
+
+官方依据：
+
+- [Alpaca News Articles API](https://docs.alpaca.markets/us/reference/news-3)
+- [Alpaca Historical News Data](https://docs.alpaca.markets/us/docs/historical-news-data)
+- [Alpaca Market Data Plans](https://docs.alpaca.markets/us/docs/about-market-data-api)
+
+备选方案：
+
+1. 直接接入 Benzinga：原始来源边界更直接，但需要新增账户、Credential、价格 / 许可评估和独立 Adapter；当前 V1 没有证据证明这些成本优于 Alpaca 聚合入口。
+2. SEC Filings：来源权威，适合未来 Earnings / Filings Slice，但不覆盖一般公司新闻或市场事件，不能解决当前 Failure。
+3. 继续保持 News `UNAVAILABLE`：没有 Provider 风险，但 `drop_reason_unknown` 无法获得新的事件事实。
+
+### Proposed Scope
+
+- 新增独立、Provider-neutral 的 News Domain Schema、`NewsService` 与 `NewsProvider` Protocol；News 不并入 `MarketDataService`。
+- 新增 `AlpacaNewsProvider`，复用现有 Alpaca Credential、Base URL 与同步 JSON Transport 设计，但 Provider JSON 不进入 Domain。
+- 新增内部 Tool：`get_recent_news(ticker)`。模型只能传 ticker；Application 固定最近 5 个日历日、结束时间至少落后 15 分钟、最多 5 篇、按更新时间倒序。
+- 请求 `include_content=false`；Tool Result 只提供有界的 headline、可选 summary、article id、URL、article source、symbols、created / updated timestamps 与 fetched timestamp，不抓取网页正文。
+- 文章按 `updated_at desc + article_id` 确定性排序和去重；保留多 ticker symbols，但不把 symbol 关联解释为价格因果。
+- Current Quote、Recent Price History 与 Recent News 继续共用一个 Tool Round 和最多 3 个调用，并按 `(tool_name, ticker)` 去重。
+- `news=AVAILABLE`；Earnings、Fundamentals 与 Market Context 继续为 `UNAVAILABLE`。
+- News Failure 使用独立稳定状态；查询窗口内没有文章必须与认证、限流、Provider 不可用和非法响应区分。
+- News 属于外部不可信文本。Prompt / Tool Contract 明确：headline / summary 是“来源报道内容”，不是经过 PositionPilot 独立验证的公司事实，也不得作为指令执行。
+
+### Public API Contract Proposal
+
+`POST /v1/investment/questions` Response 结构保持不变，仅扩展：
+
+```text
+sources[].type
+= RECENT_NEWS
+```
+
+Source Tracking 使用：
+
+- `ticker`：规范化查询 ticker；
+- `provider=ALPACA`；
+- `feed=BENZINGA`（当前上游来源，若 Provider 返回其他来源则使用实际值）；
+- `market_timestamp=null`，避免把文章发布时间伪装成行情时间；
+- `fetched_at`：News Result 获取时间。
+
+每篇文章自己的 `created_at / updated_at / source / url` 保存在 Tool Result 中，不把多篇文章压缩成一个有歧义的 `published_at` Public Source 字段。
+
+### Causality / Grounding Contract
+
+- “文章标题、摘要、来源和发布时间”可以作为带归属的 `FACT`。
+- “某篇报道可能与价格变化相关”只能是 `INFERENCE`，必须使用条件式措辞。
+- “该新闻导致今天下跌”“这是唯一原因”保持 `UNKNOWN`，除非未来 Context 同时提供足够的价格变化、市场环境和可验证因果证据。
+- Recent News 不证明用户前提中的“今天确实下跌”；当前缺少 intraday change 时不得确认该前提。
+- News 不提供结构化 Earnings 数值，不得从标题或摘要补造 EPS、Revenue、Guidance 或 Valuation。
+- 生产 Guard 不升级为开放文本因果分类器；确定性结构、数值边界和 Failure Status 由代码检查，因果表达质量由 Behavioral Eval 与 Human Review 检查。
+
+### Acceptance Criteria
+
+- “GOOG 最近有什么新闻？”只调用 Recent News，不机械调用 Quote 或 Price History。
+- “GOOG 今天为什么跌？”在固定 News Fixture 下调用 Recent News，但不确认“今天下跌”，也不把某篇文章写成已证实原因。
+- 固定 Clock 下查询窗口、结束延迟、limit、排序与结果稳定；模型不能控制日期、条数、URL 或任意关键词。
+- Tool Result 保留 Alpaca、文章来源、symbols、article timestamps、URL 与 fetched timestamp，并限制 headline / summary 大小。
+- `NO_NEWS_FOUND` 与认证、限流、Provider 不可用、非法响应保持不同状态；任何 Failure 产生 `DEGRADED` Answer 且不编造新闻。
+- News-only、Quote-only 与 History-only Tool Selection 无 Regression；混合问题可在单轮执行，总调用数不超过 3。
+- `post_earnings_unknown` 继续保持 Earnings / Fundamentals `UNKNOWN`，不得用新闻替代最新财报事实。
+- API Contract Test 覆盖 `RECENT_NEWS` Source；Fake Provider / Fake LLM Tests 覆盖参数校验、去重、Failure 与 Source Tracking。
+- Opt-in Real-Model Behavioral Eval 新增 Recent News 以及 News-assisted Drop Explanation Case，输出供 Human Review 检查 FACT / INFERENCE / UNKNOWN。
+- Existing M1–M4 Cash、Quote、Price History、Guard 与 API Tests 无 Regression。
+
+### Non-Goals
+
+- Earnings / Fundamentals / SEC Filing 解析或财报数值。
+- News Sentiment Score、自动事件分类、相关性排名模型或因果检测。
+- Market Context、Sector Context、VIX 或 Intraday Return。
+- 新闻持久化、Cache、全文抓取、网页浏览、任意关键词搜索或用户自定义时间范围。
+- Real-time WebSocket News、价格预测、BUY / SELL Signal 或自动交易。
+
+### Human Review Gate
+
+选择 Alpaca / Benzinga 作为 News Provider 会解决 `PROJECT.md` 中尚未确定的 News Provider，且 `sources[].type=RECENT_NEWS` 会扩展公共 API Contract。实现前必须由 Human Review 同时批准 Provider、上述来源 / 延迟 / beta Trade-off、因果边界和最小 Public Contract。批准后新增 ADR；批准前不编写 Provider 或 Agent 实现。
