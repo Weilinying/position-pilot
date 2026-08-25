@@ -1,6 +1,6 @@
-"""M3 Final Response Grounding Guard 的确定性测试。"""
+"""M4 Final Response Grounding Guard 的确定性测试。"""
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from uuid import UUID
 
@@ -10,9 +10,11 @@ from position_pilot.application.investment_response_guard import (
     validate_final_response,
 )
 from position_pilot.domain.market_data import (
+    HistoricalBars,
     MarketDataCoverage,
     MarketDataResult,
     MarketQuote,
+    OHLCVBar,
 )
 from position_pilot.domain.portfolio import (
     CashBalance,
@@ -69,6 +71,41 @@ def quote(ticker: str, price: str) -> MarketDataResult[MarketQuote]:
             coverage=MarketDataCoverage.SINGLE_EXCHANGE,
             currency="USD",
             is_delayed=False,
+            fetched_at=NOW,
+        )
+    )
+
+
+def price_history(ticker: str = "GOOG") -> MarketDataResult[HistoricalBars]:
+    """创建首尾收盘价上升的固定 History。"""
+
+    return MarketDataResult.success(
+        HistoricalBars(
+            ticker=ticker,
+            timeframe="1Day",
+            bars=(
+                OHLCVBar(
+                    NOW - timedelta(days=1),
+                    Decimal("200"),
+                    Decimal("205"),
+                    Decimal("198"),
+                    Decimal("202"),
+                    1000,
+                ),
+                OHLCVBar(
+                    NOW,
+                    Decimal("209"),
+                    Decimal("215"),
+                    Decimal("207"),
+                    Decimal("212.10"),
+                    1100,
+                ),
+            ),
+            source="FAKE_GUARD",
+            feed="FIXED",
+            coverage=MarketDataCoverage.SINGLE_EXCHANGE,
+            currency="USD",
+            adjustment="ALL",
             fetched_at=NOW,
         )
     )
@@ -218,3 +255,62 @@ def test_does_not_treat_list_ordinals_as_new_financial_numbers() -> None:
     answer = "1. 当前价格为 210.25 USD。\n2. 实际可执行购买数量为 UNKNOWN。"
 
     assert violation_codes(answer) == set()
+
+
+def test_accepts_all_deterministic_price_history_numbers() -> None:
+    """区间价格、涨跌额和涨跌幅均由代码提供时不得误拒绝。"""
+
+    violations = validate_final_response(
+        (
+            "GOOG 首个收盘价 202，最新历史收盘价 212.10，区间高点 215，低点 198。"
+            "收盘价变化 10.10，涨跌幅 5.00%，close_direction=UP。"
+        ),
+        snapshot(),
+        {},
+        {"GOOG": price_history()},
+    )
+
+    assert violations == ()
+
+
+def test_rejects_unprovided_price_history_number() -> None:
+    """History 上下文不允许模型另算或补造区间金融数值。"""
+
+    violations = validate_final_response(
+        "GOOG 近期涨跌幅为 7.50%。",
+        snapshot(),
+        {},
+        {"GOOG": price_history()},
+    )
+
+    assert GroundingViolationCode.UNSUPPORTED_FINANCIAL_NUMBER in {
+        violation.code for violation in violations
+    }
+
+
+def test_rejects_explicitly_inverted_price_history_direction() -> None:
+    """显式结构化方向与代码事实相反时必须阻断。"""
+
+    violations = validate_final_response(
+        "GOOG 的 close_direction=DOWN。",
+        snapshot(),
+        {},
+        {"GOOG": price_history()},
+    )
+
+    assert GroundingViolationCode.PRICE_HISTORY_DIRECTION_CONTRADICTION in {
+        violation.code for violation in violations
+    }
+
+
+def test_does_not_parse_free_form_price_direction_as_blocking_contract() -> None:
+    """自然语言方向仍由 Behavioral Review 检查，避免 Guard 变成语义引擎。"""
+
+    violations = validate_final_response(
+        "GOOG 这段时间看起来在下跌。",
+        snapshot(),
+        {},
+        {"GOOG": price_history()},
+    )
+
+    assert violations == ()

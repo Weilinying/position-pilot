@@ -2,7 +2,7 @@
 
 import json
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from uuid import UUID
 
@@ -24,11 +24,14 @@ from position_pilot.application.llm import (
     LLMToolCall,
     LLMToolDefinition,
 )
+from position_pilot.application.market_data_service import HistoricalBarsQuery
 from position_pilot.domain.market_data import (
+    HistoricalBars,
     MarketDataCoverage,
     MarketDataResult,
     MarketDataStatus,
     MarketQuote,
+    OHLCVBar,
 )
 from position_pilot.domain.portfolio import (
     CashBalance,
@@ -61,16 +64,28 @@ class FakePortfolioReader:
 
 @dataclass(slots=True)
 class FakeMarketData:
-    """按 Ticker 返回固定 Current Quote Result。"""
+    """按 Ticker 返回固定 Quote / Daily Bars Result。"""
 
     results: dict[str, MarketDataResult[MarketQuote]]
+    historical_results: dict[str, MarketDataResult[HistoricalBars]] = field(default_factory=dict)
     requested_tickers: list[str] = field(default_factory=list)
+    historical_queries: list[HistoricalBarsQuery] = field(default_factory=list)
 
     def get_current_quote(self, ticker: str) -> MarketDataResult[MarketQuote]:
         self.requested_tickers.append(ticker)
         return self.results.get(
             ticker.strip().upper(),
             MarketDataResult.failure(MarketDataStatus.NO_DATA, "测试无行情"),
+        )
+
+    def get_historical_bars(
+        self,
+        query: HistoricalBarsQuery,
+    ) -> MarketDataResult[HistoricalBars]:
+        self.historical_queries.append(query)
+        return self.historical_results.get(
+            query.ticker.strip().upper(),
+            MarketDataResult.failure(MarketDataStatus.NO_DATA, "测试无历史行情"),
         )
 
 
@@ -148,6 +163,43 @@ def quote(ticker: str, price: str) -> MarketDataResult[MarketQuote]:
     )
 
 
+def price_history(ticker: str = "GOOG") -> MarketDataResult[HistoricalBars]:
+    """创建固定三日调整后 Daily Bars。"""
+
+    bars = (
+        OHLCVBar(
+            NOW - timedelta(days=2),
+            Decimal("200"),
+            Decimal("205"),
+            Decimal("198"),
+            Decimal("202"),
+            1000,
+        ),
+        OHLCVBar(
+            NOW - timedelta(days=1),
+            Decimal("203"),
+            Decimal("212"),
+            Decimal("201"),
+            Decimal("210"),
+            1200,
+        ),
+        OHLCVBar(NOW, Decimal("209"), Decimal("215"), Decimal("207"), Decimal("212.10"), 1100),
+    )
+    return MarketDataResult.success(
+        HistoricalBars(
+            ticker=ticker,
+            timeframe="1Day",
+            bars=bars,
+            source="ALPACA",
+            feed="IEX",
+            coverage=MarketDataCoverage.SINGLE_EXCHANGE,
+            currency="USD",
+            adjustment="ALL",
+            fetched_at=NOW,
+        )
+    )
+
+
 def tool_message(*calls: tuple[str, str]) -> LLMResult:
     """创建包含一个或多个 Current Quote Call 的 Fake Completion。"""
 
@@ -163,6 +215,21 @@ def tool_message(*calls: tuple[str, str]) -> LLMResult:
     )
 
 
+def market_tool_message(*calls: tuple[str, str, str]) -> LLMResult:
+    """创建可混合 Quote 与 Price History Call 的 Fake Completion。"""
+
+    return LLMResult.success(
+        LLMMessage(
+            LLMRole.ASSISTANT,
+            None,
+            tuple(
+                LLMToolCall(call_id, tool_name, {"ticker": ticker})
+                for call_id, tool_name, ticker in calls
+            ),
+        )
+    )
+
+
 def final_message(content: str = "基于当前已知事实的回答") -> LLMResult:
     """创建 Fake Final Completion。"""
 
@@ -173,15 +240,17 @@ def make_agent(
     llm_results: list[LLMResult],
     *,
     market_results: dict[str, MarketDataResult[MarketQuote]] | None = None,
+    historical_results: dict[str, MarketDataResult[HistoricalBars]] | None = None,
     portfolio: PortfolioState | None = None,
+    clock: datetime = NOW,
 ) -> tuple[InvestmentAgent, FakePortfolioReader, FakeMarketData, ScriptedLLM]:
     """组装完全不依赖真实 Provider 的 Agent。"""
 
     portfolio_reader = FakePortfolioReader(portfolio or make_portfolio())
-    market_data = FakeMarketData(market_results or {})
+    market_data = FakeMarketData(market_results or {}, historical_results or {})
     llm = ScriptedLLM(llm_results)
     return (
-        InvestmentAgent(portfolio_reader, market_data, llm),
+        InvestmentAgent(portfolio_reader, market_data, llm, clock=lambda: clock),
         portfolio_reader,
         market_data,
         llm,
@@ -261,7 +330,7 @@ def test_always_injects_complete_portfolio_snapshot_without_transaction_history(
         "fundamentals": "UNAVAILABLE",
         "market_context": "UNAVAILABLE",
         "news": "UNAVAILABLE",
-        "price_history": "UNAVAILABLE",
+        "price_history": "AVAILABLE",
         "sector_classification": "UNAVAILABLE",
         "technical_analysis": "UNAVAILABLE",
     }
@@ -382,7 +451,10 @@ def test_no_tool_call_returns_ok_without_mechanical_market_request() -> None:
     assert result.answer == "可用现金为 300"
     assert market_data.requested_tickers == []
     assert len(llm.completions) == 1
-    assert [tool.name for tool in llm.completions[0].tools] == ["get_current_quote"]
+    assert [tool.name for tool in llm.completions[0].tools] == [
+        "get_current_quote",
+        "get_recent_price_history",
+    ]
 
 
 def test_executes_up_to_three_quotes_in_one_round_then_requests_final_response() -> None:
@@ -416,7 +488,7 @@ def test_executes_up_to_three_quotes_in_one_round_then_requests_final_response()
 def test_quote_result_includes_only_proven_deterministic_relations() -> None:
     """Quote 派生关系由代码生成，且不伪造可执行购买数量。"""
 
-    agent, _, _, llm = make_agent(
+    agent, _, market_data, llm = make_agent(
         [tool_message(("call-1", "GOOG")), final_message()],
         market_results={"GOOG": quote("GOOG", "210.25")},
     )
@@ -467,7 +539,7 @@ def test_quote_result_includes_only_proven_deterministic_relations() -> None:
 def test_quote_without_position_does_not_invent_price_to_cost_relation() -> None:
     """无对应 Position 时只提供 Cash 关系，不生成 Average Cost 关系。"""
 
-    agent, _, _, llm = make_agent(
+    agent, _, market_data, llm = make_agent(
         [tool_message(("call-1", "MSFT")), final_message()],
         market_results={"MSFT": quote("MSFT", "500.50")},
     )
@@ -492,6 +564,120 @@ def test_quote_without_position_does_not_invent_price_to_cost_relation() -> None
         "reason": "asset_metadata_and_order_capabilities_unavailable",
     }
     assert derived_facts["price_vs_average_cost_by_position"] == []
+    assert market_data.historical_queries == []
+
+
+def test_price_history_uses_fixed_query_and_returns_only_deterministic_facts() -> None:
+    """历史窗口由代码固定，Tool Result 只暴露区间事实和明确边界。"""
+
+    agent, _, market_data, llm = make_agent(
+        [
+            market_tool_message(
+                ("history-1", "get_recent_price_history", " goog "),
+            ),
+            final_message("GOOG 近期收盘价方向为 UP。"),
+        ],
+        historical_results={"GOOG": price_history()},
+    )
+
+    result = assert_answer(agent.answer(USER_ID, "GOOG 最近一个月走势如何？"))
+
+    assert market_data.requested_tickers == []
+    assert len(market_data.historical_queries) == 1
+    query = market_data.historical_queries[0]
+    assert query.ticker == "GOOG"
+    assert query.end == NOW - timedelta(minutes=15)
+    assert query.start == query.end - timedelta(days=45)
+    assert query.limit == 30
+    tool_content = llm.completions[1].messages[-1].content
+    assert tool_content is not None
+    payload = json.loads(tool_content)
+    assert payload["price_history_fact_available"] is True
+    assert payload["timeframe"] == "1Day"
+    assert payload["adjustment"] == "ALL"
+    assert payload["deterministic_derived_facts"] == {
+        "absolute_close_change": "10.10",
+        "absolute_close_change_percent": "5.00%",
+        "bar_count": 3,
+        "close_change": "10.10",
+        "close_change_percent": "5.00%",
+        "close_direction": "UP",
+        "first_close": "202",
+        "interpretation_scope": "observed_adjusted_daily_price_path_only",
+        "latest_close": "212.10",
+        "period_end": NOW.isoformat(),
+        "period_high": "215",
+        "period_low": "198",
+        "period_start": (NOW - timedelta(days=2)).isoformat(),
+        "prediction": "UNAVAILABLE",
+        "technical_signal": "UNAVAILABLE",
+        "ticker": "GOOG",
+    }
+    assert payload["response_contract"] == {
+        "buy_sell_signal": "PROHIBITED",
+        "latest_historical_close_is_current_quote": False,
+        "moving_average": "UNAVAILABLE",
+        "prediction": "PROHIBITED",
+        "rsi": "UNAVAILABLE",
+        "support_resistance": "UNAVAILABLE",
+        "technical_analysis": "UNAVAILABLE",
+        "use_only_provided_history_facts": True,
+    }
+    assert result.sources[1].type is ContextSourceType.PRICE_HISTORY
+    assert result.sources[1].market_timestamp == NOW
+
+
+def test_quote_and_price_history_share_one_tool_round_and_remain_distinct() -> None:
+    """同一 Ticker 的 Quote 与 History 是两个不同事实来源，可在同轮执行。"""
+
+    agent, _, market_data, llm = make_agent(
+        [
+            market_tool_message(
+                ("quote-1", "get_current_quote", "GOOG"),
+                ("history-1", "get_recent_price_history", "GOOG"),
+            ),
+            final_message("当前报价与近期路径均已提供。"),
+        ],
+        market_results={"GOOG": quote("GOOG", "210")},
+        historical_results={"GOOG": price_history()},
+    )
+
+    result = assert_answer(agent.answer(USER_ID, "GOOG 现在多少钱，近期走势如何？"))
+
+    assert market_data.requested_tickers == ["GOOG"]
+    assert [query.ticker for query in market_data.historical_queries] == ["GOOG"]
+    assert [source.type for source in result.sources[1:]] == [
+        ContextSourceType.CURRENT_QUOTE,
+        ContextSourceType.PRICE_HISTORY,
+    ]
+    tool_results = [
+        message for message in llm.completions[1].messages if message.role is LLMRole.TOOL
+    ]
+    assert [message.tool_call_id for message in tool_results] == ["quote-1", "history-1"]
+
+
+def test_deduplicates_price_history_by_normalized_ticker() -> None:
+    """同一 History Tool/Ticker 的变体只执行一次 Provider 查询。"""
+
+    agent, _, market_data, llm = make_agent(
+        [
+            market_tool_message(
+                ("history-1", "get_recent_price_history", "GOOG"),
+                ("history-2", "get_recent_price_history", "goog"),
+            ),
+            final_message("复用同一份 GOOG 历史行情。"),
+        ],
+        historical_results={"GOOG": price_history()},
+    )
+
+    result = assert_answer(agent.answer(USER_ID, "GOOG 近期走势如何？"))
+
+    assert len(market_data.historical_queries) == 1
+    tool_results = [
+        message for message in llm.completions[1].messages if message.role is LLMRole.TOOL
+    ]
+    assert [message.tool_call_id for message in tool_results] == ["history-1", "history-2"]
+    assert [source.type for source in result.sources[1:]] == [ContextSourceType.PRICE_HISTORY]
 
 
 def test_deduplicates_normalized_quote_calls_but_answers_each_tool_call() -> None:
@@ -550,6 +736,8 @@ def test_rejects_more_than_three_tool_calls_before_market_execution() -> None:
         LLMToolCall("call-1", "get_current_quote", {"symbol": "GOOG"}),
         LLMToolCall("call-1", "get_current_quote", {"ticker": "GOOG", "extra": True}),
         LLMToolCall("call-1", "get_current_quote", {"ticker": " "}),
+        LLMToolCall("call-1", "get_recent_price_history", {"symbol": "GOOG"}),
+        LLMToolCall("call-1", "get_recent_price_history", {"ticker": " "}),
     ],
 )
 def test_rejects_unknown_tool_or_invalid_arguments(tool_call: LLMToolCall) -> None:
@@ -597,6 +785,65 @@ def test_market_data_failure_can_produce_degraded_safe_answer(
     assert tool_content is not None
     assert json.loads(tool_content)["current_market_fact_available"] is False
     assert "UNKNOWN" in tool_content
+
+
+@pytest.mark.parametrize(
+    "market_status",
+    [
+        MarketDataStatus.NO_DATA,
+        MarketDataStatus.INVALID_REQUEST,
+        MarketDataStatus.AUTHENTICATION_FAILED,
+        MarketDataStatus.RATE_LIMITED,
+        MarketDataStatus.PROVIDER_UNAVAILABLE,
+        MarketDataStatus.INVALID_PROVIDER_RESPONSE,
+    ],
+)
+def test_price_history_failure_can_produce_degraded_safe_answer(
+    market_status: MarketDataStatus,
+) -> None:
+    """History Failure 必须降级为 UNKNOWN，且不得暗示技术事实。"""
+
+    history_failure: MarketDataResult[HistoricalBars] = MarketDataResult.failure(
+        market_status,
+        "固定 History Failure",
+    )
+    agent, _, _, llm = make_agent(
+        [
+            market_tool_message(("history-1", "get_recent_price_history", "GOOG")),
+            final_message("近期价格路径为 UNKNOWN。"),
+        ],
+        historical_results={"GOOG": history_failure},
+    )
+
+    result = assert_answer(agent.answer(USER_ID, "GOOG 近期走势如何？"))
+
+    assert result.status is InvestmentResponseStatus.DEGRADED
+    assert result.sources[1].type is ContextSourceType.PRICE_HISTORY
+    assert result.sources[1].status == market_status.value
+    tool_content = llm.completions[1].messages[-1].content
+    assert tool_content is not None
+    payload = json.loads(tool_content)
+    assert payload["price_history_fact_available"] is False
+    assert "UNKNOWN" in payload["instruction"]
+    assert "技术分析" in payload["instruction"]
+
+
+def test_invalid_history_symbol_is_rejected_as_invalid_tool_call() -> None:
+    """模型提供的无效 History ticker 不应被当作 Provider 降级。"""
+
+    invalid_symbol: MarketDataResult[HistoricalBars] = MarketDataResult.failure(
+        MarketDataStatus.INVALID_SYMBOL,
+        "ticker 格式无效",
+    )
+    agent, _, market_data, _ = make_agent(
+        [market_tool_message(("history-1", "get_recent_price_history", "BAD"))],
+        historical_results={"BAD": invalid_symbol},
+    )
+
+    failure = assert_failure(agent.answer(USER_ID, "BAD 近期走势如何？"))
+
+    assert failure.code is InvestmentFailureCode.INVALID_TOOL_CALL
+    assert len(market_data.historical_queries) == 1
 
 
 @pytest.mark.parametrize(

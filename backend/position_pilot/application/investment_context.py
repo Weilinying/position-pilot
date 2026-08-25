@@ -1,18 +1,18 @@
-"""M3 注入 LLM 的 Structured Context 与确定性派生事实。"""
+"""Investment Agent 注入 LLM 的 Structured Context 与确定性派生事实。"""
 
 from dataclasses import dataclass
 from decimal import ROUND_HALF_EVEN, Decimal
 from enum import StrEnum
 from uuid import UUID
 
-from position_pilot.domain.market_data import MarketQuote
+from position_pilot.domain.market_data import HistoricalBars, MarketQuote
 from position_pilot.domain.portfolio import PortfolioState, PositionType
 
 WEIGHT_PERCENT_QUANTUM = Decimal("0.01")
 
 
 class ContextCapabilityStatus(StrEnum):
-    """某类 Context 数据来源在 M3 是否可用。"""
+    """某类 Context 数据来源当前是否可用。"""
 
     AVAILABLE = "AVAILABLE"
     UNAVAILABLE = "UNAVAILABLE"
@@ -20,7 +20,7 @@ class ContextCapabilityStatus(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class ContextCapabilities:
-    """与具体 Ticker Fact 分离的 M3 数据能力清单。"""
+    """与具体 Ticker Fact 分离的数据能力清单。"""
 
     current_quote: ContextCapabilityStatus = ContextCapabilityStatus.AVAILABLE
     price_history: ContextCapabilityStatus = ContextCapabilityStatus.UNAVAILABLE
@@ -56,7 +56,17 @@ class DecimalRelation(StrEnum):
     EQUAL = "EQUAL"
 
 
-M3_CONTEXT_CAPABILITIES = ContextCapabilities()
+class PriceDirection(StrEnum):
+    """历史区间首尾收盘价的确定性方向。"""
+
+    UP = "UP"
+    DOWN = "DOWN"
+    FLAT = "FLAT"
+
+
+M4_CONTEXT_CAPABILITIES = ContextCapabilities(
+    price_history=ContextCapabilityStatus.AVAILABLE,
+)
 
 
 def m3_response_contract() -> dict[str, object]:
@@ -176,7 +186,7 @@ class PortfolioDerivedFacts:
 
 @dataclass(frozen=True, slots=True)
 class PortfolioSnapshot:
-    """M3 必定注入且不包含 Transaction History 的完整当前持仓快照。"""
+    """必定注入且不包含 Ledger History 的完整当前持仓快照。"""
 
     user_id: UUID
     available_cash: Decimal
@@ -307,6 +317,95 @@ def quote_response_contract() -> dict[str, object]:
         "purchase_execution_conclusion": "PROHIBITED",
         "cash_quote_relation_allowed_use": "repeat_relation_only",
         "required_purchase_execution_status": "UNKNOWN",
+    }
+
+
+@dataclass(frozen=True, slots=True)
+class RecentPriceHistoryFacts:
+    """从固定 Daily Bars 窗口确定性派生的近期价格事实。"""
+
+    ticker: str
+    bar_count: int
+    period_start: str
+    period_end: str
+    first_close: Decimal
+    latest_close: Decimal
+    period_high: Decimal
+    period_low: Decimal
+    close_change: Decimal
+    absolute_close_change: Decimal
+    close_change_percent: Decimal
+    absolute_close_change_percent: Decimal
+    close_direction: PriceDirection
+
+    @classmethod
+    def from_historical_bars(cls, historical_bars: HistoricalBars) -> "RecentPriceHistoryFacts":
+        """只计算区间描述事实，不产生技术信号或预测。"""
+
+        bars = historical_bars.bars
+        first_close = bars[0].close
+        latest_close = bars[-1].close
+        close_change = latest_close - first_close
+        close_change_percent = (close_change / first_close * Decimal("100")).quantize(
+            WEIGHT_PERCENT_QUANTUM,
+            rounding=ROUND_HALF_EVEN,
+        )
+        direction = PriceDirection.FLAT
+        if close_change > 0:
+            direction = PriceDirection.UP
+        elif close_change < 0:
+            direction = PriceDirection.DOWN
+        return cls(
+            ticker=historical_bars.ticker,
+            bar_count=len(bars),
+            period_start=bars[0].timestamp.isoformat(),
+            period_end=bars[-1].timestamp.isoformat(),
+            first_close=first_close,
+            latest_close=latest_close,
+            period_high=max(bar.high for bar in bars),
+            period_low=min(bar.low for bar in bars),
+            close_change=close_change,
+            absolute_close_change=abs(close_change),
+            close_change_percent=close_change_percent,
+            absolute_close_change_percent=abs(close_change_percent),
+            close_direction=direction,
+        )
+
+    def as_dict(self) -> dict[str, object]:
+        """使用字符串保留 Decimal，并明确事实不等于技术分析。"""
+
+        return {
+            "ticker": self.ticker,
+            "bar_count": self.bar_count,
+            "period_start": self.period_start,
+            "period_end": self.period_end,
+            "first_close": str(self.first_close),
+            "latest_close": str(self.latest_close),
+            "period_high": str(self.period_high),
+            "period_low": str(self.period_low),
+            "close_change": str(self.close_change),
+            "absolute_close_change": str(self.absolute_close_change),
+            "close_change_percent": f"{self.close_change_percent}%",
+            "absolute_close_change_percent": f"{self.absolute_close_change_percent}%",
+            "close_direction": self.close_direction.value,
+            "interpretation_scope": "observed_adjusted_daily_price_path_only",
+            "technical_signal": "UNAVAILABLE",
+            "prediction": "UNAVAILABLE",
+        }
+
+
+def recent_price_history_response_contract() -> dict[str, object]:
+    """限制历史价格事实的解释范围。"""
+
+    return {
+        "use_only_provided_history_facts": True,
+        "latest_historical_close_is_current_quote": False,
+        "technical_analysis": "UNAVAILABLE",
+        "support_resistance": "UNAVAILABLE",
+        "moving_average": "UNAVAILABLE",
+        "rsi": "UNAVAILABLE",
+        "prediction": "PROHIBITED",
+        "buy_sell_signal": "PROHIBITED",
     }
 
 

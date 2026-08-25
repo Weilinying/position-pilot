@@ -1,9 +1,9 @@
-"""使用真实 Aliyun LLM 与固定 Market Data 的 M3 Behavioral Evaluation。"""
+"""使用真实 Aliyun LLM 与固定 Market Data 的 M4 Behavioral Evaluation。"""
 
 import json
 import os
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from uuid import UUID
 
@@ -24,11 +24,14 @@ from position_pilot.application.llm import (
     LLMResult,
     LLMToolDefinition,
 )
+from position_pilot.application.market_data_service import HistoricalBarsQuery
 from position_pilot.domain.market_data import (
+    HistoricalBars,
     MarketDataCoverage,
     MarketDataResult,
     MarketDataStatus,
     MarketQuote,
+    OHLCVBar,
 )
 from position_pilot.domain.portfolio import (
     CashBalance,
@@ -63,6 +66,8 @@ class BehavioralCase:
     expected_tickers: tuple[str, ...]
     expected_status: InvestmentResponseStatus
     human_checks: tuple[str, ...]
+    historical_results: dict[str, MarketDataResult[HistoricalBars]] = field(default_factory=dict)
+    expected_history_tickers: tuple[str, ...] = ()
 
 
 class FixedPortfolioReader:
@@ -84,14 +89,28 @@ class FixedPortfolioReader:
 class FixedMarketData:
     """隔离实时波动，让 Behavioral Eval 只观察真实 LLM 行为。"""
 
-    def __init__(self, results: dict[str, MarketDataResult[MarketQuote]]) -> None:
+    def __init__(
+        self,
+        results: dict[str, MarketDataResult[MarketQuote]],
+        historical_results: dict[str, MarketDataResult[HistoricalBars]],
+    ) -> None:
         self._results = results
+        self._historical_results = historical_results
 
     def get_current_quote(self, ticker: str) -> MarketDataResult[MarketQuote]:
         normalized = ticker.strip().upper()
         return self._results.get(
             normalized,
             MarketDataResult.failure(MarketDataStatus.NO_DATA, "固定场景没有该行情"),
+        )
+
+    def get_historical_bars(
+        self,
+        query: HistoricalBarsQuery,
+    ) -> MarketDataResult[HistoricalBars]:
+        return self._historical_results.get(
+            query.ticker.strip().upper(),
+            MarketDataResult.failure(MarketDataStatus.NO_DATA, "固定场景没有该历史行情"),
         )
 
 
@@ -127,7 +146,12 @@ def guard_failure_diagnostics(
         if result.completion is None or result.completion.message.content is None:
             continue
         content = result.completion.message.content
-        violations = validate_final_response(content, snapshot, case.market_results)
+        violations = validate_final_response(
+            content,
+            snapshot,
+            case.market_results,
+            case.historical_results,
+        )
         diagnostics.append(
             {
                 "completion_index": completion_index,
@@ -178,6 +202,49 @@ def fixed_quote(ticker: str, price: str) -> MarketDataResult[MarketQuote]:
     )
 
 
+def fixed_history(ticker: str) -> MarketDataResult[HistoricalBars]:
+    """创建首尾上涨但不包含技术信号的固定 Daily History。"""
+
+    return MarketDataResult.success(
+        HistoricalBars(
+            ticker=ticker,
+            timeframe="1Day",
+            bars=(
+                OHLCVBar(
+                    NOW - timedelta(days=2),
+                    Decimal("198"),
+                    Decimal("203"),
+                    Decimal("197"),
+                    Decimal("200"),
+                    1000,
+                ),
+                OHLCVBar(
+                    NOW - timedelta(days=1),
+                    Decimal("203"),
+                    Decimal("208"),
+                    Decimal("202"),
+                    Decimal("205"),
+                    1100,
+                ),
+                OHLCVBar(
+                    NOW,
+                    Decimal("207"),
+                    Decimal("212"),
+                    Decimal("206"),
+                    Decimal("210"),
+                    1200,
+                ),
+            ),
+            source="FAKE_EVAL",
+            feed="FIXED",
+            coverage=MarketDataCoverage.SINGLE_EXCHANGE,
+            currency="USD",
+            adjustment="ALL",
+            fetched_at=NOW,
+        )
+    )
+
+
 GOOG_LONG = position("GOOG", PositionType.LONG_TERM, "2", "200")
 GOOG_SWING = position("GOOG", PositionType.SWING, "1", "220")
 GOOG_LONG_PAIRED = position("GOOG", PositionType.LONG_TERM, "1", "210")
@@ -185,6 +252,7 @@ GOOG_SWING_PAIRED = position("GOOG", PositionType.SWING, "1", "210")
 MSFT_LONG = position("MSFT", PositionType.LONG_TERM, "0.5", "450")
 GOOG_QUOTE = fixed_quote("GOOG", "210.25")
 MSFT_QUOTE = fixed_quote("MSFT", "500.50")
+GOOG_HISTORY = fixed_history("GOOG")
 
 CASES = (
     BehavioralCase(
@@ -433,6 +501,24 @@ CASES = (
             "不自行选择 Ticker 调用行情",
         ),
     ),
+    BehavioralCase(
+        "recent_price_history",
+        "GOOG 最近一个月的价格路径如何？不要做技术分析。",
+        Decimal("300"),
+        (GOOG_LONG,),
+        {},
+        (),
+        InvestmentResponseStatus.OK,
+        (
+            "调用 GOOG Price History Tool，且不调用 Current Quote",
+            "使用首尾收盘价、区间高低、涨跌额、涨跌幅和 UP 方向",
+            "不把最新历史收盘价描述为当前价格",
+            "不生成移动平均、RSI、支撑阻力、技术信号或预测",
+            "不解释价格变化原因",
+        ),
+        historical_results={"GOOG": GOOG_HISTORY},
+        expected_history_tickers=("GOOG",),
+    ),
 )
 
 
@@ -460,8 +546,9 @@ def test_real_model_behavior_with_fixed_market_data(case: BehavioralCase) -> Non
     llm = CountingLLM(create_real_llm())
     agent = InvestmentAgent(
         FixedPortfolioReader(case),
-        FixedMarketData(case.market_results),
+        FixedMarketData(case.market_results, case.historical_results),
         llm,
+        clock=lambda: NOW + timedelta(minutes=30),
     )
 
     result = agent.answer(USER_ID, case.question)
@@ -481,7 +568,12 @@ def test_real_model_behavior_with_fixed_market_data(case: BehavioralCase) -> Non
         for source in result.sources
         if source.type is ContextSourceType.CURRENT_QUOTE and source.ticker is not None
     )
-    completion_count_without_repair = 2 if tool_tickers else 1
+    history_tickers = tuple(
+        source.ticker
+        for source in result.sources
+        if source.type is ContextSourceType.PRICE_HISTORY and source.ticker is not None
+    )
+    completion_count_without_repair = 2 if tool_tickers or history_tickers else 1
     guard_repair_used = llm.completion_count > completion_count_without_repair
     print(
         json.dumps(
@@ -489,6 +581,7 @@ def test_real_model_behavior_with_fixed_market_data(case: BehavioralCase) -> Non
                 "case": case.id,
                 "question": case.question,
                 "tool_tickers": tool_tickers,
+                "history_tickers": history_tickers,
                 "status": result.status.value,
                 "llm_completion_count": llm.completion_count,
                 "guard_repair_used": guard_repair_used,
@@ -501,5 +594,7 @@ def test_real_model_behavior_with_fixed_market_data(case: BehavioralCase) -> Non
     )
     assert len(tool_tickers) == len(case.expected_tickers)
     assert sorted(tool_tickers) == sorted(case.expected_tickers)
+    assert len(history_tickers) == len(case.expected_history_tickers)
+    assert sorted(history_tickers) == sorted(case.expected_history_tickers)
     assert result.status is case.expected_status
     assert llm.completion_count <= completion_count_without_repair + 1

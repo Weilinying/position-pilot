@@ -1,4 +1,4 @@
-"""M3 投资问答 API Contract 测试。"""
+"""M4 投资问答 API Contract 测试。"""
 
 from collections.abc import Iterator
 from datetime import UTC, datetime
@@ -61,7 +61,7 @@ def override_agent(agent: FakeInvestmentAgent) -> None:
 def test_returns_answer_with_deterministic_status_and_source_tracking(
     client: TestClient,
 ) -> None:
-    """成功 API Response 应保留 Portfolio 与 Current Quote 来源。"""
+    """成功 API Response 应保留 Portfolio、Quote 与 Price History 来源。"""
 
     agent = FakeInvestmentAgent(
         InvestmentAnswer(
@@ -71,6 +71,15 @@ def test_returns_answer_with_deterministic_status_and_source_tracking(
                 ContextSource(ContextSourceType.PORTFOLIO_SNAPSHOT, "OK"),
                 ContextSource(
                     ContextSourceType.CURRENT_QUOTE,
+                    "OK",
+                    ticker="GOOG",
+                    provider="ALPACA",
+                    feed="IEX",
+                    market_timestamp=NOW,
+                    fetched_at=NOW,
+                ),
+                ContextSource(
+                    ContextSourceType.PRICE_HISTORY,
                     "OK",
                     ticker="GOOG",
                     provider="ALPACA",
@@ -104,6 +113,15 @@ def test_returns_answer_with_deterministic_status_and_source_tracking(
             },
             {
                 "type": "CURRENT_QUOTE",
+                "status": "OK",
+                "ticker": "GOOG",
+                "provider": "ALPACA",
+                "feed": "IEX",
+                "market_timestamp": "2026-08-24T08:00:00Z",
+                "fetched_at": "2026-08-24T08:00:00Z",
+            },
+            {
+                "type": "PRICE_HISTORY",
                 "status": "OK",
                 "ticker": "GOOG",
                 "provider": "ALPACA",

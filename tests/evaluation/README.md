@@ -1,4 +1,4 @@
-# M3 Opt-in Real-Model Behavioral Evaluation
+# M4 Opt-in Real-Model Behavioral Evaluation
 
 本目录的 Cases 使用真实 `AliyunLLMProvider` 与固定 Fake Market Data，验证真实模型的 Tool Selection、Portfolio Awareness、Grounding 和 Personalization。它们不属于默认 CI，也不把 Fake LLM Orchestration Test 误称为模型行为验证。
 
@@ -17,18 +17,19 @@ uv run pytest tests/evaluation/test_real_model_behavior.py -s
 - 是否真实使用 Portfolio Snapshot，而不是生成通用回答；
 - 是否正确区分 `LONG_TERM` / `SWING`；
 - 是否把 Fake Quote 当作唯一当前价格来源；
+- 近期价格问题是否只使用 Fake Historical Daily Bars 的代码派生事实，且不把最新历史收盘价当作 Current Quote；
 - Missing / Provider Failure 时是否拒绝编造当前价格；
-- News、Earnings、Market Context 等 M3 未提供的信息是否明确保持 `UNKNOWN`；
+- News、Earnings、Market Context 等当前未提供的信息是否明确保持 `UNKNOWN`；
 - FACT / INFERENCE / UNKNOWN 是否在语义上自然区分，而不是机械套用固定标题。
 - 是否避免把当前价格低于 Average Cost 直接推导为风险收益比更好；Average Cost 只是用户历史成本，不是市场估值或未来收益概率；
 - 是否避免默认整股交易；`fractionable` 必须来自确定性 Asset / Broker Capability，当前缺失时应保持 `UNKNOWN`。
 - 是否只使用 Context 已提供的确定性金融数值；不得自行计算仓位权重、盈亏金额或比例、现金占比、可购买股数及交易后比例。
 - 是否正确使用代码提供的 `distinct_ticker_count`、历史成本权重、Quote / Average Cost 关系和 Cash / Quote 关系；不得把历史成本权重描述为当前市值权重。
-- 是否服从结构化 Context Capabilities：Price History 缺失时不生成技术面，Market Context 缺失时不推断当天市场，Sector Classification 缺失时不推断行业关系。
+- 是否服从结构化 Context Capabilities：Price History 可用不等于 Technical Analysis 可用；不得生成移动平均、RSI、支撑阻力、交易信号或预测。Market Context 缺失时不推断当天市场，Sector Classification 缺失时不推断行业关系。
 - 是否保留 ticker 下各自的 `LONG_TERM` / `SWING`，不让 Portfolio-level 聚合事实覆盖 Position Type。
 - `low_cash_personalization` / `high_cash_personalization` 使用完全相同的问题，人工比较 Cash 变化是否真正改变分析。
 - `long_term_position_personalization` / `swing_position_personalization` 使用完全相同的问题，人工比较 Position Type 是否真正改变分析重点。
 
-Context Capability 表示系统是否拥有某类数据来源，不表示某个 ticker 的具体属性。M3 的 `asset_metadata` 为 `UNAVAILABLE`，因此不提供 `tradable`、`fractionable` 或可执行购买数量；Behavioral Eval 不允许模型根据训练知识猜测这些事实，也不要求为了该能力接入真实 Alpaca。
+Context Capability 表示系统是否拥有某类数据来源，不表示某个 ticker 的具体属性。M4 的 `price_history` 为 `AVAILABLE`，但 `technical_analysis` 与 `asset_metadata` 仍为 `UNAVAILABLE`，因此不提供技术信号、`tradable`、`fractionable` 或可执行购买数量；Behavioral Eval 不允许模型根据训练知识猜测这些事实。
 
 真实 LLM + 真实 Market Data 另见 `tests/integration/test_investment_agent_online.py`，只作为少量 Smoke Test，不作为本 Behavioral Eval 的主要依据。

@@ -6,6 +6,8 @@
 
 **Cash Adjustment Slice:** IMPLEMENTED（等待 Human Acceptance）
 
+**Recent Price History Slice:** IMPLEMENTED（等待 Human Acceptance）
+
 M4 在扩展 Market Context、News、Fundamentals / Earnings 或 Asset Indicators 前，先完成一个独立的 Cash Adjustment Vertical Slice。该 Slice 解决 Portfolio 创建后无法追加或取出投资预算的问题，并保持 M1 已建立的 immutable ledger 与 deterministic replay 原则。
 
 ## 2. 已批准语义
@@ -115,11 +117,11 @@ Cash Event 与 Transaction 共同影响同一个 Available Cash 不变量，Doma
 
 - 本设计是 ADR 0003 immutable ledger 与 deterministic replay 原则的自然延伸，没有新增 ADR。
 - 新增 Engineering Note：`docs/engineering-notes/m4-cash-adjustment-ledger-extension.md`。
-- M4 原有 Investment Context Expansion 尚未开始，Roadmap 保持 M4 `IN PROGRESS`。
+- M4 Investment Context Expansion 已进入第一个 Recent Price History Slice，Roadmap 保持 M4 `IN PROGRESS`。
 
 ## 9. Investment Context Slice 1 Proposal：Recent Price History
 
-**Status:** PROPOSED（等待 Human Review）
+**Status:** IMPLEMENTED（2026-08-25 Public API Contract 已获 Human Review 批准）
 
 ### Problem / Evidence
 
@@ -180,4 +182,30 @@ sources[].type
 
 ### Human Review Gate
 
-该 Slice 复用 ADR 0004 已批准的 Provider 与现有 Agent 架构，不需要重新选择 Provider；但新增 `sources[].type=PRICE_HISTORY` 会扩展对外公共 API Contract，因此实现前等待 Human Review 明确批准该最小 Contract。
+该 Slice 复用 ADR 0004 已批准的 Provider 与现有 Agent 架构，不需要重新选择 Provider；新增 `sources[].type=PRICE_HISTORY` 的最小公共 API Contract 已于 2026-08-25 获得 Human Review 批准。
+
+## 10. Recent Price History Completion Summary
+
+### Implemented
+
+- 新增 `get_recent_price_history(ticker)`，复用 `MarketDataService` 与 Alpaca Historical Daily OHLCV，不新增 Provider、数据库或 Framework。
+- Application 使用可注入 Clock 固定最近 45 个日历日、最多 30 根 Daily Bars、结束时间至少落后 15 分钟；模型不能传入时间范围或 limit。
+- 代码确定性派生首尾时间与收盘价、区间高低、Bar 数量、首尾涨跌额/幅和 `UP / DOWN / FLAT`，并明确最新历史收盘价不是 Current Quote。
+- Current Quote 与 Recent Price History 共用一个 Tool Round、总调用上限为 3，并按 `(tool_name, ticker)` 去重。
+- `price_history=AVAILABLE`，`technical_analysis=UNAVAILABLE`；移动平均、RSI、支撑阻力、交易信号和预测仍被禁止。
+- Source Tracking 增加已批准的 `PRICE_HISTORY` 类型；Failure 保持既有 Market Data Status 并产生 `DEGRADED` Answer。
+- Final Response Guard 接受已提供的历史数值，继续拒绝新增金融数值，并阻断显式相反的 `close_direction`。
+
+### Automated Review
+
+- 补充 `DOWN`、`FLAT` 与两位小数 half-even 舍入测试，避免只用上涨 Fixture 证明方向计算。
+- 补强 Quote-only Regression，显式确认“现在多少钱”不会机械调用 Price History。
+- 修正文档和模块说明中遗留的 M3 / Price History unavailable 表述，使 Architecture 与实际 Capability 一致。
+- 未发现需要新增 ADR 的不可逆决策；该 Slice 是 ADR 0004 Provider Boundary 和既有 Single Agent Orchestration 的自然延伸。
+
+### Verification
+
+- Deterministic Agent / Context / Guard / API 与 opt-in Behavioral Case 集合：80 passed，18 skipped；跳过项为未显式启用的真实 LLM Behavioral Eval。
+- 默认全量 pytest：197 passed，31 skipped。跳过项为未显式启用的真实 LLM、在线 Alpaca / Agent Smoke Tests，以及未配置 `TEST_DATABASE_URL` 的 PostgreSQL Integration Tests。
+- Ruff format check / lint：PASS；mypy strict：PASS（42 source files）。
+- `uv lock --check`、Alembic head / history、`git diff --check`：PASS。

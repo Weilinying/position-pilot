@@ -1,21 +1,24 @@
-"""M3 Single Investment Agent 与受限 Native Function Calling。"""
+"""M4 Single Investment Agent 与受限 Native Function Calling。"""
 
 import json
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from time import monotonic
 from typing import Protocol
 from uuid import UUID
 
 from position_pilot.application.investment_context import (
-    M3_CONTEXT_CAPABILITIES,
+    M4_CONTEXT_CAPABILITIES,
     PortfolioSnapshot,
     QuoteDerivedFacts,
+    RecentPriceHistoryFacts,
     m3_decision_context,
     m3_response_contract,
     quote_response_contract,
+    recent_price_history_response_contract,
 )
 from position_pilot.application.investment_response_guard import (
     build_repair_instruction,
@@ -30,13 +33,23 @@ from position_pilot.application.llm import (
     LLMToolCall,
     LLMToolDefinition,
 )
-from position_pilot.domain.market_data import MarketDataResult, MarketDataStatus, MarketQuote
+from position_pilot.application.market_data_service import HistoricalBarsQuery
+from position_pilot.domain.market_data import (
+    HistoricalBars,
+    MarketDataResult,
+    MarketDataStatus,
+    MarketQuote,
+)
 from position_pilot.domain.portfolio import PortfolioState
 
 LOGGER = logging.getLogger(__name__)
 CURRENT_QUOTE_TOOL_NAME = "get_current_quote"
+RECENT_PRICE_HISTORY_TOOL_NAME = "get_recent_price_history"
 MAX_TOOL_CALLS_PER_ROUND = 3
 MAX_QUESTION_LENGTH = 4_000
+PRICE_HISTORY_LOOKBACK_DAYS = 45
+PRICE_HISTORY_LIMIT = 30
+PRICE_HISTORY_END_LAG = timedelta(minutes=15)
 
 SYSTEM_PROMPT = "\n".join(
     (
@@ -54,8 +67,13 @@ SYSTEM_PROMPT = "\n".join(
         "询问今天或现在是否加仓、减仓或建仓，本身即需要 Current Quote；无需用户另行要求报价。",
         "若判断 Current Quote 必要且 Tool 可用，必须立即调用，不得询问用户是否需要调用。",
         "Quote 对异动原因或最新财报不提供新证据时不得调用。",
-        "6. 当前价格只来自成功 Tool Result；Tool Failure 或缺失 Context 必须明确为 UNKNOWN。",
-        "7. 回答自然地区分事实、推断和未知信息，不要求固定标题。",
+        (
+            "6. 判断近期价格路径、近一个月涨跌或区间高低时，必须调用 "
+            "get_recent_price_history；不得用它回答当前价格。"
+        ),
+        "Price History 只支持已提供的区间描述事实，不提供技术分析、交易信号或预测。",
+        "7. 当前价格与历史价格事实只来自对应成功 Tool Result；失败或缺失必须明确为 UNKNOWN。",
+        "8. 回答自然地区分事实、推断和未知信息，不要求固定标题。",
         "cash_vs_one_share_price 只表示数值关系，不表示交易资格、能否成交或可买至少一股。",
         "executable_purchase_quantity=UNKNOWN 时，只能说明实际可执行购买数量未知。",
     )
@@ -82,6 +100,26 @@ CURRENT_QUOTE_TOOL = LLMToolDefinition(
     },
 )
 
+RECENT_PRICE_HISTORY_TOOL = LLMToolDefinition(
+    name=RECENT_PRICE_HISTORY_TOOL_NAME,
+    description=(
+        "获取美股或美国上市 ETF 最近约一个月的调整后 Daily Price History；"
+        "回答近期价格路径、区间涨跌或区间高低时调用。"
+        "不能替代 Current Quote，也不能解释原因、生成技术指标、交易信号或预测。"
+    ),
+    parameters={
+        "type": "object",
+        "properties": {
+            "ticker": {
+                "type": "string",
+                "description": "需要近期 Daily Price History 的美股或美国上市 ETF ticker",
+            }
+        },
+        "required": ["ticker"],
+        "additionalProperties": False,
+    },
+)
+
 
 class PortfolioSnapshotReader(Protocol):
     """Agent 读取当前完整 Portfolio State 的最小接口。"""
@@ -89,10 +127,15 @@ class PortfolioSnapshotReader(Protocol):
     def get_portfolio(self, user_id: UUID) -> PortfolioState: ...
 
 
-class CurrentQuoteReader(Protocol):
-    """Agent 执行 Current Quote Tool 的最小接口。"""
+class MarketDataReader(Protocol):
+    """Agent 执行已批准 Market Data Tools 的最小接口。"""
 
     def get_current_quote(self, ticker: str) -> MarketDataResult[MarketQuote]: ...
+
+    def get_historical_bars(
+        self,
+        query: HistoricalBarsQuery,
+    ) -> MarketDataResult[HistoricalBars]: ...
 
 
 class InvestmentResponseStatus(StrEnum):
@@ -121,6 +164,7 @@ class ContextSourceType(StrEnum):
 
     PORTFOLIO_SNAPSHOT = "PORTFOLIO_SNAPSHOT"
     CURRENT_QUOTE = "CURRENT_QUOTE"
+    PRICE_HISTORY = "PRICE_HISTORY"
 
 
 @dataclass(frozen=True, slots=True)
@@ -162,12 +206,15 @@ class InvestmentAgent:
     def __init__(
         self,
         portfolio_reader: PortfolioSnapshotReader,
-        market_data: CurrentQuoteReader,
+        market_data: MarketDataReader,
         llm_provider: LLMProvider,
+        *,
+        clock: Callable[[], datetime] | None = None,
     ) -> None:
         self._portfolio_reader = portfolio_reader
         self._market_data = market_data
         self._llm_provider = llm_provider
+        self._clock = clock or (lambda: datetime.now(UTC))
 
     def answer(self, user_id: UUID, question: str) -> InvestmentAgentResult:
         """执行最多一个 Tool Round，并返回 Answer 或明确 Request Failure。"""
@@ -191,12 +238,12 @@ class InvestmentAgent:
         initial_messages = self._initial_messages(snapshot, normalized_question)
         LOGGER.info(
             "investment_agent_context_ready",
-            extra={"position_count": len(snapshot.positions), "tool_count": 1},
+            extra={"position_count": len(snapshot.positions), "tool_count": 2},
         )
 
         first_result = self._llm_provider.complete(
             initial_messages,
-            tools=(CURRENT_QUOTE_TOOL,),
+            tools=(CURRENT_QUOTE_TOOL, RECENT_PRICE_HISTORY_TOOL),
         )
         first_failure = self._from_llm_failure(first_result)
         if first_failure is not None:
@@ -210,6 +257,7 @@ class InvestmentAgent:
                 final_message=first_message,
                 snapshot=snapshot,
                 market_results_by_ticker={},
+                historical_results_by_ticker={},
             )
             if isinstance(guarded_content, InvestmentRequestFailure):
                 self._log_failure(guarded_content, started_at)
@@ -229,50 +277,74 @@ class InvestmentAgent:
 
         tool_messages: list[LLMMessage] = []
         market_results_by_ticker: dict[str, MarketDataResult[MarketQuote]] = {}
+        historical_results_by_ticker: dict[str, MarketDataResult[HistoricalBars]] = {}
         degraded = False
         for tool_call in first_message.tool_calls:
             ticker = tool_call.arguments["ticker"]
             assert isinstance(ticker, str)
             normalized_ticker = ticker.strip().upper()
-            is_duplicate = normalized_ticker in market_results_by_ticker
-            if is_duplicate:
-                market_result = market_results_by_ticker[normalized_ticker]
+            if tool_call.name == CURRENT_QUOTE_TOOL_NAME:
+                is_duplicate = normalized_ticker in market_results_by_ticker
+                if is_duplicate:
+                    market_result = market_results_by_ticker[normalized_ticker]
+                else:
+                    market_result = self._market_data.get_current_quote(normalized_ticker)
+                    if market_result.status in {
+                        MarketDataStatus.INVALID_SYMBOL,
+                        MarketDataStatus.INVALID_REQUEST,
+                    }:
+                        failure = InvestmentRequestFailure(
+                            InvestmentFailureCode.INVALID_TOOL_CALL,
+                            f"{CURRENT_QUOTE_TOOL_NAME} ticker 参数无效",
+                        )
+                        self._log_failure(failure, started_at)
+                        return failure
+                    market_results_by_ticker[normalized_ticker] = market_result
+                tool_message, source = self._quote_tool_result(
+                    tool_call,
+                    market_result,
+                    snapshot,
+                )
+                tool_status = market_result.status
             else:
-                market_result = self._market_data.get_current_quote(normalized_ticker)
-                if market_result.status in {
-                    MarketDataStatus.INVALID_SYMBOL,
-                    MarketDataStatus.INVALID_REQUEST,
-                }:
-                    failure = InvestmentRequestFailure(
-                        InvestmentFailureCode.INVALID_TOOL_CALL,
-                        f"{CURRENT_QUOTE_TOOL_NAME} ticker 参数无效",
+                is_duplicate = normalized_ticker in historical_results_by_ticker
+                if is_duplicate:
+                    historical_result = historical_results_by_ticker[normalized_ticker]
+                else:
+                    historical_result = self._market_data.get_historical_bars(
+                        self._recent_price_history_query(normalized_ticker)
                     )
-                    self._log_failure(failure, started_at)
-                    return failure
-                market_results_by_ticker[normalized_ticker] = market_result
-            tool_message, source = self._market_tool_result(
-                tool_call,
-                market_result,
-                snapshot,
-            )
+                    if historical_result.status is MarketDataStatus.INVALID_SYMBOL:
+                        failure = InvestmentRequestFailure(
+                            InvestmentFailureCode.INVALID_TOOL_CALL,
+                            f"{RECENT_PRICE_HISTORY_TOOL_NAME} ticker 参数无效",
+                        )
+                        self._log_failure(failure, started_at)
+                        return failure
+                    historical_results_by_ticker[normalized_ticker] = historical_result
+                tool_message, source = self._history_tool_result(
+                    tool_call,
+                    historical_result,
+                )
+                tool_status = historical_result.status
             tool_messages.append(tool_message)
             if is_duplicate:
                 LOGGER.info(
                     "investment_agent_tool_deduplicated",
                     extra={
-                        "tool_name": CURRENT_QUOTE_TOOL_NAME,
+                        "tool_name": tool_call.name,
                         "ticker": normalized_ticker,
                     },
                 )
             else:
                 sources.append(source)
-                degraded = degraded or market_result.status is not MarketDataStatus.OK
+                degraded = degraded or tool_status is not MarketDataStatus.OK
                 LOGGER.info(
                     "investment_agent_tool_completed",
                     extra={
-                        "tool_name": CURRENT_QUOTE_TOOL_NAME,
+                        "tool_name": tool_call.name,
                         "ticker": source.ticker,
-                        "tool_status": market_result.status.value,
+                        "tool_status": tool_status.value,
                     },
                 )
 
@@ -298,6 +370,7 @@ class InvestmentAgent:
             final_message=final_message,
             snapshot=snapshot,
             market_results_by_ticker=market_results_by_ticker,
+            historical_results_by_ticker=historical_results_by_ticker,
         )
         if isinstance(guarded_content, InvestmentRequestFailure):
             self._log_failure(guarded_content, started_at)
@@ -311,7 +384,7 @@ class InvestmentAgent:
         self._log_success(
             answer,
             started_at,
-            tool_call_count=len(market_results_by_ticker),
+            tool_call_count=len(market_results_by_ticker) + len(historical_results_by_ticker),
         )
         return answer
 
@@ -322,11 +395,17 @@ class InvestmentAgent:
         final_message: LLMMessage,
         snapshot: PortfolioSnapshot,
         market_results_by_ticker: dict[str, MarketDataResult[MarketQuote]],
+        historical_results_by_ticker: dict[str, MarketDataResult[HistoricalBars]],
     ) -> str | InvestmentRequestFailure:
         """确定性检查 Final Response，并最多执行一次 No-Tool Repair。"""
 
         content = self._require_final_content(final_message)
-        violations = validate_final_response(content, snapshot, market_results_by_ticker)
+        violations = validate_final_response(
+            content,
+            snapshot,
+            market_results_by_ticker,
+            historical_results_by_ticker,
+        )
         if not violations:
             return content
 
@@ -364,6 +443,7 @@ class InvestmentAgent:
             repaired_content,
             snapshot,
             market_results_by_ticker,
+            historical_results_by_ticker,
         )
         if remaining_violations:
             LOGGER.warning(
@@ -388,7 +468,7 @@ class InvestmentAgent:
         content = json.dumps(
             {
                 "question": question,
-                "context_capabilities": M3_CONTEXT_CAPABILITIES.as_dict(),
+                "context_capabilities": M4_CONTEXT_CAPABILITIES.as_dict(),
                 "decision_context": m3_decision_context(),
                 "portfolio_snapshot": snapshot.as_dict(),
                 "response_contract": m3_response_contract(),
@@ -411,7 +491,10 @@ class InvestmentAgent:
                 f"每个 Tool Round 最多允许 {MAX_TOOL_CALLS_PER_ROUND} 个调用",
             )
         for tool_call in tool_calls:
-            if tool_call.name != CURRENT_QUOTE_TOOL_NAME:
+            if tool_call.name not in {
+                CURRENT_QUOTE_TOOL_NAME,
+                RECENT_PRICE_HISTORY_TOOL_NAME,
+            }:
                 return InvestmentRequestFailure(
                     InvestmentFailureCode.INVALID_TOOL_CALL,
                     "模型请求了未授权 Tool",
@@ -419,18 +502,18 @@ class InvestmentAgent:
             if set(tool_call.arguments) != {"ticker"}:
                 return InvestmentRequestFailure(
                     InvestmentFailureCode.INVALID_TOOL_CALL,
-                    "get_current_quote arguments 必须只包含 ticker",
+                    f"{tool_call.name} arguments 必须只包含 ticker",
                 )
             ticker = tool_call.arguments.get("ticker")
             if not isinstance(ticker, str) or not ticker.strip():
                 return InvestmentRequestFailure(
                     InvestmentFailureCode.INVALID_TOOL_CALL,
-                    "get_current_quote ticker 必须是非空字符串",
+                    f"{tool_call.name} ticker 必须是非空字符串",
                 )
         return None
 
     @staticmethod
-    def _market_tool_result(
+    def _quote_tool_result(
         tool_call: LLMToolCall,
         result: MarketDataResult[MarketQuote],
         snapshot: PortfolioSnapshot,
@@ -480,6 +563,81 @@ class InvestmentAgent:
             }
             source = ContextSource(
                 type=ContextSourceType.CURRENT_QUOTE,
+                status=result.status.value,
+                ticker=ticker.strip().upper(),
+            )
+        return (
+            LLMMessage(
+                LLMRole.TOOL,
+                json.dumps(payload, ensure_ascii=False, sort_keys=True),
+                tool_call_id=tool_call.id,
+            ),
+            source,
+        )
+
+    def _recent_price_history_query(self, ticker: str) -> HistoricalBarsQuery:
+        """由代码固定历史窗口，避免模型控制时间范围或数据量。"""
+
+        current_time = self._clock()
+        if current_time.tzinfo is None or current_time.utcoffset() is None:
+            raise RuntimeError("InvestmentAgent clock 必须返回含时区的 datetime")
+        end = current_time.astimezone(UTC) - PRICE_HISTORY_END_LAG
+        return HistoricalBarsQuery(
+            ticker=ticker,
+            start=end - timedelta(days=PRICE_HISTORY_LOOKBACK_DAYS),
+            end=end,
+            limit=PRICE_HISTORY_LIMIT,
+        )
+
+    @staticmethod
+    def _history_tool_result(
+        tool_call: LLMToolCall,
+        result: MarketDataResult[HistoricalBars],
+    ) -> tuple[LLMMessage, ContextSource]:
+        """将 Daily Bars 缩减为可追溯的区间事实，不向 LLM 暴露技术信号。"""
+
+        if result.status is MarketDataStatus.OK:
+            history = result.data
+            assert history is not None
+            payload: dict[str, object] = {
+                "status": result.status.value,
+                "price_history_fact_available": True,
+                "ticker": history.ticker,
+                "timeframe": history.timeframe,
+                "source": history.source,
+                "feed": history.feed,
+                "coverage": history.coverage.value,
+                "currency": history.currency,
+                "adjustment": history.adjustment,
+                "fetched_at": history.fetched_at.isoformat(),
+                "deterministic_derived_facts": RecentPriceHistoryFacts.from_historical_bars(
+                    history
+                ).as_dict(),
+                "response_contract": recent_price_history_response_contract(),
+            }
+            source = ContextSource(
+                type=ContextSourceType.PRICE_HISTORY,
+                status=result.status.value,
+                ticker=history.ticker,
+                provider=history.source,
+                feed=history.feed,
+                market_timestamp=history.bars[-1].timestamp,
+                fetched_at=history.fetched_at,
+            )
+        else:
+            ticker = tool_call.arguments["ticker"]
+            assert isinstance(ticker, str)
+            payload = {
+                "status": result.status.value,
+                "price_history_fact_available": False,
+                "ticker": ticker.strip().upper(),
+                "message": result.message,
+                "instruction": (
+                    "将近期价格路径视为 UNKNOWN；不得补造历史价格、技术分析、交易信号或预测。"
+                ),
+            }
+            source = ContextSource(
+                type=ContextSourceType.PRICE_HISTORY,
                 status=result.status.value,
                 ticker=ticker.strip().upper(),
             )

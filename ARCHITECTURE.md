@@ -2,7 +2,7 @@
 
 ## 1. 当前范围
 
-本文档描述 M4 Cash Adjustment Vertical Slice 完成后的实际系统结构。当前系统包含工程基础、Portfolio Structured State、Cash Event Ledger、最小 Market Data，以及 Single Investment Agent 的第一个端到端 Vertical Slice；M4 原有 Investment Context Expansion 尚未开始。
+本文档描述 M4 Cash Adjustment 与 Recent Price History Vertical Slices 完成后的实际系统结构。当前系统包含 Portfolio Structured State、Transaction / Cash Event Ledgers、Provider-neutral Market Data，以及可按问题选择 Current Quote 或固定近期 Daily Price History 的 Single Investment Agent。
 
 ## 2. 依赖方向
 
@@ -13,7 +13,8 @@ POST /v1/investment/questions
       ↓
 Application / InvestmentAgent
   ├── PortfolioService → SQLAlchemy UoW → PostgreSQL Ledger
-  ├── MarketDataService → AlpacaMarketDataProvider
+  ├── Current Quote / Recent Price History Tools
+  │     ↓ MarketDataService → AlpacaMarketDataProvider
   └── LLMProvider → AliyunLLMProvider
 
 Portfolio callers
@@ -111,6 +112,7 @@ Cash Event amount 必须为正数且最多 8 位小数。`initial_cash` 不在�
 - `backend/position_pilot/application/portfolio_service.py`：Transaction / Cash Event Use Case、写入 Command 和 Unit of Work Contract。
 - `backend/position_pilot/application/llm.py`：Provider-neutral Message、Tool、Completion 与 Failure Contract。
 - `backend/position_pilot/application/investment_agent.py`：Portfolio Snapshot、单轮 Native Function Calling、Source Tracking 与 Request Failure。
+- `backend/position_pilot/application/investment_context.py`：Portfolio、Quote 与 Recent Price History 的确定性事实和响应边界。
 - `backend/position_pilot/application/investment_response_guard.py`：Final Response 的确定性 Context Contract 检查与一次性 Repair 指令。
 - `backend/position_pilot/infrastructure/models.py`：User / Transaction / Cash Event SQLAlchemy Model 与数据库约束。
 - `backend/position_pilot/infrastructure/unit_of_work.py`：同步 SQLAlchemy 持久化实现和领域映射。
@@ -128,16 +130,17 @@ Cash Event amount 必须为正数且最多 8 位小数。`initial_cash` 不在�
 - 不处理税费、多币种、拆股、公司行动、转仓或外部券商同步。
 - Current Quote 默认来自 Alpaca Basic 的实时 IEX feed，只代表单一交易所覆盖；Historical Daily OHLCV 来自至少延迟 15 分钟的 SIP feed。
 - 不包含 WebSocket、行情缓存或持久化、技术指标、VIX、Market Regime、News 或 Fundamentals。
-- Portfolio Snapshot 是 M3 必定注入的完整当前持仓集合，不默认包含 Transaction History。
+- Portfolio Snapshot 是 Agent 必定注入的完整当前持仓集合，不默认包含 Transaction 或 Cash Event History。
 - 发给 LLM 的 Snapshot 不包含内部 User ID，并提供由代码计算的 Ticker 数量、总持仓历史成本和按 Ticker 聚合、保留两位小数的历史成本权重百分比。历史成本权重不包含 Available Cash，也不表示当前市值权重；原始 `LONG_TERM` / `SWING` Position 继续独立保留。
 - Quote 成功后，Application 自动提供 Cash 与单股价格、当前价格与各 Position Average Cost 的确定性关系；Cash/Quote 关系被明确标记为纯数值比较，不能支持交易执行结论，真实可执行购买数量始终保持 `UNKNOWN`。Portfolio Context 还提供当前 Eval 已证明需要的同 Ticker 股数汇总，并将现金权重、总组合价值、当前市值权重和缺少策略阈值时的集中度结论显式标为 `UNAVAILABLE` 或 `UNKNOWN`。Final Response 的结构化 Contract 会在初始 Context 和 Quote Tool Result 中声明不得新增计算、阈值或交易执行结论，LLM 不自行计算未提供的金融数值。
-- 每次请求注入结构化 Context Capability Manifest。M3 只有 Current Quote 数据来源可用；Price History、News、Earnings、Fundamentals、Market Context、Technical Analysis、Asset Metadata 和 Sector Classification 均不可用。
-- M3 Decision Context 将 Trading Plan、Exit Conditions 与 Risk Budget 显式标记为 `UNKNOWN`；它们不是 Conversation Memory，也不由模型从通用知识补足。
-- Agent 每个请求只允许一个 Tool Round，每轮最多三个 Current Quote；不支持 Conversation Memory 或多阶段检索。
-- Final Response 返回用户前经过确定性 Guard。首次越界只允许一次不带 Tool Choice 的 Response Repair；Repair 后仍越界返回 `LLM_INVALID_PROVIDER_RESPONSE`。Guard 只阻断高置信的数值、购买能力和显式结构化关系值违规，不从开放文本推断操作数，也不替代 Human Behavioral Review。
-- 同一轮内大小写或空白不同的重复 Ticker 共用一次 Market Provider Result，但每个 Native Tool Call 都获得对应 Tool Message。
-- 超出 Portfolio Snapshot 与 Current Quote 的当前事实保持 `UNKNOWN`。
-- M3 尚无 Trading / Asset Metadata Context；未来 Capability 扩展点为确定性的 `tradable` 与 `fractionable`。当前不得由 LLM 假设整股或碎股资格，也不由 LLM 计算具体可购买股数。
+- 每次请求注入结构化 Context Capability Manifest。M4 的 Current Quote 与 Price History 可用；News、Earnings、Fundamentals、Market Context、Technical Analysis、Asset Metadata 和 Sector Classification 仍不可用。
+- Decision Context 将 Trading Plan、Exit Conditions 与 Risk Budget 显式标记为 `UNKNOWN`；它们不是 Conversation Memory，也不由模型从通用知识补足。
+- Agent 每个请求只允许一个 Tool Round，Current Quote 与 Recent Price History 合计最多三个调用；不支持 Conversation Memory 或多阶段检索。
+- Recent Price History 的窗口由 Application 固定为截至当前时间至少 15 分钟前的最近 45 个日历日、最多 30 根 Daily Bars。LLM 只能选择 Ticker，不能控制 start、end 或 limit。Application 只提供 Bar 数量、首尾时间与收盘价、区间高低、首尾涨跌额/幅和 `UP / DOWN / FLAT` 方向；最新历史收盘价不等于 Current Quote，Price History 不提供移动平均、RSI、支撑阻力、交易信号或预测。
+- Final Response 返回用户前经过确定性 Guard。首次越界只允许一次不带 Tool Choice 的 Response Repair；Repair 后仍越界返回 `LLM_INVALID_PROVIDER_RESPONSE`。Guard 只阻断高置信的数值、购买能力、显式结构化关系值和 Price History 方向违规，不从开放文本推断操作数，也不替代 Human Behavioral Review。
+- 同一轮内大小写或空白不同的重复调用按 `(tool_name, ticker)` 共用一次 Market Provider Result，但每个 Native Tool Call 都获得对应 Tool Message。Quote 与 History 即使 Ticker 相同仍是两个独立来源。
+- 超出 Portfolio Snapshot、成功 Current Quote 与成功 Price History Tool Result 的事实保持 `UNKNOWN`。
+- 当前仍无 Trading / Asset Metadata Context；未来 Capability 扩展点为确定性的 `tradable` 与 `fractionable`。不得由 LLM 假设整股或碎股资格，也不由 LLM 计算具体可购买股数。
 
 ## 8. Market Data Boundary
 
@@ -175,9 +178,9 @@ Fail → one no-tool Repair → Guard
 LLM_INVALID_PROVIDER_RESPONSE
 ```
 
-- Snapshot 明确声明 Positions 是完整当前集合；未出现的 Ticker 表示当前无持仓。M3 不额外执行确定性 Ticker Extraction。
+- Snapshot 明确声明 Positions 是完整当前集合；未出现的 Ticker 表示当前无持仓。Agent 不额外执行确定性 Ticker Extraction。
 - `LLMProvider` 的 Message、Tool Definition、Tool Call 与 Result 均为项目自身 Schema；Aliyun/OpenAI-compatible Payload 只存在于 Adapter。
 - `qwen3.7-plus` 是可通过 `LLM_MODEL` 覆盖的默认配置，不是 Domain 或 Application 类型。
-- Market Data Failure 会作为缺失事实返回 LLM，安全 Final Answer 由 Application 标记为 `DEGRADED`；LLM Failure 无法形成 Final Answer，返回 Request Failure。
+- Current Quote 或 Recent Price History Failure 会作为缺失事实返回 LLM，安全 Final Answer 由 Application 标记为 `DEGRADED`；LLM Failure 无法形成 Final Answer，返回 Request Failure。
 - `FACT`、`INFERENCE`、`UNKNOWN` 是回答的语义约束，不强制固定输出标题。
 - 默认测试使用 Fake LLM；Opt-in Behavioral Eval 使用真实 Aliyun LLM 与固定 Fake Market Data，真实 LLM + 真实 Market Data 只用于 Smoke Test。

@@ -1,4 +1,4 @@
-"""M3 Final Response 的确定性 Grounding Contract Guard。"""
+"""M4 Final Response 的确定性 Grounding Contract Guard。"""
 
 import re
 from collections.abc import Mapping
@@ -8,9 +8,16 @@ from enum import StrEnum
 
 from position_pilot.application.investment_context import (
     PortfolioSnapshot,
+    PriceDirection,
     QuoteDerivedFacts,
+    RecentPriceHistoryFacts,
 )
-from position_pilot.domain.market_data import MarketDataResult, MarketDataStatus, MarketQuote
+from position_pilot.domain.market_data import (
+    HistoricalBars,
+    MarketDataResult,
+    MarketDataStatus,
+    MarketQuote,
+)
 
 _NUMBER_PATTERN = re.compile(r"(?<![\w.])[-+]?\d[\d,]*(?:\.\d+)?%?")
 _ISO_DATE_OR_TIME_PATTERN = re.compile(
@@ -22,7 +29,8 @@ _FINANCIAL_UNIT_PATTERN = re.compile(
 )
 _FINANCIAL_KEYWORD_PATTERN = re.compile(
     r"价格|报价|现金|成本|金额|股数|数量|权重|比例|阈值|盈利|亏损|收益|"
-    r"price|quote|cash|cost|share|weight|ratio|profit|loss|return",
+    r"收盘|高点|低点|涨跌|价格路径|柱数|price|quote|cash|cost|share|weight|ratio|"
+    r"profit|loss|return|close|high|low|change|bar",
     re.IGNORECASE,
 )
 _BUYING_POWER_PATTERNS = tuple(
@@ -41,15 +49,17 @@ _BUYING_POWER_PATTERNS = tuple(
     )
 )
 _RELATION_VALUES_PATTERN = r"(ABOVE|BELOW|EQUAL)"
+_PRICE_DIRECTION_VALUES_PATTERN = r"(UP|DOWN|FLAT)"
 
 
 class GroundingViolationCode(StrEnum):
-    """Guard 只覆盖 M3 已确认的 Context Contract 越界类型。"""
+    """Guard 只覆盖已确认的高置信 Context Contract 越界类型。"""
 
     UNSUPPORTED_FINANCIAL_NUMBER = "UNSUPPORTED_FINANCIAL_NUMBER"
     BUYING_POWER_CLAIM = "BUYING_POWER_CLAIM"
     CASH_QUOTE_RELATION_CONTRADICTION = "CASH_QUOTE_RELATION_CONTRADICTION"
     PRICE_COST_RELATION_CONTRADICTION = "PRICE_COST_RELATION_CONTRADICTION"
+    PRICE_HISTORY_DIRECTION_CONTRADICTION = "PRICE_HISTORY_DIRECTION_CONTRADICTION"
 
 
 _REPAIR_INSTRUCTION_BY_CODE = {
@@ -66,6 +76,9 @@ _REPAIR_INSTRUCTION_BY_CODE = {
     ),
     GroundingViolationCode.PRICE_COST_RELATION_CONTRADICTION: (
         "按 Guard 消息给出的代码关系原样修正 Quote/Average Cost 方向。"
+    ),
+    GroundingViolationCode.PRICE_HISTORY_DIRECTION_CONTRADICTION: (
+        "按 Guard 消息给出的代码方向原样修正 Price History 首尾收盘价方向。"
     ),
 }
 
@@ -87,14 +100,24 @@ def validate_final_response(
     answer: str,
     snapshot: PortfolioSnapshot,
     market_results_by_ticker: Mapping[str, MarketDataResult[MarketQuote]],
+    historical_results_by_ticker: Mapping[str, MarketDataResult[HistoricalBars]] | None = None,
 ) -> tuple[GroundingViolation, ...]:
-    """验证回答是否越过 M3 已有事实和确定性计算边界。"""
+    """验证回答是否越过 M4 已有事实和确定性计算边界。"""
 
+    historical_results = historical_results_by_ticker or {}
     violations: list[GroundingViolation] = []
-    violations.extend(_unsupported_number_violations(answer, snapshot, market_results_by_ticker))
+    violations.extend(
+        _unsupported_number_violations(
+            answer,
+            snapshot,
+            market_results_by_ticker,
+            historical_results,
+        )
+    )
     violations.extend(_buying_power_violations(answer))
     violations.extend(_cash_quote_relation_violations(answer, snapshot, market_results_by_ticker))
     violations.extend(_price_cost_relation_violations(answer, snapshot, market_results_by_ticker))
+    violations.extend(_price_history_direction_violations(answer, historical_results))
     return _deduplicate_violations(violations)
 
 
@@ -124,8 +147,13 @@ def _unsupported_number_violations(
     answer: str,
     snapshot: PortfolioSnapshot,
     market_results_by_ticker: Mapping[str, MarketDataResult[MarketQuote]],
+    historical_results_by_ticker: Mapping[str, MarketDataResult[HistoricalBars]],
 ) -> list[GroundingViolation]:
-    allowed = _allowed_financial_numbers(snapshot, market_results_by_ticker)
+    allowed = _allowed_financial_numbers(
+        snapshot,
+        market_results_by_ticker,
+        historical_results_by_ticker,
+    )
     unsupported: set[Decimal] = set()
     for match in _NUMBER_PATTERN.finditer(answer):
         if _is_list_ordinal(answer, match.start(), match.end()):
@@ -218,6 +246,32 @@ def _price_cost_relation_violations(
     return violations
 
 
+def _price_history_direction_violations(
+    answer: str,
+    historical_results_by_ticker: Mapping[str, MarketDataResult[HistoricalBars]],
+) -> list[GroundingViolation]:
+    """只校验模型显式复述的结构化区间方向。"""
+
+    successful_histories = _successful_histories(historical_results_by_ticker)
+    historical_tickers = tuple(successful_histories)
+    violations: list[GroundingViolation] = []
+    for ticker, history in successful_histories.items():
+        expected_direction = RecentPriceHistoryFacts.from_historical_bars(history).close_direction
+        relevant_text = _ticker_relevant_text(answer, ticker, historical_tickers)
+        named_directions = _explicit_price_directions(relevant_text)
+        if any(direction is not expected_direction for direction in named_directions):
+            violations.append(
+                GroundingViolation(
+                    GroundingViolationCode.PRICE_HISTORY_DIRECTION_CONTRADICTION,
+                    (
+                        f"回答错误复述了 {ticker} 的 Price History 方向；"
+                        f"代码方向为 {expected_direction.value}"
+                    ),
+                )
+            )
+    return violations
+
+
 def _explicit_relation_values(answer: str, field_name: str) -> tuple[str, ...]:
     """只读取模型显式复述的结构化关系值。
 
@@ -234,9 +288,19 @@ def _explicit_relation_values(answer: str, field_name: str) -> tuple[str, ...]:
     return tuple(match.upper() for match in pattern.findall(answer))
 
 
+def _explicit_price_directions(answer: str) -> tuple[PriceDirection, ...]:
+    pattern = re.compile(
+        r"\bclose_direction\b\s*(?:显示\s*)?(?:=|:|为|is)\s*[`\"']*\b"
+        rf"{_PRICE_DIRECTION_VALUES_PATTERN}\b",
+        re.IGNORECASE,
+    )
+    return tuple(PriceDirection(match.upper()) for match in pattern.findall(answer))
+
+
 def _allowed_financial_numbers(
     snapshot: PortfolioSnapshot,
     market_results_by_ticker: Mapping[str, MarketDataResult[MarketQuote]],
+    historical_results_by_ticker: Mapping[str, MarketDataResult[HistoricalBars]],
 ) -> set[Decimal]:
     facts = snapshot.deterministic_derived_facts
     allowed = {
@@ -257,6 +321,21 @@ def _allowed_financial_numbers(
             allowed.add(quote.bid_price)
         if quote.ask_price is not None:
             allowed.add(quote.ask_price)
+    for history in _successful_histories(historical_results_by_ticker).values():
+        historical_facts = RecentPriceHistoryFacts.from_historical_bars(history)
+        allowed.update(
+            (
+                Decimal(historical_facts.bar_count),
+                historical_facts.first_close,
+                historical_facts.latest_close,
+                historical_facts.period_high,
+                historical_facts.period_low,
+                historical_facts.close_change,
+                historical_facts.absolute_close_change,
+                historical_facts.close_change_percent,
+                historical_facts.absolute_close_change_percent,
+            )
+        )
     return allowed
 
 
@@ -266,6 +345,16 @@ def _successful_quotes(
     return {
         ticker: result.data
         for ticker, result in market_results_by_ticker.items()
+        if result.status is MarketDataStatus.OK and result.data is not None
+    }
+
+
+def _successful_histories(
+    historical_results_by_ticker: Mapping[str, MarketDataResult[HistoricalBars]],
+) -> dict[str, HistoricalBars]:
+    return {
+        ticker: result.data
+        for ticker, result in historical_results_by_ticker.items()
         if result.status is MarketDataStatus.OK and result.data is not None
     }
 
