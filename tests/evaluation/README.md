@@ -4,7 +4,7 @@
 
 Final Completion 必须返回内部 `{answer, source_refs}` JSON。`answer` 是自由文本；`source_refs` 声明回答实际使用的 Portfolio / Quote / History / News / Market Context，并由 Application 验证是否在本轮成功取得。Human Review 应检查 answer 是否准确使用这些来源，因为 Backend 不做逐 Claim 或逐数字验证。
 
-Final Completion 使用 Provider-native JSON Object Mode 降低语法失败；Application Parser、Source Validation 与一次 Repair 仍是必需防御层。运行输出同时记录 invalid JSON、Structured Contract Failure、Source Validation Failure、Repair Count / Rate 与 Provider Timeout，不能只看最终 pass/fail。
+Final Completion 使用 Provider-native JSON Object Mode 降低语法失败；Application Parser、Source Validation 与一次 Repair 仍是必需防御层。运行输出同时记录 invalid JSON、Structured Contract Failure、Source Validation Failure、Repair Count / Rate 与 Provider Timeout，不能只看最终 pass/fail。带 `tool_calls` 的首轮 Routing Completion 不计入这些 Final JSON 指标；只有无 Tool Call 的 Final / Repair Completion 参与校验。
 
 运行前显式导出通用 LLM 配置，并启用开关：
 
@@ -30,6 +30,7 @@ uv run pytest tests/evaluation/test_real_model_behavior.py -s
 - 近期价格问题是否只使用 Fake Historical Daily Bars 的代码派生事实，且不把最新历史收盘价当作 Current Quote；
 - Recent News 问题是否只调用实际需要的 News Tool，并把 headline / summary 表述为有来源归因的报道，而不是系统独立验证事实；
 - Market Context 是否只作为 Portfolio Risk Context：没有明确既定规则、并要求判断当前是否应增加或减少风险暴露时必须覆盖；Portfolio Facts、纯报价、购买能力、纯 History / News 和既定规则执行避免机械调用；
+- `cash_vs_quote_information` 是现金与单股报价的事实关系查询，不要求 LONG_TERM / SWING、可执行购买数量或额外 Market Context；`position_reduction_rule_check` 是既定规则/执行核对，不因“减仓”措辞机械调用 Market Context；
 - Market Context 是否使用 SPY 代理范围、三个原始指标、Trigger Rule 与 `V1_HEURISTIC` 声明；不得写成完整美股市场事实、行业标准、已回测规则或投资信号；
 - `drop_reason_unknown` 是否不确认用户“今天下跌”的前提，并只把报道与价格变化的关系表述为条件式 `INFERENCE`，不声称唯一原因；
 - Missing / Provider Failure 时是否拒绝编造当前价格；
@@ -45,6 +46,12 @@ uv run pytest tests/evaluation/test_real_model_behavior.py -s
 - `low_cash_personalization` / `high_cash_personalization` 使用完全相同的问题，人工比较 Cash 变化是否真正改变分析。
 - `long_term_position_personalization` / `swing_position_personalization` 使用完全相同的问题，人工比较 Position Type 是否真正改变分析重点。
 - `market_context_normal` / `market_context_high_stress` 使用完全相同的问题，人工比较 Regime 是否只改变条件式风险分析，而不是机械改变为 BUY / SELL。
+
+重点案例可按当前 ID 运行：
+
+```bash
+uv run pytest tests/evaluation/test_real_model_behavior.py -s -k 'cash_vs_quote_information or cash_only_no_tool or market_context_normal or market_context_high_stress or low_cash_personalization or high_cash_personalization or long_term_position_personalization or swing_position_personalization or position_reduction_rule_check or recent_price_history or recent_news'
+```
 
 Context Capability 表示系统是否拥有某类数据来源，不表示某个 ticker 的具体属性。M5 的 `price_history`、`news` 与 `market_context` 为 `AVAILABLE`，但 News 只是 attributed reporting，Market Context 只是 SPY Daily Price Stress V1 Heuristic；`technical_analysis` 与 `asset_metadata` 仍为 `UNAVAILABLE`，因此不提供独立事实核验、技术信号、`tradable`、`fractionable` 或可执行购买数量。Behavioral Eval 不允许模型根据训练知识猜测这些事实。
 

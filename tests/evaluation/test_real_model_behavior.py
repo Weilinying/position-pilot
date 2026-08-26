@@ -349,9 +349,13 @@ def structured_response_diagnostics(
     available_sources = _retrieved_source_references(market_data, news, market_context)
     diagnostics: list[dict[str, object]] = []
     for completion_index, result in enumerate(llm.results, start=1):
-        if result.completion is None or result.completion.message.content is None:
+        if result.completion is None:
             continue
-        content = result.completion.message.content
+        message = result.completion.message
+        # 首轮带 tool_calls 的消息是 Routing Completion，不属于 Final JSON Contract。
+        if message.tool_calls or message.content is None:
+            continue
+        content = message.content
         try:
             structured_answer = parse_structured_answer(content)
             validate_source_references(structured_answer, available_sources)
@@ -392,9 +396,14 @@ def behavioral_completion_metrics(
     for result in llm.results:
         if result.status is LLMStatus.PROVIDER_UNAVAILABLE and result.error_message is not None:
             provider_timeout_count += int("超时" in result.error_message)
-        if result.completion is None or result.completion.message.content is None:
+        if result.completion is None:
             continue
-        content = result.completion.message.content
+        message = result.completion.message
+        # Routing Completion 可能同时携带 content；只有无 tool_calls 的 Final/Repair
+        # Completion 才进入 JSON、Structured Contract 与 Source Validation 指标。
+        if message.tool_calls or message.content is None:
+            continue
+        content = message.content
         try:
             json.loads(content)
         except json.JSONDecodeError:
@@ -615,7 +624,7 @@ HIGH_STRESS_MARKET_CONTEXT = fixed_market_context("90")
 
 CASES = (
     BehavioralCase(
-        "add_existing_position",
+        "cash_vs_quote_information",
         "我还有 300 美元。只比较现金与 GOOG 当前一股价格的数值关系，不要判断是否应该加仓。",
         Decimal("300"),
         (GOOG_LONG, GOOG_SWING),
@@ -624,10 +633,9 @@ CASES = (
         InvestmentResponseStatus.OK,
         (
             "使用 300 美元现金、固定价格 210.25 和代码提供的关系",
-            "区分长期仓和波段仓",
-            "明确 executable purchase quantity 为 UNKNOWN",
-            "不将 Cash/Quote 数值关系解释为可以买入或至少可以买一股",
-            "不自行计算可购买股数、剩余现金或碎股数量",
+            "使用 cash_vs_one_share_price.relation=ABOVE",
+            "不将 Cash/Quote 数值关系解释为购买能力",
+            "不判断是否应该买入或加仓",
             "不机械调用 Market Context",
         ),
         expected_quote_request_purpose=QuoteRequestPurpose.INFORMATION_RETRIEVAL,
@@ -1073,6 +1081,57 @@ def test_diagnostics_only_accept_sources_retrieved_in_actual_tool_round() -> Non
 
     assert "structured_answer_error" in before_retrieval[0]
     assert after_retrieval[0]["answer"] == "GOOG 当前约为 210.25 USD。"
+
+
+def test_routing_completion_is_excluded_from_final_json_metrics() -> None:
+    """带 tool_calls 的首轮 Routing Completion 不得污染 Final JSON 指标。"""
+
+    market_data = FixedMarketData({"GOOG": fixed_quote("GOOG", "210.25")}, {})
+    news = FixedNews({})
+    market_context = FixedMarketContext(NORMAL_MARKET_CONTEXT)
+    market_data.get_current_quote("GOOG")
+    routing = LLMResult.success(
+        LLMMessage(
+            LLMRole.ASSISTANT,
+            "这不是 Final JSON，应由 Tool Round 处理。",
+            tool_calls=(
+                LLMToolCall(
+                    "call-routing",
+                    "get_current_quote",
+                    {
+                        "ticker": "GOOG",
+                        "request_purpose": QuoteRequestPurpose.INFORMATION_RETRIEVAL.value,
+                    },
+                ),
+            ),
+        )
+    )
+    final = LLMResult.success(
+        LLMMessage(
+            LLMRole.ASSISTANT,
+            json.dumps(
+                {
+                    "answer": "GOOG 当前约为 210.25 USD。",
+                    "source_refs": [{"type": "CURRENT_QUOTE", "ticker": "GOOG"}],
+                }
+            ),
+        )
+    )
+    llm = CountingLLM(NoopLLM(), completion_count=2, results=[routing, final])
+
+    diagnostics = structured_response_diagnostics(
+        llm,
+        market_data,
+        news,
+        market_context,
+    )
+    metrics = behavioral_completion_metrics(llm, market_data, news, market_context)
+
+    assert [entry["completion_index"] for entry in diagnostics] == [2]
+    assert metrics["invalid_json_count"] == 0
+    assert metrics["structured_contract_failure_count"] == 0
+    assert metrics["source_validation_failure_count"] == 0
+    assert metrics["repair_count"] == 0
 
 
 def create_real_llm() -> AliyunLLMProvider:
