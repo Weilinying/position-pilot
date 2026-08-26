@@ -4,6 +4,8 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from uuid import UUID
 
+import pytest
+
 from position_pilot.application.investment_context import PortfolioSnapshot
 from position_pilot.application.investment_response_guard import (
     GroundingViolationCode,
@@ -171,6 +173,41 @@ def test_rejects_other_ticker_quote_presented_as_current_quote() -> None:
     assert GroundingViolationCode.CURRENT_QUOTE_FACT_MISMATCH in {
         violation.code for violation in violations
     }
+
+
+@pytest.mark.parametrize(
+    "answer",
+    [
+        "GOOG当前价格为 500.50 美元。",
+        "GOOG的当前价格为 500.50 美元。",
+    ],
+)
+def test_rejects_contiguous_chinese_ticker_claim_using_other_quote(
+    answer: str,
+) -> None:
+    """Unicode 相邻字符不得让明确 ticker 丢失并回退到唯一 Quote。"""
+
+    violations = validate_final_response(
+        answer,
+        snapshot(),
+        {"MSFT": quote("MSFT", "500.50")},
+    )
+
+    assert GroundingViolationCode.CURRENT_QUOTE_FACT_MISMATCH in {
+        violation.code for violation in violations
+    }
+
+
+def test_accepts_english_article_before_grounded_current_price() -> None:
+    """英文冠词不得因全局大小写忽略被误识别为 ticker。"""
+
+    violations = validate_final_response(
+        "The current price is 210.25 USD.",
+        snapshot(),
+        {"GOOG": quote("GOOG", "210.25")},
+    )
+
+    assert violations == ()
 
 
 def test_rejects_price_history_bar_count_presented_as_current_quote() -> None:

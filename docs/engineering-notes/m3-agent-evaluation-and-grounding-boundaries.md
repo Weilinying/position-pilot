@@ -39,6 +39,7 @@
 *   **踩过的坑：** Guard 曾尝试使用复杂的正则表达式（Regex）去检测“略高”、“微利”、“显著”等词汇，以及识别跨 Ticker 的开放式比较，甚至试图从复杂句式中推断操作数。这导致代码层面的 Guard 退化成了一个“自然语言启发式审核器 (Natural-language Heuristic Reviewer)”，并引发了实际的误报（False Positive）。
 *   **最终决定：** 彻底删除这些生产环境的阻断规则，以减少无意义的 Repair 修复、额外的 LLM 调用开销、Regex 的复杂度，并消除 Prompt/Guard 之间的重复逻辑。
 *   **事实身份例外：** “Ticker + 当前价格 + 明确数值”可以用低歧义规则提取，并能与结构化 Quote Source 精确比较，因此属于 System Contract，不属于开放式自然语言审核。该规则不得扩张为通用语义分类器。
+*   **Parser 边界：** Ticker 与中文相邻时不能使用 Unicode `\b`，因为英文字母和汉字都属于 word character；ticker 使用 ASCII 相邻边界并保持严格大写，大小写忽略只作用于“current price”等自然语言短语。禁止让全局 `IGNORECASE` 把 `The` 一类普通英文词误识别为 ticker，也禁止在明确 ticker 解析失败后静默归给唯一 Quote。
 *   **遗留处理：** 对于“关系幅度词汇、开放式语义比较、回答完整度、投资建议质量、仓位个性化程度、语言风格”等自然语言层面的问题，继续交由 Behavioral Eval（行为评估）或 Human Review（人工审查）去观察，后端代码不再强行介入。
 
 ---

@@ -50,13 +50,12 @@ _BUYING_POWER_PATTERNS = tuple(
 )
 _RELATION_VALUES_PATTERN = r"(ABOVE|BELOW|EQUAL)"
 _PRICE_DIRECTION_VALUES_PATTERN = r"(UP|DOWN|FLAT)"
-_TICKER_PATTERN = r"[A-Z][A-Z0-9.-]{0,9}"
+_TICKER_PATTERN = r"(?<![A-Za-z0-9])[A-Z][A-Z0-9.-]{0,9}(?![A-Za-z0-9.-])"
 _CURRENT_QUOTE_CLAIM_PATTERN = re.compile(
-    rf"(?:(?P<ticker>\b{_TICKER_PATTERN}\b)\s*(?:的\s*)?)?"
-    r"(?:当前(?:价格|报价)|现价|current\s+(?:price|quote)|last\s+price)"
-    r"\s*(?:为|是|=|:|is)?\s*(?:USD\s*)?[$¥￥]?\s*"
-    r"(?P<value>[-+]?\d[\d,]*(?:\.\d+)?)",
-    re.IGNORECASE,
+    rf"(?:(?P<ticker>{_TICKER_PATTERN})\s*(?:的\s*)?)?"
+    r"(?i:(?:当前(?:价格|报价)|现价|current\s+(?:price|quote)|last\s+price)"
+    r"\s*(?:为|是|=|:|is)?\s*(?:USD\s*)?[$¥￥]?\s*)"
+    r"(?P<value>[-+]?\d[\d,]*(?:\.\d+)?)"
 )
 
 

@@ -1233,6 +1233,46 @@ def test_guard_rejects_portfolio_cash_as_no_tool_current_quote() -> None:
     assert repair_payload["guard_violations"][0]["code"] == "CURRENT_QUOTE_FACT_MISMATCH"
 
 
+def test_guard_rejects_contiguous_goog_claim_backed_only_by_msft_quote() -> None:
+    """完整 Agent 不得把唯一的 MSFT Quote 自动归给紧邻中文的 GOOG。"""
+
+    agent, _, market_data, llm = make_agent(
+        [
+            tool_message(("call-1", "MSFT")),
+            final_message("GOOG当前价格为 500.50 美元。"),
+            final_message("GOOG 当前价格为 UNKNOWN；仅取得 MSFT Current Quote。"),
+        ],
+        market_results={"MSFT": quote("MSFT", "500.50")},
+    )
+
+    result = assert_answer(agent.answer(USER_ID, "GOOG 和 MSFT 现在多少钱？"))
+
+    assert result.answer == "GOOG 当前价格为 UNKNOWN；仅取得 MSFT Current Quote。"
+    assert market_data.requested_tickers == ["MSFT"]
+    repair_content = llm.completions[2].messages[-1].content
+    assert repair_content is not None
+    repair_payload = json.loads(repair_content)
+    assert repair_payload["guard_violations"][0]["code"] == "CURRENT_QUOTE_FACT_MISMATCH"
+
+
+def test_guard_accepts_english_current_price_without_treating_article_as_ticker() -> None:
+    """正确英文回答不应把 The 误识别成 ticker 并触发 Repair。"""
+
+    agent, _, market_data, llm = make_agent(
+        [
+            tool_message(("call-1", "GOOG")),
+            final_message("The current price is 210.25 USD."),
+        ],
+        market_results={"GOOG": quote("GOOG", "210.25")},
+    )
+
+    result = assert_answer(agent.answer(USER_ID, "What is the current GOOG price?"))
+
+    assert result.answer == "The current price is 210.25 USD."
+    assert market_data.requested_tickers == ["GOOG"]
+    assert len(llm.completions) == 2
+
+
 def test_guard_returns_request_failure_after_one_unsuccessful_repair() -> None:
     """一次 Repair 后仍越界时不得把不合规 Answer 返回用户。"""
 

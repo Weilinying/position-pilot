@@ -352,4 +352,6 @@ Alpaca / Benzinga News Provider、独立 NewsService Boundary、5 日 / 5 篇窗
 
 Automated Review 进一步发现 future-time 校验若早于 User lookup，会把未知 User 的既有 404 语义改成 422；实现已调整为先锁定并确认 User，再执行时间校验，同时保持 Ledger 未读取、无效事件未写入。
 
-Review 后验证：默认全量 pytest 为 272 passed、33 skipped；Ruff format / lint、mypy strict（49 source files）、`uv lock --check`、Alembic head / history 与 `git diff --check` 全部通过。
+后续 Guard Review 发现 Unicode `\b` 会漏掉 `GOOG当前价格` / `GOOG的当前价格` 的 ticker，而全局 `IGNORECASE` 会把 `The current price` 中的 `The` 误识别为 ticker。Parser 已改用严格大写 ticker 的 ASCII 相邻边界，并把大小写忽略限制在自然语言短语；Unit 与完整 Agent Regression 同时覆盖 False Negative 和 False Positive。
+
+Review 后验证：默认全量 pytest 为 277 passed、33 skipped；Ruff format / lint、mypy strict（49 source files）、`uv lock --check`、Alembic head / history 与 `git diff --check` 全部通过。
