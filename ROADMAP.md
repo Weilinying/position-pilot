@@ -190,6 +190,31 @@ M6 不从零开始 Evaluation，而是在 M3～M5 已积累的 Behavioral Eval C
 * `PROJECT.md` 的 V1 Success Criteria 满足；
 * Human Acceptance 通过，可以合并到 `main`。
 
+## M7 — Minimal Product Interface
+
+**Goal**
+
+为 PositionPilot V1 提供一个可直接使用和演示的最小前端界面，使核心 Portfolio State、Agent Answer、Context Selection、Source Grounding 和 Failure State 能够被清晰展示。
+
+**Scope**
+
+实现轻量 Web Interface，支持输入投资问题、查看 Portfolio Snapshot、展示 Agent Answer，并呈现本次回答实际使用的 Quote、Price History、News、Market Context 等来源及 `OK` / `DEGRADED` 状态。
+
+前端直接复用现有 V1 API 和业务语义，不在前端重复 Portfolio Calculation、Market Regime 或其他确定性业务逻辑。不扩展为完整交易终端，不实现券商下单、复杂图表、账户体系、移动端适配或非必要 UI 基础设施。
+
+补齐必要的 API Integration、Loading / Error State、基础交互和 Demo 数据准备。
+
+**Done**
+
+* 用户可以通过 Web 界面提交 Investment Question 并获得 Agent Answer；
+* Portfolio Snapshot 和 `LONG_TERM` / `SWING` 持仓能够正确展示；
+* 当前回答实际使用的主要 Context / Source 能够被识别和展示；
+* `OK` / `DEGRADED`、Provider Failure 和 `UNKNOWN` Data 能够被明确呈现；
+* 前端不重复实现后端确定性业务逻辑；
+* 核心 Demo Flow 可稳定运行；
+* V1 可以通过界面完成端到端演示；
+* Human Acceptance 通过。
+
 ## 4. V1 之后
 
 V1 完成前不展开 V2～V5 的详细 Roadmap。后续方向继续以 `PROJECT.md` 为准，并根据 V1 的真实使用、Evaluation 和 Failure Mode 再制定下一阶段 Roadmap。
