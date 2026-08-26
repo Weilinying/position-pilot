@@ -14,7 +14,12 @@ from position_pilot.domain.market_context import (
     MarketRegimeContext,
     calculate_market_regime,
 )
-from position_pilot.domain.market_data import HistoricalBars, MarketDataResult, MarketDataStatus
+from position_pilot.domain.market_data import (
+    HistoricalBars,
+    MarketDataCoverage,
+    MarketDataResult,
+    MarketDataStatus,
+)
 
 MARKET_CONTEXT_PROXY_TICKER = "SPY"
 MARKET_CONTEXT_LOOKBACK_DAYS = 90
@@ -76,6 +81,20 @@ class MarketContextService:
             return MarketDataResult.failure(
                 MarketDataStatus.INVALID_PROVIDER_RESPONSE,
                 "Market Context Provider 返回了非 SPY 1Day 数据",
+            )
+        if (
+            historical_bars.source != "ALPACA"
+            or historical_bars.feed != "SIP"
+            or historical_bars.coverage is not MarketDataCoverage.CONSOLIDATED
+            or historical_bars.adjustment != "ALL"
+            or historical_bars.currency != "USD"
+        ):
+            return MarketDataResult.failure(
+                MarketDataStatus.INVALID_PROVIDER_RESPONSE,
+                (
+                    "Market Context Provider 返回了不符合 "
+                    "SPY/ALPACA/SIP/CONSOLIDATED/ALL/USD 语义的数据"
+                ),
             )
         completed_bars = tuple(
             bar

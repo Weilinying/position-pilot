@@ -46,6 +46,11 @@ def _history(
     timeframe: str = "1Day",
     count: int = 21,
     latest_timestamp: datetime | None = None,
+    source: str = "ALPACA",
+    feed: str = "SIP",
+    coverage: MarketDataCoverage = MarketDataCoverage.CONSOLIDATED,
+    currency: str = "USD",
+    adjustment: str = "ALL",
 ) -> HistoricalBars:
     latest = latest_timestamp or (NOW - timedelta(days=1))
     bars = tuple(
@@ -63,11 +68,11 @@ def _history(
         ticker=ticker,
         timeframe=timeframe,
         bars=bars,
-        source="ALPACA",
-        feed="SIP",
-        coverage=MarketDataCoverage.CONSOLIDATED,
-        currency="USD",
-        adjustment="ALL",
+        source=source,
+        feed=feed,
+        coverage=coverage,
+        currency=currency,
+        adjustment=adjustment,
         fetched_at=NOW,
     )
 
@@ -158,6 +163,33 @@ def test_wrong_proxy_is_invalid_even_when_sample_is_also_insufficient() -> None:
 
     assert result.status is MarketDataStatus.INVALID_PROVIDER_RESPONSE
     assert result.message is not None and "SPY 1Day" in result.message
+
+
+@pytest.mark.parametrize(
+    "history",
+    [
+        pytest.param(_history(source="OTHER"), id="source"),
+        pytest.param(_history(feed="IEX"), id="feed"),
+        pytest.param(
+            _history(coverage=MarketDataCoverage.SINGLE_EXCHANGE),
+            id="coverage",
+        ),
+        pytest.param(_history(adjustment="RAW"), id="adjustment"),
+        pytest.param(_history(currency="EUR"), id="currency"),
+    ],
+)
+def test_incompatible_market_context_semantics_are_invalid_provider_response(
+    history: HistoricalBars,
+) -> None:
+    """固定 SPY Market Context 的数据语义必须在 Service 边界校验。"""
+
+    market_data = FakeMarketData(MarketDataResult.success(history))
+
+    result = MarketContextService(market_data, clock=lambda: NOW).get_current_market_context()
+
+    assert result.status is MarketDataStatus.INVALID_PROVIDER_RESPONSE
+    assert result.data is None
+    assert result.message is not None and "语义" in result.message
 
 
 def test_excludes_current_session_bar_during_market_hours() -> None:
