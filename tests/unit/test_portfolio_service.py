@@ -1,7 +1,7 @@
 """Portfolio Application Service 测试。"""
 
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from inspect import signature
 from types import TracebackType
@@ -17,7 +17,7 @@ from position_pilot.application.portfolio_service import (
     RecordCashEventCommand,
     RecordTransactionCommand,
 )
-from position_pilot.domain.errors import InsufficientCash
+from position_pilot.domain.errors import InsufficientCash, InvalidPortfolioValue
 from position_pilot.domain.portfolio import (
     CashEvent,
     CashEventType,
@@ -28,6 +28,7 @@ from position_pilot.domain.portfolio import (
 )
 
 OCCURRED_AT = datetime(2026, 8, 20, 12, 0, tzinfo=UTC)
+NOW = datetime(2026, 8, 26, 12, 0, tzinfo=UTC)
 
 
 @dataclass(slots=True)
@@ -124,7 +125,7 @@ def make_service() -> tuple[PortfolioService, FakeStore]:
     """创建共享内存状态的 Service。"""
 
     store = FakeStore()
-    return PortfolioService(FakeUnitOfWorkFactory(store)), store
+    return PortfolioService(FakeUnitOfWorkFactory(store), clock=lambda: NOW), store
 
 
 def test_record_command_does_not_accept_amount() -> None:
@@ -260,6 +261,28 @@ def test_failed_withdrawal_is_not_added_or_committed() -> None:
 
     assert error.value.available == Decimal("100.00000000")
     assert service.list_cash_events(user.id) == ()
+    assert store.commit_count == 1
+
+
+def test_future_cash_event_is_rejected_before_ledger_read_or_persistence() -> None:
+    """尚未实际发生的现金调整不得提前进入当前 Available Cash。"""
+
+    service, store = make_service()
+    user = service.create_user(CreateUserCommand(display_name="Alice", initial_cash=Decimal("100")))
+
+    with pytest.raises(InvalidPortfolioValue, match="occurred_at 不得晚于当前时间"):
+        service.record_cash_event(
+            RecordCashEventCommand(
+                user_id=user.id,
+                event_type=CashEventType.DEPOSIT,
+                amount=Decimal("500"),
+                occurred_at=NOW + timedelta(seconds=1),
+            )
+        )
+
+    assert service.get_portfolio(user.id).cash.available_cash == Decimal("100.00000000")
+    assert service.list_cash_events(user.id) == ()
+    assert store.lock_requests == [user.id]
     assert store.commit_count == 1
 
 
@@ -407,7 +430,7 @@ def test_record_cash_event_rejects_unknown_user() -> None:
                 user_id=uuid4(),
                 event_type=CashEventType.DEPOSIT,
                 amount=Decimal("10"),
-                occurred_at=OCCURRED_AT,
+                occurred_at=NOW + timedelta(days=1),
             )
         )
 

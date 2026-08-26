@@ -8,6 +8,8 @@ M1 建立 Portfolio 时只保存 `initial_cash` 与不可变 Transaction Ledger�
 
 保留 `initial_cash` 的创建时语义，新增独立、不可变的 Cash Event Ledger。当前只允许 `DEPOSIT` 与 `WITHDRAWAL`，每条记录保存正数金额和实际发生时间。Available Cash 从 Initial Cash、Cash Events 与 Transactions 确定性重建，Cash Event 不改变 Position。
 
+“实际发生时间”表示写入时已经发生的 Ledger Fact。Application 使用可注入 Clock 拒绝未来 `occurred_at`，因此 future-dated DEPOSIT 不会提前增加当前购买力，future-dated WITHDRAWAL 也不会提前减少现金。预约入金或出金若未来需要，应建立独立 Scheduled Cash Adjustment 概念，不能把计划记录写成已经发生的 immutable Cash Event。
+
 现有 Transaction 佣金语义继续有效，因此实际计算为：
 
 ```text

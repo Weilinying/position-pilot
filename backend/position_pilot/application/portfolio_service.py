@@ -2,13 +2,14 @@
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from decimal import Decimal
 from types import TracebackType
 from typing import Protocol, Self
 from uuid import UUID
 
 from position_pilot.application.errors import UserNotFound
+from position_pilot.domain.errors import InvalidPortfolioValue
 from position_pilot.domain.portfolio import (
     CashEvent,
     CashEventType,
@@ -17,6 +18,7 @@ from position_pilot.domain.portfolio import (
     Transaction,
     TransactionAction,
     User,
+    normalize_timestamp,
     rebuild_portfolio,
     resequence_cash_events,
     resequence_transactions,
@@ -101,8 +103,14 @@ class CashAdjustmentResult:
 class PortfolioService:
     """协调领域计算与 Portfolio 持久化事务。"""
 
-    def __init__(self, unit_of_work_factory: PortfolioUnitOfWorkFactory) -> None:
+    def __init__(
+        self,
+        unit_of_work_factory: PortfolioUnitOfWorkFactory,
+        *,
+        clock: Callable[[], datetime] | None = None,
+    ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
+        self._clock = clock or (lambda: datetime.now(UTC))
 
     def create_user(self, command: CreateUserCommand) -> User:
         """创建带 Initial Cash 的 User。"""
@@ -167,6 +175,10 @@ class PortfolioService:
             if user is None:
                 raise UserNotFound(command.user_id)
 
+            occurred_at = normalize_timestamp(command.occurred_at)
+            if occurred_at > normalize_timestamp(self._clock()):
+                raise InvalidPortfolioValue("Cash Event occurred_at 不得晚于当前时间")
+
             transactions = unit_of_work.list_transactions(user.id)
             cash_events = unit_of_work.list_cash_events(user.id)
             rebuild_portfolio(user, transactions, cash_events)
@@ -175,7 +187,7 @@ class PortfolioService:
                 sequence=len(cash_events) + 1,
                 event_type=command.event_type,
                 amount=command.amount,
-                occurred_at=command.occurred_at,
+                occurred_at=occurred_at,
                 reason=command.reason,
             )
             ordered_cash_events = resequence_cash_events([*cash_events, cash_event])
