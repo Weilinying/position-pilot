@@ -13,7 +13,7 @@ M5 不把开放式投资意图降级为大规模关键词分类，也不增加�
 - Current Quote、Recent Price History 与 Recent News 已能在同一 Tool Round 中独立或组合调用，单类问题已有“不机械调用其他 Tool”的固定评测。
 - Portfolio Snapshot 必定注入，并保留同一 ticker 的 `LONG_TERM` / `SWING`；已有相同问题在不同 Cash 或 Position Type 下的 Behavioral Cases。
 - Context Selection 目前只能从 Provider Fake 的请求记录间接观察；生产日志没有一次请求级的选择摘要，难以把 Tool Call 与 Portfolio / Position Type Context 关联起来。
-- `market_context` 仍为 `UNAVAILABLE`，没有 Market Regime 数据、确定性规则、Source Tracking 或相关 Routing Case。
+- `market_context` 在 M5 开始时仍为 `UNAVAILABLE`；2026-08-26 Human Review 已批准使用 SPY Daily Price Stress 的 V1 Heuristic，等待实现 Market Regime、Source Tracking 与相关 Routing Case。
 - Transaction History、Earnings、Fundamentals、Asset Metadata 与 Technical Analysis 仍不可用；只有新的 Evaluation Failure 证明必要时才加入 M5。
 
 ## 3. Acceptance Criteria
@@ -45,17 +45,32 @@ T7 Full Checks → Automated Review → Fix → Re-check
 Atomic Commits → Human Acceptance
 ```
 
-## 5. Market Context Human Review Gate
+## 5. 已批准 Market Context 方案
 
-实现前必须批准以下内容：
+2026-08-26 Human Review 批准以下 V1 方案：
 
-- 使用现有 Alpaca Historical Daily OHLCV 还是选择新的 Market Data Provider；
-- 代表整体美股市场的输入标的、窗口、Feed、Freshness 与 Failure State；
-- Market Regime 的确定性指标、阈值、状态与适用边界；
-- Market Context 何时需要调用、何时不应调用，以及它如何影响分析但不直接生成 BUY / SELL Signal；
-- 是否扩展 Public Source Type，以及对应 API Contract。
+- 复用 ADR 0004 的 Alpaca Historical Daily OHLCV，不新增 Provider、Credential 或 Infrastructure。
+- 使用 `SPY` 作为美国大盘股市场代理；它不代表完整美股市场、VIX、市场宽度、宏观环境或任意个股。
+- 查询最近 90 个日历日、最多 60 根调整后 Daily Bars，结束时间至少落后当前 15 分钟；至少需要 21 根有效 Bars。
+- 确定性计算并保留原始指标：5-session Close Return、20-session Latest Close Drawdown from Maximum Close、20-return Annualized Realized Volatility。
+- 指标单位为百分比，统一保留 4 位小数并使用 Half-even；分类使用同一已量化值，避免展示值与阈值判断不一致。
+- Regime 采用最高严重度规则：
 
-这些选择会影响关键金融规则、Provider Boundary 或公共 API，因此在 Decision Proposal 获得 Human Review 前不实现相关代码。
+| Regime | 任一触发条件 |
+|---|---|
+| `ELEVATED_VOLATILITY` | Volatility ≥ 25%，或 Drawdown ≤ -5%，或 5-session Return ≤ -3% |
+| `HIGH_STRESS` | Volatility ≥ 40%，或 Drawdown ≤ -10%，或 5-session Return ≤ -6% |
+| `EXTREME_STRESS` | Volatility ≥ 60%，或 Drawdown ≤ -15%，或 5-session Return ≤ -10% |
+| `NORMAL` | 未触发以上条件 |
+
+- 阈值元数据必须明确标记为 `V1_HEURISTIC`：它们是工程启发式规则，不是行业标准、没有经过历史回测验证，也不是投资信号。
+- Tool Result 必须保留三个原始指标、触发规则、观察数量、Period Start / End、Provider、Feed、Coverage、Adjustment 与 Fetched At，便于后续 Eval 或 Backtest 驱动调整。
+- 当前建仓 / 加仓 / 减仓、整体市场风险或 Market Regime 问题需要 Market Context；纯报价、Portfolio Facts、Recent News、Recent Price History 问题不机械调用。
+- Market Context Failure 保持明确状态并产生 `DEGRADED` Answer；不得从用户前提、个股新闻或训练知识补造 Regime。
+- Public Source Type 增加 `MARKET_CONTEXT`，使用 `ticker=SPY`；其余 Response Shape 不变。
+- 单轮 Tool Call Budget 继续为 4，不因为新增能力默认提高调用成本。
+
+决策记录见 ADR 0007。
 
 ## 6. Non-Goals
 
