@@ -21,6 +21,7 @@ AVAILABLE_TOOLS = (
     "get_current_quote",
     "get_recent_price_history",
     "get_recent_news",
+    "get_market_context",
 )
 
 
@@ -110,3 +111,22 @@ def test_selection_counts_unheld_tickers_without_logging_their_identity() -> Non
     assert trace.selected_unheld_ticker_count == 1
     assert log_extra["routing_latency_ms"] == 12.5
     assert "MSFT" not in repr(log_extra)
+
+
+def test_global_market_context_counts_without_ticker_or_position_match() -> None:
+    """无参数 Market Context 参与 Context 数量，但不伪装成持仓标的。"""
+
+    trace = ContextSelectionTrace.from_tool_calls(
+        snapshot=_snapshot(),
+        available_tools=AVAILABLE_TOOLS,
+        tool_calls=(
+            LLMToolCall("market-1", "get_market_context", {}),
+            LLMToolCall("market-2", "get_market_context", {}),
+        ),
+    )
+
+    assert trace.selected_tools == ("get_market_context",)
+    assert trace.selected_context_count == 1
+    assert trace.selected_existing_position_count == 0
+    assert trace.selected_existing_position_types == ()
+    assert trace.selected_unheld_ticker_count == 0

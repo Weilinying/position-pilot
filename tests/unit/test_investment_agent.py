@@ -26,6 +26,7 @@ from position_pilot.application.llm import (
 )
 from position_pilot.application.market_data_service import HistoricalBarsQuery
 from position_pilot.application.news_service import NewsQuery
+from position_pilot.domain.market_context import MarketRegimeContext, calculate_market_regime
 from position_pilot.domain.market_data import (
     HistoricalBars,
     MarketDataCoverage,
@@ -71,9 +72,16 @@ class FakeMarketData:
     results: dict[str, MarketDataResult[MarketQuote]]
     historical_results: dict[str, MarketDataResult[HistoricalBars]] = field(default_factory=dict)
     news_results: dict[str, NewsResult[RecentNews]] = field(default_factory=dict)
+    market_context_result: MarketDataResult[MarketRegimeContext] = field(
+        default_factory=lambda: MarketDataResult.failure(
+            MarketDataStatus.NO_DATA,
+            "测试没有 Market Context",
+        )
+    )
     requested_tickers: list[str] = field(default_factory=list)
     historical_queries: list[HistoricalBarsQuery] = field(default_factory=list)
     news_queries: list[NewsQuery] = field(default_factory=list)
+    market_context_requests: int = 0
 
     def get_current_quote(self, ticker: str) -> MarketDataResult[MarketQuote]:
         self.requested_tickers.append(ticker)
@@ -98,6 +106,10 @@ class FakeMarketData:
             query.ticker.strip().upper(),
             NewsResult.failure(NewsStatus.NO_NEWS_FOUND, "测试窗口无新闻"),
         )
+
+    def get_current_market_context(self) -> MarketDataResult[MarketRegimeContext]:
+        self.market_context_requests += 1
+        return self.market_context_result
 
 
 @dataclass(frozen=True, slots=True)
@@ -247,6 +259,37 @@ def recent_news(ticker: str = "GOOG") -> NewsResult[RecentNews]:
     )
 
 
+def normal_market_context() -> MarketDataResult[MarketRegimeContext]:
+    """创建原始指标均为零的固定 V1 Market Regime。"""
+
+    bars = tuple(
+        OHLCVBar(
+            NOW - timedelta(days=21 - index),
+            Decimal("100"),
+            Decimal("100"),
+            Decimal("100"),
+            Decimal("100"),
+            10_000,
+        )
+        for index in range(21)
+    )
+    return MarketDataResult.success(
+        calculate_market_regime(
+            HistoricalBars(
+                ticker="SPY",
+                timeframe="1Day",
+                bars=bars,
+                source="ALPACA",
+                feed="SIP",
+                coverage=MarketDataCoverage.CONSOLIDATED,
+                currency="USD",
+                adjustment="ALL",
+                fetched_at=NOW,
+            )
+        )
+    )
+
+
 def tool_message(*calls: tuple[str, str]) -> LLMResult:
     """创建包含一个或多个 Current Quote Call 的 Fake Completion。"""
 
@@ -263,14 +306,18 @@ def tool_message(*calls: tuple[str, str]) -> LLMResult:
 
 
 def market_tool_message(*calls: tuple[str, str, str]) -> LLMResult:
-    """创建可混合 Quote 与 Price History Call 的 Fake Completion。"""
+    """创建可混合 Ticker Tools 与无参数 Market Context 的 Fake Completion。"""
 
     return LLMResult.success(
         LLMMessage(
             LLMRole.ASSISTANT,
             None,
             tuple(
-                LLMToolCall(call_id, tool_name, {"ticker": ticker})
+                LLMToolCall(
+                    call_id,
+                    tool_name,
+                    {} if tool_name == "get_market_context" else {"ticker": ticker},
+                )
                 for call_id, tool_name, ticker in calls
             ),
         )
@@ -326,6 +373,7 @@ def make_agent(
     market_results: dict[str, MarketDataResult[MarketQuote]] | None = None,
     historical_results: dict[str, MarketDataResult[HistoricalBars]] | None = None,
     news_results: dict[str, NewsResult[RecentNews]] | None = None,
+    market_context_result: MarketDataResult[MarketRegimeContext] | None = None,
     portfolio: PortfolioState | None = None,
     clock: datetime = NOW,
 ) -> tuple[InvestmentAgent, FakePortfolioReader, FakeMarketData, ScriptedLLM]:
@@ -336,6 +384,8 @@ def make_agent(
         market_results or {},
         historical_results or {},
         news_results or {},
+        market_context_result
+        or MarketDataResult.failure(MarketDataStatus.NO_DATA, "测试没有 Market Context"),
     )
     llm = ScriptedLLM(llm_results)
     return (
@@ -344,6 +394,7 @@ def make_agent(
             market_data,
             llm,
             news=market_data,
+            market_context=market_data,
             clock=lambda: clock,
         ),
         portfolio_reader,
@@ -427,7 +478,7 @@ def test_always_injects_complete_portfolio_snapshot_without_transaction_history(
         "current_quote": "AVAILABLE",
         "earnings": "UNAVAILABLE",
         "fundamentals": "UNAVAILABLE",
-        "market_context": "UNAVAILABLE",
+        "market_context": "AVAILABLE",
         "news": "AVAILABLE",
         "price_history": "AVAILABLE",
         "sector_classification": "UNAVAILABLE",
@@ -556,11 +607,13 @@ def test_no_tool_call_returns_ok_without_mechanical_market_request(
     assert market_data.requested_tickers == []
     assert market_data.historical_queries == []
     assert market_data.news_queries == []
+    assert market_data.market_context_requests == 0
     assert len(llm.completions) == 1
     assert [tool.name for tool in llm.completions[0].tools] == [
         "get_current_quote",
         "get_recent_price_history",
         "get_recent_news",
+        "get_market_context",
     ]
     selection_record = next(
         record for record in caplog.records if record.message == "investment_agent_context_selected"
@@ -946,6 +999,134 @@ def test_recent_news_uses_fixed_window_and_attributed_reporting_contract() -> No
     assert result.sources[1].fetched_at == NOW
 
 
+def test_market_context_exposes_raw_metrics_thresholds_and_heuristic_boundary() -> None:
+    """Market Tool 必须保留原始指标与阈值，且明确它不是投资信号。"""
+
+    agent, _, providers, llm = make_agent(
+        [
+            market_tool_message(("market-1", "get_market_context", "")),
+            final_message(
+                "SPY Daily Price Stress 当前为 NORMAL。",
+                source_refs=[
+                    source_ref("PORTFOLIO_SNAPSHOT"),
+                    source_ref("MARKET_CONTEXT", "SPY"),
+                ],
+            ),
+        ],
+        market_context_result=normal_market_context(),
+    )
+
+    result = assert_answer(agent.answer(USER_ID, "当前整体市场压力如何？"))
+
+    assert providers.market_context_requests == 1
+    assert providers.requested_tickers == []
+    assert providers.historical_queries == []
+    assert providers.news_queries == []
+    tool_content = llm.completions[1].messages[-1].content
+    assert tool_content is not None
+    payload = json.loads(tool_content)
+    assert payload["available_source_reference"] == {
+        "type": "MARKET_CONTEXT",
+        "ticker": "SPY",
+    }
+    assert payload["regime"] == "NORMAL"
+    assert payload["raw_deterministic_metrics"] == {
+        "unit": "PERCENT_4DP_HALF_EVEN",
+        "five_session_return_percent": "0.0000",
+        "twenty_session_close_drawdown_percent": "0.0000",
+        "twenty_session_annualized_realized_volatility_percent": "0.0000",
+    }
+    assert payload["regime_thresholds"]["HIGH_STRESS"] == {
+        "annualized_realized_volatility_percent_gte": "40",
+        "close_drawdown_percent_lte": "-10",
+        "five_session_return_percent_lte": "-6",
+    }
+    assert payload["methodology"] == "V1_HEURISTIC"
+    assert payload["response_contract"] == {
+        "buy_hold_sell_conclusion": "PROHIBITED",
+        "historically_backtested": False,
+        "industry_standard": False,
+        "investment_signal": False,
+        "market_proxy_scope": "SPY_US_LARGE_CAP_PROXY_NOT_COMPLETE_US_MARKET",
+        "methodology": "V1_HEURISTIC",
+        "source_reference_required_if_used": True,
+        "threshold_or_metric_recalculation_by_llm": "PROHIBITED",
+    }
+    assert result.sources[1].type is ContextSourceType.MARKET_CONTEXT
+    assert result.sources[1].ticker == "SPY"
+    assert result.sources[1].provider == "ALPACA"
+    assert result.sources[1].feed == "SIP"
+    assert result.sources[1].market_timestamp == NOW - timedelta(days=1)
+
+
+def test_deduplicates_parameterless_market_context_calls() -> None:
+    """重复无参数 Market Tool Calls 只执行一次确定性 Context 获取。"""
+
+    agent, _, providers, llm = make_agent(
+        [
+            market_tool_message(
+                ("market-1", "get_market_context", ""),
+                ("market-2", "get_market_context", ""),
+            ),
+            final_message(
+                "复用同一份 Market Context。",
+                source_refs=[source_ref("MARKET_CONTEXT", "SPY")],
+            ),
+        ],
+        market_context_result=normal_market_context(),
+    )
+
+    result = assert_answer(agent.answer(USER_ID, "市场风险如何？"))
+
+    assert providers.market_context_requests == 1
+    tool_results = [
+        message for message in llm.completions[1].messages if message.role is LLMRole.TOOL
+    ]
+    assert [message.tool_call_id for message in tool_results] == ["market-1", "market-2"]
+    assert [source.type for source in result.sources] == [ContextSourceType.MARKET_CONTEXT]
+
+
+def test_all_four_context_tools_share_existing_round_budget() -> None:
+    """新增 Market Context 后仍只允许一个最多四调用的 Tool Round。"""
+
+    agent, _, providers, _ = make_agent(
+        [
+            market_tool_message(
+                ("quote-1", "get_current_quote", "GOOG"),
+                ("history-1", "get_recent_price_history", "GOOG"),
+                ("news-1", "get_recent_news", "GOOG"),
+                ("market-1", "get_market_context", ""),
+            ),
+            final_message(
+                "按需使用四类 Context。",
+                source_refs=[
+                    source_ref("CURRENT_QUOTE", "GOOG"),
+                    source_ref("PRICE_HISTORY", "GOOG"),
+                    source_ref("RECENT_NEWS", "GOOG"),
+                    source_ref("MARKET_CONTEXT", "SPY"),
+                ],
+            ),
+        ],
+        market_results={"GOOG": quote("GOOG", "210")},
+        historical_results={"GOOG": price_history()},
+        news_results={"GOOG": recent_news()},
+        market_context_result=normal_market_context(),
+    )
+
+    result = assert_answer(agent.answer(USER_ID, "综合分析 GOOG 与整体市场。"))
+
+    assert providers.requested_tickers == ["GOOG"]
+    assert [query.ticker for query in providers.historical_queries] == ["GOOG"]
+    assert [query.ticker for query in providers.news_queries] == ["GOOG"]
+    assert providers.market_context_requests == 1
+    assert [source.type for source in result.sources] == [
+        ContextSourceType.CURRENT_QUOTE,
+        ContextSourceType.PRICE_HISTORY,
+        ContextSourceType.RECENT_NEWS,
+        ContextSourceType.MARKET_CONTEXT,
+    ]
+
+
 def test_quote_history_and_news_share_one_round_without_default_extra_calls() -> None:
     """混合问题只执行模型实际选择的三类 Context，不触发额外调用。"""
 
@@ -976,6 +1157,7 @@ def test_quote_history_and_news_share_one_round_without_default_extra_calls() ->
     assert providers.requested_tickers == ["GOOG"]
     assert [query.ticker for query in providers.historical_queries] == ["GOOG"]
     assert [query.ticker for query in providers.news_queries] == ["GOOG"]
+    assert providers.market_context_requests == 0
     assert [source.type for source in result.sources[1:]] == [
         ContextSourceType.CURRENT_QUOTE,
         ContextSourceType.PRICE_HISTORY,
@@ -1108,6 +1290,7 @@ def test_rejects_more_than_four_tool_calls_before_provider_execution() -> None:
         LLMToolCall("call-1", "get_recent_price_history", {"ticker": " "}),
         LLMToolCall("call-1", "get_recent_news", {"symbol": "GOOG"}),
         LLMToolCall("call-1", "get_recent_news", {"ticker": " "}),
+        LLMToolCall("call-1", "get_market_context", {"ticker": "SPY"}),
     ],
 )
 def test_rejects_unknown_tool_or_invalid_arguments(
@@ -1247,6 +1430,47 @@ def test_invalid_history_symbol_is_rejected_as_invalid_tool_call() -> None:
 
     assert failure.code is InvestmentFailureCode.INVALID_TOOL_CALL
     assert len(market_data.historical_queries) == 1
+
+
+@pytest.mark.parametrize(
+    "market_status",
+    [
+        MarketDataStatus.NO_DATA,
+        MarketDataStatus.AUTHENTICATION_FAILED,
+        MarketDataStatus.RATE_LIMITED,
+        MarketDataStatus.PROVIDER_UNAVAILABLE,
+        MarketDataStatus.INVALID_PROVIDER_RESPONSE,
+    ],
+)
+def test_market_context_failure_produces_degraded_unknown(
+    market_status: MarketDataStatus,
+) -> None:
+    """Market Context 缺失或失败时保留状态，且不得补造 Regime。"""
+
+    failure: MarketDataResult[MarketRegimeContext] = MarketDataResult.failure(
+        market_status,
+        "固定 Market Context Failure",
+    )
+    agent, _, providers, llm = make_agent(
+        [
+            market_tool_message(("market-1", "get_market_context", "")),
+            final_message("整体市场状态为 UNKNOWN。"),
+        ],
+        market_context_result=failure,
+    )
+
+    result = assert_answer(agent.answer(USER_ID, "当前市场风险如何？"))
+
+    assert result.status is InvestmentResponseStatus.DEGRADED
+    assert providers.market_context_requests == 1
+    assert result.sources[1].type is ContextSourceType.MARKET_CONTEXT
+    assert result.sources[1].ticker == "SPY"
+    assert result.sources[1].status == market_status.value
+    tool_content = llm.completions[1].messages[-1].content
+    assert tool_content is not None
+    payload = json.loads(tool_content)
+    assert payload["market_context_available"] is False
+    assert "UNKNOWN" in payload["instruction"]
 
 
 @pytest.mark.parametrize(

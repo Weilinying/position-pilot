@@ -11,6 +11,7 @@ from position_pilot.application.investment_agent import (
     InvestmentAgent,
     InvestmentAnswer,
 )
+from position_pilot.application.market_context_service import MarketContextService
 from position_pilot.application.market_data_service import MarketDataService
 from position_pilot.application.news_service import NewsService
 from position_pilot.domain.portfolio import CashBalance, PortfolioState
@@ -72,7 +73,13 @@ def test_real_llm_and_market_data_complete_single_agent_round() -> None:
             timeout_seconds=float(os.getenv("ALPACA_REQUEST_TIMEOUT_SECONDS", "10")),
         )
     )
-    agent = InvestmentAgent(FixedEmptyPortfolioReader(), market_data, llm, news=news)
+    agent = InvestmentAgent(
+        FixedEmptyPortfolioReader(),
+        market_data,
+        llm,
+        news=news,
+        market_context=MarketContextService(market_data),
+    )
 
     result = agent.answer(USER_ID, "GOOG 当前价格是多少？我目前有持仓吗？")
 

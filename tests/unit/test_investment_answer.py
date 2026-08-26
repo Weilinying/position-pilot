@@ -113,8 +113,8 @@ def test_natural_language_wording_does_not_affect_source_validation(
     assert answer.answer == answer_text
 
 
-def test_unifies_portfolio_history_and_news_source_references() -> None:
-    """Portfolio、History 与 News 复用同一 Source Reference Contract。"""
+def test_unifies_all_context_source_references() -> None:
+    """Portfolio、Ticker Context 与 Market Context 复用同一 Source Contract。"""
 
     answer = parse_structured_answer(
         structured_content(
@@ -123,6 +123,7 @@ def test_unifies_portfolio_history_and_news_source_references() -> None:
                 {"type": "PORTFOLIO_SNAPSHOT"},
                 {"type": "PRICE_HISTORY", "ticker": "goog"},
                 {"type": "RECENT_NEWS", "ticker": "GOOG"},
+                {"type": "MARKET_CONTEXT", "ticker": "SPY"},
             ],
         )
     )
@@ -130,6 +131,7 @@ def test_unifies_portfolio_history_and_news_source_references() -> None:
         source(SourceReferenceType.PORTFOLIO_SNAPSHOT),
         source(SourceReferenceType.PRICE_HISTORY, "GOOG"),
         source(SourceReferenceType.RECENT_NEWS, "GOOG"),
+        source(SourceReferenceType.MARKET_CONTEXT, "SPY"),
     )
 
     validate_source_references(answer, available)

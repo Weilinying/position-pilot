@@ -2,7 +2,7 @@
 
 ## 1. 当前范围
 
-本文档描述 M4 Vertical Slices 完成及 M5 Context-Aware Decision Flow 开始后的实际系统结构。当前系统包含 Portfolio Structured State、Transaction / Cash Event Ledgers、Provider-neutral Market / News Data，以及可按问题选择 Current Quote、固定近期 Daily Price History 或 attributed Recent News 的 Single Investment Agent；M5 已增加不记录问题正文或用户身份的 Context Selection Trace，Market Context / Market Regime 仍等待 Human Review。
+本文档描述 M5 Context-Aware Decision Flow 当前已实现的系统结构。系统包含 Portfolio Structured State、Transaction / Cash Event Ledgers、Provider-neutral Market / News Data，以及可按问题选择 Current Quote、固定近期 Daily Price History、attributed Recent News 或 SPY Market Context 的 Single Investment Agent；M5 同时提供不记录问题正文或用户身份的 Context Selection Trace。
 
 ## 2. 依赖方向
 
@@ -15,6 +15,8 @@ Application / InvestmentAgent
   ├── PortfolioService → SQLAlchemy UoW → PostgreSQL Ledger
   ├── Current Quote / Recent Price History Tools
   │     ↓ MarketDataService → AlpacaMarketDataProvider
+  ├── Market Context Tool
+  │     ↓ MarketContextService → SPY Daily Bars → deterministic V1 Heuristic
   ├── Recent News Tool
   │     ↓ NewsService → AlpacaNewsProvider → Benzinga reporting
   └── LLMProvider → AliyunLLMProvider
@@ -192,7 +194,31 @@ NewsResult[RecentNews]
 - Adapter 只请求 Metadata、headline 与 summary，不请求 `content`，并拒绝窗口外、超上限或缺少 attribution 的 Provider Response。
 - `NO_NEWS_FOUND` 是局部查询结果，不是世界状态；它不会被解释成没有相关新闻、事件或驱动因素。
 
-## 10. Investment Agent 与 LLM Boundary
+## 10. Market Context 与 Regime Boundary
+
+```text
+get_market_context() 无模型参数
+      ↓
+MarketContextService
+      ↓ fixed SPY / 90 calendar days / max 60 Daily Bars / 15-minute end lag
+MarketDataService → Alpaca Historical SIP
+      ↓ exclude current uncompleted New York session bar
+latest 21 completed SPY Daily Closes
+      ↓ deterministic Decimal calculations
+5-session Return + 20-session Close Drawdown + 20-return Annualized Volatility
+      ↓ highest-severity V1 thresholds
+NORMAL / ELEVATED_VOLATILITY / HIGH_STRESS / EXTREME_STRESS
+```
+
+- `domain/market_context.py` 使用固定 50 位 Decimal 中间精度，最终指标统一为百分比 4 位 Half-even，并用相同量化值分类。
+- Result 保留全部原始指标、Trigger Rule、Threshold Table、Period、Observation Count、Provider、Feed、Coverage、Adjustment 与 Fetched At。
+- Methodology 固定为 `V1_HEURISTIC` / `1.0`：阈值不是行业标准、未经历史回测验证，也不是投资信号；Regime 不直接生成 BUY / HOLD / SELL。
+- SPY 只代表美国大盘股代理，不代表完整美股市场、VIX、市场宽度、宏观环境或个股特有风险。
+- 交易时段内保守剔除仍可能变化的当前 New York Session Daily Bar；早收盘日也等到常规收盘后才纳入，优先避免把盘中数据伪装成 completed Daily Fact。
+- 少于 21 根 completed Bars 为 `NO_DATA`；认证、限流、Provider 不可用与非法成功 Payload 继续保持独立状态。
+- 决策、阈值、局限与重新考虑条件见 ADR 0007。
+
+## 11. Investment Agent 与 LLM Boundary
 
 ```text
 PortfolioState
@@ -216,7 +242,8 @@ LLM_INVALID_PROVIDER_RESPONSE
 - Snapshot 明确声明 Positions 是完整当前集合；未出现的 Ticker 表示当前无持仓。Agent 不额外执行确定性 Ticker Extraction。
 - `LLMProvider` 的 Message、Tool Definition、Tool Call 与 Result 均为项目自身 Schema；Aliyun/OpenAI-compatible Payload 只存在于 Adapter。
 - `qwen3.7-plus` 是可通过 `LLM_MODEL` 覆盖的默认配置，不是 Domain 或 Application 类型。
-- Current Quote、Recent Price History 或 Recent News Failure 会作为缺失事实返回 LLM，安全 Final Answer 由 Application 标记为 `DEGRADED`；LLM Failure 无法形成 Final Answer，返回 Request Failure。
+- Current Quote、Recent Price History、Recent News 或 Market Context Failure 会作为缺失事实返回 LLM，安全 Final Answer 由 Application 标记为 `DEGRADED`；LLM Failure 无法形成 Final Answer，返回 Request Failure。
+- Native Function Calling 可选择四类 Context Tool，但单轮总调用预算保持为 4；建仓 / 加仓 / 减仓和整体市场风险问题需要 Market Context，Portfolio Facts、纯报价、纯 History 或纯 News 问题不机械调用。
 - 首轮 Native Tool Selection 通过参数校验后记录一次结构化 Trace，包含可用 / 选中 Tool、唯一 Context 数量、匹配当前持仓的 Position Type、未持有标的数量与 Routing Latency；日志不保存问题正文、User ID 或 ticker。
 - `FACT`、`INFERENCE`、`UNKNOWN` 是回答的语义约束，不强制固定输出标题。
 - 默认测试使用 Fake LLM；Opt-in Behavioral Eval 使用真实 Aliyun LLM 与固定 Fake Market Data，真实 LLM + 真实 Market Data 只用于 Smoke Test。

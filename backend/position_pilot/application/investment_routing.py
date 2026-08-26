@@ -39,14 +39,10 @@ class ContextSelectionTrace:
 
         unique_contexts = tuple(
             dict.fromkeys(
-                (
-                    tool_call.name,
-                    _validated_ticker(tool_call),
-                )
-                for tool_call in tool_calls
+                (tool_call.name, _validated_optional_ticker(tool_call)) for tool_call in tool_calls
             )
         )
-        selected_tickers = {ticker for _, ticker in unique_contexts}
+        selected_tickers = {ticker for _, ticker in unique_contexts if ticker is not None}
         matching_positions = tuple(
             position for position in snapshot.positions if position.ticker in selected_tickers
         )
@@ -87,9 +83,11 @@ class ContextSelectionTrace:
         }
 
 
-def _validated_ticker(tool_call: LLMToolCall) -> str:
-    """读取 Agent 已验证为非空字符串的 ticker。"""
+def _validated_optional_ticker(tool_call: LLMToolCall) -> str | None:
+    """读取已验证的 ticker；全局 Market Context Tool 没有 ticker 参数。"""
 
-    ticker = tool_call.arguments["ticker"]
+    ticker = tool_call.arguments.get("ticker")
+    if ticker is None:
+        return None
     assert isinstance(ticker, str)
     return ticker.strip().upper()

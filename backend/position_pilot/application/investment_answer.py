@@ -19,6 +19,7 @@ class SourceReferenceType(StrEnum):
     CURRENT_QUOTE = "CURRENT_QUOTE"
     PRICE_HISTORY = "PRICE_HISTORY"
     RECENT_NEWS = "RECENT_NEWS"
+    MARKET_CONTEXT = "MARKET_CONTEXT"
 
 
 class InvalidStructuredAnswer(ValueError):
@@ -107,6 +108,7 @@ def structured_answer_schema() -> dict[str, object]:
                                         SourceReferenceType.CURRENT_QUOTE.value,
                                         SourceReferenceType.PRICE_HISTORY.value,
                                         SourceReferenceType.RECENT_NEWS.value,
+                                        SourceReferenceType.MARKET_CONTEXT.value,
                                     ]
                                 },
                                 "ticker": {"type": "string"},

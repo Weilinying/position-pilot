@@ -1,4 +1,4 @@
-"""M4 Single Investment Agent 与受限 Native Function Calling。"""
+"""M5 Context-Aware Single Investment Agent 与受限 Native Function Calling。"""
 
 import json
 import logging
@@ -21,12 +21,13 @@ from position_pilot.application.investment_answer import (
     validate_source_references,
 )
 from position_pilot.application.investment_context import (
-    M4_CONTEXT_CAPABILITIES,
+    M5_CONTEXT_CAPABILITIES,
     PortfolioSnapshot,
     QuoteDerivedFacts,
     RecentPriceHistoryFacts,
     m3_decision_context,
     m3_response_contract,
+    market_context_response_contract,
     quote_response_contract,
     recent_price_history_response_contract,
 )
@@ -42,6 +43,11 @@ from position_pilot.application.llm import (
 )
 from position_pilot.application.market_data_service import HistoricalBarsQuery
 from position_pilot.application.news_service import NewsQuery
+from position_pilot.domain.market_context import (
+    MARKET_PROXY_TICKER,
+    MarketRegimeContext,
+    market_regime_thresholds_as_dict,
+)
 from position_pilot.domain.market_data import (
     HistoricalBars,
     MarketDataResult,
@@ -55,6 +61,7 @@ LOGGER = logging.getLogger(__name__)
 CURRENT_QUOTE_TOOL_NAME = "get_current_quote"
 RECENT_PRICE_HISTORY_TOOL_NAME = "get_recent_price_history"
 RECENT_NEWS_TOOL_NAME = "get_recent_news"
+MARKET_CONTEXT_TOOL_NAME = "get_market_context"
 MAX_TOOL_CALLS_PER_ROUND = 4
 MAX_QUESTION_LENGTH = 4_000
 PRICE_HISTORY_LOOKBACK_DAYS = 45
@@ -97,9 +104,22 @@ SYSTEM_PROMPT = "\n".join(
             "NO_NEWS_FOUND 只表示当前 Provider 在指定 ticker 和窗口未返回报道，"
             "不表示不存在相关新闻、事件或股价驱动因素。"
         ),
-        "8. 当前价格、历史价格与新闻只来自对应成功 Tool Result；失败或缺失必须明确为 UNKNOWN。",
-        "9. 回答自然地区分事实、推断和未知信息，不要求固定标题。",
-        "10. 所有 Final Response 必须是符合 structured_answer_schema 的单一 JSON object。",
+        (
+            "8. 当前建仓、加仓、减仓、整体市场风险或 Market Regime 问题必须调用 "
+            "get_market_context；纯报价、Portfolio Facts、Recent Price History 或 Recent News "
+            "问题不得机械调用。"
+        ),
+        "Market Context 使用固定 SPY Daily Price Stress；SPY 只是美国大盘股代理，不代表完整市场。",
+        (
+            "Market Regime 阈值是 V1 工程启发式规则，不是行业标准、未经历史回测验证，"
+            "也不是投资信号；不得自行重算指标、修改阈值或直接推导 BUY / HOLD / SELL。"
+        ),
+        (
+            "9. 当前价格、历史价格、新闻与 Market Regime 只来自对应成功 Tool Result；"
+            "失败或缺失必须明确为 UNKNOWN。"
+        ),
+        "10. 回答自然地区分事实、推断和未知信息，不要求固定标题。",
+        "11. 所有 Final Response 必须是符合 structured_answer_schema 的单一 JSON object。",
         (
             "answer 是自由自然语言；source_refs 声明回答实际使用的成功 Context。"
             "Application 只验证来源真实性，不从 answer 反向解析金融事实。"
@@ -171,7 +191,27 @@ RECENT_NEWS_TOOL = LLMToolDefinition(
     },
 )
 
-CONTEXT_TOOLS = (CURRENT_QUOTE_TOOL, RECENT_PRICE_HISTORY_TOOL, RECENT_NEWS_TOOL)
+MARKET_CONTEXT_TOOL = LLMToolDefinition(
+    name=MARKET_CONTEXT_TOOL_NAME,
+    description=(
+        "获取基于固定 SPY 调整后 Daily Bars 的确定性 V1 Market Regime。"
+        "当前建仓、加仓、减仓、整体市场风险或 Market Regime 问题调用；"
+        "纯报价、Portfolio Facts、Recent Price History 或 Recent News 问题不得机械调用。"
+        "该 Regime 是未回测的工程启发式市场压力描述，不是行业标准或投资信号。"
+    ),
+    parameters={
+        "type": "object",
+        "properties": {},
+        "additionalProperties": False,
+    },
+)
+
+CONTEXT_TOOLS = (
+    CURRENT_QUOTE_TOOL,
+    RECENT_PRICE_HISTORY_TOOL,
+    RECENT_NEWS_TOOL,
+    MARKET_CONTEXT_TOOL,
+)
 CONTEXT_TOOL_NAMES = tuple(tool.name for tool in CONTEXT_TOOLS)
 
 
@@ -196,6 +236,12 @@ class RecentNewsReader(Protocol):
     """Agent 执行已批准 Recent News Tool 的最小接口。"""
 
     def get_recent_news(self, query: NewsQuery) -> NewsResult[RecentNews]: ...
+
+
+class MarketContextReader(Protocol):
+    """Agent 获取固定、确定性 Market Regime 的最小接口。"""
+
+    def get_current_market_context(self) -> MarketDataResult[MarketRegimeContext]: ...
 
 
 class InvestmentResponseStatus(StrEnum):
@@ -226,6 +272,7 @@ class ContextSourceType(StrEnum):
     CURRENT_QUOTE = "CURRENT_QUOTE"
     PRICE_HISTORY = "PRICE_HISTORY"
     RECENT_NEWS = "RECENT_NEWS"
+    MARKET_CONTEXT = "MARKET_CONTEXT"
 
 
 @dataclass(frozen=True, slots=True)
@@ -279,12 +326,14 @@ class InvestmentAgent:
         llm_provider: LLMProvider,
         *,
         news: RecentNewsReader,
+        market_context: MarketContextReader,
         clock: Callable[[], datetime] | None = None,
     ) -> None:
         self._portfolio_reader = portfolio_reader
         self._market_data = market_data
         self._llm_provider = llm_provider
         self._news = news
+        self._market_context = market_context
         self._clock = clock or (lambda: datetime.now(UTC))
 
     def answer(self, user_id: UUID, question: str) -> InvestmentAgentResult:
@@ -363,83 +412,98 @@ class InvestmentAgent:
         market_results_by_ticker: dict[str, MarketDataResult[MarketQuote]] = {}
         historical_results_by_ticker: dict[str, MarketDataResult[HistoricalBars]] = {}
         news_results_by_ticker: dict[str, NewsResult[RecentNews]] = {}
+        market_context_result: MarketDataResult[MarketRegimeContext] | None = None
         degraded = False
         for tool_call in first_message.tool_calls:
-            ticker = tool_call.arguments["ticker"]
-            assert isinstance(ticker, str)
-            normalized_ticker = ticker.strip().upper()
-            if tool_call.name == CURRENT_QUOTE_TOOL_NAME:
-                is_duplicate = normalized_ticker in market_results_by_ticker
+            if tool_call.name == MARKET_CONTEXT_TOOL_NAME:
+                is_duplicate = market_context_result is not None
                 if is_duplicate:
-                    market_result = market_results_by_ticker[normalized_ticker]
+                    assert market_context_result is not None
                 else:
-                    market_result = self._market_data.get_current_quote(normalized_ticker)
-                    if market_result.status in {
-                        MarketDataStatus.INVALID_SYMBOL,
-                        MarketDataStatus.INVALID_REQUEST,
-                    }:
-                        failure = InvestmentRequestFailure(
-                            InvestmentFailureCode.INVALID_TOOL_CALL,
-                            f"{CURRENT_QUOTE_TOOL_NAME} ticker 参数无效",
-                        )
-                        self._log_failure(failure, started_at)
-                        return failure
-                    market_results_by_ticker[normalized_ticker] = market_result
-                tool_message, source = self._quote_tool_result(
+                    market_context_result = self._market_context.get_current_market_context()
+                assert market_context_result is not None
+                tool_message, source = self._market_context_tool_result(
                     tool_call,
-                    market_result,
-                    snapshot,
+                    market_context_result,
                 )
-                tool_succeeded = market_result.status is MarketDataStatus.OK
-                tool_status_value = market_result.status.value
-            elif tool_call.name == RECENT_PRICE_HISTORY_TOOL_NAME:
-                is_duplicate = normalized_ticker in historical_results_by_ticker
-                if is_duplicate:
-                    historical_result = historical_results_by_ticker[normalized_ticker]
-                else:
-                    historical_result = self._market_data.get_historical_bars(
-                        self._recent_price_history_query(normalized_ticker)
-                    )
-                    if historical_result.status is MarketDataStatus.INVALID_SYMBOL:
-                        failure = InvestmentRequestFailure(
-                            InvestmentFailureCode.INVALID_TOOL_CALL,
-                            f"{RECENT_PRICE_HISTORY_TOOL_NAME} ticker 参数无效",
-                        )
-                        self._log_failure(failure, started_at)
-                        return failure
-                    historical_results_by_ticker[normalized_ticker] = historical_result
-                tool_message, source = self._history_tool_result(
-                    tool_call,
-                    historical_result,
-                )
-                tool_succeeded = historical_result.status is MarketDataStatus.OK
-                tool_status_value = historical_result.status.value
+                tool_succeeded = market_context_result.status is MarketDataStatus.OK
+                tool_status_value = market_context_result.status.value
             else:
-                is_duplicate = normalized_ticker in news_results_by_ticker
-                if is_duplicate:
-                    news_result = news_results_by_ticker[normalized_ticker]
-                else:
-                    news_result = self._news.get_recent_news(
-                        self._recent_news_query(normalized_ticker)
+                ticker = tool_call.arguments["ticker"]
+                assert isinstance(ticker, str)
+                normalized_ticker = ticker.strip().upper()
+                if tool_call.name == CURRENT_QUOTE_TOOL_NAME:
+                    is_duplicate = normalized_ticker in market_results_by_ticker
+                    if is_duplicate:
+                        market_result = market_results_by_ticker[normalized_ticker]
+                    else:
+                        market_result = self._market_data.get_current_quote(normalized_ticker)
+                        if market_result.status in {
+                            MarketDataStatus.INVALID_SYMBOL,
+                            MarketDataStatus.INVALID_REQUEST,
+                        }:
+                            failure = InvestmentRequestFailure(
+                                InvestmentFailureCode.INVALID_TOOL_CALL,
+                                f"{CURRENT_QUOTE_TOOL_NAME} ticker 参数无效",
+                            )
+                            self._log_failure(failure, started_at)
+                            return failure
+                        market_results_by_ticker[normalized_ticker] = market_result
+                    tool_message, source = self._quote_tool_result(
+                        tool_call,
+                        market_result,
+                        snapshot,
                     )
-                    if news_result.status is NewsStatus.INVALID_SYMBOL:
-                        failure = InvestmentRequestFailure(
-                            InvestmentFailureCode.INVALID_TOOL_CALL,
-                            f"{RECENT_NEWS_TOOL_NAME} ticker 参数无效",
+                    tool_succeeded = market_result.status is MarketDataStatus.OK
+                    tool_status_value = market_result.status.value
+                elif tool_call.name == RECENT_PRICE_HISTORY_TOOL_NAME:
+                    is_duplicate = normalized_ticker in historical_results_by_ticker
+                    if is_duplicate:
+                        historical_result = historical_results_by_ticker[normalized_ticker]
+                    else:
+                        historical_result = self._market_data.get_historical_bars(
+                            self._recent_price_history_query(normalized_ticker)
                         )
-                        self._log_failure(failure, started_at)
-                        return failure
-                    news_results_by_ticker[normalized_ticker] = news_result
-                tool_message, source = self._news_tool_result(tool_call, news_result)
-                tool_succeeded = news_result.status is NewsStatus.OK
-                tool_status_value = news_result.status.value
+                        if historical_result.status is MarketDataStatus.INVALID_SYMBOL:
+                            failure = InvestmentRequestFailure(
+                                InvestmentFailureCode.INVALID_TOOL_CALL,
+                                f"{RECENT_PRICE_HISTORY_TOOL_NAME} ticker 参数无效",
+                            )
+                            self._log_failure(failure, started_at)
+                            return failure
+                        historical_results_by_ticker[normalized_ticker] = historical_result
+                    tool_message, source = self._history_tool_result(
+                        tool_call,
+                        historical_result,
+                    )
+                    tool_succeeded = historical_result.status is MarketDataStatus.OK
+                    tool_status_value = historical_result.status.value
+                else:
+                    is_duplicate = normalized_ticker in news_results_by_ticker
+                    if is_duplicate:
+                        news_result = news_results_by_ticker[normalized_ticker]
+                    else:
+                        news_result = self._news.get_recent_news(
+                            self._recent_news_query(normalized_ticker)
+                        )
+                        if news_result.status is NewsStatus.INVALID_SYMBOL:
+                            failure = InvestmentRequestFailure(
+                                InvestmentFailureCode.INVALID_TOOL_CALL,
+                                f"{RECENT_NEWS_TOOL_NAME} ticker 参数无效",
+                            )
+                            self._log_failure(failure, started_at)
+                            return failure
+                        news_results_by_ticker[normalized_ticker] = news_result
+                    tool_message, source = self._news_tool_result(tool_call, news_result)
+                    tool_succeeded = news_result.status is NewsStatus.OK
+                    tool_status_value = news_result.status.value
             tool_messages.append(tool_message)
             if is_duplicate:
                 LOGGER.info(
                     "investment_agent_tool_deduplicated",
                     extra={
                         "tool_name": tool_call.name,
-                        "ticker": normalized_ticker,
+                        "ticker": source.ticker,
                     },
                 )
             else:
@@ -492,6 +556,7 @@ class InvestmentAgent:
                 len(market_results_by_ticker)
                 + len(historical_results_by_ticker)
                 + len(news_results_by_ticker)
+                + int(market_context_result is not None)
             ),
         )
         return answer
@@ -637,7 +702,7 @@ class InvestmentAgent:
         content = json.dumps(
             {
                 "question": question,
-                "context_capabilities": M4_CONTEXT_CAPABILITIES.as_dict(),
+                "context_capabilities": M5_CONTEXT_CAPABILITIES.as_dict(),
                 "decision_context": m3_decision_context(),
                 "portfolio_snapshot": snapshot.as_dict(),
                 "available_source_reference": {"type": "PORTFOLIO_SNAPSHOT"},
@@ -667,6 +732,13 @@ class InvestmentAgent:
                     InvestmentFailureCode.INVALID_TOOL_CALL,
                     "模型请求了未授权 Tool",
                 )
+            if tool_call.name == MARKET_CONTEXT_TOOL_NAME:
+                if tool_call.arguments:
+                    return InvestmentRequestFailure(
+                        InvestmentFailureCode.INVALID_TOOL_CALL,
+                        f"{MARKET_CONTEXT_TOOL_NAME} arguments 必须为空 object",
+                    )
+                continue
             if set(tool_call.arguments) != {"ticker"}:
                 return InvestmentRequestFailure(
                     InvestmentFailureCode.INVALID_TOOL_CALL,
@@ -816,6 +888,86 @@ class InvestmentAgent:
                 type=ContextSourceType.PRICE_HISTORY,
                 status=result.status.value,
                 ticker=ticker.strip().upper(),
+            )
+        return (
+            LLMMessage(
+                LLMRole.TOOL,
+                json.dumps(payload, ensure_ascii=False, sort_keys=True),
+                tool_call_id=tool_call.id,
+            ),
+            source,
+        )
+
+    @staticmethod
+    def _market_context_tool_result(
+        tool_call: LLMToolCall,
+        result: MarketDataResult[MarketRegimeContext],
+    ) -> tuple[LLMMessage, ContextSource]:
+        """输出原始指标、阈值与来源，不把 Heuristic 升级为投资信号。"""
+
+        if result.status is MarketDataStatus.OK:
+            context = result.data
+            assert context is not None
+            payload: dict[str, object] = {
+                "status": result.status.value,
+                "market_context_available": True,
+                "market_proxy_ticker": MARKET_PROXY_TICKER,
+                "market_proxy_scope": "US_LARGE_CAP_PROXY_NOT_COMPLETE_US_MARKET",
+                "available_source_reference": {
+                    "type": "MARKET_CONTEXT",
+                    "ticker": MARKET_PROXY_TICKER,
+                },
+                "regime": context.regime.value,
+                "raw_deterministic_metrics": {
+                    "unit": "PERCENT_4DP_HALF_EVEN",
+                    "five_session_return_percent": str(context.five_session_return_pct),
+                    "twenty_session_close_drawdown_percent": str(
+                        context.twenty_session_drawdown_pct
+                    ),
+                    "twenty_session_annualized_realized_volatility_percent": str(
+                        context.twenty_session_annualized_volatility_pct
+                    ),
+                },
+                "triggered_rule_ids": list(context.triggered_rule_ids),
+                "regime_thresholds": market_regime_thresholds_as_dict(),
+                "observation_count": context.observation_count,
+                "period_start": context.period_start.isoformat(),
+                "period_end": context.period_end.isoformat(),
+                "source": context.source,
+                "feed": context.feed,
+                "coverage": context.coverage.value,
+                "currency": context.currency,
+                "adjustment": context.adjustment,
+                "fetched_at": context.fetched_at.isoformat(),
+                "methodology": context.methodology,
+                "methodology_version": context.version,
+                "disclaimer": context.disclaimer,
+                "response_contract": market_context_response_contract(),
+            }
+            source = ContextSource(
+                type=ContextSourceType.MARKET_CONTEXT,
+                status=result.status.value,
+                ticker=MARKET_PROXY_TICKER,
+                provider=context.source,
+                feed=context.feed,
+                market_timestamp=context.period_end,
+                fetched_at=context.fetched_at,
+            )
+        else:
+            payload = {
+                "status": result.status.value,
+                "market_context_available": False,
+                "market_proxy_ticker": MARKET_PROXY_TICKER,
+                "message": result.message,
+                "instruction": (
+                    "将整体市场状态与 Market Regime 视为 UNKNOWN；不得从用户前提、"
+                    "个股新闻、个股价格或训练知识补造。"
+                ),
+            }
+            source = ContextSource(
+                type=ContextSourceType.MARKET_CONTEXT,
+                status=result.status.value,
+                ticker=MARKET_PROXY_TICKER,
             )
         return (
             LLMMessage(

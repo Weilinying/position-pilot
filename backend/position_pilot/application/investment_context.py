@@ -64,9 +64,10 @@ class PriceDirection(StrEnum):
     FLAT = "FLAT"
 
 
-M4_CONTEXT_CAPABILITIES = ContextCapabilities(
+M5_CONTEXT_CAPABILITIES = ContextCapabilities(
     news=ContextCapabilityStatus.AVAILABLE,
     price_history=ContextCapabilityStatus.AVAILABLE,
+    market_context=ContextCapabilityStatus.AVAILABLE,
 )
 
 
@@ -320,6 +321,21 @@ def quote_response_contract() -> dict[str, object]:
         "purchase_execution_conclusion": "PROHIBITED",
         "cash_quote_relation_allowed_use": "repeat_relation_only",
         "required_purchase_execution_status": "UNKNOWN",
+    }
+
+
+def market_context_response_contract() -> dict[str, object]:
+    """重申 V1 Market Regime 只描述可追踪的市场压力。"""
+
+    return {
+        "market_proxy_scope": "SPY_US_LARGE_CAP_PROXY_NOT_COMPLETE_US_MARKET",
+        "methodology": "V1_HEURISTIC",
+        "industry_standard": False,
+        "historically_backtested": False,
+        "investment_signal": False,
+        "buy_hold_sell_conclusion": "PROHIBITED",
+        "threshold_or_metric_recalculation_by_llm": "PROHIBITED",
+        "source_reference_required_if_used": True,
     }
 
 

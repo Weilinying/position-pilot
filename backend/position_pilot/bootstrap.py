@@ -3,6 +3,7 @@
 from functools import lru_cache
 
 from position_pilot.application.investment_agent import InvestmentAgent
+from position_pilot.application.market_context_service import MarketContextService
 from position_pilot.application.market_data_service import MarketDataService
 from position_pilot.application.news_service import NewsService
 from position_pilot.application.portfolio_service import PortfolioService
@@ -37,4 +38,5 @@ def get_investment_agent() -> InvestmentAgent:
         market_data_service,
         llm_provider,
         news=news_service,
+        market_context=MarketContextService(market_data_service),
     )

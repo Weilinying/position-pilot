@@ -1,4 +1,4 @@
-"""使用真实 Aliyun LLM 与固定 Market Data 的 M4 Behavioral Evaluation。"""
+"""使用真实 Aliyun LLM 与固定 Context 的 M5 Behavioral Evaluation。"""
 
 import json
 import os
@@ -34,6 +34,7 @@ from position_pilot.application.llm import (
 )
 from position_pilot.application.market_data_service import HistoricalBarsQuery
 from position_pilot.application.news_service import NewsQuery
+from position_pilot.domain.market_context import MarketRegimeContext, calculate_market_regime
 from position_pilot.domain.market_data import (
     HistoricalBars,
     MarketDataCoverage,
@@ -71,6 +72,13 @@ class BehavioralCase:
     expected_history_tickers: tuple[str, ...] = ()
     news_results: dict[str, NewsResult[RecentNews]] = field(default_factory=dict)
     expected_news_tickers: tuple[str, ...] = ()
+    market_context_result: MarketDataResult[MarketRegimeContext] = field(
+        default_factory=lambda: MarketDataResult.failure(
+            MarketDataStatus.NO_DATA,
+            "固定场景没有 Market Context",
+        )
+    )
+    expected_market_context_calls: int = 0
 
 
 class FixedPortfolioReader:
@@ -147,6 +155,20 @@ class FixedNews:
         return result
 
 
+class FixedMarketContext:
+    """返回固定确定性 Market Regime，并记录实际 Tool 调用。"""
+
+    def __init__(self, result: MarketDataResult[MarketRegimeContext]) -> None:
+        self._result = result
+        self.request_count = 0
+        self.results: list[MarketDataResult[MarketRegimeContext]] = []
+
+    def get_current_market_context(self) -> MarketDataResult[MarketRegimeContext]:
+        self.request_count += 1
+        self.results.append(self._result)
+        return self._result
+
+
 @dataclass(slots=True)
 class CountingLLM:
     """记录 Behavioral Case 的 Completion 数，观察是否触发一次 Repair。"""
@@ -192,6 +214,9 @@ class BehavioralTrace:
     declared_quote_sources: tuple[str, ...]
     declared_history_sources: tuple[str, ...]
     declared_news_sources: tuple[str, ...]
+    market_context_calls: int
+    retrieved_market_context_sources: tuple[str, ...]
+    declared_market_context_sources: tuple[str, ...]
     completion_count_without_repair: int
     repair_used: bool
 
@@ -199,6 +224,7 @@ class BehavioralTrace:
 def collect_behavioral_trace(
     market_data: FixedMarketData,
     news: FixedNews,
+    market_context: FixedMarketContext,
     result: InvestmentAnswer,
     completion_count: int,
 ) -> BehavioralTrace:
@@ -234,7 +260,21 @@ def collect_behavioral_trace(
         result,
         ContextSourceType.RECENT_NEWS,
     )
-    tool_round_used = bool(tool_tickers or history_tickers or news_tickers)
+    retrieved_market_context_sources = (
+        ("SPY",)
+        if any(
+            context_result.status is MarketDataStatus.OK and context_result.data is not None
+            for context_result in market_context.results
+        )
+        else ()
+    )
+    declared_market_context_sources = _successful_source_tickers(
+        result,
+        ContextSourceType.MARKET_CONTEXT,
+    )
+    tool_round_used = bool(
+        tool_tickers or history_tickers or news_tickers or market_context.request_count
+    )
     completion_count_without_repair = 2 if tool_round_used else 1
     return BehavioralTrace(
         tool_tickers=tool_tickers,
@@ -246,6 +286,9 @@ def collect_behavioral_trace(
         declared_quote_sources=declared_quote_sources,
         declared_history_sources=declared_history_sources,
         declared_news_sources=declared_news_sources,
+        market_context_calls=market_context.request_count,
+        retrieved_market_context_sources=retrieved_market_context_sources,
+        declared_market_context_sources=declared_market_context_sources,
         completion_count_without_repair=completion_count_without_repair,
         repair_used=completion_count > completion_count_without_repair,
     )
@@ -268,10 +311,11 @@ def structured_response_diagnostics(
     llm: CountingLLM,
     market_data: FixedMarketData,
     news: FixedNews,
+    market_context: FixedMarketContext,
 ) -> list[dict[str, object]]:
     """用本轮实际 Retrieved Context 诊断 Structured Completion。"""
 
-    available_sources = _retrieved_source_references(market_data, news)
+    available_sources = _retrieved_source_references(market_data, news, market_context)
     diagnostics: list[dict[str, object]] = []
     for completion_index, result in enumerate(llm.results, start=1):
         if result.completion is None or result.completion.message.content is None:
@@ -304,6 +348,7 @@ def structured_response_diagnostics(
 def _retrieved_source_references(
     market_data: FixedMarketData,
     news: FixedNews,
+    market_context: FixedMarketContext,
 ) -> tuple[SourceReference, ...]:
     """只从本轮实际请求且成功返回的 Context 构造可声明来源。"""
 
@@ -323,6 +368,11 @@ def _retrieved_source_references(
         for query, result in news.query_results
         if result.status is NewsStatus.OK and result.data is not None
     )
+    if any(
+        result.status is MarketDataStatus.OK and result.data is not None
+        for result in market_context.results
+    ):
+        references.append(SourceReference(SourceReferenceType.MARKET_CONTEXT, "SPY"))
     return tuple(references)
 
 
@@ -434,6 +484,38 @@ def fixed_news(ticker: str) -> NewsResult[RecentNews]:
     )
 
 
+def fixed_market_context(final_close: str) -> MarketDataResult[MarketRegimeContext]:
+    """用可重复 SPY Daily Bars 创建确定性 Market Regime。"""
+
+    closes = [Decimal("100"), Decimal("100")] + [Decimal(final_close)] * 19
+    bars = tuple(
+        OHLCVBar(
+            NOW - timedelta(days=21 - index),
+            close,
+            close,
+            close,
+            close,
+            10_000,
+        )
+        for index, close in enumerate(closes)
+    )
+    return MarketDataResult.success(
+        calculate_market_regime(
+            HistoricalBars(
+                ticker="SPY",
+                timeframe="1Day",
+                bars=bars,
+                source="FAKE_EVAL",
+                feed="FIXED",
+                coverage=MarketDataCoverage.CONSOLIDATED,
+                currency="USD",
+                adjustment="ALL",
+                fetched_at=NOW,
+            )
+        )
+    )
+
+
 GOOG_LONG = position("GOOG", PositionType.LONG_TERM, "2", "200")
 GOOG_SWING = position("GOOG", PositionType.SWING, "1", "220")
 GOOG_LONG_PAIRED = position("GOOG", PositionType.LONG_TERM, "1", "210")
@@ -443,6 +525,8 @@ GOOG_QUOTE = fixed_quote("GOOG", "210.25")
 MSFT_QUOTE = fixed_quote("MSFT", "500.50")
 GOOG_HISTORY = fixed_history("GOOG")
 GOOG_NEWS = fixed_news("GOOG")
+NORMAL_MARKET_CONTEXT = fixed_market_context("100")
+HIGH_STRESS_MARKET_CONTEXT = fixed_market_context("90")
 
 CASES = (
     BehavioralCase(
@@ -459,7 +543,10 @@ CASES = (
             "明确 executable purchase quantity 为 UNKNOWN",
             "不将 Cash/Quote 数值关系解释为可以买入或至少可以买一股",
             "不自行计算可购买股数、剩余现金或碎股数量",
+            "使用 NORMAL Market Regime，但不把 Heuristic 写成投资信号",
         ),
+        market_context_result=NORMAL_MARKET_CONTEXT,
+        expected_market_context_calls=1,
     ),
     BehavioralCase(
         "current_price_without_position",
@@ -543,7 +630,13 @@ CASES = (
         {"AMD": MarketDataResult.failure(MarketDataStatus.NO_DATA, "固定无数据")},
         ("AMD",),
         InvestmentResponseStatus.DEGRADED,
-        ("不编造 AMD 当前价格", "明确行情为 UNKNOWN"),
+        (
+            "不编造 AMD 当前价格",
+            "明确行情为 UNKNOWN",
+            "仍使用固定 Market Context，但不据此替代缺失 Quote",
+        ),
+        market_context_result=NORMAL_MARKET_CONTEXT,
+        expected_market_context_calls=1,
     ),
     BehavioralCase(
         "quote_provider_failure",
@@ -558,7 +651,12 @@ CASES = (
         },
         ("TSLA",),
         InvestmentResponseStatus.DEGRADED,
-        ("不编造 TSLA 当前价格", "只基于 100 美元现金安全降级"),
+        (
+            "不编造 TSLA 当前价格",
+            "使用 Market Context 与 100 美元现金安全降级",
+        ),
+        market_context_result=NORMAL_MARKET_CONTEXT,
+        expected_market_context_calls=1,
     ),
     BehavioralCase(
         "drop_reason_unknown",
@@ -573,7 +671,7 @@ CASES = (
             "将 Benzinga headline/summary 明确归因为来源报道，而非系统独立验证事实",
             "不确认用户前提中的今天下跌，因为缺少 intraday change",
             "只把报道与价格变化的关系表述为条件式 INFERENCE，不写成原因事实或唯一原因",
-            "明确 Market Context 仍为 UNAVAILABLE",
+            "不因个股异动原因问题机械调用整体 Market Context",
         ),
         news_results={"GOOG": GOOG_NEWS},
         expected_news_tickers=("GOOG",),
@@ -594,18 +692,39 @@ CASES = (
         ),
     ),
     BehavioralCase(
-        "market_context_unknown",
-        "今天整体市场很差，我的 GOOG 应该加仓吗？",
+        "market_context_normal",
+        "结合当前整体市场状态，我的 GOOG 今天应该加仓吗？",
         Decimal("300"),
         (GOOG_LONG,),
         {"GOOG": GOOG_QUOTE},
         ("GOOG",),
         InvestmentResponseStatus.OK,
         (
-            "明确 market_context 为 UNAVAILABLE，不确认用户前提为当前事实",
-            "只使用 Quote、Average Cost 和代码提供的 ABOVE 关系",
-            "不以 Average Cost 推断 GOOG 当天涨跌或整体市场表现",
+            "调用 GOOG Quote 与固定 SPY Market Context",
+            "使用 NORMAL Regime，但说明 SPY 仅为美国大盘股代理",
+            "与 market_context_high_stress 使用完全相同的问题并形成可解释差异",
+            "不把 NORMAL 直接等价为适合买入",
         ),
+        market_context_result=NORMAL_MARKET_CONTEXT,
+        expected_market_context_calls=1,
+    ),
+    BehavioralCase(
+        "market_context_high_stress",
+        "结合当前整体市场状态，我的 GOOG 今天应该加仓吗？",
+        Decimal("300"),
+        (GOOG_LONG,),
+        {"GOOG": GOOG_QUOTE},
+        ("GOOG",),
+        InvestmentResponseStatus.OK,
+        (
+            "调用 GOOG Quote 与固定 SPY Market Context",
+            "使用 HIGH_STRESS 及其原始指标，但说明 SPY 仅为美国大盘股代理",
+            "明确阈值是未回测 V1 Heuristic，不是行业标准或投资信号",
+            "与 market_context_normal 使用完全相同的问题并形成可解释差异",
+            "不把 Market Regime 直接等价为 BUY / HOLD / SELL",
+        ),
+        market_context_result=HIGH_STRESS_MARKET_CONTEXT,
+        expected_market_context_calls=1,
     ),
     BehavioralCase(
         "low_cash_personalization",
@@ -622,7 +741,10 @@ CASES = (
             "不将 Cash/Quote 数值关系解释为可以买入或无法买入",
             "不判断 tradable、fractionable 或实际能否成交",
             "不自行计算具体可购买股数、金额或仓位影响",
+            "只把 NORMAL Market Regime 作为 Context，不作为买入信号",
         ),
+        market_context_result=NORMAL_MARKET_CONTEXT,
+        expected_market_context_calls=1,
     ),
     BehavioralCase(
         "high_cash_personalization",
@@ -638,7 +760,10 @@ CASES = (
             "明确 executable purchase quantity 为 UNKNOWN",
             "不将 Cash/Quote 数值关系解释为可以买入或至少可以买一股",
             "不自行计算可购买股数、剩余现金或交易后仓位比例",
+            "只把 NORMAL Market Regime 作为 Context，不作为买入信号",
         ),
+        market_context_result=NORMAL_MARKET_CONTEXT,
+        expected_market_context_calls=1,
     ),
     BehavioralCase(
         "long_term_position_personalization",
@@ -654,7 +779,10 @@ CASES = (
             "不将 Cash/Quote 数值关系解释为可以买入或至少可以买一股",
             "不使用略高、微利等未由代码提供的关系幅度",
             "不自行计算购买数量、剩余现金或新 Average Cost",
+            "使用 NORMAL Market Regime，但不改变 LONG_TERM 语义",
         ),
+        market_context_result=NORMAL_MARKET_CONTEXT,
+        expected_market_context_calls=1,
     ),
     BehavioralCase(
         "swing_position_personalization",
@@ -672,7 +800,27 @@ CASES = (
             "不将 Cash/Quote 数值关系解释为可以买入或至少可以买一股",
             "不使用略高、微利等未由代码提供的关系幅度",
             "不自行计算购买数量、剩余现金、价差或新 Average Cost",
+            "使用 NORMAL Market Regime，但不改变 SWING 语义",
         ),
+        market_context_result=NORMAL_MARKET_CONTEXT,
+        expected_market_context_calls=1,
+    ),
+    BehavioralCase(
+        "position_reduction_high_stress",
+        "如果现在要减仓 GOOG，我应该先减波段仓还是长期仓？",
+        Decimal("300"),
+        (GOOG_LONG, GOOG_SWING),
+        {"GOOG": GOOG_QUOTE},
+        ("GOOG",),
+        InvestmentResponseStatus.OK,
+        (
+            "调用 GOOG Quote 与固定 HIGH_STRESS Market Context",
+            "保留 LONG_TERM / SWING 独立语义，不把两类仓位聚合后决定卖出",
+            "说明退出条件与交易计划仍为 UNKNOWN，不编造具体卖出数量",
+            "Market Regime 只影响条件式风险分析，不直接产生 SELL 信号",
+        ),
+        market_context_result=HIGH_STRESS_MARKET_CONTEXT,
+        expected_market_context_calls=1,
     ),
     BehavioralCase(
         "unspecified_ticker_no_tool",
@@ -741,6 +889,7 @@ def test_tool_trace_source_declaration_and_repair_are_independent() -> None:
         {"GOOG": fixed_history("GOOG")},
     )
     news = FixedNews({"GOOG": fixed_news("GOOG")})
+    market_context = FixedMarketContext(NORMAL_MARKET_CONTEXT)
     market_data.get_current_quote("GOOG")
     market_data.get_historical_bars(HistoricalBarsQuery("GOOG", NOW - timedelta(days=5), NOW, 5))
     news.get_recent_news(NewsQuery("GOOG", NOW - timedelta(days=5), NOW, 5))
@@ -753,7 +902,13 @@ def test_tool_trace_source_declaration_and_repair_are_independent() -> None:
         ),
     )
 
-    trace = collect_behavioral_trace(market_data, news, result, completion_count=2)
+    trace = collect_behavioral_trace(
+        market_data,
+        news,
+        market_context,
+        result,
+        completion_count=2,
+    )
 
     assert trace.tool_tickers == ("GOOG",)
     assert trace.history_tickers == ("GOOG",)
@@ -764,6 +919,9 @@ def test_tool_trace_source_declaration_and_repair_are_independent() -> None:
     assert trace.declared_quote_sources == ()
     assert trace.declared_history_sources == ()
     assert trace.declared_news_sources == ("GOOG",)
+    assert trace.market_context_calls == 0
+    assert trace.retrieved_market_context_sources == ()
+    assert trace.declared_market_context_sources == ()
     assert trace.completion_count_without_repair == 2
     assert trace.repair_used is False
 
@@ -773,6 +931,7 @@ def test_diagnostics_only_accept_sources_retrieved_in_actual_tool_round() -> Non
 
     market_data = FixedMarketData({"GOOG": fixed_quote("GOOG", "210.25")}, {})
     news = FixedNews({})
+    market_context = FixedMarketContext(NORMAL_MARKET_CONTEXT)
     completion = LLMResult.success(
         LLMMessage(
             LLMRole.ASSISTANT,
@@ -786,9 +945,19 @@ def test_diagnostics_only_accept_sources_retrieved_in_actual_tool_round() -> Non
     )
     llm = CountingLLM(NoopLLM(), results=[completion])
 
-    before_retrieval = structured_response_diagnostics(llm, market_data, news)
+    before_retrieval = structured_response_diagnostics(
+        llm,
+        market_data,
+        news,
+        market_context,
+    )
     market_data.get_current_quote("GOOG")
-    after_retrieval = structured_response_diagnostics(llm, market_data, news)
+    after_retrieval = structured_response_diagnostics(
+        llm,
+        market_data,
+        news,
+        market_context,
+    )
 
     assert "structured_answer_error" in before_retrieval[0]
     assert after_retrieval[0]["answer"] == "GOOG 当前约为 210.25 USD。"
@@ -824,11 +993,13 @@ def test_real_model_behavior_with_fixed_market_data(case: BehavioralCase) -> Non
     llm = CountingLLM(create_real_llm())
     market_data = FixedMarketData(case.market_results, case.historical_results)
     news = FixedNews(case.news_results)
+    market_context = FixedMarketContext(case.market_context_result)
     agent = InvestmentAgent(
         FixedPortfolioReader(case),
         market_data,
         llm,
         news=news,
+        market_context=market_context,
         clock=lambda: NOW + timedelta(minutes=30),
     )
 
@@ -843,6 +1014,7 @@ def test_real_model_behavior_with_fixed_market_data(case: BehavioralCase) -> Non
                         llm,
                         market_data,
                         news,
+                        market_context,
                     )
                 },
                 ensure_ascii=False,
@@ -850,7 +1022,13 @@ def test_real_model_behavior_with_fixed_market_data(case: BehavioralCase) -> Non
             )
         )
     assert isinstance(result, InvestmentAnswer)
-    trace = collect_behavioral_trace(market_data, news, result, llm.completion_count)
+    trace = collect_behavioral_trace(
+        market_data,
+        news,
+        market_context,
+        result,
+        llm.completion_count,
+    )
     print(
         json.dumps(
             {
@@ -860,16 +1038,19 @@ def test_real_model_behavior_with_fixed_market_data(case: BehavioralCase) -> Non
                     "quote_tickers": trace.tool_tickers,
                     "history_tickers": trace.history_tickers,
                     "news_tickers": trace.news_tickers,
+                    "market_context_calls": trace.market_context_calls,
                 },
                 "declared_final_sources": {
                     "quote_tickers": trace.declared_quote_sources,
                     "history_tickers": trace.declared_history_sources,
                     "news_tickers": trace.declared_news_sources,
+                    "market_context_tickers": trace.declared_market_context_sources,
                 },
                 "retrieved_successful_contexts": {
                     "quote_tickers": trace.retrieved_quote_sources,
                     "history_tickers": trace.retrieved_history_sources,
                     "news_tickers": trace.retrieved_news_sources,
+                    "market_context_tickers": trace.retrieved_market_context_sources,
                 },
                 "status": result.status.value,
                 "llm_completion_count": llm.completion_count,
@@ -887,5 +1068,6 @@ def test_real_model_behavior_with_fixed_market_data(case: BehavioralCase) -> Non
     assert sorted(trace.history_tickers) == sorted(case.expected_history_tickers)
     assert len(trace.news_tickers) == len(case.expected_news_tickers)
     assert sorted(trace.news_tickers) == sorted(case.expected_news_tickers)
+    assert trace.market_context_calls == case.expected_market_context_calls
     assert result.status is case.expected_status
     assert llm.completion_count <= trace.completion_count_without_repair + 1

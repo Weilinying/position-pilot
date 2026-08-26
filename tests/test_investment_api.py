@@ -96,6 +96,15 @@ def test_returns_answer_with_deterministic_status_and_source_tracking(
                     market_timestamp=None,
                     fetched_at=NOW,
                 ),
+                ContextSource(
+                    ContextSourceType.MARKET_CONTEXT,
+                    "OK",
+                    ticker="SPY",
+                    provider="ALPACA",
+                    feed="SIP",
+                    market_timestamp=NOW,
+                    fetched_at=NOW,
+                ),
             ),
         )
     )
@@ -145,6 +154,15 @@ def test_returns_answer_with_deterministic_status_and_source_tracking(
                 "provider": "ALPACA",
                 "feed": "BENZINGA",
                 "market_timestamp": None,
+                "fetched_at": "2026-08-24T08:00:00Z",
+            },
+            {
+                "type": "MARKET_CONTEXT",
+                "status": "OK",
+                "ticker": "SPY",
+                "provider": "ALPACA",
+                "feed": "SIP",
+                "market_timestamp": "2026-08-24T08:00:00Z",
                 "fetched_at": "2026-08-24T08:00:00Z",
             },
         ],
