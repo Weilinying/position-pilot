@@ -3,10 +3,12 @@
 import ssl
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 
 import pytest
 
+from position_pilot.application.investment_context import RecentPriceHistoryFacts
 from position_pilot.application.market_data_service import HistoricalBarsQuery
 from position_pilot.domain.market_data import MarketDataCoverage, MarketDataStatus
 from position_pilot.integrations.alpaca_market_data import (
@@ -240,26 +242,10 @@ def test_missing_credentials_fail_before_network_call() -> None:
 
 
 def test_parses_paginated_adjusted_sip_daily_bars() -> None:
-    """Historical Adapter 应跟随分页并保留 SIP 与 adjustment 元数据。"""
+    """Historical Adapter 应按倒序分页取最新数据，再恢复领域升序。"""
 
     transport = FakeJsonTransport(
         [
-            JsonHttpResponse(
-                200,
-                {
-                    "bars": [
-                        {
-                            "t": "2026-08-18T04:00:00Z",
-                            "o": 200,
-                            "h": 205,
-                            "l": 199,
-                            "c": 204,
-                            "v": 1000,
-                        }
-                    ],
-                    "next_page_token": "next-token",
-                },
-            ),
             JsonHttpResponse(
                 200,
                 {
@@ -271,6 +257,22 @@ def test_parses_paginated_adjusted_sip_daily_bars() -> None:
                             "l": 201,
                             "c": 202,
                             "v": 1200,
+                        }
+                    ],
+                    "next_page_token": "next-token",
+                },
+            ),
+            JsonHttpResponse(
+                200,
+                {
+                    "bars": [
+                        {
+                            "t": "2026-08-18T04:00:00Z",
+                            "o": 200,
+                            "h": 205,
+                            "l": 199,
+                            "c": 204,
+                            "v": 1000,
                         }
                     ],
                     "next_page_token": None,
@@ -289,8 +291,55 @@ def test_parses_paginated_adjusted_sip_daily_bars() -> None:
     assert result.data.coverage is MarketDataCoverage.CONSOLIDATED
     assert result.data.adjustment == "ALL"
     assert result.data.timeframe == "1Day"
+    assert [bar.timestamp for bar in result.data.bars] == [
+        datetime(2026, 8, 18, 4, 0, tzinfo=UTC),
+        datetime(2026, 8, 19, 4, 0, tzinfo=UTC),
+    ]
     assert "adjustment=all" in transport.requests[0].url
+    assert "sort=desc" in transport.requests[0].url
     assert "page_token=next-token" in transport.requests[1].url
+
+
+def test_historical_limit_returns_latest_bars_and_preserves_domain_order() -> None:
+    """窗口超过 limit 时必须保留最新 30 根，并向领域输出严格升序。"""
+
+    window_bars = [
+        {
+            "t": (datetime(2026, 7, 1, 4, 0, tzinfo=UTC) + timedelta(days=index))
+            .isoformat()
+            .replace("+00:00", "Z"),
+            "o": 100 + index,
+            "h": 102 + index,
+            "l": 99 + index,
+            "c": 100 + index,
+            "v": 1000 + index,
+        }
+        for index in range(32)
+    ]
+    provider_page = list(reversed(window_bars[-30:]))
+    transport = FakeJsonTransport(
+        [JsonHttpResponse(200, {"bars": provider_page, "next_page_token": None})]
+    )
+
+    result = make_provider(transport).get_historical_bars(
+        HistoricalBarsQuery(
+            ticker="GOOG",
+            start=datetime(2026, 7, 1, tzinfo=UTC),
+            end=END,
+            limit=30,
+        )
+    )
+
+    assert result.status is MarketDataStatus.OK
+    assert result.data is not None
+    assert len(result.data.bars) == 30
+    assert result.data.bars[0].timestamp == datetime(2026, 7, 3, 4, 0, tzinfo=UTC)
+    assert result.data.bars[-1].timestamp == datetime(2026, 8, 1, 4, 0, tzinfo=UTC)
+    facts = RecentPriceHistoryFacts.from_historical_bars(result.data)
+    assert facts.latest_close == Decimal("131.00000000")
+    assert facts.period_end == "2026-08-01T04:00:00+00:00"
+    assert "sort=desc" in transport.requests[0].url
+    assert "limit=30" in transport.requests[0].url
 
 
 def test_rejects_recent_sip_query_before_network_call() -> None:

@@ -236,7 +236,8 @@ class AlpacaMarketDataProvider:
                 "adjustment": HISTORICAL_ADJUSTMENT.lower(),
                 "feed": HISTORICAL_FEED.lower(),
                 "currency": "USD",
-                "sort": "asc",
+                # 先向 Provider 请求窗口内最新 N 根，再在 Adapter 边界恢复领域升序。
+                "sort": "desc",
             }
             if page_token is not None:
                 parameters["page_token"] = page_token
@@ -281,7 +282,7 @@ class AlpacaMarketDataProvider:
                 "指定范围没有 Historical OHLCV",
             )
         try:
-            bars = tuple(self._parse_bar(raw_bar) for raw_bar in raw_bars)
+            bars = tuple(reversed(tuple(self._parse_bar(raw_bar) for raw_bar in raw_bars)))
             historical_bars = HistoricalBars(
                 ticker=query.ticker,
                 timeframe="1Day",
