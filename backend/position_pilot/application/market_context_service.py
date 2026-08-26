@@ -1,7 +1,7 @@
 """固定 SPY Daily Bars 的 Market Context Application Service。"""
 
 from collections.abc import Callable
-from datetime import UTC, datetime, time, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from typing import Protocol
 from zoneinfo import ZoneInfo
 
@@ -25,6 +25,7 @@ MARKET_CONTEXT_PROXY_TICKER = "SPY"
 MARKET_CONTEXT_LOOKBACK_DAYS = 90
 MARKET_CONTEXT_LIMIT = 60
 MARKET_CONTEXT_END_LAG = timedelta(minutes=15)
+MARKET_CONTEXT_MAX_STALENESS_DAYS = 7
 _NEW_YORK = ZoneInfo("America/New_York")
 _REGULAR_SESSION_CLOSE = time(16, 0)
 
@@ -106,6 +107,11 @@ class MarketContextService:
                 MarketDataStatus.NO_DATA,
                 "Market Regime 至少需要 21 根 completed SPY Daily Bars",
             )
+        if _is_obviously_stale(completed_bars[-1].timestamp, query_end=end):
+            return MarketDataResult.failure(
+                MarketDataStatus.NO_DATA,
+                "最新 completed SPY Daily Bar 已超过 7 个日历日，Market Regime 保持 UNKNOWN",
+            )
         completed_history = HistoricalBars(
             ticker=historical_bars.ticker,
             timeframe=historical_bars.timeframe,
@@ -130,8 +136,22 @@ class MarketContextService:
 def _is_completed_daily_bar(timestamp: datetime, *, query_end: datetime) -> bool:
     """按纽约常规收盘时间保守排除仍可能变化的当前 Session Daily Bar。"""
 
+    return timestamp.astimezone(_NEW_YORK).date() <= _latest_completed_session_date(query_end)
+
+
+def _is_obviously_stale(timestamp: datetime, *, query_end: datetime) -> bool:
+    """仅拒绝明显陈旧数据，并容纳正常周末和交易所假期。"""
+
+    latest_bar_date = timestamp.astimezone(_NEW_YORK).date()
+    age_days = (_latest_completed_session_date(query_end) - latest_bar_date).days
+    return age_days > MARKET_CONTEXT_MAX_STALENESS_DAYS
+
+
+def _latest_completed_session_date(query_end: datetime) -> date:
+    """返回按纽约常规收盘时间推导的最近可完成 Session 日期上界。"""
+
     market_end = query_end.astimezone(_NEW_YORK)
     latest_completed_session_date = market_end.date()
     if market_end.time() < _REGULAR_SESSION_CLOSE:
         latest_completed_session_date -= timedelta(days=1)
-    return timestamp.astimezone(_NEW_YORK).date() <= latest_completed_session_date
+    return latest_completed_session_date

@@ -10,6 +10,7 @@ from position_pilot.application.market_context_service import (
     MARKET_CONTEXT_END_LAG,
     MARKET_CONTEXT_LIMIT,
     MARKET_CONTEXT_LOOKBACK_DAYS,
+    MARKET_CONTEXT_MAX_STALENESS_DAYS,
     MarketContextService,
 )
 from position_pilot.application.market_data_service import HistoricalBarsQuery
@@ -230,6 +231,54 @@ def test_includes_current_session_bar_after_regular_close_and_lag() -> None:
     assert result.status is MarketDataStatus.OK
     assert result.data is not None
     assert result.data.period_end == history.bars[-1].timestamp
+
+
+def test_obviously_stale_completed_bars_are_no_data() -> None:
+    """足量但明显陈旧的 SPY Daily Bars 不得形成当前 Market Regime。"""
+
+    history = _history(
+        latest_timestamp=datetime(2026, 7, 10, 4, 0, tzinfo=UTC),
+    )
+    market_data = FakeMarketData(MarketDataResult.success(history))
+
+    result = MarketContextService(market_data, clock=lambda: NOW).get_current_market_context()
+
+    assert result.status is MarketDataStatus.NO_DATA
+    assert result.data is None
+    assert result.message is not None and "UNKNOWN" in result.message
+
+
+def test_seven_calendar_day_freshness_boundary_is_accepted() -> None:
+    """已批准边界只拒绝超过七日的数据，不扩大为精确交易日历。"""
+
+    assert MARKET_CONTEXT_MAX_STALENESS_DAYS == 7
+    history = _history(
+        latest_timestamp=datetime(2026, 8, 18, 4, 0, tzinfo=UTC),
+    )
+    market_data = FakeMarketData(MarketDataResult.success(history))
+
+    result = MarketContextService(market_data, clock=lambda: NOW).get_current_market_context()
+
+    assert result.status is MarketDataStatus.OK
+    assert result.data is not None
+
+
+def test_normal_weekend_gap_is_not_stale() -> None:
+    """无 Market Calendar 时，正常周末间隔仍应保留可用的 completed Bar。"""
+
+    monday_before_market = datetime(2026, 8, 24, 12, 0, tzinfo=UTC)
+    history = _history(
+        latest_timestamp=datetime(2026, 8, 21, 4, 0, tzinfo=UTC),
+    )
+    market_data = FakeMarketData(MarketDataResult.success(history))
+
+    result = MarketContextService(
+        market_data,
+        clock=lambda: monday_before_market,
+    ).get_current_market_context()
+
+    assert result.status is MarketDataStatus.OK
+    assert result.data is not None
 
 
 def test_naive_clock_fails_before_provider_call() -> None:

@@ -205,6 +205,7 @@ MarketContextService
       ↓ fixed SPY / 90 calendar days / max 60 Daily Bars / 15-minute end lag
 MarketDataService → Alpaca Historical SIP
       ↓ exclude current uncompleted New York session bar
+      ↓ reject latest completed bar older than 7 calendar days as NO_DATA
 latest 21 completed SPY Daily Closes
       ↓ deterministic Decimal calculations
 5-session Return + 20-session Close Drawdown + 20-return Annualized Volatility
@@ -217,7 +218,8 @@ NORMAL / ELEVATED_VOLATILITY / HIGH_STRESS / EXTREME_STRESS
 - Methodology 固定为 `V1_HEURISTIC` / `1.0`：阈值不是行业标准、未经历史回测验证，也不是投资信号；Regime 不直接生成 BUY / HOLD / SELL。
 - SPY 只代表美国大盘股代理，不代表完整美股市场、VIX、市场宽度、宏观环境或个股特有风险。
 - 交易时段内保守剔除仍可能变化的当前 New York Session Daily Bar；早收盘日也等到常规收盘后才纳入，优先避免把盘中数据伪装成 completed Daily Fact。
-- 少于 21 根 completed Bars 为 `NO_DATA`；认证、限流、Provider 不可用与非法成功 Payload 继续保持独立状态。
+- 最新 completed Bar 超过 7 个日历日时视为明显陈旧并返回 `NO_DATA`；该工程 Freshness Heuristic 容纳正常周末和交易所假期，不尝试替代精确 Market Calendar。
+- 少于 21 根 completed Bars 同样为 `NO_DATA`；认证、限流、Provider 不可用与非法成功 Payload 继续保持独立状态。
 - 决策、阈值、局限与重新考虑条件见 ADR 0007。
 
 ## 11. Investment Agent 与 LLM Boundary

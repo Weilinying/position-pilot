@@ -114,7 +114,7 @@ Atomic Commits → Human Acceptance
 
 ### Verification
 
-- 默认全量 pytest：323 passed，36 skipped。
+- 默认全量 pytest：326 passed，36 skipped。
 - 跳过项为 22 条未显式启用的真实模型 Behavioral Eval、2 条在线 Alpaca Market Tests、1 条在线 Alpaca News Test、1 条真实 Agent Smoke Test，以及未配置 `TEST_DATABASE_URL` 的 10 条 PostgreSQL Integration Tests。
 - Ruff format check / lint：PASS；mypy strict：PASS（55 source files）。
 - `uv lock --check`、Alembic head / history 与 `git diff --check`：PASS。
@@ -123,6 +123,6 @@ Atomic Commits → Human Acceptance
 
 - 新增 ADR 0007，记录 SPY Proxy、指标、Threshold、Heuristic 边界、Trade-off 与重新考虑条件；本次不需要额外 Engineering Note。
 - SPY 只代表美国大盘股代理，V1 不包含 VIX、市场宽度、主要指数集合、Sector、Macro 或盘中 Market Regime。
-- completed-bar 过滤尚不能识别 Provider 返回的明显陈旧 Daily Bars；最大允许陈旧时间属于待 Human Review 的新规则，在批准前不实现 Freshness Guard。
+- Human Review 已批准 7 个日历日 Freshness Guard；最新 completed SPY Daily Bar 超过该边界时返回 `NO_DATA`，Regime 保持 `UNKNOWN`。该工程启发式只检测明显陈旧数据，不引入 Market Calendar。
 - 阈值没有历史回测验证；后续只能由固定 Eval、真实使用或 Backtest 证据驱动调整，不能因模型偏好修改。
 - 本次没有可用 Credential，因此未实际运行真实 LLM Behavioral Eval、在线 Alpaca Tests 或真实 Agent Smoke Test。

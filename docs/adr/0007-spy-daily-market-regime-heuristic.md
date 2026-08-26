@@ -32,6 +32,7 @@ Market Regime 必须由确定性代码生成。数据来源、阈值、公共 So
 
 - 使用 `SPY` 作为 V1 美国大盘股 Market Proxy；所有输出必须明确其代理边界。
 - 使用 Alpaca 最近 90 个日历日内最多 60 根调整后 Daily Bars，查询结束时间至少落后当前 15 分钟；少于 21 根有效 Bars 时返回 `NO_DATA`，不形成 Regime。
+- 按纽约市场日期计算最新 completed Bar 的日历年龄；超过 7 个日历日时视为明显陈旧并返回 `NO_DATA`。该 Freshness Guard 是工程启发式规则，用于容纳正常周末和交易所假期，不引入精确 Market Calendar。
 - 使用最新 21 根 Close 计算：
   - `five_session_return_percent`：最新 Close 相对 5 个 Session 前 Close 的收益率；
   - `twenty_session_close_drawdown_percent`：最新 Close 相对最近 20 个 Session 最高 Close 的回撤；
@@ -62,6 +63,7 @@ Market Regime 必须由确定性代码生成。数据来源、阈值、公共 So
 - Daily Price Stress 不是 VIX，也不能表达期权市场的前瞻波动预期。
 - 固定阈值没有经过 PositionPilot 历史回测，不应被表述为行业标准或 BUY / SELL Signal。
 - 90 日查询和 21 根计算窗口优先简单、稳定与低成本，无法覆盖长期市场周期。
+- 7 个日历日 Freshness Guard 只能识别明显陈旧数据；极少数长期停市可能被保守降级，7 日内的异常延迟也可能不被识别。
 - 单轮调用预算保持 4，复杂的多标的多 Context 问题可能需要明确降级，而不是无界增加 Tool Call。
 
 ## 重新考虑条件
