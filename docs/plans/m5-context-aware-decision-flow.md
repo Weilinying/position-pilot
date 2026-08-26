@@ -115,9 +115,10 @@ Atomic Commits → Human Acceptance
 
 ### Verification
 
-- Review 后默认全量 pytest：336 passed，36 skipped。
+- Review 后默认全量 pytest：337 passed，36 skipped。
 - 本次 Eval metrics 修复的受影响测试：3 passed，22 条真实模型 Case 因未配置 `LLM_API_KEY` 跳过；重点 11-case 选择集同样为 11 skipped、14 deselected。
 - `cash_only_no_tool` 已在无凭据环境下独立重复 3 次，均因 `LLM_API_KEY` 缺失跳过，尚不能判断真实模型路由波动是否稳定复现。
+- 本次 `get_current_quote` Tool 文案修复后，InvestmentAgent 单元测试 81 passed。
 - 跳过项为 22 条未显式启用的真实模型 Behavioral Eval、2 条在线 Alpaca Market Tests、1 条在线 Alpaca News Test、1 条真实 Agent Smoke Test，以及未配置 `TEST_DATABASE_URL` 的 10 条 PostgreSQL Integration Tests。
 - `backend/` 与 `tests/` 的 Ruff format check / lint：PASS；仓库级 `ruff format --check .` 仅因用户已有未跟踪 `main.py` 未通过（本次未修改）；mypy strict：PASS（55 source files）。
 - `uv lock --check`、Alembic head / history 与 `git diff --check`：PASS。

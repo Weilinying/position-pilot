@@ -525,6 +525,23 @@ def test_always_injects_complete_portfolio_snapshot_without_transaction_history(
     assert result.sources[0].type is ContextSourceType.PORTFOLIO_SNAPSHOT
 
 
+def test_quote_tool_description_distinguishes_portfolio_facts() -> None:
+    """Quote Tool 文案应明确 Portfolio Facts 不需要额外行情调用。"""
+
+    agent, _, _, llm = make_agent([final_message()])
+
+    assert_answer(agent.answer(USER_ID, "我目前有多少可用现金？"))
+
+    quote_tool = next(tool for tool in llm.completions[0].tools if tool.name == "get_current_quote")
+    assert "Portfolio Snapshot 已包含 available cash、positions、shares 和 average cost" in (
+        quote_tool.description
+    )
+    assert "若问题仅询问这些已存在的 Portfolio Facts，不需要调用 get_current_quote" in (
+        quote_tool.description
+    )
+    assert "只有问题真正需要当前价格或基于当前价格的关系时才调用" in quote_tool.description
+
+
 def test_cash_event_adjusted_cash_reaches_agent_snapshot_without_ledger_history() -> None:
     """Agent 应读取 Cash Event 重建后的现金，但不注入 Cash Event History。"""
 

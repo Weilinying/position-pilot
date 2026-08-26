@@ -156,6 +156,9 @@ CURRENT_QUOTE_TOOL = LLMToolDefinition(
     description=(
         "获取美股或美国上市 ETF 的当前 Quote；回答需要当前价格、Cash/Quote 或 "
         "Quote/Average Cost 关系时立即调用；今天或现在是否加仓、减仓或建仓属于此类。"
+        "Portfolio Snapshot 已包含 available cash、positions、shares 和 average cost；"
+        "若问题仅询问这些已存在的 Portfolio Facts，不需要调用 get_current_quote，"
+        "只有问题真正需要当前价格或基于当前价格的关系时才调用。"
         "不得要求用户再次确认。"
         "不能用于解释异动原因或最新财报。"
     ),
