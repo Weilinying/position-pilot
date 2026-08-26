@@ -541,9 +541,12 @@ def test_portfolio_derived_facts_aggregate_by_ticker_without_losing_positions() 
     ]
 
 
-def test_no_tool_call_returns_ok_without_mechanical_market_request() -> None:
+def test_no_tool_call_returns_ok_without_mechanical_market_request(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
     """模型直接回答 Portfolio 问题时，Agent 不应机械调用 Market Tool。"""
 
+    caplog.set_level("INFO", logger="position_pilot.application.investment_agent")
     agent, _, market_data, llm = make_agent([final_message("可用现金为 300")])
 
     result = assert_answer(agent.answer(USER_ID, "我还有多少可用现金？"))
@@ -559,11 +562,24 @@ def test_no_tool_call_returns_ok_without_mechanical_market_request() -> None:
         "get_recent_price_history",
         "get_recent_news",
     ]
+    selection_record = next(
+        record for record in caplog.records if record.message == "investment_agent_context_selected"
+    )
+    selection_extra = selection_record.__dict__
+    assert selection_extra["selection_mode"] == "NO_EXTERNAL_CONTEXT"
+    assert selection_extra["selected_tools"] == ()
+    assert selection_extra["selected_context_count"] == 0
+    assert selection_extra["selected_existing_position_types"] == ()
+    assert selection_extra["selected_unheld_ticker_count"] == 0
+    assert selection_extra["routing_latency_ms"] >= 0
 
 
-def test_executes_up_to_four_tools_in_one_round_then_requests_final_response() -> None:
+def test_executes_up_to_four_tools_in_one_round_then_requests_final_response(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
     """一个 Tool Round 可以执行最多四个按需调用，并只进行一次 Final Completion。"""
 
+    caplog.set_level("INFO", logger="position_pilot.application.investment_agent")
     agent, _, market_data, llm = make_agent(
         [
             tool_message(
@@ -607,6 +623,19 @@ def test_executes_up_to_four_tools_in_one_round_then_requests_final_response() -
         "NVDA",
         "AMZN",
     ]
+    selection_record = next(
+        record for record in caplog.records if record.message == "investment_agent_context_selected"
+    )
+    selection_extra = selection_record.__dict__
+    assert selection_extra["selection_mode"] == "NATIVE_TOOL_SELECTION"
+    assert selection_extra["selected_tools"] == ("get_current_quote",)
+    assert selection_extra["selected_context_count"] == 4
+    assert selection_extra["selected_existing_position_count"] == 2
+    assert selection_extra["selected_existing_position_types"] == (
+        "LONG_TERM",
+        "SWING",
+    )
+    assert selection_extra["selected_unheld_ticker_count"] == 3
 
 
 def test_quote_result_includes_only_proven_deterministic_relations() -> None:
@@ -1081,9 +1110,13 @@ def test_rejects_more_than_four_tool_calls_before_provider_execution() -> None:
         LLMToolCall("call-1", "get_recent_news", {"ticker": " "}),
     ],
 )
-def test_rejects_unknown_tool_or_invalid_arguments(tool_call: LLMToolCall) -> None:
+def test_rejects_unknown_tool_or_invalid_arguments(
+    tool_call: LLMToolCall,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
     """Application 必须校验模型输出，不能把任意调用交给 Tool。"""
 
+    caplog.set_level("INFO", logger="position_pilot.application.investment_agent")
     agent, _, market_data, _ = make_agent(
         [LLMResult.success(LLMMessage(LLMRole.ASSISTANT, None, (tool_call,)))]
     )
@@ -1092,6 +1125,7 @@ def test_rejects_unknown_tool_or_invalid_arguments(tool_call: LLMToolCall) -> No
 
     assert failure.code is InvestmentFailureCode.INVALID_TOOL_CALL
     assert market_data.requested_tickers == []
+    assert all(record.message != "investment_agent_context_selected" for record in caplog.records)
 
 
 @pytest.mark.parametrize(

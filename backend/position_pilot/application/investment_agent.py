@@ -30,6 +30,7 @@ from position_pilot.application.investment_context import (
     quote_response_contract,
     recent_price_history_response_contract,
 )
+from position_pilot.application.investment_routing import ContextSelectionTrace
 from position_pilot.application.llm import (
     LLMMessage,
     LLMProvider,
@@ -170,6 +171,9 @@ RECENT_NEWS_TOOL = LLMToolDefinition(
     },
 )
 
+CONTEXT_TOOLS = (CURRENT_QUOTE_TOOL, RECENT_PRICE_HISTORY_TOOL, RECENT_NEWS_TOOL)
+CONTEXT_TOOL_NAMES = tuple(tool.name for tool in CONTEXT_TOOLS)
+
 
 class PortfolioSnapshotReader(Protocol):
     """Agent 读取当前完整 Portfolio State 的最小接口。"""
@@ -305,18 +309,38 @@ class InvestmentAgent:
         initial_messages = self._initial_messages(snapshot, normalized_question)
         LOGGER.info(
             "investment_agent_context_ready",
-            extra={"position_count": len(snapshot.positions), "tool_count": 3},
+            extra={
+                "position_count": len(snapshot.positions),
+                "tool_count": len(CONTEXT_TOOLS),
+            },
         )
 
+        routing_started_at = monotonic()
         first_result = self._llm_provider.complete(
             initial_messages,
-            tools=(CURRENT_QUOTE_TOOL, RECENT_PRICE_HISTORY_TOOL, RECENT_NEWS_TOOL),
+            tools=CONTEXT_TOOLS,
         )
         first_failure = self._from_llm_failure(first_result)
         if first_failure is not None:
             self._log_failure(first_failure, started_at)
             return first_failure
         first_message = self._completion_message(first_result)
+
+        tool_call_failure = self._validate_tool_calls(first_message.tool_calls)
+        if tool_call_failure is not None:
+            self._log_failure(tool_call_failure, started_at)
+            return tool_call_failure
+        selection_trace = ContextSelectionTrace.from_tool_calls(
+            snapshot=snapshot,
+            available_tools=CONTEXT_TOOL_NAMES,
+            tool_calls=first_message.tool_calls,
+        )
+        LOGGER.info(
+            "investment_agent_context_selected",
+            extra=selection_trace.as_log_extra(
+                routing_latency_ms=round((monotonic() - routing_started_at) * 1000, 2)
+            ),
+        )
 
         if not first_message.tool_calls:
             validated_answer = self._validate_or_repair(
@@ -334,11 +358,6 @@ class InvestmentAgent:
             )
             self._log_success(answer, started_at, tool_call_count=0)
             return answer
-
-        tool_call_failure = self._validate_tool_calls(first_message.tool_calls)
-        if tool_call_failure is not None:
-            self._log_failure(tool_call_failure, started_at)
-            return tool_call_failure
 
         tool_messages: list[LLMMessage] = []
         market_results_by_ticker: dict[str, MarketDataResult[MarketQuote]] = {}
@@ -643,11 +662,7 @@ class InvestmentAgent:
                 f"每个 Tool Round 最多允许 {MAX_TOOL_CALLS_PER_ROUND} 个调用",
             )
         for tool_call in tool_calls:
-            if tool_call.name not in {
-                CURRENT_QUOTE_TOOL_NAME,
-                RECENT_PRICE_HISTORY_TOOL_NAME,
-                RECENT_NEWS_TOOL_NAME,
-            }:
+            if tool_call.name not in CONTEXT_TOOL_NAMES:
                 return InvestmentRequestFailure(
                     InvestmentFailureCode.INVALID_TOOL_CALL,
                     "模型请求了未授权 Tool",

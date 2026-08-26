@@ -2,7 +2,7 @@
 
 ## 1. 当前范围
 
-本文档描述 M4 Cash Adjustment、Recent Price History 与 Recent News Vertical Slices 完成后的实际系统结构。当前系统包含 Portfolio Structured State、Transaction / Cash Event Ledgers、Provider-neutral Market / News Data，以及可按问题选择 Current Quote、固定近期 Daily Price History 或 attributed Recent News 的 Single Investment Agent。
+本文档描述 M4 Vertical Slices 完成及 M5 Context-Aware Decision Flow 开始后的实际系统结构。当前系统包含 Portfolio Structured State、Transaction / Cash Event Ledgers、Provider-neutral Market / News Data，以及可按问题选择 Current Quote、固定近期 Daily Price History 或 attributed Recent News 的 Single Investment Agent；M5 已增加不记录问题正文或用户身份的 Context Selection Trace，Market Context / Market Regime 仍等待 Human Review。
 
 ## 2. 依赖方向
 
@@ -217,5 +217,6 @@ LLM_INVALID_PROVIDER_RESPONSE
 - `LLMProvider` 的 Message、Tool Definition、Tool Call 与 Result 均为项目自身 Schema；Aliyun/OpenAI-compatible Payload 只存在于 Adapter。
 - `qwen3.7-plus` 是可通过 `LLM_MODEL` 覆盖的默认配置，不是 Domain 或 Application 类型。
 - Current Quote、Recent Price History 或 Recent News Failure 会作为缺失事实返回 LLM，安全 Final Answer 由 Application 标记为 `DEGRADED`；LLM Failure 无法形成 Final Answer，返回 Request Failure。
+- 首轮 Native Tool Selection 通过参数校验后记录一次结构化 Trace，包含可用 / 选中 Tool、唯一 Context 数量、匹配当前持仓的 Position Type、未持有标的数量与 Routing Latency；日志不保存问题正文、User ID 或 ticker。
 - `FACT`、`INFERENCE`、`UNKNOWN` 是回答的语义约束，不强制固定输出标题。
 - 默认测试使用 Fake LLM；Opt-in Behavioral Eval 使用真实 Aliyun LLM 与固定 Fake Market Data，真实 LLM + 真实 Market Data 只用于 Smoke Test。
