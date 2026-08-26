@@ -16,6 +16,11 @@ uv run pytest tests/evaluation/test_real_model_behavior.py -s
 
 自动断言只检查可确定的 Tool Trace、Ticker、调用上限和 `OK` / `DEGRADED` 状态。运行时输出的 Final Answer 需要按每个 Case 的 Human Checks 审查：
 
+- Tool Selection 从 Fake Market / News Provider 实际收到的请求计算，不从 Final `result.sources` 反推。
+- Source Coverage 以实际 Retrieve 成功的 Context 为分母，并与 `result.sources` 中 status=`OK` 的 Final 声明单独输出；漏报 Source 属于模型行为质量，不等价于没有调用 Tool，Provider Failure 也不算漏报。
+- 正常 Completion 数由是否实际发生 Tool Round 决定：无 Tool 为 1 次，有 Tool 为 2 次；额外 1 次才表示 Structured Source Repair。
+- Failure Diagnostics 只把本轮实际请求并成功返回的 Context 视为可用来源，不把 Fixture 中潜在可返回但未 Retrieve 的数据算作 Grounded Source。
+
 - 是否真实使用 Portfolio Snapshot，而不是生成通用回答；
 - 是否正确区分 `LONG_TERM` / `SWING`；
 - 是否把 Fake Quote 当作唯一当前价格来源；

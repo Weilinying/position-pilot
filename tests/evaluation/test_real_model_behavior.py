@@ -10,6 +10,7 @@ from uuid import UUID
 import pytest
 
 from position_pilot.application.investment_agent import (
+    ContextSource,
     ContextSourceType,
     InvestmentAgent,
     InvestmentAnswer,
@@ -28,6 +29,7 @@ from position_pilot.application.llm import (
     LLMMessage,
     LLMProvider,
     LLMResult,
+    LLMRole,
     LLMToolDefinition,
 )
 from position_pilot.application.market_data_service import HistoricalBarsQuery
@@ -48,15 +50,6 @@ from position_pilot.domain.portfolio import (
     PositionType,
 )
 from position_pilot.integrations.aliyun_llm import AliyunLLMProvider
-
-pytestmark = [
-    pytest.mark.online,
-    pytest.mark.behavioral,
-    pytest.mark.skipif(
-        os.getenv("RUN_REAL_LLM_BEHAVIORAL_EVAL") != "1",
-        reason="需要显式启用真实模型 Behavioral Eval",
-    ),
-]
 
 USER_ID = UUID("00000000-0000-0000-0000-000000000101")
 NOW = datetime(2026, 8, 24, 8, 0, tzinfo=UTC)
@@ -106,22 +99,34 @@ class FixedMarketData:
     ) -> None:
         self._results = results
         self._historical_results = historical_results
+        self.requested_tickers: list[str] = []
+        self.quote_results: list[tuple[str, MarketDataResult[MarketQuote]]] = []
+        self.historical_queries: list[HistoricalBarsQuery] = []
+        self.historical_query_results: list[
+            tuple[HistoricalBarsQuery, MarketDataResult[HistoricalBars]]
+        ] = []
 
     def get_current_quote(self, ticker: str) -> MarketDataResult[MarketQuote]:
         normalized = ticker.strip().upper()
-        return self._results.get(
+        self.requested_tickers.append(normalized)
+        result = self._results.get(
             normalized,
             MarketDataResult.failure(MarketDataStatus.NO_DATA, "固定场景没有该行情"),
         )
+        self.quote_results.append((normalized, result))
+        return result
 
     def get_historical_bars(
         self,
         query: HistoricalBarsQuery,
     ) -> MarketDataResult[HistoricalBars]:
-        return self._historical_results.get(
+        self.historical_queries.append(query)
+        result = self._historical_results.get(
             query.ticker.strip().upper(),
             MarketDataResult.failure(MarketDataStatus.NO_DATA, "固定场景没有该历史行情"),
         )
+        self.historical_query_results.append((query, result))
+        return result
 
 
 class FixedNews:
@@ -129,12 +134,17 @@ class FixedNews:
 
     def __init__(self, results: dict[str, NewsResult[RecentNews]]) -> None:
         self._results = results
+        self.queries: list[NewsQuery] = []
+        self.query_results: list[tuple[NewsQuery, NewsResult[RecentNews]]] = []
 
     def get_recent_news(self, query: NewsQuery) -> NewsResult[RecentNews]:
-        return self._results.get(
+        self.queries.append(query)
+        result = self._results.get(
             query.ticker.strip().upper(),
             NewsResult.failure(NewsStatus.NO_NEWS_FOUND, "固定窗口没有返回报道"),
         )
+        self.query_results.append((query, result))
+        return result
 
 
 @dataclass(slots=True)
@@ -157,13 +167,111 @@ class CountingLLM:
         return result
 
 
-def guard_failure_diagnostics(
-    llm: CountingLLM,
-    case: BehavioralCase,
-) -> list[dict[str, object]]:
-    """失败时输出每个文本 Completion 的 Guard 结果，避免泄露 Credential。"""
+class NoopLLM:
+    """Diagnostics 回归不应实际调用 Delegate。"""
 
-    available_sources = _available_source_references(case)
+    def complete(
+        self,
+        messages: tuple[LLMMessage, ...],
+        *,
+        tools: tuple[LLMToolDefinition, ...] = (),
+    ) -> LLMResult:
+        raise AssertionError("测试不应调用 NoopLLM")
+
+
+@dataclass(frozen=True, slots=True)
+class BehavioralTrace:
+    """区分实际 Tool Calls、Final Source 声明与 Response Repair。"""
+
+    tool_tickers: tuple[str, ...]
+    history_tickers: tuple[str, ...]
+    news_tickers: tuple[str, ...]
+    retrieved_quote_sources: tuple[str, ...]
+    retrieved_history_sources: tuple[str, ...]
+    retrieved_news_sources: tuple[str, ...]
+    declared_quote_sources: tuple[str, ...]
+    declared_history_sources: tuple[str, ...]
+    declared_news_sources: tuple[str, ...]
+    completion_count_without_repair: int
+    repair_used: bool
+
+
+def collect_behavioral_trace(
+    market_data: FixedMarketData,
+    news: FixedNews,
+    result: InvestmentAnswer,
+    completion_count: int,
+) -> BehavioralTrace:
+    """从 Provider 请求而非 Final Sources 计算 Tool Trace 与 Repair。"""
+
+    tool_tickers = tuple(market_data.requested_tickers)
+    history_tickers = tuple(query.ticker for query in market_data.historical_queries)
+    news_tickers = tuple(query.ticker for query in news.queries)
+    retrieved_quote_sources = tuple(
+        ticker
+        for ticker, quote_result in market_data.quote_results
+        if quote_result.status is MarketDataStatus.OK and quote_result.data is not None
+    )
+    retrieved_history_sources = tuple(
+        query.ticker
+        for query, history_result in market_data.historical_query_results
+        if history_result.status is MarketDataStatus.OK and history_result.data is not None
+    )
+    retrieved_news_sources = tuple(
+        query.ticker
+        for query, news_result in news.query_results
+        if news_result.status is NewsStatus.OK and news_result.data is not None
+    )
+    declared_quote_sources = _successful_source_tickers(
+        result,
+        ContextSourceType.CURRENT_QUOTE,
+    )
+    declared_history_sources = _successful_source_tickers(
+        result,
+        ContextSourceType.PRICE_HISTORY,
+    )
+    declared_news_sources = _successful_source_tickers(
+        result,
+        ContextSourceType.RECENT_NEWS,
+    )
+    tool_round_used = bool(tool_tickers or history_tickers or news_tickers)
+    completion_count_without_repair = 2 if tool_round_used else 1
+    return BehavioralTrace(
+        tool_tickers=tool_tickers,
+        history_tickers=history_tickers,
+        news_tickers=news_tickers,
+        retrieved_quote_sources=retrieved_quote_sources,
+        retrieved_history_sources=retrieved_history_sources,
+        retrieved_news_sources=retrieved_news_sources,
+        declared_quote_sources=declared_quote_sources,
+        declared_history_sources=declared_history_sources,
+        declared_news_sources=declared_news_sources,
+        completion_count_without_repair=completion_count_without_repair,
+        repair_used=completion_count > completion_count_without_repair,
+    )
+
+
+def _successful_source_tickers(
+    result: InvestmentAnswer,
+    source_type: ContextSourceType,
+) -> tuple[str, ...]:
+    """只把 Final Sources 中 status=OK 的 Context 视为模型声明来源。"""
+
+    return tuple(
+        source.ticker
+        for source in result.sources
+        if source.type is source_type and source.status == "OK" and source.ticker is not None
+    )
+
+
+def structured_response_diagnostics(
+    llm: CountingLLM,
+    market_data: FixedMarketData,
+    news: FixedNews,
+) -> list[dict[str, object]]:
+    """用本轮实际 Retrieved Context 诊断 Structured Completion。"""
+
+    available_sources = _retrieved_source_references(market_data, news)
     diagnostics: list[dict[str, object]] = []
     for completion_index, result in enumerate(llm.results, start=1):
         if result.completion is None or result.completion.message.content is None:
@@ -193,23 +301,26 @@ def guard_failure_diagnostics(
     return diagnostics
 
 
-def _available_source_references(case: BehavioralCase) -> tuple[SourceReference, ...]:
-    """从固定成功 Context 构造 Behavioral Eval 的可声明来源集合。"""
+def _retrieved_source_references(
+    market_data: FixedMarketData,
+    news: FixedNews,
+) -> tuple[SourceReference, ...]:
+    """只从本轮实际请求且成功返回的 Context 构造可声明来源。"""
 
     references = [SourceReference(SourceReferenceType.PORTFOLIO_SNAPSHOT)]
     references.extend(
         SourceReference(SourceReferenceType.CURRENT_QUOTE, ticker)
-        for ticker, result in case.market_results.items()
+        for ticker, result in market_data.quote_results
         if result.status is MarketDataStatus.OK and result.data is not None
     )
     references.extend(
-        SourceReference(SourceReferenceType.PRICE_HISTORY, ticker)
-        for ticker, result in case.historical_results.items()
+        SourceReference(SourceReferenceType.PRICE_HISTORY, query.ticker)
+        for query, result in market_data.historical_query_results
         if result.status is MarketDataStatus.OK and result.data is not None
     )
     references.extend(
-        SourceReference(SourceReferenceType.RECENT_NEWS, ticker)
-        for ticker, result in case.news_results.items()
+        SourceReference(SourceReferenceType.RECENT_NEWS, query.ticker)
+        for query, result in news.query_results
         if result.status is NewsStatus.OK and result.data is not None
     )
     return tuple(references)
@@ -622,6 +733,67 @@ CASES = (
 )
 
 
+def test_tool_trace_source_declaration_and_repair_are_independent() -> None:
+    """漏报 Quote / History Source 不得抹掉真实 Tool Trace 或伪造 Repair。"""
+
+    market_data = FixedMarketData(
+        {"GOOG": fixed_quote("GOOG", "210.25")},
+        {"GOOG": fixed_history("GOOG")},
+    )
+    news = FixedNews({"GOOG": fixed_news("GOOG")})
+    market_data.get_current_quote("GOOG")
+    market_data.get_historical_bars(HistoricalBarsQuery("GOOG", NOW - timedelta(days=5), NOW, 5))
+    news.get_recent_news(NewsQuery("GOOG", NOW - timedelta(days=5), NOW, 5))
+    result = InvestmentAnswer(
+        InvestmentResponseStatus.OK,
+        "模型只声明使用新闻。",
+        (
+            ContextSource(ContextSourceType.PORTFOLIO_SNAPSHOT, "OK"),
+            ContextSource(ContextSourceType.RECENT_NEWS, "OK", ticker="GOOG"),
+        ),
+    )
+
+    trace = collect_behavioral_trace(market_data, news, result, completion_count=2)
+
+    assert trace.tool_tickers == ("GOOG",)
+    assert trace.history_tickers == ("GOOG",)
+    assert trace.news_tickers == ("GOOG",)
+    assert trace.retrieved_quote_sources == ("GOOG",)
+    assert trace.retrieved_history_sources == ("GOOG",)
+    assert trace.retrieved_news_sources == ("GOOG",)
+    assert trace.declared_quote_sources == ()
+    assert trace.declared_history_sources == ()
+    assert trace.declared_news_sources == ("GOOG",)
+    assert trace.completion_count_without_repair == 2
+    assert trace.repair_used is False
+
+
+def test_diagnostics_only_accept_sources_retrieved_in_actual_tool_round() -> None:
+    """Fixture 中存在但未 Retrieve 的 Quote 不得被 Diagnostics 当成可用 Source。"""
+
+    market_data = FixedMarketData({"GOOG": fixed_quote("GOOG", "210.25")}, {})
+    news = FixedNews({})
+    completion = LLMResult.success(
+        LLMMessage(
+            LLMRole.ASSISTANT,
+            json.dumps(
+                {
+                    "answer": "GOOG 当前约为 210.25 USD。",
+                    "source_refs": [{"type": "CURRENT_QUOTE", "ticker": "GOOG"}],
+                }
+            ),
+        )
+    )
+    llm = CountingLLM(NoopLLM(), results=[completion])
+
+    before_retrieval = structured_response_diagnostics(llm, market_data, news)
+    market_data.get_current_quote("GOOG")
+    after_retrieval = structured_response_diagnostics(llm, market_data, news)
+
+    assert "structured_answer_error" in before_retrieval[0]
+    assert after_retrieval[0]["answer"] == "GOOG 当前约为 210.25 USD。"
+
+
 def create_real_llm() -> AliyunLLMProvider:
     """只从显式 Process Environment 创建真实 Adapter，不读取仓库 .env。"""
 
@@ -639,16 +811,24 @@ def create_real_llm() -> AliyunLLMProvider:
     )
 
 
+@pytest.mark.online
+@pytest.mark.behavioral
+@pytest.mark.skipif(
+    os.getenv("RUN_REAL_LLM_BEHAVIORAL_EVAL") != "1",
+    reason="需要显式启用真实模型 Behavioral Eval",
+)
 @pytest.mark.parametrize("case", CASES, ids=lambda case: case.id)
 def test_real_model_behavior_with_fixed_market_data(case: BehavioralCase) -> None:
     """真实模型必须产生符合固定场景的 Tool Trace，并输出供 Human Review 的回答。"""
 
     llm = CountingLLM(create_real_llm())
+    market_data = FixedMarketData(case.market_results, case.historical_results)
+    news = FixedNews(case.news_results)
     agent = InvestmentAgent(
         FixedPortfolioReader(case),
-        FixedMarketData(case.market_results, case.historical_results),
+        market_data,
         llm,
-        news=FixedNews(case.news_results),
+        news=news,
         clock=lambda: NOW + timedelta(minutes=30),
     )
 
@@ -658,40 +838,42 @@ def test_real_model_behavior_with_fixed_market_data(case: BehavioralCase) -> Non
         pytest.fail(
             f"{case.id} 未形成 Final Answer: {result}\n"
             + json.dumps(
-                {"guard_diagnostics": guard_failure_diagnostics(llm, case)},
+                {
+                    "structured_response_diagnostics": structured_response_diagnostics(
+                        llm,
+                        market_data,
+                        news,
+                    )
+                },
                 ensure_ascii=False,
                 indent=2,
             )
         )
     assert isinstance(result, InvestmentAnswer)
-    tool_tickers = tuple(
-        source.ticker
-        for source in result.sources
-        if source.type is ContextSourceType.CURRENT_QUOTE and source.ticker is not None
-    )
-    history_tickers = tuple(
-        source.ticker
-        for source in result.sources
-        if source.type is ContextSourceType.PRICE_HISTORY and source.ticker is not None
-    )
-    news_tickers = tuple(
-        source.ticker
-        for source in result.sources
-        if source.type is ContextSourceType.RECENT_NEWS and source.ticker is not None
-    )
-    completion_count_without_repair = 2 if tool_tickers or history_tickers or news_tickers else 1
-    guard_repair_used = llm.completion_count > completion_count_without_repair
+    trace = collect_behavioral_trace(market_data, news, result, llm.completion_count)
     print(
         json.dumps(
             {
                 "case": case.id,
                 "question": case.question,
-                "tool_tickers": tool_tickers,
-                "history_tickers": history_tickers,
-                "news_tickers": news_tickers,
+                "actual_tool_trace": {
+                    "quote_tickers": trace.tool_tickers,
+                    "history_tickers": trace.history_tickers,
+                    "news_tickers": trace.news_tickers,
+                },
+                "declared_final_sources": {
+                    "quote_tickers": trace.declared_quote_sources,
+                    "history_tickers": trace.declared_history_sources,
+                    "news_tickers": trace.declared_news_sources,
+                },
+                "retrieved_successful_contexts": {
+                    "quote_tickers": trace.retrieved_quote_sources,
+                    "history_tickers": trace.retrieved_history_sources,
+                    "news_tickers": trace.retrieved_news_sources,
+                },
                 "status": result.status.value,
                 "llm_completion_count": llm.completion_count,
-                "guard_repair_used": guard_repair_used,
+                "source_validation_repair_used": trace.repair_used,
                 "answer": result.answer,
                 "human_checks": case.human_checks,
             },
@@ -699,11 +881,11 @@ def test_real_model_behavior_with_fixed_market_data(case: BehavioralCase) -> Non
             indent=2,
         )
     )
-    assert len(tool_tickers) == len(case.expected_tickers)
-    assert sorted(tool_tickers) == sorted(case.expected_tickers)
-    assert len(history_tickers) == len(case.expected_history_tickers)
-    assert sorted(history_tickers) == sorted(case.expected_history_tickers)
-    assert len(news_tickers) == len(case.expected_news_tickers)
-    assert sorted(news_tickers) == sorted(case.expected_news_tickers)
+    assert len(trace.tool_tickers) == len(case.expected_tickers)
+    assert sorted(trace.tool_tickers) == sorted(case.expected_tickers)
+    assert len(trace.history_tickers) == len(case.expected_history_tickers)
+    assert sorted(trace.history_tickers) == sorted(case.expected_history_tickers)
+    assert len(trace.news_tickers) == len(case.expected_news_tickers)
+    assert sorted(trace.news_tickers) == sorted(case.expected_news_tickers)
     assert result.status is case.expected_status
-    assert llm.completion_count <= completion_count_without_repair + 1
+    assert llm.completion_count <= trace.completion_count_without_repair + 1

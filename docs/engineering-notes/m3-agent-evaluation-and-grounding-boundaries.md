@@ -23,6 +23,7 @@
     *   **配置：** Real AliyunLLMProvider + Fake Market Data（真模型 + 假市场数据）
     *   **目的：** 在固定的投资组合和行情事实下，观察真实模型的工具选择、事实遵循度（Grounding）和个性化表现。使用假数据是为了避免实时市场行情的波动污染测试结果。
     *   *注：* 真 LLM + 真市场数据 仅保留为少量的集成冒烟测试（Integration Smoke Test），不作为行为评估的主要依据。
+*   **Behavioral 信号必须分离：** Tool Selection 来自 Fake Provider 实际收到的请求；Source Declaration 来自 Final `result.sources`；Repair Rate 来自实际 Tool Round 所需 Completion 数。三者不能互相反推，否则漏报 `source_ref` 会同时伪造成“未调用 Tool”和“发生 Repair”。Failure Diagnostics 同样只使用本轮实际 Retrieve 成功的 Context，不能把 Fixture 中尚未请求的数据视为可用来源。
 
 ### 2. 提示词与系统保证 (Prompt 与 System Guarantee)
 *   **职责划分：** Backend 强约束 Portfolio / Ledger、确定性计算、Tool Result 与 Source 是否真实存在；Prompt、Behavioral Eval 与 Human Review 负责最终自然语言的事实使用和表达质量。V1 不把 Backend 扩张成逐 Claim 的形式化验证器。
