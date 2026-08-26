@@ -50,6 +50,14 @@ _BUYING_POWER_PATTERNS = tuple(
 )
 _RELATION_VALUES_PATTERN = r"(ABOVE|BELOW|EQUAL)"
 _PRICE_DIRECTION_VALUES_PATTERN = r"(UP|DOWN|FLAT)"
+_TICKER_PATTERN = r"[A-Z][A-Z0-9.-]{0,9}"
+_CURRENT_QUOTE_CLAIM_PATTERN = re.compile(
+    rf"(?:(?P<ticker>\b{_TICKER_PATTERN}\b)\s*(?:的\s*)?)?"
+    r"(?:当前(?:价格|报价)|现价|current\s+(?:price|quote)|last\s+price)"
+    r"\s*(?:为|是|=|:|is)?\s*(?:USD\s*)?[$¥￥]?\s*"
+    r"(?P<value>[-+]?\d[\d,]*(?:\.\d+)?)",
+    re.IGNORECASE,
+)
 
 
 class GroundingViolationCode(StrEnum):
@@ -60,6 +68,7 @@ class GroundingViolationCode(StrEnum):
     CASH_QUOTE_RELATION_CONTRADICTION = "CASH_QUOTE_RELATION_CONTRADICTION"
     PRICE_COST_RELATION_CONTRADICTION = "PRICE_COST_RELATION_CONTRADICTION"
     PRICE_HISTORY_DIRECTION_CONTRADICTION = "PRICE_HISTORY_DIRECTION_CONTRADICTION"
+    CURRENT_QUOTE_FACT_MISMATCH = "CURRENT_QUOTE_FACT_MISMATCH"
 
 
 _REPAIR_INSTRUCTION_BY_CODE = {
@@ -80,6 +89,10 @@ _REPAIR_INSTRUCTION_BY_CODE = {
     GroundingViolationCode.PRICE_HISTORY_DIRECTION_CONTRADICTION: (
         "按 Guard 消息给出的代码方向原样修正 Price History 首尾收盘价方向。"
     ),
+    GroundingViolationCode.CURRENT_QUOTE_FACT_MISMATCH: (
+        "删除或修正无法绑定到同一 ticker 成功 Current Quote Source 的当前价格陈述；"
+        "不得用 Cash、Average Cost、Price History 或其他 ticker 的数值替代。"
+    ),
 }
 
 
@@ -94,6 +107,26 @@ class GroundingViolation:
         """生成不包含完整用户回答的 Repair Payload。"""
 
         return {"code": self.code.value, "message": self.message}
+
+
+class _FinancialFactType(StrEnum):
+    """Guard 内部用于保留金融数字语义与来源的事实类型。"""
+
+    PORTFOLIO = "PORTFOLIO"
+    CURRENT_QUOTE = "CURRENT_QUOTE"
+    PRICE_HISTORY = "PRICE_HISTORY"
+    SYSTEM = "SYSTEM"
+
+
+@dataclass(frozen=True, slots=True)
+class _GroundedFinancialFact:
+    """把数值绑定到事实类型、ticker、字段和 Source。"""
+
+    fact_type: _FinancialFactType
+    ticker: str | None
+    field: str
+    value: Decimal
+    source: str
 
 
 def validate_final_response(
@@ -115,6 +148,14 @@ def validate_final_response(
         )
     )
     violations.extend(_buying_power_violations(answer))
+    violations.extend(
+        _current_quote_fact_violations(
+            answer,
+            snapshot,
+            market_results_by_ticker,
+            historical_results,
+        )
+    )
     violations.extend(_cash_quote_relation_violations(answer, snapshot, market_results_by_ticker))
     violations.extend(_price_cost_relation_violations(answer, snapshot, market_results_by_ticker))
     violations.extend(_price_history_direction_violations(answer, historical_results))
@@ -149,11 +190,12 @@ def _unsupported_number_violations(
     market_results_by_ticker: Mapping[str, MarketDataResult[MarketQuote]],
     historical_results_by_ticker: Mapping[str, MarketDataResult[HistoricalBars]],
 ) -> list[GroundingViolation]:
-    allowed = _allowed_financial_numbers(
+    facts = _grounded_financial_facts(
         snapshot,
         market_results_by_ticker,
         historical_results_by_ticker,
     )
+    allowed = {fact.value for fact in facts}
     unsupported: set[Decimal] = set()
     for match in _NUMBER_PATTERN.finditer(answer):
         if _is_list_ordinal(answer, match.start(), match.end()):
@@ -183,6 +225,55 @@ def _buying_power_violations(answer: str) -> list[GroundingViolation]:
             "回答把 Cash/Quote 数值关系解释成了购买能力或整股可执行性",
         )
     ]
+
+
+def _current_quote_fact_violations(
+    answer: str,
+    snapshot: PortfolioSnapshot,
+    market_results_by_ticker: Mapping[str, MarketDataResult[MarketQuote]],
+    historical_results_by_ticker: Mapping[str, MarketDataResult[HistoricalBars]],
+) -> list[GroundingViolation]:
+    """只接受与同一 ticker 成功 Quote Source 绑定的当前价格数值。"""
+
+    quote_facts = {
+        fact.ticker: fact
+        for fact in _grounded_financial_facts(
+            snapshot,
+            market_results_by_ticker,
+            historical_results_by_ticker,
+        )
+        if fact.fact_type is _FinancialFactType.CURRENT_QUOTE and fact.field == "last_price"
+    }
+    violations: list[GroundingViolation] = []
+    for match in _CURRENT_QUOTE_CLAIM_PATTERN.finditer(answer):
+        value = _parse_decimal(match.group("value"))
+        if value is None:
+            continue
+        raw_ticker = match.group("ticker")
+        ticker = raw_ticker.upper() if raw_ticker is not None else None
+        if ticker is None and len(quote_facts) == 1:
+            ticker = next(iter(quote_facts))
+        fact = quote_facts.get(ticker)
+        if fact is None:
+            owner = ticker or "未明确 ticker"
+            violations.append(
+                GroundingViolation(
+                    GroundingViolationCode.CURRENT_QUOTE_FACT_MISMATCH,
+                    f"回答声称 {owner} 当前价格 {value}，但没有对应的成功 Current Quote Source",
+                )
+            )
+            continue
+        if value != fact.value:
+            violations.append(
+                GroundingViolation(
+                    GroundingViolationCode.CURRENT_QUOTE_FACT_MISMATCH,
+                    (
+                        f"回答声称 {fact.ticker} 当前价格 {value}，但对应 Current Quote "
+                        f"Source 的 last_price 为 {fact.value}"
+                    ),
+                )
+            )
+    return violations
 
 
 def _cash_quote_relation_violations(
@@ -297,46 +388,135 @@ def _explicit_price_directions(answer: str) -> tuple[PriceDirection, ...]:
     return tuple(PriceDirection(match.upper()) for match in pattern.findall(answer))
 
 
-def _allowed_financial_numbers(
+def _grounded_financial_facts(
     snapshot: PortfolioSnapshot,
     market_results_by_ticker: Mapping[str, MarketDataResult[MarketQuote]],
     historical_results_by_ticker: Mapping[str, MarketDataResult[HistoricalBars]],
-) -> set[Decimal]:
+) -> tuple[_GroundedFinancialFact, ...]:
+    """保留每个金融数值的事实类型、ticker、字段与来源。"""
+
     facts = snapshot.deterministic_derived_facts
-    allowed = {
-        Decimal("0"),
-        snapshot.available_cash,
-        Decimal(facts.distinct_ticker_count),
-        facts.total_position_cost_basis,
-    }
+    grounded = [
+        _GroundedFinancialFact(
+            _FinancialFactType.SYSTEM,
+            None,
+            "zero",
+            Decimal("0"),
+            "SYSTEM",
+        ),
+        _GroundedFinancialFact(
+            _FinancialFactType.PORTFOLIO,
+            None,
+            "available_cash",
+            snapshot.available_cash,
+            "PORTFOLIO_SNAPSHOT",
+        ),
+        _GroundedFinancialFact(
+            _FinancialFactType.PORTFOLIO,
+            None,
+            "distinct_ticker_count",
+            Decimal(facts.distinct_ticker_count),
+            "PORTFOLIO_SNAPSHOT",
+        ),
+        _GroundedFinancialFact(
+            _FinancialFactType.PORTFOLIO,
+            None,
+            "total_position_cost_basis",
+            facts.total_position_cost_basis,
+            "PORTFOLIO_SNAPSHOT",
+        ),
+    ]
     for position in snapshot.positions:
-        allowed.update((position.shares, position.average_cost, position.cost_basis))
-    for _, shares in facts.total_shares_by_ticker:
-        allowed.add(shares)
-    for _, weight in facts.position_cost_basis_weight_by_ticker:
-        allowed.add(weight)
-    for quote in _successful_quotes(market_results_by_ticker).values():
-        allowed.add(quote.last_price)
-        if quote.bid_price is not None:
-            allowed.add(quote.bid_price)
-        if quote.ask_price is not None:
-            allowed.add(quote.ask_price)
-    for history in _successful_histories(historical_results_by_ticker).values():
-        historical_facts = RecentPriceHistoryFacts.from_historical_bars(history)
-        allowed.update(
-            (
-                Decimal(historical_facts.bar_count),
-                historical_facts.first_close,
-                historical_facts.latest_close,
-                historical_facts.period_high,
-                historical_facts.period_low,
-                historical_facts.close_change,
-                historical_facts.absolute_close_change,
-                historical_facts.close_change_percent,
-                historical_facts.absolute_close_change_percent,
+        grounded.extend(
+            _GroundedFinancialFact(
+                _FinancialFactType.PORTFOLIO,
+                position.ticker,
+                field,
+                value,
+                "PORTFOLIO_SNAPSHOT",
+            )
+            for field, value in (
+                ("shares", position.shares),
+                ("average_cost", position.average_cost),
+                ("cost_basis", position.cost_basis),
             )
         )
-    return allowed
+    grounded.extend(
+        _GroundedFinancialFact(
+            _FinancialFactType.PORTFOLIO,
+            ticker,
+            "total_shares",
+            shares,
+            "PORTFOLIO_SNAPSHOT",
+        )
+        for ticker, shares in facts.total_shares_by_ticker
+    )
+    grounded.extend(
+        _GroundedFinancialFact(
+            _FinancialFactType.PORTFOLIO,
+            ticker,
+            "cost_basis_weight",
+            weight,
+            "PORTFOLIO_SNAPSHOT",
+        )
+        for ticker, weight in facts.position_cost_basis_weight_by_ticker
+    )
+    for quote in _successful_quotes(market_results_by_ticker).values():
+        grounded.append(
+            _GroundedFinancialFact(
+                _FinancialFactType.CURRENT_QUOTE,
+                quote.ticker,
+                "last_price",
+                quote.last_price,
+                quote.source,
+            )
+        )
+        if quote.bid_price is not None:
+            grounded.append(
+                _GroundedFinancialFact(
+                    _FinancialFactType.CURRENT_QUOTE,
+                    quote.ticker,
+                    "bid_price",
+                    quote.bid_price,
+                    quote.source,
+                )
+            )
+        if quote.ask_price is not None:
+            grounded.append(
+                _GroundedFinancialFact(
+                    _FinancialFactType.CURRENT_QUOTE,
+                    quote.ticker,
+                    "ask_price",
+                    quote.ask_price,
+                    quote.source,
+                )
+            )
+    for history in _successful_histories(historical_results_by_ticker).values():
+        historical_facts = RecentPriceHistoryFacts.from_historical_bars(history)
+        grounded.extend(
+            _GroundedFinancialFact(
+                _FinancialFactType.PRICE_HISTORY,
+                history.ticker,
+                field,
+                value,
+                history.source,
+            )
+            for field, value in (
+                ("bar_count", Decimal(historical_facts.bar_count)),
+                ("first_close", historical_facts.first_close),
+                ("latest_close", historical_facts.latest_close),
+                ("period_high", historical_facts.period_high),
+                ("period_low", historical_facts.period_low),
+                ("close_change", historical_facts.close_change),
+                ("absolute_close_change", historical_facts.absolute_close_change),
+                ("close_change_percent", historical_facts.close_change_percent),
+                (
+                    "absolute_close_change_percent",
+                    historical_facts.absolute_close_change_percent,
+                ),
+            )
+        )
+    return tuple(grounded)
 
 
 def _successful_quotes(

@@ -137,6 +137,82 @@ def test_accepts_only_provided_numbers_relations_and_unknown_execution() -> None
     assert violation_codes(answer) == set()
 
 
+def test_rejects_available_cash_presented_as_current_quote_without_quote_source() -> None:
+    """Portfolio Cash 数值不得在无 Quote Source 时冒充当前价格。"""
+
+    violations = validate_final_response(
+        "GOOG 当前价格为 300 美元。",
+        snapshot(),
+        {},
+    )
+
+    assert GroundingViolationCode.CURRENT_QUOTE_FACT_MISMATCH in {
+        violation.code for violation in violations
+    }
+
+
+def test_rejects_average_cost_presented_as_current_quote() -> None:
+    """同 ticker 的 Average Cost 不得冒充已获取的 last_price。"""
+
+    codes = violation_codes("GOOG 当前价格为 200 美元。")
+
+    assert GroundingViolationCode.CURRENT_QUOTE_FACT_MISMATCH in codes
+
+
+def test_rejects_other_ticker_quote_presented_as_current_quote() -> None:
+    """数值相同也不能跨 ticker 复用 Current Quote Source。"""
+
+    violations = validate_final_response(
+        "GOOG 当前价格为 210.25 美元。",
+        snapshot(),
+        {"MSFT": quote("MSFT", "210.25")},
+    )
+
+    assert GroundingViolationCode.CURRENT_QUOTE_FACT_MISMATCH in {
+        violation.code for violation in violations
+    }
+
+
+def test_rejects_price_history_bar_count_presented_as_current_quote() -> None:
+    """Price History 的 bar_count 不得仅凭数值相等冒充 Current Quote。"""
+
+    bars = tuple(
+        OHLCVBar(
+            NOW - timedelta(days=29 - index),
+            Decimal("200"),
+            Decimal("205"),
+            Decimal("198"),
+            Decimal("202"),
+            1000,
+        )
+        for index in range(30)
+    )
+    history = MarketDataResult.success(
+        HistoricalBars(
+            ticker="GOOG",
+            timeframe="1Day",
+            bars=bars,
+            source="FAKE_GUARD",
+            feed="FIXED",
+            coverage=MarketDataCoverage.SINGLE_EXCHANGE,
+            currency="USD",
+            adjustment="ALL",
+            fetched_at=NOW,
+        )
+    )
+
+    violations = validate_final_response(
+        "GOOG 当前价格为 30 美元。",
+        snapshot(),
+        {},
+        {"GOOG": history},
+    )
+
+    assert GroundingViolationCode.CURRENT_QUOTE_FACT_MISMATCH in {
+        violation.code for violation in violations
+    }
+
+
 def test_rejects_financial_numbers_not_present_in_context() -> None:
     """价差、剩余现金和外部阈值都属于未提供的新金融数值。"""
 

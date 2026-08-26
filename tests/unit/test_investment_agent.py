@@ -1213,6 +1213,26 @@ def test_guard_repairs_direct_answer_without_restarting_agent() -> None:
     assert all(message.role is not LLMRole.TOOL for message in llm.completions[1].messages)
 
 
+def test_guard_rejects_portfolio_cash_as_no_tool_current_quote() -> None:
+    """No-Tool 路径不得把 Portfolio Cash 冒充成 Current Quote Fact。"""
+
+    agent, _, market_data, llm = make_agent(
+        [
+            final_message("GOOG 当前价格为 300 美元。"),
+            final_message("GOOG 当前价格为 UNKNOWN；缺少成功的 Current Quote Source。"),
+        ]
+    )
+
+    result = assert_answer(agent.answer(USER_ID, "GOOG 现在多少钱？"))
+
+    assert result.answer == "GOOG 当前价格为 UNKNOWN；缺少成功的 Current Quote Source。"
+    assert market_data.requested_tickers == []
+    repair_content = llm.completions[1].messages[-1].content
+    assert repair_content is not None
+    repair_payload = json.loads(repair_content)
+    assert repair_payload["guard_violations"][0]["code"] == "CURRENT_QUOTE_FACT_MISMATCH"
+
+
 def test_guard_returns_request_failure_after_one_unsuccessful_repair() -> None:
     """一次 Repair 后仍越界时不得把不合规 Answer 返回用户。"""
 
