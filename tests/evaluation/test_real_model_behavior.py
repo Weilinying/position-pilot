@@ -727,6 +727,27 @@ CASES = (
         expected_market_context_calls=1,
     ),
     BehavioralCase(
+        "market_context_provider_failure",
+        "结合当前整体市场状态和 GOOG 当前价格，我今天应该加仓吗？",
+        Decimal("300"),
+        (GOOG_LONG,),
+        {"GOOG": GOOG_QUOTE},
+        ("GOOG",),
+        InvestmentResponseStatus.DEGRADED,
+        (
+            "调用 GOOG Quote 与固定 SPY Market Context Tool",
+            "Quote 成功，但 Market Context Provider Failure 使最终状态为 DEGRADED",
+            "明确当前 Market Regime 为 UNKNOWN",
+            "不从训练知识、个股 Quote、News 或用户措辞推断当前整体市场状态",
+            "不把 GOOG 个股价格状态替代为整体市场 Regime",
+        ),
+        market_context_result=MarketDataResult.failure(
+            MarketDataStatus.PROVIDER_UNAVAILABLE,
+            "固定 Market Context Provider Failure",
+        ),
+        expected_market_context_calls=1,
+    ),
+    BehavioralCase(
         "low_cash_personalization",
         "结合我的状态，GOOG 今天还能加一点吗？",
         Decimal("25"),

@@ -101,19 +101,21 @@ Atomic Commits → Human Acceptance
 - Context Capability 将 `market_context` 设为 `AVAILABLE`；Public Source Type 新增已批准的 `MARKET_CONTEXT` / `SPY`，其余 Response Shape 不变。
 - 当前建仓 / 加仓 / 减仓、整体市场风险与 Regime 问题要求 Market Context；Portfolio Facts、纯 Quote、纯 History 与纯 News 问题不机械调用。四类 Context 继续共享单轮最多 4 次调用预算。
 - Behavioral Dataset 增加相同问题下 `NORMAL` / `HIGH_STRESS` 对照、High-stress Position Reduction、Market Context Failure 和 Source / Retrieval Trace；既有 Cash 与 Position Type 对照继续保留。
+- Market Context Provider Failure Case 要求成功 Quote 与失败 Market Context 同轮调用，自动验证 `DEGRADED` 与 Tool Trace，并由 Human Checks 确认 Regime 保持 `UNKNOWN`、不从训练知识或个股信息补造整体市场状态。
 
 ### Automated Review
 
 - 第一轮 Review 发现 `now-15min` 不能单独证明当日 Daily Bar 已完成；Service 现按 `America/New_York` 常规 16:00 收盘和 15 分钟数据延迟过滤，早收盘日采用保守延迟纳入。
 - 修正百分比中间除法可能受调用线程全局 Decimal Context 影响的问题；所有 Return、Drawdown、Sample Standard Deviation、Annualization 与 Quantize 均在固定精度中执行。
 - 修正非法 `QQQ` / 非 `1Day` 成功 Payload 可能被样本不足掩盖的问题，先验证固定代理与粒度，再映射 `NO_DATA`。
+- Service Boundary 进一步拒绝非 `ALPACA / SIP / CONSOLIDATED / ALL / USD` 的成功 Payload，避免用不符合已批准语义的数据计算 Regime。
 - `MarketRegimeContext` 构造期重算 Regime / Trigger IDs，并拒绝正 Drawdown、负 Volatility 或互相冲突的结构化事实。
 - Review 后复审确认上述 P1 / P2 全部关闭；Agent Integration 复审未发现 Critical、High、Medium 或 Low Finding。
 
 ### Verification
 
-- 默认全量 pytest：318 passed，35 skipped。
-- 跳过项为 21 条未显式启用的真实模型 Behavioral Eval、2 条在线 Alpaca Market Tests、1 条在线 Alpaca News Test、1 条真实 Agent Smoke Test，以及未配置 `TEST_DATABASE_URL` 的 10 条 PostgreSQL Integration Tests。
+- 默认全量 pytest：323 passed，36 skipped。
+- 跳过项为 22 条未显式启用的真实模型 Behavioral Eval、2 条在线 Alpaca Market Tests、1 条在线 Alpaca News Test、1 条真实 Agent Smoke Test，以及未配置 `TEST_DATABASE_URL` 的 10 条 PostgreSQL Integration Tests。
 - Ruff format check / lint：PASS；mypy strict：PASS（55 source files）。
 - `uv lock --check`、Alembic head / history 与 `git diff --check`：PASS。
 
@@ -121,5 +123,6 @@ Atomic Commits → Human Acceptance
 
 - 新增 ADR 0007，记录 SPY Proxy、指标、Threshold、Heuristic 边界、Trade-off 与重新考虑条件；本次不需要额外 Engineering Note。
 - SPY 只代表美国大盘股代理，V1 不包含 VIX、市场宽度、主要指数集合、Sector、Macro 或盘中 Market Regime。
+- completed-bar 过滤尚不能识别 Provider 返回的明显陈旧 Daily Bars；最大允许陈旧时间属于待 Human Review 的新规则，在批准前不实现 Freshness Guard。
 - 阈值没有历史回测验证；后续只能由固定 Eval、真实使用或 Backtest 证据驱动调整，不能因模型偏好修改。
 - 本次没有可用 Credential，因此未实际运行真实 LLM Behavioral Eval、在线 Alpaca Tests 或真实 Agent Smoke Test。
