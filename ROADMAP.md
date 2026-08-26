@@ -10,7 +10,7 @@
 
 ## 2. Current Status
 
-**Current Milestone:** M4 — Investment Context Expansion
+**Current Milestone:** M5 — Context-Aware Decision Flow
 **Status:** IN PROGRESS
 
 Milestone 状态统一使用 `NOT STARTED`、`IN PROGRESS`、`DONE`，不维护百分比进度。

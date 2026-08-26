@@ -2,13 +2,13 @@
 
 ## 1. 状态与目标
 
-**Status:** IN PROGRESS
+**Status:** DONE（2026-08-26 Human Acceptance）
 
-**Cash Adjustment Slice:** IMPLEMENTED（等待 Human Acceptance）
+**Cash Adjustment Slice:** ACCEPTED
 
-**Recent Price History Slice:** IMPLEMENTED（等待 Human Acceptance）
+**Recent Price History Slice:** ACCEPTED
 
-**Recent News Slice:** IMPLEMENTED（等待 Human Acceptance）
+**Recent News Slice:** ACCEPTED
 
 M4 在扩展 Market Context、News、Fundamentals / Earnings 或 Asset Indicators 前，先完成一个独立的 Cash Adjustment Vertical Slice。该 Slice 解决 Portfolio 创建后无法追加或取出投资预算的问题，并保持 M1 已建立的 immutable ledger 与 deterministic replay 原则。
 
