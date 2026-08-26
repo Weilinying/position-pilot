@@ -2,7 +2,7 @@
 
 ## 1. 状态与目标
 
-**Status:** IN PROGRESS
+**Status:** IMPLEMENTED（等待 Human Acceptance）
 
 M5 在 M4 已提供 Portfolio Snapshot、Current Quote、Recent Price History 与 Recent News 的基础上，验证 Single Investment Agent 能否按问题选择最小充分 Context，并补齐 Market Context / Market Regime 对相关决策问题的影响。
 
@@ -87,3 +87,39 @@ Atomic Commits → Human Acceptance
 - Behavioral Eval 使用固定 Portfolio、Market / News Results 和真实模型，精确验证 Quote / History / News 的实际请求 Trace；自然语言个性化继续保留 Human Checks。
 - Market Context 获批后使用固定正常 / 压力场景验证确定性 Regime、相关问题的 Tool Selection、无关问题不调用、Provider Failure 与 `UNKNOWN`。
 - 完成后运行默认 pytest、Ruff format / lint、mypy strict、`uv lock --check`、Alembic head / history 与 `git diff --check`。
+
+## 8. Completion Summary
+
+### Implemented
+
+- 保持 Single Agent + Native Function Calling，不增加关键词 Intent Router、第二个产品 Agent 或新 Framework。
+- 新增不记录问题正文、User ID 或 ticker 的 `ContextSelectionTrace`，记录可用 / 选中 Tool、唯一 Context 数、与持仓匹配的 Position Type、未持有标的数和 Routing Latency。
+- 新增固定无参数 `get_market_context()`；模型不能控制 SPY、时间窗口、Bar 数量、指标或阈值。
+- `MarketContextService` 固定最近 90 个日历日、最多 60 根 SPY Daily Bars 与 15 分钟 End Lag，并按 New York 常规收盘时间保守过滤尚未完成的当前 Session Bar。
+- Domain 使用固定 50 位 Decimal 中间精度计算 5-session Return、20-session Close Drawdown 与 20-return Annualized Realized Volatility，统一 4 位 Half-even 后按最高严重度分类。
+- Tool Result 保留三个原始指标、完整 Threshold Table、Trigger Rule、Period、Observation Count 与 Provider Metadata，并明确 `V1_HEURISTIC` 不是行业标准、未经历史回测验证且不是投资信号。
+- Context Capability 将 `market_context` 设为 `AVAILABLE`；Public Source Type 新增已批准的 `MARKET_CONTEXT` / `SPY`，其余 Response Shape 不变。
+- 当前建仓 / 加仓 / 减仓、整体市场风险与 Regime 问题要求 Market Context；Portfolio Facts、纯 Quote、纯 History 与纯 News 问题不机械调用。四类 Context 继续共享单轮最多 4 次调用预算。
+- Behavioral Dataset 增加相同问题下 `NORMAL` / `HIGH_STRESS` 对照、High-stress Position Reduction、Market Context Failure 和 Source / Retrieval Trace；既有 Cash 与 Position Type 对照继续保留。
+
+### Automated Review
+
+- 第一轮 Review 发现 `now-15min` 不能单独证明当日 Daily Bar 已完成；Service 现按 `America/New_York` 常规 16:00 收盘和 15 分钟数据延迟过滤，早收盘日采用保守延迟纳入。
+- 修正百分比中间除法可能受调用线程全局 Decimal Context 影响的问题；所有 Return、Drawdown、Sample Standard Deviation、Annualization 与 Quantize 均在固定精度中执行。
+- 修正非法 `QQQ` / 非 `1Day` 成功 Payload 可能被样本不足掩盖的问题，先验证固定代理与粒度，再映射 `NO_DATA`。
+- `MarketRegimeContext` 构造期重算 Regime / Trigger IDs，并拒绝正 Drawdown、负 Volatility 或互相冲突的结构化事实。
+- Review 后复审确认上述 P1 / P2 全部关闭；Agent Integration 复审未发现 Critical、High、Medium 或 Low Finding。
+
+### Verification
+
+- 默认全量 pytest：318 passed，35 skipped。
+- 跳过项为 21 条未显式启用的真实模型 Behavioral Eval、2 条在线 Alpaca Market Tests、1 条在线 Alpaca News Test、1 条真实 Agent Smoke Test，以及未配置 `TEST_DATABASE_URL` 的 10 条 PostgreSQL Integration Tests。
+- Ruff format check / lint：PASS；mypy strict：PASS（55 source files）。
+- `uv lock --check`、Alembic head / history 与 `git diff --check`：PASS。
+
+### Decision Records 与限制
+
+- 新增 ADR 0007，记录 SPY Proxy、指标、Threshold、Heuristic 边界、Trade-off 与重新考虑条件；本次不需要额外 Engineering Note。
+- SPY 只代表美国大盘股代理，V1 不包含 VIX、市场宽度、主要指数集合、Sector、Macro 或盘中 Market Regime。
+- 阈值没有历史回测验证；后续只能由固定 Eval、真实使用或 Backtest 证据驱动调整，不能因模型偏好修改。
+- 本次没有可用 Credential，因此未实际运行真实 LLM Behavioral Eval、在线 Alpaca Tests 或真实 Agent Smoke Test。
