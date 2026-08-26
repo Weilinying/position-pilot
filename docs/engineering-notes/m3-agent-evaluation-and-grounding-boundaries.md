@@ -25,20 +25,16 @@
     *   *注：* 真 LLM + 真市场数据 仅保留为少量的集成冒烟测试（Integration Smoke Test），不作为行为评估的主要依据。
 
 ### 2. 提示词与系统保证 (Prompt 与 System Guarantee)
-*   **职责划分：** Prompt 和结构化的 Context Contract 负责告诉模型“边界在哪”；而真正属于系统不变量（System Invariant）的越界行为，必须由后端确定性的 **Guard（拦截器）**来执行阻断。
-*   **拦截与修复机制 (Response Repair)：** 
-    *   当触发首次 Guard 拦截时，系统最多向模型发起一次 `tools=()` 的修复请求（不重新执行 Agent 流程或工具选择）。
-    *   如果修复后依然越界，直接返回 `LLM_INVALID_PROVIDER_RESPONSE` 错误，绝不允许形成隐式的无限死循环。
-*   **高置信度阻断：** 生产环境的 Guard 最终只阻断**代码能够高置信度证明**的违规行为：
-    1.  回答中出现了 Context 未提供的明确金融数值。
-    2.  回答形成了明确的购买能力或“整股可执行性”结论。
-    3.  回答显式复述了结构化的数值关系（如 Cash 与 Quote 的关系，或 Quote 与均价的关系），但与后端派生事实（Derived Fact）完全相反。
-    4.  `CURRENT_QUOTE(ticker)` Fact Reference 无法绑定到本轮同 ticker 的成功 Quote Source。Authoritative price 由 Application 解析和渲染，不再由 Guard 从自然语言中识别。
+*   **职责划分：** Backend 强约束 Portfolio / Ledger、确定性计算、Tool Result 与 Source 是否真实存在；Prompt、Behavioral Eval 与 Human Review 负责最终自然语言的事实使用和表达质量。V1 不把 Backend 扩张成逐 Claim 的形式化验证器。
+*   **拦截与修复机制 (Response Repair)：**
+    *   Final Completion 的外层 `{answer, source_refs}` JSON 非法，或声明了本轮未成功取得的 Source 时，最多向模型发起一次 `tools=()` 的修复请求。
+    *   如果修复后仍违反 Structured Source Contract，返回 `LLM_INVALID_PROVIDER_RESPONSE`；不形成隐式循环。
+*   **高置信度阻断：** Application 当前只阻断代码能够不依赖自然语言推断证明的错误：非法 Structured Output、未知 Source Type、缺少 ticker，以及无法绑定到本轮成功 Context 的同类型 / 同 ticker Source Reference。`answer` 内的数字、关系、购买能力措辞与其他 Claim 不再由确定性代码扫描。
 
 ### 3. 拦截器策略收缩 (Guard 收缩)
 *   **踩过的坑：** Guard 曾尝试使用复杂的正则表达式（Regex）去检测“略高”、“微利”、“显著”等词汇，以及识别跨 Ticker 的开放式比较，甚至试图从复杂句式中推断操作数。这导致代码层面的 Guard 退化成了一个“自然语言启发式审核器 (Natural-language Heuristic Reviewer)”，并引发了实际的误报（False Positive）。
-*   **最终决定：** 彻底删除这些生产环境的阻断规则，以减少无意义的 Repair 修复、额外的 LLM 调用开销、Regex 的复杂度，并消除 Prompt/Guard 之间的重复逻辑。
-*   **事实身份演进：** M4 曾尝试用“Ticker + 当前价格关键词 + 明确数值”的 Regex 绑定 Quote Source，但连续暴露 Unicode `\b` 中文边界、全局 `IGNORECASE` 把 `The` 识别为 ticker，以及“当前股价 / current stock price”等同义表达缺口。继续扩词表只会降低 Precision 并产生边际收益递减，因此 Current Quote 已迁移到 Structured Fact Reference；相关自然语言 Regex 已删除。
+*   **最终决定：** 删除生产环境的自然语言金融数字、购买能力、显式关系与方向 Guard，以减少误报、无意义 Repair、额外 LLM 调用和 Prompt / Guard 重复逻辑。
+*   **事实身份演进：** M4 依次经历“全局 Decimal allow-list / Current Quote Regex”与“Structured Fact Reference + deterministic rendering”。前者连续暴露 Unicode `\b`、大小写和同义词缺口；后者虽然避免 Regex，却把 V1 推向逐事实结构化渲染，并迫使 Quote 数值从 LLM Context 隐藏。最终收敛为 Free-form Answer + validated Structured Sources：模型自由组织事实，Application 只证明声明来源真实存在。
 *   **遗留处理：** 对于“关系幅度词汇、开放式语义比较、回答完整度、投资建议质量、仓位个性化程度、语言风格”等自然语言层面的问题，继续交由 Behavioral Eval（行为评估）或 Human Review（人工审查）去观察，后端代码不再强行介入。
 
 ---
@@ -77,7 +73,7 @@
 
 ## 五、 权衡与未来触发条件 (Trade-off 与 Future Trigger)
 
-*   **注重精准度 (Precision)：** 收缩后的 Guard 优先保证 Precision，会有意放过那些无法被高置信度解析的自然语言质量问题。
+*   **注重边界清晰：** Application 不再对自然语言 Claim 做启发式阻断，会有意放过模型抄错数字、遗漏来源声明或错误解释 Derived Fact 等回答质量问题；这些进入 Behavioral Eval，而不是继续扩充 Regex。
 *   **Evaluation 的定位：** M3 Evaluation 的核心作用是暴露模型的行为特征（Behavioral Profile），帮助确认问题应该由哪一层（架构、工具、提示词还是换模型）来解决，**而不是把每一次模型失误都硬修成生产环境的拦截规则。**
 *   **未来的触发条件：** 只有当后续的 Evaluation 明确证明某类 Failure 必须跨模型稳定阻断，并且能够通过结构化事实或低误报规则进行可靠验证时，才重新评估是否需要修改 Production Guard。
 *   **演进方向：** M4～M6 阶段应当在现有 Case 基础上继续积累证据，而不是去建设一个通用庞大的自然语言审核框架。
@@ -85,18 +81,20 @@
 ## Summary
 Eval 遇到 failure 时是看LLM的回答是什么样的问题，如果是模型行为质量相关的问题，那么可以不用在代码/prompt里进行修改，因为这可能能随着模型的更换或者上下文信息量（证据）的增加而改善。核心就是“如果换成一个行为极好的完美模型，系统是否仍必须强制保证这件事？”如果是的话才需要进行修改。因为你永远写不完拦截规则。
 
-## M4 Current Quote Structured Fact Reference
+## M4 Free-form Answer + Validated Structured Sources
 
 ### Problem
 
-Quote Grounding 先后用全局 Decimal allow-list 和 Current Quote 自然语言 Regex 尝试事后证明数值来源。前者丢失 fact type / ticker / source，后者需要持续 hard-code 中文边界、大小写和同义词，既能漏放错误 ticker，也会误拦正确英文回答。
+Quote Grounding 先后用全局 Decimal allow-list 和 Current Quote 自然语言 Regex 尝试事后证明数值来源。前者丢失 fact type / ticker / source，后者需要持续 hard-code 中文边界、大小写和同义词。随后采用的 `TextPart + FactReferencePart + deterministic renderer` 解决了 Quote 数值替换问题，却把系统职责扩大到逐事实结构化渲染，并限制模型不能在自由文本中自然复述价格。
 
 ### Decision
 
-LLM Final Completion 改为严格 JSON Answer Parts。`TextPart` 只承担解释和连接；`FactReferencePart` 当前只允许 `CURRENT_QUOTE + ticker`，Schema 不包含也拒绝 `price`。成功 Quote Tool Result 向 LLM 隐藏 authoritative price，只提供可引用 Fact 身份与派生关系；Application 持有完整 Quote，校验同 ticker 成功 Result，填充值并渲染最终字符串。无 Result、Provider Failure、wrong ticker 或非法 Parts 使用现有一次 Repair，仍失败则返回 `LLM_INVALID_PROVIDER_RESPONSE`。
+LLM Final Completion 使用严格外层 JSON：`answer` 是不做 Claim Parsing 的自由文本，`source_refs` 是模型声明实际使用的 Context 身份。Portfolio Snapshot 不需要 ticker；Current Quote、Price History 与 Recent News 使用 `type + ticker`。Application 只接受本轮成功取得的同类型、同 ticker Source，缺失结果、Provider Failure 或 wrong ticker 进入一次 Repair。成功但未声明使用的 Context 不进入 Final Source Tracking；失败 Tool Attempt 继续保留 status 供降级诊断，但不能成为成功 Source Reference。
+
+Quote Tool Result 再次向 LLM 提供实际 price。Backend 不负责把 answer 中的 `210.25` 与 Tool Result 逐句比对，也不再校验 Cash、Average Cost、History 数字或购买能力措辞。确定性 Portfolio / Transaction / Cash / Market Data / Derived Facts 的生成与校验仍留在代码边界。
 
 当前 Aliyun Adapter 不依赖 Provider-native `response_format`：Assistant `content` 使用严格 JSON Contract，由 Application 解析。这复用已存在的 OpenAI-compatible 消息能力，不增加 SDK 或 Provider 特有类型。
 
 ### Boundary / Future
 
-本次只迁移 CURRENT_QUOTE。Cash、Average Cost、Position Value、Price History 与 News 继续使用现有 Context / Guard；它们只有在真实 Eval 证明相同 Failure Mode 时才逐类迁移。LLM 选择引用哪个 Fact 并解释含义；Application 独占 authoritative value、Fact Resolution、Validation、Rendering 与 Source Tracking。
+该方案不是 sentence-level citation，也不证明每个 Claim 都由 `source_refs` 支撑；没有 `[1]`、claim-to-evidence mapping 或 Citation UI。已知残余 Failure 包括：模型可能抄错已提供数字、用错误方式解释确定性关系、在 answer 使用某来源却漏报 source ref，或声明来源但实际文本没有使用。PositionPilot V1 通过 Prompt 与 Behavioral Eval 衡量这些模型级 Grounding Failure；若未来产品明确需要逐 Claim 可审计性，再单独评估更强的 Citation Contract。

@@ -18,12 +18,12 @@ from position_pilot.application.investment_agent import (
 )
 from position_pilot.application.investment_answer import (
     InvalidStructuredAnswer,
-    UnresolvedFactReference,
+    SourceReference,
+    SourceReferenceType,
+    UnresolvedSourceReference,
     parse_structured_answer,
-    resolve_structured_answer,
+    validate_source_references,
 )
-from position_pilot.application.investment_context import PortfolioSnapshot
-from position_pilot.application.investment_response_guard import validate_final_response
 from position_pilot.application.llm import (
     LLMMessage,
     LLMProvider,
@@ -163,7 +163,7 @@ def guard_failure_diagnostics(
 ) -> list[dict[str, object]]:
     """失败时输出每个文本 Completion 的 Guard 结果，避免泄露 Credential。"""
 
-    snapshot = PortfolioSnapshot.from_state(FixedPortfolioReader(case).get_portfolio(USER_ID))
+    available_sources = _available_source_references(case)
     diagnostics: list[dict[str, object]] = []
     for completion_index, result in enumerate(llm.results, start=1):
         if result.completion is None or result.completion.message.content is None:
@@ -171,11 +171,8 @@ def guard_failure_diagnostics(
         content = result.completion.message.content
         try:
             structured_answer = parse_structured_answer(content)
-            resolved_answer = resolve_structured_answer(
-                structured_answer,
-                case.market_results,
-            )
-        except (InvalidStructuredAnswer, UnresolvedFactReference) as error:
+            validate_source_references(structured_answer, available_sources)
+        except (InvalidStructuredAnswer, UnresolvedSourceReference) as error:
             diagnostics.append(
                 {
                     "completion_index": completion_index,
@@ -183,20 +180,39 @@ def guard_failure_diagnostics(
                 }
             )
             continue
-        violations = validate_final_response(
-            resolved_answer.llm_text,
-            snapshot,
-            case.market_results,
-            case.historical_results,
-        )
         diagnostics.append(
             {
                 "completion_index": completion_index,
-                "answer": resolved_answer.answer,
-                "guard_violations": [violation.as_dict() for violation in violations],
+                "answer": structured_answer.answer,
+                "source_refs": [
+                    {"type": reference.type.value, "ticker": reference.ticker}
+                    for reference in structured_answer.source_refs
+                ],
             }
         )
     return diagnostics
+
+
+def _available_source_references(case: BehavioralCase) -> tuple[SourceReference, ...]:
+    """从固定成功 Context 构造 Behavioral Eval 的可声明来源集合。"""
+
+    references = [SourceReference(SourceReferenceType.PORTFOLIO_SNAPSHOT)]
+    references.extend(
+        SourceReference(SourceReferenceType.CURRENT_QUOTE, ticker)
+        for ticker, result in case.market_results.items()
+        if result.status is MarketDataStatus.OK and result.data is not None
+    )
+    references.extend(
+        SourceReference(SourceReferenceType.PRICE_HISTORY, ticker)
+        for ticker, result in case.historical_results.items()
+        if result.status is MarketDataStatus.OK and result.data is not None
+    )
+    references.extend(
+        SourceReference(SourceReferenceType.RECENT_NEWS, ticker)
+        for ticker, result in case.news_results.items()
+        if result.status is NewsStatus.OK and result.data is not None
+    )
+    return tuple(references)
 
 
 def position(

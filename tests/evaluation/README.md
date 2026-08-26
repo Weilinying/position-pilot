@@ -2,7 +2,7 @@
 
 本目录的 Cases 使用真实 `AliyunLLMProvider` 与固定 Fake Market / News Data，验证真实模型的 Tool Selection、Portfolio Awareness、Grounding 和 Personalization。它们不属于默认 CI，也不把 Fake LLM Orchestration Test 误称为模型行为验证。
 
-Final Completion 必须返回内部 Structured Answer Parts；Current Quote 通过 `fact_ref(CURRENT_QUOTE, ticker)` 由 Application 填值。Human Review 应检查模型是否用 TextPart 解释、用 FactRef 引用 Quote，且没有在 TextPart 复制 authoritative quote value。
+Final Completion 必须返回内部 `{answer, source_refs}` JSON。`answer` 是自由文本；`source_refs` 声明回答实际使用的 Portfolio / Quote / History / News Context，并由 Application 验证是否在本轮成功取得。Human Review 应检查 answer 是否准确使用这些来源，因为 Backend 不做逐 Claim 或逐数字验证。
 
 运行前显式导出通用 LLM 配置，并启用开关：
 
@@ -27,7 +27,8 @@ uv run pytest tests/evaluation/test_real_model_behavior.py -s
 - FACT / INFERENCE / UNKNOWN 是否在语义上自然区分，而不是机械套用固定标题。
 - 是否避免把当前价格低于 Average Cost 直接推导为风险收益比更好；Average Cost 只是用户历史成本，不是市场估值或未来收益概率；
 - 是否避免默认整股交易；`fractionable` 必须来自确定性 Asset / Broker Capability，当前缺失时应保持 `UNKNOWN`。
-- 是否只使用 Context 已提供的确定性金融数值；不得自行计算仓位权重、盈亏金额或比例、现金占比、可购买股数及交易后比例。
+- 是否只使用 Context 已提供的确定性金融数值；不得自行计算仓位权重、盈亏金额或比例、现金占比、可购买股数及交易后比例。该项是 Behavioral / Human Check，不由自然语言 Regex Guard 阻断。
+- `source_refs` 是否覆盖 answer 实际使用的 Context，且没有为了增加可信度声明未使用的来源；当前不是逐句 citation，也不要求 inline 标号。
 - 是否正确使用代码提供的 `distinct_ticker_count`、历史成本权重、Quote / Average Cost 关系和 Cash / Quote 关系；不得把历史成本权重描述为当前市值权重。
 - 是否服从结构化 Context Capabilities：Price History 可用不等于 Technical Analysis 可用；不得生成移动平均、RSI、支撑阻力、交易信号或预测。Market Context 缺失时不推断当天市场，Sector Classification 缺失时不推断行业关系。
 - 是否保留 ticker 下各自的 `LONG_TERM` / `SWING`，不让 Portfolio-level 聚合事实覆盖 Position Type。

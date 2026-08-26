@@ -1,162 +1,173 @@
-"""Structured Investment Answer 与 Current Quote Fact Resolver 测试。"""
+"""Free-form Investment Answer 与 Structured Source References 测试。"""
 
 import json
-from datetime import UTC, datetime
-from decimal import Decimal
 
 import pytest
 
 from position_pilot.application.investment_answer import (
-    AnswerFactType,
-    FactReferencePart,
     InvalidStructuredAnswer,
+    SourceReference,
+    SourceReferenceType,
     StructuredInvestmentAnswer,
-    TextPart,
-    UnresolvedFactReference,
+    UnresolvedSourceReference,
     parse_structured_answer,
-    resolve_structured_answer,
     structured_answer_schema,
-)
-from position_pilot.domain.market_data import (
-    MarketDataCoverage,
-    MarketDataResult,
-    MarketDataStatus,
-    MarketQuote,
+    validate_source_references,
 )
 
-NOW = datetime(2026, 8, 26, 8, 0, tzinfo=UTC)
+
+def source(reference_type: SourceReferenceType, ticker: str | None = None) -> SourceReference:
+    """创建固定 Source Reference。"""
+
+    return SourceReference(reference_type, ticker)
 
 
-def quote(ticker: str, price: str) -> MarketDataResult[MarketQuote]:
-    """创建固定成功 Current Quote。"""
-
-    return MarketDataResult.success(
-        MarketQuote(
-            ticker=ticker,
-            last_price=Decimal(price),
-            bid_price=None,
-            ask_price=None,
-            last_trade_at=NOW,
-            quote_at=None,
-            source="ALPACA",
-            feed="IEX",
-            coverage=MarketDataCoverage.SINGLE_EXCHANGE,
-            currency="USD",
-            is_delayed=False,
-            fetched_at=NOW,
-        )
-    )
-
-
-def structured_quote_content(prefix: str, ticker: str, suffix: str = "。") -> str:
-    """生成不含 authoritative price 的结构化 Quote Answer。"""
+def structured_content(answer: str, source_refs: list[dict[str, str]]) -> str:
+    """创建 LLM Final Completion JSON。"""
 
     return json.dumps(
-        {
-            "parts": [
-                {"type": "text", "text": prefix},
-                {"type": "fact_ref", "fact_type": "CURRENT_QUOTE", "ticker": ticker},
-                {"type": "text", "text": suffix},
-            ]
-        },
+        {"answer": answer, "source_refs": source_refs},
         ensure_ascii=False,
     )
 
 
-def test_resolves_current_quote_reference_with_authoritative_backend_value() -> None:
-    """LLM 只选择 Fact，Backend 应填入 Quote Tool 的权威价格。"""
+def test_accepts_free_form_answer_with_valid_current_quote_source() -> None:
+    """Backend 只验证 GOOG Quote Source 存在，不重写 answer 的价格文本。"""
 
-    answer = parse_structured_answer(structured_quote_content("GOOG 当前价格为 ", "GOOG"))
+    content = structured_content(
+        "GOOG 当前约为 210.25 美元，结合你的持仓成本来看……",
+        [
+            {"type": "CURRENT_QUOTE", "ticker": "GOOG"},
+            {"type": "PORTFOLIO_SNAPSHOT"},
+        ],
+    )
+    answer = parse_structured_answer(content)
 
-    resolved = resolve_structured_answer(answer, {"GOOG": quote("GOOG", "210.25")})
-
-    assert resolved.answer == "GOOG 当前价格为 210.25 USD。"
-    assert resolved.llm_text == "GOOG 当前价格为 。"
-    assert resolved.referenced_current_quote_tickers == ("GOOG",)
-
-
-def test_current_quote_reference_schema_does_not_allow_price() -> None:
-    """Fact Reference 不需要也不允许 LLM 提供 price。"""
-
-    content = json.dumps(
-        {
-            "parts": [
-                {
-                    "type": "fact_ref",
-                    "fact_type": "CURRENT_QUOTE",
-                    "ticker": "GOOG",
-                    "price": "999",
-                }
-            ]
-        }
+    validate_source_references(
+        answer,
+        (
+            source(SourceReferenceType.PORTFOLIO_SNAPSHOT),
+            source(SourceReferenceType.CURRENT_QUOTE, "GOOG"),
+        ),
     )
 
-    with pytest.raises(InvalidStructuredAnswer, match="只能包含"):
-        parse_structured_answer(content)
-
-    fact_schema = structured_answer_schema()["properties"]
-    assert "price" not in str(fact_schema)
+    assert answer.answer == "GOOG 当前约为 210.25 美元，结合你的持仓成本来看……"
+    assert answer.source_refs[0].ticker == "GOOG"
 
 
-def test_rejects_current_quote_reference_without_successful_tool_result() -> None:
-    """Portfolio Cash 或其他 Context 不能替代缺失 Quote。"""
+def test_rejects_current_quote_source_without_successful_context() -> None:
+    """Portfolio Cash 不能支撑未取得的 GOOG Current Quote Source。"""
 
-    answer = StructuredInvestmentAnswer((FactReferencePart(AnswerFactType.CURRENT_QUOTE, "GOOG"),))
+    answer = StructuredInvestmentAnswer(
+        answer="GOOG 当前价格为 300 美元。",
+        source_refs=(source(SourceReferenceType.CURRENT_QUOTE, "GOOG"),),
+    )
 
-    with pytest.raises(UnresolvedFactReference, match="GOOG"):
-        resolve_structured_answer(answer, {})
-
-    with pytest.raises(UnresolvedFactReference, match="GOOG"):
-        resolve_structured_answer(
+    with pytest.raises(UnresolvedSourceReference, match="CURRENT_QUOTE\\(GOOG\\)"):
+        validate_source_references(
             answer,
-            {
-                "GOOG": MarketDataResult.failure(
-                    MarketDataStatus.PROVIDER_UNAVAILABLE,
-                    "固定 Provider Failure",
-                )
-            },
+            (source(SourceReferenceType.PORTFOLIO_SNAPSHOT),),
         )
 
 
-def test_rejects_fact_reference_for_wrong_ticker() -> None:
-    """MSFT Tool Result 不得解析 GOOG Fact Reference。"""
+def test_rejects_current_quote_source_for_wrong_ticker() -> None:
+    """MSFT Quote Context 不得支撑 GOOG Source Reference。"""
 
-    answer = StructuredInvestmentAnswer((FactReferencePart(AnswerFactType.CURRENT_QUOTE, "GOOG"),))
+    answer = StructuredInvestmentAnswer(
+        answer="GOOG 当前价格为 500.50 美元。",
+        source_refs=(source(SourceReferenceType.CURRENT_QUOTE, "GOOG"),),
+    )
 
-    with pytest.raises(UnresolvedFactReference, match="GOOG"):
-        resolve_structured_answer(answer, {"MSFT": quote("MSFT", "500.50")})
-
-    with pytest.raises(UnresolvedFactReference, match="ticker 不一致"):
-        resolve_structured_answer(answer, {"GOOG": quote("MSFT", "500.50")})
+    with pytest.raises(UnresolvedSourceReference, match="GOOG"):
+        validate_source_references(
+            answer,
+            (source(SourceReferenceType.CURRENT_QUOTE, "MSFT"),),
+        )
 
 
 @pytest.mark.parametrize(
-    "prefix",
+    "answer_text",
     [
-        "GOOG 当前价格为 ",
-        "GOOG当前价格为 ",
-        "GOOG 当前股价为 ",
-        "GOOG current stock price: ",
-        "The current price is ",
+        "GOOG 当前价格为 210.25 美元。",
+        "GOOG当前价格为 210.25 美元。",
+        "GOOG 当前股价为 210.25 美元。",
+        "GOOG current stock price is 210.25 USD.",
+        "The current price is 210.25 USD.",
     ],
 )
-def test_natural_language_wording_does_not_change_quote_resolution(prefix: str) -> None:
-    """TextPart 同义表达不得参与 authoritative quote grounding。"""
+def test_natural_language_wording_does_not_affect_source_validation(
+    answer_text: str,
+) -> None:
+    """自然语言表达与数字不进入 Backend Source Validation。"""
 
-    answer = parse_structured_answer(structured_quote_content(prefix, "GOOG"))
+    answer = StructuredInvestmentAnswer(
+        answer=answer_text,
+        source_refs=(source(SourceReferenceType.CURRENT_QUOTE, "GOOG"),),
+    )
 
-    resolved = resolve_structured_answer(answer, {"GOOG": quote("GOOG", "210.25")})
+    validate_source_references(
+        answer,
+        (source(SourceReferenceType.CURRENT_QUOTE, "GOOG"),),
+    )
 
-    assert "210.25 USD" in resolved.answer
-    assert resolved.referenced_current_quote_tickers == ("GOOG",)
+    assert answer.answer == answer_text
 
 
-def test_preserves_text_parts_without_fact_reference() -> None:
-    """未迁移事实类型继续作为 LLM Text，不扩大本 Slice。"""
+def test_unifies_portfolio_history_and_news_source_references() -> None:
+    """Portfolio、History 与 News 复用同一 Source Reference Contract。"""
 
-    answer = StructuredInvestmentAnswer((TextPart("可用现金为 300 USD。"),))
+    answer = parse_structured_answer(
+        structured_content(
+            "结合持仓、近期路径与报道分析。",
+            [
+                {"type": "PORTFOLIO_SNAPSHOT"},
+                {"type": "PRICE_HISTORY", "ticker": "goog"},
+                {"type": "RECENT_NEWS", "ticker": "GOOG"},
+            ],
+        )
+    )
+    available = (
+        source(SourceReferenceType.PORTFOLIO_SNAPSHOT),
+        source(SourceReferenceType.PRICE_HISTORY, "GOOG"),
+        source(SourceReferenceType.RECENT_NEWS, "GOOG"),
+    )
 
-    resolved = resolve_structured_answer(answer, {})
+    validate_source_references(answer, available)
 
-    assert resolved.answer == "可用现金为 300 USD。"
-    assert resolved.llm_text == resolved.answer
+    assert answer.source_refs == available
+
+
+def test_rejects_invalid_or_duplicate_source_references() -> None:
+    """Source 外层 Contract 保持严格，不允许错误字段或重复身份。"""
+
+    with pytest.raises(InvalidStructuredAnswer, match="只能包含 type"):
+        parse_structured_answer(
+            structured_content(
+                "回答",
+                [{"type": "PORTFOLIO_SNAPSHOT", "ticker": "GOOG"}],
+            )
+        )
+
+    with pytest.raises(InvalidStructuredAnswer, match="不得重复"):
+        parse_structured_answer(
+            structured_content(
+                "回答",
+                [
+                    {"type": "CURRENT_QUOTE", "ticker": "GOOG"},
+                    {"type": "CURRENT_QUOTE", "ticker": "goog"},
+                ],
+            )
+        )
+
+
+def test_schema_exposes_answer_and_source_refs_without_fact_value_fields() -> None:
+    """Schema 只结构化 Answer 外壳与来源身份，不定义金融事实值。"""
+
+    schema = structured_answer_schema()
+
+    assert schema["required"] == ["answer", "source_refs"]
+    assert schema["additionalProperties"] is False
+    assert "price" not in str(schema)
+    properties = schema["properties"]
+    assert isinstance(properties, dict)
+    assert "parts" not in properties

@@ -277,40 +277,46 @@ def market_tool_message(*calls: tuple[str, str, str]) -> LLMResult:
     )
 
 
-def final_message(content: str = "基于当前已知事实的回答") -> LLMResult:
-    """把普通文本包装为严格 Structured Answer Completion。"""
+def source_ref(reference_type: str, ticker: str | None = None) -> dict[str, str]:
+    """创建 Fake Structured Source Reference。"""
+
+    reference = {"type": reference_type}
+    if ticker is not None:
+        reference["ticker"] = ticker
+    return reference
+
+
+def final_message(
+    content: str = "基于当前已知事实的回答",
+    *,
+    source_refs: list[dict[str, str]] | None = None,
+) -> LLMResult:
+    """把自由文本与来源声明包装为 Structured Completion。"""
 
     structured_content = json.dumps(
-        {"parts": [{"type": "text", "text": content}]},
+        {
+            "answer": content,
+            "source_refs": source_refs
+            if source_refs is not None
+            else [source_ref("PORTFOLIO_SNAPSHOT")],
+        },
         ensure_ascii=False,
     )
     return LLMResult.success(LLMMessage(LLMRole.ASSISTANT, structured_content))
 
 
 def quote_final_message(
-    prefix: str,
+    content: str,
     ticker: str,
-    suffix: str = "",
 ) -> LLMResult:
-    """创建只引用 Quote 身份、不携带 price 的 Fake Completion。"""
+    """创建声明 Portfolio 与 Current Quote 来源的 Fake Completion。"""
 
-    parts: list[dict[str, str]] = []
-    if prefix:
-        parts.append({"type": "text", "text": prefix})
-    parts.append(
-        {
-            "type": "fact_ref",
-            "fact_type": "CURRENT_QUOTE",
-            "ticker": ticker,
-        }
-    )
-    if suffix:
-        parts.append({"type": "text", "text": suffix})
-    return LLMResult.success(
-        LLMMessage(
-            LLMRole.ASSISTANT,
-            json.dumps({"parts": parts}, ensure_ascii=False),
-        )
+    return final_message(
+        content,
+        source_refs=[
+            source_ref("PORTFOLIO_SNAPSHOT"),
+            source_ref("CURRENT_QUOTE", ticker),
+        ],
     )
 
 
@@ -409,8 +415,9 @@ def test_always_injects_complete_portfolio_snapshot_without_transaction_history(
         "use_only_explicit_facts_and_relations": True,
     }
     answer_schema = payload["structured_answer_schema"]
-    assert answer_schema["required"] == ["parts"]
+    assert answer_schema["required"] == ["answer", "source_refs"]
     assert answer_schema["additionalProperties"] is False
+    assert payload["available_source_reference"] == {"type": "PORTFOLIO_SNAPSHOT"}
     assert [position["position_type"] for position in snapshot["positions"]] == [
         "LONG_TERM",
         "SWING",
@@ -433,8 +440,8 @@ def test_always_injects_complete_portfolio_snapshot_without_transaction_history(
     assert "分析必须服从 Context Capabilities" in system_prompt
     assert "实际可执行购买数量未知" in system_prompt
     assert "是否加仓、减仓或建仓，本身即需要 Current Quote" in system_prompt
-    assert "不得在 TextPart 中复制或生成 Current Quote 数值" in system_prompt
-    assert "fact_ref(CURRENT_QUOTE, ticker)" in system_prompt
+    assert "answer 是自由自然语言" in system_prompt
+    assert "Application 只验证来源真实性" in system_prompt
     assert portfolio_reader.requested_user_ids == [USER_ID]
     assert market_data.requested_tickers == []
     assert result.status is InvestmentResponseStatus.OK
@@ -565,7 +572,16 @@ def test_executes_up_to_four_tools_in_one_round_then_requests_final_response() -
                 ("call-3", "NVDA"),
                 ("call-4", "AMZN"),
             ),
-            final_message("四只股票的条件式比较"),
+            final_message(
+                "四只股票的条件式比较",
+                source_refs=[
+                    source_ref("PORTFOLIO_SNAPSHOT"),
+                    source_ref("CURRENT_QUOTE", "GOOG"),
+                    source_ref("CURRENT_QUOTE", "MSFT"),
+                    source_ref("CURRENT_QUOTE", "NVDA"),
+                    source_ref("CURRENT_QUOTE", "AMZN"),
+                ],
+            ),
         ],
         market_results={
             "GOOG": quote("GOOG", "210"),
@@ -597,7 +613,10 @@ def test_quote_result_includes_only_proven_deterministic_relations() -> None:
     """Quote 派生关系由代码生成，且不伪造可执行购买数量。"""
 
     agent, _, market_data, llm = make_agent(
-        [tool_message(("call-1", "GOOG")), final_message()],
+        [
+            tool_message(("call-1", "GOOG")),
+            quote_final_message("基于当前已知事实的回答", "GOOG"),
+        ],
         market_results={"GOOG": quote("GOOG", "210.25")},
     )
 
@@ -635,22 +654,21 @@ def test_quote_result_includes_only_proven_deterministic_relations() -> None:
         ],
     }
     tool_payload = json.loads(tool_content)
-    assert tool_payload["available_fact_reference"] == {
-        "fact_type": "CURRENT_QUOTE",
+    assert tool_payload["available_source_reference"] == {
+        "type": "CURRENT_QUOTE",
         "ticker": "GOOG",
     }
-    assert tool_payload["authoritative_quote_value_in_llm_context"] is False
-    assert "last_price" not in tool_payload
-    assert "bid_price" not in tool_payload
-    assert "ask_price" not in tool_payload
+    assert tool_payload["last_price"] == "210.25"
+    assert tool_payload["bid_price"] is None
+    assert tool_payload["ask_price"] is None
     assert tool_payload["response_contract"] == {
         "cash_quote_relation_allowed_use": "repeat_relation_only",
-        "current_quote_value_in_text_part": "PROHIBITED",
-        "current_quote_value_rendering": "BACKEND_FACT_REFERENCE_ONLY",
+        "current_quote_value_in_answer": "ALLOWED_FROM_SUCCESSFUL_TOOL_CONTEXT",
         "cross_ticker_quote_comparison": "PROHIBITED_UNLESS_PROVIDED",
         "new_financial_calculations": "PROHIBITED",
         "purchase_execution_conclusion": "PROHIBITED",
         "required_purchase_execution_status": "UNKNOWN",
+        "source_reference_required_if_used": True,
     }
 
 
@@ -660,7 +678,7 @@ def test_quote_without_position_does_not_invent_price_to_cost_relation() -> None
     agent, _, market_data, llm = make_agent(
         [
             tool_message(("call-1", "MSFT")),
-            quote_final_message("MSFT 当前价格为 ", "MSFT", "。"),
+            quote_final_message("MSFT 当前价格为 500.50 USD。", "MSFT"),
         ],
         market_results={"MSFT": quote("MSFT", "500.50")},
     )
@@ -685,7 +703,7 @@ def test_quote_without_position_does_not_invent_price_to_cost_relation() -> None
         "reason": "asset_metadata_and_order_capabilities_unavailable",
     }
     assert derived_facts["price_vs_average_cost_by_position"] == []
-    assert result.answer == "MSFT 当前价格为 500.5 USD。"
+    assert result.answer == "MSFT 当前价格为 500.50 USD。"
     assert result.sources[1].type is ContextSourceType.CURRENT_QUOTE
     assert result.sources[1].ticker == "MSFT"
     assert market_data.historical_queries == []
@@ -700,7 +718,13 @@ def test_price_history_uses_fixed_query_and_returns_only_deterministic_facts() -
             market_tool_message(
                 ("history-1", "get_recent_price_history", " goog "),
             ),
-            final_message("GOOG 近期收盘价方向为 UP。"),
+            final_message(
+                "GOOG 近期收盘价方向为 UP。",
+                source_refs=[
+                    source_ref("PORTFOLIO_SNAPSHOT"),
+                    source_ref("PRICE_HISTORY", "GOOG"),
+                ],
+            ),
         ],
         historical_results={"GOOG": price_history()},
     )
@@ -719,6 +743,10 @@ def test_price_history_uses_fixed_query_and_returns_only_deterministic_facts() -
     assert tool_content is not None
     payload = json.loads(tool_content)
     assert payload["price_history_fact_available"] is True
+    assert payload["available_source_reference"] == {
+        "type": "PRICE_HISTORY",
+        "ticker": "GOOG",
+    }
     assert payload["timeframe"] == "1Day"
     assert payload["adjustment"] == "ALL"
     assert payload["deterministic_derived_facts"] == {
@@ -762,7 +790,14 @@ def test_quote_and_price_history_share_one_tool_round_and_remain_distinct() -> N
                 ("quote-1", "get_current_quote", "GOOG"),
                 ("history-1", "get_recent_price_history", "GOOG"),
             ),
-            final_message("当前报价与近期路径均已提供。"),
+            final_message(
+                "当前报价与近期路径均已提供。",
+                source_refs=[
+                    source_ref("PORTFOLIO_SNAPSHOT"),
+                    source_ref("CURRENT_QUOTE", "GOOG"),
+                    source_ref("PRICE_HISTORY", "GOOG"),
+                ],
+            ),
         ],
         market_results={"GOOG": quote("GOOG", "210")},
         historical_results={"GOOG": price_history()},
@@ -791,7 +826,13 @@ def test_deduplicates_price_history_by_normalized_ticker() -> None:
                 ("history-1", "get_recent_price_history", "GOOG"),
                 ("history-2", "get_recent_price_history", "goog"),
             ),
-            final_message("复用同一份 GOOG 历史行情。"),
+            final_message(
+                "复用同一份 GOOG 历史行情。",
+                source_refs=[
+                    source_ref("PORTFOLIO_SNAPSHOT"),
+                    source_ref("PRICE_HISTORY", "GOOG"),
+                ],
+            ),
         ],
         historical_results={"GOOG": price_history()},
     )
@@ -812,7 +853,13 @@ def test_recent_news_uses_fixed_window_and_attributed_reporting_contract() -> No
     agent, _, providers, llm = make_agent(
         [
             market_tool_message(("news-1", "get_recent_news", " goog ")),
-            final_message("Benzinga 报道了两项 Alphabet 相关动态。"),
+            final_message(
+                "Benzinga 报道了两项 Alphabet 相关动态。",
+                source_refs=[
+                    source_ref("PORTFOLIO_SNAPSHOT"),
+                    source_ref("RECENT_NEWS", "GOOG"),
+                ],
+            ),
         ],
         news_results={"GOOG": recent_news()},
     )
@@ -831,6 +878,10 @@ def test_recent_news_uses_fixed_window_and_attributed_reporting_contract() -> No
     assert tool_content is not None
     payload = json.loads(tool_content)
     assert payload["recent_news_available"] is True
+    assert payload["available_source_reference"] == {
+        "type": "RECENT_NEWS",
+        "ticker": "GOOG",
+    }
     assert payload["provider"] == "ALPACA"
     assert len(payload["articles"]) == 2
     assert payload["articles"][0] == {
@@ -876,7 +927,15 @@ def test_quote_history_and_news_share_one_round_without_default_extra_calls() ->
                 ("history-1", "get_recent_price_history", "GOOG"),
                 ("news-1", "get_recent_news", "GOOG"),
             ),
-            final_message("三个来源均已按需提供。"),
+            final_message(
+                "三个来源均已按需提供。",
+                source_refs=[
+                    source_ref("PORTFOLIO_SNAPSHOT"),
+                    source_ref("CURRENT_QUOTE", "GOOG"),
+                    source_ref("PRICE_HISTORY", "GOOG"),
+                    source_ref("RECENT_NEWS", "GOOG"),
+                ],
+            ),
         ],
         market_results={"GOOG": quote("GOOG", "210")},
         historical_results={"GOOG": price_history()},
@@ -895,6 +954,38 @@ def test_quote_history_and_news_share_one_round_without_default_extra_calls() ->
     ]
 
 
+def test_public_sources_only_include_declared_successful_contexts() -> None:
+    """成功获取但模型未声明使用的 Context 不应出现在 Final Source Tracking。"""
+
+    agent, _, providers, _ = make_agent(
+        [
+            market_tool_message(
+                ("quote-1", "get_current_quote", "GOOG"),
+                ("history-1", "get_recent_price_history", "GOOG"),
+                ("news-1", "get_recent_news", "GOOG"),
+            ),
+            final_message(
+                "回答只使用了持仓和近期报道。",
+                source_refs=[
+                    source_ref("PORTFOLIO_SNAPSHOT"),
+                    source_ref("RECENT_NEWS", "GOOG"),
+                ],
+            ),
+        ],
+        market_results={"GOOG": quote("GOOG", "210")},
+        historical_results={"GOOG": price_history()},
+        news_results={"GOOG": recent_news()},
+    )
+
+    result = assert_answer(agent.answer(USER_ID, "GOOG 的持仓和新闻如何？"))
+
+    assert providers.requested_tickers == ["GOOG"]
+    assert [source.type for source in result.sources] == [
+        ContextSourceType.PORTFOLIO_SNAPSHOT,
+        ContextSourceType.RECENT_NEWS,
+    ]
+
+
 def test_deduplicates_recent_news_by_normalized_ticker() -> None:
     """同一 News Tool/Ticker 的变体只执行一次 Provider 查询。"""
 
@@ -904,7 +995,13 @@ def test_deduplicates_recent_news_by_normalized_ticker() -> None:
                 ("news-1", "get_recent_news", "GOOG"),
                 ("news-2", "get_recent_news", "goog"),
             ),
-            final_message("复用同一份有来源归因的 GOOG 新闻。"),
+            final_message(
+                "复用同一份有来源归因的 GOOG 新闻。",
+                source_refs=[
+                    source_ref("PORTFOLIO_SNAPSHOT"),
+                    source_ref("RECENT_NEWS", "GOOG"),
+                ],
+            ),
         ],
         news_results={"GOOG": recent_news()},
     )
@@ -929,7 +1026,7 @@ def test_deduplicates_normalized_quote_calls_but_answers_each_tool_call() -> Non
                 ("call-2", "goog"),
                 ("call-3", " GoOg "),
             ),
-            final_message("复用同一份 GOOG Quote"),
+            quote_final_message("复用同一份 GOOG Quote", "GOOG"),
         ],
         market_results={"GOOG": quote("GOOG", "210")},
     )
@@ -1031,8 +1128,8 @@ def test_market_data_failure_can_produce_degraded_safe_answer(
     assert "UNKNOWN" in tool_content
 
 
-def test_failed_quote_fact_reference_repairs_without_swallowing_provider_status() -> None:
-    """失败 Quote 无法解析 FactRef，Repair 后仍保留 DEGRADED Source 状态。"""
+def test_failed_quote_source_repairs_without_swallowing_provider_status() -> None:
+    """失败 Quote 无法支撑 SourceRef，Repair 后仍保留 DEGRADED Attempt 状态。"""
 
     market_failure: MarketDataResult[MarketQuote] = MarketDataResult.failure(
         MarketDataStatus.PROVIDER_UNAVAILABLE,
@@ -1041,7 +1138,7 @@ def test_failed_quote_fact_reference_repairs_without_swallowing_provider_status(
     agent, _, market_data, llm = make_agent(
         [
             tool_message(("call-1", "GOOG")),
-            quote_final_message("GOOG 当前价格为 ", "GOOG", "。"),
+            quote_final_message("GOOG 当前价格为 210.25 USD。", "GOOG"),
             final_message("GOOG 当前价格为 UNKNOWN；Quote Provider 当前不可用。"),
         ],
         market_results={"GOOG": market_failure},
@@ -1056,7 +1153,7 @@ def test_failed_quote_fact_reference_repairs_without_swallowing_provider_status(
     repair_content = llm.completions[2].messages[-1].content
     assert repair_content is not None
     repair_payload = json.loads(repair_content)
-    assert repair_payload["guard_violations"][0]["code"] == "UNRESOLVED_FACT_REFERENCE"
+    assert repair_payload["validation_errors"][0]["code"] == "UNRESOLVED_SOURCE_REFERENCE"
 
 
 @pytest.mark.parametrize(
@@ -1247,52 +1344,34 @@ def test_second_tool_round_is_rejected_even_when_model_requests_valid_tool() -> 
     assert market_data.requested_tickers == ["GOOG"]
 
 
-def test_guard_repairs_invalid_tool_final_once_without_tools() -> None:
-    """首次 Final Answer 越界时只允许一次无 Tool Response Correction。"""
+def test_free_form_financial_claim_is_not_parsed_or_repaired() -> None:
+    """Backend 不再用自然语言 Guard 判断购买能力或金融数字。"""
 
     agent, _, market_data, llm = make_agent(
         [
             tool_message(("call-1", "GOOG")),
-            final_message("现金足够覆盖至少一股 GOOG。"),
-            final_message("现金数值高于单股报价，实际可执行购买数量为 UNKNOWN。"),
+            quote_final_message("现金足够覆盖至少一股 GOOG，价格为 210.25 USD。", "GOOG"),
         ],
         market_results={"GOOG": quote("GOOG", "210.25")},
     )
 
     result = assert_answer(agent.answer(USER_ID, "GOOG 今天还能加一点吗？"))
 
-    assert result.answer == "现金数值高于单股报价，实际可执行购买数量为 UNKNOWN。"
+    assert result.answer == "现金足够覆盖至少一股 GOOG，价格为 210.25 USD。"
     assert market_data.requested_tickers == ["GOOG"]
-    assert len(llm.completions) == 3
-    repair_completion = llm.completions[2]
-    assert repair_completion.tools == ()
-    original_final_content = repair_completion.messages[-2].content
-    assert original_final_content is not None
-    assert json.loads(original_final_content)["parts"][0]["text"] == "现金足够覆盖至少一股 GOOG。"
-    repair_content = repair_completion.messages[-1].content
-    assert repair_content is not None
-    repair_payload = json.loads(repair_content)
-    assert repair_payload["task"] == "REPAIR_FINAL_RESPONSE"
-    assert repair_payload["guard_violations"][0]["code"] == "BUYING_POWER_CLAIM"
+    assert len(llm.completions) == 2
 
 
-def test_guard_repairs_direct_answer_without_restarting_agent() -> None:
-    """No-Tool Answer 也复用原 Context 修正，不重新执行 Tool Selection。"""
+def test_free_form_no_tool_answer_is_not_number_checked() -> None:
+    """自然语言中的阈值数字由 Prompt 与 Behavioral Eval 约束。"""
 
-    agent, _, market_data, llm = make_agent(
-        [
-            final_message("常见集中度阈值是 20%。"),
-            final_message("当前集中度结论为 UNKNOWN。"),
-        ]
-    )
+    agent, _, market_data, llm = make_agent([final_message("常见集中度阈值是 20%。")])
 
     result = assert_answer(agent.answer(USER_ID, "我是否过度集中？"))
 
-    assert result.answer == "当前集中度结论为 UNKNOWN。"
+    assert result.answer == "常见集中度阈值是 20%。"
     assert market_data.requested_tickers == []
-    assert len(llm.completions) == 2
-    assert llm.completions[1].tools == ()
-    assert all(message.role is not LLMRole.TOOL for message in llm.completions[1].messages)
+    assert len(llm.completions) == 1
 
 
 def test_guard_repairs_non_json_final_into_structured_answer() -> None:
@@ -1311,30 +1390,33 @@ def test_guard_repairs_non_json_final_into_structured_answer() -> None:
     repair_content = llm.completions[1].messages[-1].content
     assert repair_content is not None
     repair_payload = json.loads(repair_content)
-    assert repair_payload["guard_violations"][0]["code"] == "INVALID_STRUCTURED_ANSWER"
-    assert repair_payload["structured_answer_schema"]["required"] == ["parts"]
+    assert repair_payload["validation_errors"][0]["code"] == "INVALID_STRUCTURED_ANSWER"
+    assert repair_payload["structured_answer_schema"]["required"] == [
+        "answer",
+        "source_refs",
+    ]
 
 
-def test_guard_rejects_price_field_in_current_quote_fact_reference() -> None:
-    """LLM 不得把 authoritative price 填入 Fact Reference。"""
+def test_rejects_extra_field_in_source_reference() -> None:
+    """Structured Source 身份保持严格，但 answer 可自由包含价格。"""
 
     invalid_content = json.dumps(
         {
-            "parts": [
+            "answer": "GOOG 当前价格为 210.25 USD。",
+            "source_refs": [
                 {
-                    "type": "fact_ref",
-                    "fact_type": "CURRENT_QUOTE",
+                    "type": "CURRENT_QUOTE",
                     "ticker": "GOOG",
                     "price": "210.25",
                 }
-            ]
+            ],
         }
     )
     agent, _, _, llm = make_agent(
         [
             tool_message(("call-1", "GOOG")),
             LLMResult.success(LLMMessage(LLMRole.ASSISTANT, invalid_content)),
-            quote_final_message("GOOG 当前价格为 ", "GOOG", "。"),
+            quote_final_message("GOOG 当前价格为 210.25 USD。", "GOOG"),
         ],
         market_results={"GOOG": quote("GOOG", "210.25")},
     )
@@ -1345,15 +1427,15 @@ def test_guard_rejects_price_field_in_current_quote_fact_reference() -> None:
     repair_content = llm.completions[2].messages[-1].content
     assert repair_content is not None
     repair_payload = json.loads(repair_content)
-    assert repair_payload["guard_violations"][0]["code"] == "INVALID_STRUCTURED_ANSWER"
+    assert repair_payload["validation_errors"][0]["code"] == "INVALID_STRUCTURED_ANSWER"
 
 
-def test_guard_rejects_portfolio_cash_as_no_tool_current_quote() -> None:
-    """No-Tool 路径不得用 Portfolio Cash 解析 Current Quote Fact Reference。"""
+def test_rejects_current_quote_source_without_tool_result() -> None:
+    """No-Tool 路径不得用 Portfolio Cash 支撑 Current Quote Source。"""
 
     agent, _, market_data, llm = make_agent(
         [
-            quote_final_message("GOOG 当前价格为 ", "GOOG", "。"),
+            quote_final_message("GOOG 当前价格为 300 USD。", "GOOG"),
             final_message("GOOG 当前价格为 UNKNOWN；缺少成功的 Current Quote Source。"),
         ]
     )
@@ -1365,17 +1447,17 @@ def test_guard_rejects_portfolio_cash_as_no_tool_current_quote() -> None:
     repair_content = llm.completions[1].messages[-1].content
     assert repair_content is not None
     repair_payload = json.loads(repair_content)
-    assert repair_payload["guard_violations"][0]["code"] == "UNRESOLVED_FACT_REFERENCE"
+    assert repair_payload["validation_errors"][0]["code"] == "UNRESOLVED_SOURCE_REFERENCE"
     assert "structured_answer_schema" in repair_payload
 
 
-def test_guard_rejects_contiguous_goog_claim_backed_only_by_msft_quote() -> None:
-    """完整 Agent 不得用唯一的 MSFT Quote 解析 GOOG Fact Reference。"""
+def test_rejects_goog_source_backed_only_by_msft_quote() -> None:
+    """完整 Agent 不得用唯一的 MSFT Quote 支撑 GOOG Source Reference。"""
 
     agent, _, market_data, llm = make_agent(
         [
             tool_message(("call-1", "MSFT")),
-            quote_final_message("GOOG当前价格为 ", "GOOG", "。"),
+            quote_final_message("GOOG当前价格为 500.50 USD。", "GOOG"),
             final_message("GOOG 当前价格为 UNKNOWN；仅取得 MSFT Current Quote。"),
         ],
         market_results={"MSFT": quote("MSFT", "500.50")},
@@ -1388,16 +1470,16 @@ def test_guard_rejects_contiguous_goog_claim_backed_only_by_msft_quote() -> None
     repair_content = llm.completions[2].messages[-1].content
     assert repair_content is not None
     repair_payload = json.loads(repair_content)
-    assert repair_payload["guard_violations"][0]["code"] == "UNRESOLVED_FACT_REFERENCE"
+    assert repair_payload["validation_errors"][0]["code"] == "UNRESOLVED_SOURCE_REFERENCE"
 
 
-def test_guard_accepts_english_current_price_without_treating_article_as_ticker() -> None:
-    """英文 TextPart 表达变化不参与 Current Quote 的 Fact Resolution。"""
+def test_accepts_english_current_price_without_parsing_answer_ticker() -> None:
+    """英文 answer 表达变化不参与 Structured Source Validation。"""
 
     agent, _, market_data, llm = make_agent(
         [
             tool_message(("call-1", "GOOG")),
-            quote_final_message("The current price is ", "GOOG", "."),
+            quote_final_message("The current price is 210.25 USD.", "GOOG"),
         ],
         market_results={"GOOG": quote("GOOG", "210.25")},
     )
@@ -1409,14 +1491,13 @@ def test_guard_accepts_english_current_price_without_treating_article_as_ticker(
     assert len(llm.completions) == 2
 
 
-def test_direct_quote_value_in_text_is_repaired_to_fact_reference() -> None:
-    """Quote 数值不进入 LLM Context，TextPart 直接生成时必须改用 FactRef。"""
+def test_direct_quote_value_in_answer_passes_with_valid_source() -> None:
+    """Quote 数值允许出现在自由文本中，Backend 只验证来源身份。"""
 
     agent, _, market_data, llm = make_agent(
         [
             tool_message(("call-1", "GOOG")),
-            final_message("GOOG current stock price is 210.25 USD."),
-            quote_final_message("GOOG current stock price is ", "GOOG", "."),
+            quote_final_message("GOOG current stock price is 210.25 USD.", "GOOG"),
         ],
         market_results={"GOOG": quote("GOOG", "210.25")},
     )
@@ -1425,20 +1506,17 @@ def test_direct_quote_value_in_text_is_repaired_to_fact_reference() -> None:
 
     assert result.answer == "GOOG current stock price is 210.25 USD."
     assert market_data.requested_tickers == ["GOOG"]
-    repair_content = llm.completions[2].messages[-1].content
-    assert repair_content is not None
-    repair_payload = json.loads(repair_content)
-    assert repair_payload["guard_violations"][0]["code"] == "UNSUPPORTED_FINANCIAL_NUMBER"
+    assert len(llm.completions) == 2
 
 
-def test_guard_returns_request_failure_after_one_unsuccessful_repair() -> None:
-    """一次 Repair 后仍越界时不得把不合规 Answer 返回用户。"""
+def test_returns_request_failure_after_one_unresolved_source_repair() -> None:
+    """一次 Repair 后仍声明不存在的 Source 时不得返回 Answer。"""
 
     agent, _, market_data, llm = make_agent(
         [
             tool_message(("call-1", "GOOG")),
-            final_message("现金足够覆盖至少一股 GOOG。"),
-            final_message("现金足够购买一股 GOOG。"),
+            quote_final_message("MSFT 当前价格为 210.25 USD。", "MSFT"),
+            quote_final_message("MSFT 仍为 210.25 USD。", "MSFT"),
         ],
         market_results={"GOOG": quote("GOOG", "210.25")},
     )
@@ -1450,12 +1528,12 @@ def test_guard_returns_request_failure_after_one_unsuccessful_repair() -> None:
     assert len(llm.completions) == 3
 
 
-def test_guard_rejects_tool_call_from_repair_completion() -> None:
+def test_source_repair_rejects_tool_call_from_completion() -> None:
     """Repair 即使返回合法 Tool Call 也不能开启第二个 Tool Round。"""
 
     agent, _, market_data, llm = make_agent(
         [
-            final_message("常见集中度阈值是 20%。"),
+            quote_final_message("GOOG 当前价格为 210.25 USD。", "GOOG"),
             tool_message(("repair-call", "GOOG")),
         ]
     )
@@ -1468,12 +1546,12 @@ def test_guard_rejects_tool_call_from_repair_completion() -> None:
     assert llm.completions[1].tools == ()
 
 
-def test_guard_repair_provider_failure_keeps_llm_failure_taxonomy() -> None:
+def test_source_repair_provider_failure_keeps_llm_failure_taxonomy() -> None:
     """Repair 的 Provider Failure 仍使用既有 LLM Request Failure 映射。"""
 
     agent, _, market_data, llm = make_agent(
         [
-            final_message("常见集中度阈值是 20%。"),
+            quote_final_message("GOOG 当前价格为 210.25 USD。", "GOOG"),
             LLMResult.failure(LLMStatus.RATE_LIMITED, "Repair 固定限流"),
         ]
     )

@@ -122,9 +122,9 @@ Cash Event amount 必须为正数且最多 8 位小数。Application 使用可�
 - `backend/position_pilot/domain/errors.py`：明确的领域失败状态。
 - `backend/position_pilot/application/portfolio_service.py`：Transaction / Cash Event Use Case、写入 Command 和 Unit of Work Contract。
 - `backend/position_pilot/application/llm.py`：Provider-neutral Message、Tool、Completion 与 Failure Contract。
-- `backend/position_pilot/application/investment_agent.py`：Portfolio Snapshot、单轮 Native Function Calling、Source Tracking 与 Request Failure。
+- `backend/position_pilot/application/investment_agent.py`：Portfolio Snapshot、单轮 Native Function Calling、Structured Source Validation、Source Tracking 与 Request Failure。
+- `backend/position_pilot/application/investment_answer.py`：自由文本 Answer 外层 JSON、统一 Source Reference Schema 与真实性校验。
 - `backend/position_pilot/application/investment_context.py`：Portfolio、Quote 与 Recent Price History 的确定性事实和响应边界。
-- `backend/position_pilot/application/investment_response_guard.py`：Final Response 的确定性 Context Contract 检查与一次性 Repair 指令。
 - `backend/position_pilot/application/news_service.py`：Recent News Query 校验与 NewsProvider Contract。
 - `backend/position_pilot/infrastructure/models.py`：User / Transaction / Cash Event SQLAlchemy Model 与数据库约束。
 - `backend/position_pilot/infrastructure/unit_of_work.py`：同步 SQLAlchemy 持久化实现和领域映射。
@@ -145,15 +145,15 @@ Cash Event amount 必须为正数且最多 8 位小数。Application 使用可�
 - 不包含 WebSocket、行情 / 新闻缓存或持久化、技术指标、VIX、Market Regime、News 全文抓取、Earnings 或 Fundamentals。
 - Portfolio Snapshot 是 Agent 必定注入的完整当前持仓集合，不默认包含 Transaction 或 Cash Event History。
 - 发给 LLM 的 Snapshot 不包含内部 User ID，并提供由代码计算的 Ticker 数量、总持仓历史成本和按 Ticker 聚合、保留两位小数的历史成本权重百分比。历史成本权重不包含 Available Cash，也不表示当前市值权重；原始 `LONG_TERM` / `SWING` Position 继续独立保留。
-- Quote 成功后，Application 保留完整 `MarketQuote`，但发给 LLM 的 Tool Result 不再包含 `last_price`、`bid_price` 或 `ask_price`；它只暴露 `CURRENT_QUOTE(ticker)` Fact Reference 身份、Source Metadata，以及代码派生的 Cash/Quote、Quote/Average Cost 关系。Cash/Quote 关系是纯数值比较，不能支持交易执行结论，真实可执行购买数量保持 `UNKNOWN`。Portfolio Context 继续提供同 Ticker 股数汇总，并将现金权重、总组合价值、当前市值权重和缺少策略阈值时的集中度结论标为 `UNAVAILABLE` 或 `UNKNOWN`。
+- Quote 成功后，Tool Result 向 LLM 提供实际 last / bid / ask price、Source Metadata、统一的 `CURRENT_QUOTE(ticker)` Source Reference，以及代码派生的 Cash/Quote、Quote/Average Cost 关系。Cash/Quote 关系是纯数值比较，不能支持交易执行结论，真实可执行购买数量保持 `UNKNOWN`。Portfolio Context 继续提供同 Ticker 股数汇总，并将现金权重、总组合价值、当前市值权重和缺少策略阈值时的集中度结论标为 `UNAVAILABLE` 或 `UNKNOWN`。
 - 每次请求注入结构化 Context Capability Manifest。M4 的 Current Quote、Price History 与 News 可用；Earnings、Fundamentals、Market Context、Technical Analysis、Asset Metadata 和 Sector Classification 仍不可用。
 - Decision Context 将 Trading Plan、Exit Conditions 与 Risk Budget 显式标记为 `UNKNOWN`；它们不是 Conversation Memory，也不由模型从通用知识补足。
 - Agent 每个请求只允许一个 Tool Round，Current Quote、Recent Price History 与 Recent News 合计最多四个调用；仍按问题实际需要选择 Tool，不默认调用全部 Context Tools。不支持 Conversation Memory 或多阶段检索。
 - Recent Price History 的窗口由 Application 固定为截至当前时间至少 15 分钟前的最近 45 个日历日、最多 30 根 Daily Bars。Adapter 使用 Provider `sort=desc` 取得窗口内最新 N 根，再反转为 Domain 要求的 timestamp 严格升序，避免较早的 N 根冒充 Recent History。LLM 只能选择 Ticker，不能控制 start、end 或 limit。Application 只提供 Bar 数量、首尾时间与收盘价、区间高低、首尾涨跌额/幅和 `UP / DOWN / FLAT` 方向；最新历史收盘价不等于 Current Quote，Price History 不提供移动平均、RSI、支撑阻力、交易信号或预测。
 - Recent News 的窗口固定为截至当前时间至少 15 分钟前的最近 5 个日历日、最多 5 篇，且请求 `include_content=false`。文章只保留有界 headline、可选 summary、author、URL、reporting source、symbols 与时间戳；Provider Response 也必须服从窗口和条数上限。News Result 是 attributed reporting，不是 PositionPilot 独立验证事实。回答必须保留“来源报道声称”的归因，新闻与价格变化的关系最多是条件式 `INFERENCE`，不能确认用户的价格变化前提、唯一原因或结构化财报事实。
 - `NO_NEWS_FOUND` 只表示当前 Provider 在指定 ticker 和时间窗口内没有返回文章，不表示不存在相关新闻、事件或股价驱动因素。它与认证、限流、Provider 不可用和非法响应保持不同状态。
-- 所有 Final Completion 使用内部 Structured Answer JSON：`TextPart` 负责解释与连接，`FactReferencePart(CURRENT_QUOTE, ticker)` 只选择事实身份且不允许 `price` 字段。Application 严格解析 Parts，用本轮同 ticker 的成功 Quote Result 填入 authoritative price，并确定性渲染为现有 `answer: str`；Public API 不变。无结果、Provider Failure 或 wrong ticker 的 FactRef 进入既有一次 Repair / Failure 流程，不能用 Cash、Average Cost、Price History 或其他 ticker 替代。
-- Current Quote 正确性不再依赖自然语言 Regex 或同义词表。剩余 Guard 只检查 LLM 生成的 TextParts 中尚未迁移的数值、购买能力、显式结构化关系值和 Price History 方向；Backend 渲染的 Quote 数值不再交给自然语言 Guard 重新识别。该 Slice 不迁移 Cash、Average Cost、Position Value、Price History 或 News。
+- 所有 Final Completion 使用内部 `{answer, source_refs}` JSON。`answer` 是 LLM 自由文本，Backend 不解析其中的数字、ticker、关系或自然语言 Claim；`source_refs` 统一支持 Portfolio Snapshot、Current Quote、Price History 与 Recent News。每个声明来源必须绑定本轮成功取得的同类型、同 ticker Context，否则进入一次 Repair / Failure。Public API 继续返回 `answer: str` 与已验证的 `sources`，不增加 inline citation 或 claim-to-evidence mapping。
+- Current Quote 正确性不再依赖自然语言 Regex、同义词表或确定性 Renderer。Backend 强约束 Portfolio / Ledger / Derived Facts 和 Tool / Source 真实性；最终自然语言是否准确使用这些事实由 Prompt、Behavioral Eval 与 Human Review 衡量。成功取得但未声明使用的 Context 不进入 Final Source Tracking；失败 Tool Attempt 仍保留原 status 以维持降级可观测性，但不能被声明为成功 Source。
 - 同一轮内大小写或空白不同的重复调用按 `(tool_name, ticker)` 共用一次 Provider Result，但每个 Native Tool Call 都获得对应 Tool Message。Quote、History 与 News 即使 Ticker 相同仍是三个独立来源。
 - 超出 Portfolio Snapshot、成功 Current Quote、成功 Price History 与 attributed Recent News Tool Result 的事实保持 `UNKNOWN`；新闻报道不得自动升级为系统验证事实。
 - 当前仍无 Trading / Asset Metadata Context；未来 Capability 扩展点为确定性的 `tradable` 与 `fractionable`。不得由 LLM 假设整股或碎股资格，也不由 LLM 计算具体可购买股数。
@@ -203,12 +203,12 @@ AliyunLLMProvider
       ↓ OpenAI-compatible HTTPS
 Alibaba Cloud Model Studio
 
-Final LLM Structured Answer Parts
-      ↓ strict parse + Fact Reference validation
-Backend resolves Quote value + deterministic render
-      ↓ remaining Text Grounding Guard
+Final LLM {answer, source_refs}
+      ↓ strict outer JSON + Source Reference validation
+Free-form answer + validated Context Sources
+      ↓ no natural-language claim parsing
 Pass → existing answer:string API
-Fail → one no-tool Repair → parse / resolve / Guard
+Fail → one no-tool Repair → parse / validate sources
       ↓ still fails
 LLM_INVALID_PROVIDER_RESPONSE
 ```

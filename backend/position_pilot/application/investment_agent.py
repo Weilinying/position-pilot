@@ -12,10 +12,13 @@ from uuid import UUID
 
 from position_pilot.application.investment_answer import (
     InvalidStructuredAnswer,
-    UnresolvedFactReference,
+    SourceReference,
+    SourceReferenceType,
+    StructuredInvestmentAnswer,
+    UnresolvedSourceReference,
     parse_structured_answer,
-    resolve_structured_answer,
     structured_answer_schema,
+    validate_source_references,
 )
 from position_pilot.application.investment_context import (
     M4_CONTEXT_CAPABILITIES,
@@ -26,12 +29,6 @@ from position_pilot.application.investment_context import (
     m3_response_contract,
     quote_response_contract,
     recent_price_history_response_contract,
-)
-from position_pilot.application.investment_response_guard import (
-    GroundingViolation,
-    GroundingViolationCode,
-    build_repair_instruction,
-    validate_final_response,
 )
 from position_pilot.application.llm import (
     LLMMessage,
@@ -102,11 +99,11 @@ SYSTEM_PROMPT = "\n".join(
         "8. 当前价格、历史价格与新闻只来自对应成功 Tool Result；失败或缺失必须明确为 UNKNOWN。",
         "9. 回答自然地区分事实、推断和未知信息，不要求固定标题。",
         "10. 所有 Final Response 必须是符合 structured_answer_schema 的单一 JSON object。",
-        "TextPart 只负责解释和自然语言连接；不得在 TextPart 中复制或生成 Current Quote 数值。",
         (
-            "需要呈现 Current Quote 时必须使用 fact_ref(CURRENT_QUOTE, ticker)，"
-            "且不得添加 price 字段；Application 会校验引用并填充 authoritative value。"
+            "answer 是自由自然语言；source_refs 声明回答实际使用的成功 Context。"
+            "Application 只验证来源真实性，不从 answer 反向解析金融事实。"
         ),
+        "不得声明未成功取得的 Source；Source Reference 不是逐句 Citation。",
         "cash_vs_one_share_price 只表示数值关系，不表示交易资格、能否成交或可买至少一股。",
         "executable_purchase_quantity=UNKNOWN 时，只能说明实际可执行购买数量未知。",
     )
@@ -229,7 +226,7 @@ class ContextSourceType(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class ContextSource:
-    """Final Answer 使用的结构化事实来源与状态。"""
+    """Final Answer 声明使用的成功 Context，或保留的失败 Tool Attempt。"""
 
     type: ContextSourceType
     status: str
@@ -238,6 +235,14 @@ class ContextSource:
     feed: str | None = None
     market_timestamp: datetime | None = None
     fetched_at: datetime | None = None
+
+    def as_reference(self) -> SourceReference | None:
+        """只有成功取得的 Context 才能成为模型可声明的来源。"""
+
+        if self.status != InvestmentResponseStatus.OK.value:
+            return None
+        reference_type = SourceReferenceType(self.type.value)
+        return SourceReference(reference_type, self.ticker)
 
 
 @dataclass(frozen=True, slots=True)
@@ -314,20 +319,18 @@ class InvestmentAgent:
         first_message = self._completion_message(first_result)
 
         if not first_message.tool_calls:
-            guarded_content = self._guard_or_repair(
+            validated_answer = self._validate_or_repair(
                 messages_before_final=initial_messages,
                 final_message=first_message,
-                snapshot=snapshot,
-                market_results_by_ticker={},
-                historical_results_by_ticker={},
+                sources=tuple(sources),
             )
-            if isinstance(guarded_content, InvestmentRequestFailure):
-                self._log_failure(guarded_content, started_at)
-                return guarded_content
+            if isinstance(validated_answer, InvestmentRequestFailure):
+                self._log_failure(validated_answer, started_at)
+                return validated_answer
             answer = InvestmentAnswer(
                 InvestmentResponseStatus.OK,
-                guarded_content,
-                tuple(sources),
+                validated_answer.answer,
+                self._select_declared_sources(validated_answer, tuple(sources)),
             )
             self._log_success(answer, started_at, tool_call_count=0)
             return answer
@@ -449,21 +452,19 @@ class InvestmentAgent:
             self._log_failure(failure, started_at)
             return failure
 
-        guarded_content = self._guard_or_repair(
+        validated_answer = self._validate_or_repair(
             messages_before_final=(*initial_messages, first_message, *tool_messages),
             final_message=final_message,
-            snapshot=snapshot,
-            market_results_by_ticker=market_results_by_ticker,
-            historical_results_by_ticker=historical_results_by_ticker,
+            sources=tuple(sources),
         )
-        if isinstance(guarded_content, InvestmentRequestFailure):
-            self._log_failure(guarded_content, started_at)
-            return guarded_content
+        if isinstance(validated_answer, InvestmentRequestFailure):
+            self._log_failure(validated_answer, started_at)
+            return validated_answer
 
         answer = InvestmentAnswer(
             InvestmentResponseStatus.DEGRADED if degraded else InvestmentResponseStatus.OK,
-            guarded_content,
-            tuple(sources),
+            validated_answer.answer,
+            self._select_declared_sources(validated_answer, tuple(sources)),
         )
         self._log_success(
             answer,
@@ -476,37 +477,29 @@ class InvestmentAgent:
         )
         return answer
 
-    def _guard_or_repair(
+    def _validate_or_repair(
         self,
         *,
         messages_before_final: tuple[LLMMessage, ...],
         final_message: LLMMessage,
-        snapshot: PortfolioSnapshot,
-        market_results_by_ticker: dict[str, MarketDataResult[MarketQuote]],
-        historical_results_by_ticker: dict[str, MarketDataResult[HistoricalBars]],
-    ) -> str | InvestmentRequestFailure:
-        """确定性检查 Final Response，并最多执行一次 No-Tool Repair。"""
+        sources: tuple[ContextSource, ...],
+    ) -> StructuredInvestmentAnswer | InvestmentRequestFailure:
+        """验证 Structured Sources，并最多执行一次 No-Tool Repair。"""
 
         content = self._require_final_content(final_message)
-        rendered_content, violations = self._evaluate_structured_response(
-            content,
-            snapshot,
-            market_results_by_ticker,
-            historical_results_by_ticker,
-        )
-        if not violations:
-            assert rendered_content is not None
-            return rendered_content
+        structured_answer, validation_error = self._evaluate_structured_response(content, sources)
+        if validation_error is None:
+            assert structured_answer is not None
+            return structured_answer
 
         LOGGER.warning(
-            "investment_agent_response_guard_failed",
+            "investment_agent_source_reference_validation_failed",
             extra={
                 "repair_attempt": 0,
-                "violation_codes": [violation.code.value for violation in violations],
+                "violation_code": self._structured_error_code(validation_error),
             },
         )
-        repair_payload = build_repair_instruction(violations)
-        repair_payload["structured_answer_schema"] = structured_answer_schema()
+        repair_payload = self._build_structured_repair_instruction(validation_error)
         repair_message = LLMMessage(
             LLMRole.USER,
             json.dumps(
@@ -530,65 +523,92 @@ class InvestmentAgent:
             )
 
         repaired_content = self._require_final_content(repaired_message)
-        rendered_repaired_content, remaining_violations = self._evaluate_structured_response(
-            repaired_content,
-            snapshot,
-            market_results_by_ticker,
-            historical_results_by_ticker,
+        repaired_answer, remaining_error = self._evaluate_structured_response(
+            repaired_content, sources
         )
-        if remaining_violations:
+        if remaining_error is not None:
             LOGGER.warning(
-                "investment_agent_response_guard_failed",
+                "investment_agent_source_reference_validation_failed",
                 extra={
                     "repair_attempt": 1,
-                    "violation_codes": [violation.code.value for violation in remaining_violations],
+                    "violation_code": self._structured_error_code(remaining_error),
                 },
             )
             return InvestmentRequestFailure(
                 InvestmentFailureCode.LLM_INVALID_PROVIDER_RESPONSE,
-                "LLM Final Response 在一次 Repair 后仍违反 Grounding Contract",
+                "LLM Final Response 在一次 Repair 后仍违反 Structured Source Contract",
             )
         LOGGER.info("investment_agent_response_repaired", extra={"repair_attempt": 1})
-        assert rendered_repaired_content is not None
-        return rendered_repaired_content
+        assert repaired_answer is not None
+        return repaired_answer
 
     @staticmethod
     def _evaluate_structured_response(
         content: str,
-        snapshot: PortfolioSnapshot,
-        market_results_by_ticker: dict[str, MarketDataResult[MarketQuote]],
-        historical_results_by_ticker: dict[str, MarketDataResult[HistoricalBars]],
-    ) -> tuple[str | None, tuple[GroundingViolation, ...]]:
-        """解析 Fact References、确定性渲染，再校验剩余 LLM Text。"""
+        sources: tuple[ContextSource, ...],
+    ) -> tuple[
+        StructuredInvestmentAnswer | None,
+        InvalidStructuredAnswer | UnresolvedSourceReference | None,
+    ]:
+        """只解析外层 Contract，并验证模型声明的 Context 是否真实存在。"""
 
         try:
             structured_answer = parse_structured_answer(content)
         except InvalidStructuredAnswer as error:
-            return None, (
-                GroundingViolation(
-                    GroundingViolationCode.INVALID_STRUCTURED_ANSWER,
-                    str(error),
-                ),
-            )
-        try:
-            resolved_answer = resolve_structured_answer(
-                structured_answer,
-                market_results_by_ticker,
-            )
-        except UnresolvedFactReference as error:
-            return None, (
-                GroundingViolation(
-                    GroundingViolationCode.UNRESOLVED_FACT_REFERENCE,
-                    str(error),
-                ),
-            )
-        violations = validate_final_response(
-            resolved_answer.llm_text,
-            snapshot,
-            market_results_by_ticker,
-            historical_results_by_ticker,
+            return None, error
+        available_references = tuple(
+            reference for source in sources if (reference := source.as_reference()) is not None
         )
-        return resolved_answer.answer, violations
+        try:
+            validate_source_references(structured_answer, available_references)
+        except UnresolvedSourceReference as error:
+            return None, error
+        return structured_answer, None
+
+    @staticmethod
+    def _structured_error_code(
+        error: InvalidStructuredAnswer | UnresolvedSourceReference,
+    ) -> str:
+        if isinstance(error, InvalidStructuredAnswer):
+            return "INVALID_STRUCTURED_ANSWER"
+        return "UNRESOLVED_SOURCE_REFERENCE"
+
+    @classmethod
+    def _build_structured_repair_instruction(
+        cls,
+        error: InvalidStructuredAnswer | UnresolvedSourceReference,
+    ) -> dict[str, object]:
+        """构造一次性 Source Contract Repair，不审查 answer 自然语言。"""
+
+        return {
+            "task": "REPAIR_FINAL_RESPONSE",
+            "validation_errors": [
+                {"code": cls._structured_error_code(error), "message": str(error)}
+            ],
+            "instructions": [
+                "保持 answer 为自由自然语言，只修正外层 JSON 或 source_refs。",
+                "source_refs 只能声明本轮实际成功取得且回答使用的 Context。",
+                "缺失或失败的 Context 不得声明为 Source，相关事实应保持 UNKNOWN。",
+                "不得请求任何 Tool。",
+            ],
+            "structured_answer_schema": structured_answer_schema(),
+            "return_only_repaired_final_answer": True,
+        }
+
+    @staticmethod
+    def _select_declared_sources(
+        answer: StructuredInvestmentAnswer,
+        sources: tuple[ContextSource, ...],
+    ) -> tuple[ContextSource, ...]:
+        """返回声明的成功 Context，并保留失败 Tool Attempt 的既有可观测性。"""
+
+        declared = set(answer.source_refs)
+        selected: list[ContextSource] = []
+        for source in sources:
+            reference = source.as_reference()
+            if reference is None or reference in declared:
+                selected.append(source)
+        return tuple(selected)
 
     @staticmethod
     def _initial_messages(
@@ -601,6 +621,7 @@ class InvestmentAgent:
                 "context_capabilities": M4_CONTEXT_CAPABILITIES.as_dict(),
                 "decision_context": m3_decision_context(),
                 "portfolio_snapshot": snapshot.as_dict(),
+                "available_source_reference": {"type": "PORTFOLIO_SNAPSHOT"},
                 "response_contract": m3_response_contract(),
                 "structured_answer_schema": structured_answer_schema(),
             },
@@ -657,11 +678,13 @@ class InvestmentAgent:
                 "status": result.status.value,
                 "current_market_fact_available": True,
                 "ticker": quote.ticker,
-                "available_fact_reference": {
-                    "fact_type": "CURRENT_QUOTE",
+                "available_source_reference": {
+                    "type": "CURRENT_QUOTE",
                     "ticker": quote.ticker,
                 },
-                "authoritative_quote_value_in_llm_context": False,
+                "last_price": str(quote.last_price),
+                "bid_price": str(quote.bid_price) if quote.bid_price is not None else None,
+                "ask_price": str(quote.ask_price) if quote.ask_price is not None else None,
                 "last_trade_at": quote.last_trade_at.isoformat(),
                 "quote_at": quote.quote_at.isoformat() if quote.quote_at else None,
                 "source": quote.source,
@@ -737,6 +760,10 @@ class InvestmentAgent:
                 "status": result.status.value,
                 "price_history_fact_available": True,
                 "ticker": history.ticker,
+                "available_source_reference": {
+                    "type": "PRICE_HISTORY",
+                    "ticker": history.ticker,
+                },
                 "timeframe": history.timeframe,
                 "source": history.source,
                 "feed": history.feed,
@@ -814,6 +841,10 @@ class InvestmentAgent:
                 "status": result.status.value,
                 "recent_news_available": True,
                 "ticker": recent_news.ticker,
+                "available_source_reference": {
+                    "type": "RECENT_NEWS",
+                    "ticker": recent_news.ticker,
+                },
                 "provider": recent_news.provider,
                 "fetched_at": recent_news.fetched_at.isoformat(),
                 "articles": [

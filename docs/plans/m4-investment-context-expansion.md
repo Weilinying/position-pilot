@@ -345,7 +345,7 @@ Alpaca / Benzinga News Provider、独立 NewsService Boundary、5 日 / 5 篇窗
 2026-08-26 Human Review 发现并修复三个跨 Slice 的确定性缺陷：
 
 - Historical Adapter 原先使用 `sort=asc + limit=30`，在 45 日窗口超过 30 根 Bar 时会截掉最新数据。现改为 `sort=desc` 获取最新 N 根，并在 Adapter Boundary 反转为 Domain 严格升序；Regression 同时验证真正最新的 `latest_close` 与 `period_end`。
-- Final Response Guard 原先只保存全局允许数字集合，导致 Cash、Average Cost、其他 ticker Quote 或 History bar count 可以凭数值相同冒充 Current Quote。第一轮修复曾以 type、ticker、field、source 保存 Grounded Fact，并用低歧义 Regex 校验 Quote 陈述；后续同义词与 Unicode 边界 Failure 证明该自然语言路径仍不闭环，最终由第 14 节的 Structured Fact Reference 取代。
+- Final Response Guard 原先只保存全局允许数字集合，导致 Cash、Average Cost、其他 ticker Quote 或 History bar count 可以凭数值相同冒充 Current Quote。第一轮修复曾以 type、ticker、field、source 保存 Grounded Fact，并用低歧义 Regex 校验 Quote 陈述；后续同义词与 Unicode 边界 Failure 证明自然语言校验不闭环。第 14 节记录了 Structured Fact Renderer 的中间方案及最终的 Structured Source Contract。
 - Cash Event 原先允许未来 `occurred_at` 立即进入 Combined Replay。PortfolioService 现使用可注入 Clock，在确认 User 后、读取 Ledger 和写入前拒绝 future-dated Cash Event；Scheduled Cash Adjustment 保持 Non-Goal。
 
 这些修改均收紧既有 Source of Truth、Recent History 与 Grounding Invariants，不改变已批准产品语义，不新增 ADR。
@@ -356,17 +356,18 @@ Automated Review 进一步发现 future-time 校验若早于 User lookup，会�
 
 Review 后验证：默认全量 pytest 为 277 passed、33 skipped；Ruff format / lint、mypy strict（49 source files）、`uv lock --check`、Alembic head / history 与 `git diff --check` 全部通过。
 
-## 14. Current Quote Structured Fact Reference
+## 14. Free-form Answer + Validated Structured Sources
 
-2026-08-26 后续 Human Review 确认 Current Quote 的 Regex-based Grounding 已出现同义词 hard-coding 的边际收益递减，并批准迁移为最小 Structured Answer Parts Vertical Slice。
+2026-08-26 Human Review 先确认 Current Quote Regex-based Grounding 的同义词 hard-coding 已出现边际收益递减，并采用 `TextPart + FactReferencePart + deterministic renderer`。后续 Review 进一步确认 V1 不以逐自然语言 Claim 的形式化验证为目标，因此将该中间方案收敛为最小的 Free-form Answer + Structured Source References。
 
-- 新增内部 `TextPart`、`FactReferencePart(CURRENT_QUOTE, ticker)`、严格 JSON Parser、Fact Resolver 与确定性 Renderer；FactRef 不包含且拒绝 LLM 生成的 `price`。
-- Quote Tool Result 不再向 LLM 暴露 last / bid / ask price，只暴露 Fact Reference 身份、Source Metadata 与代码派生关系；Application 继续持有完整 Quote。
-- FactRef 必须匹配本轮同 ticker 的成功 Quote Result。缺失 Result、Provider Failure、wrong ticker 或非法 Structured Answer 进入现有一次 Repair，仍失败则形成 Request Failure。
-- Backend 将 Quote value 渲染后继续返回兼容的 `answer: str`，Public API 与 Source Tracking Shape 不变。
-- 删除 Current Quote 自然语言 claim Regex 与对应同义词依赖；其他未迁移事实的 Guard 行为保持原状。
-- Regression 覆盖正常解析、Schema 禁止 price、无 Tool Result、Provider Failure、wrong ticker、中文无空格、中文同义词、英文表达、纯文本非法 Completion Repair，以及 Existing M4 行为。
-- Automated Review 补强内部 key 与 Tool Result payload ticker 不一致的拒绝路径，并确认 Quote 数值未进入 LLM Tool Context、Current Quote Regex 已不再参与 correctness path、Public Source Tracking 仍由实际 Tool Result 生成。
-- Review 后默认全量 pytest：291 passed、33 skipped；Ruff format / lint 与 mypy strict（51 source files）全部通过。
+- Final Completion Contract 为 `{answer: string, source_refs: SourceReference[]}`。Backend 严格解析外层 JSON，但不扫描或改写 `answer` 的自然语言和金融数字。
+- Source Reference 统一覆盖 `PORTFOLIO_SNAPSHOT`、`CURRENT_QUOTE(ticker)`、`PRICE_HISTORY(ticker)` 与 `RECENT_NEWS(ticker)`；每个声明必须绑定本轮成功取得的 Context。缺失 Result、Provider Failure、wrong ticker 或非法结构进入一次 Repair，仍失败则形成 Request Failure。
+- Quote Tool Result 重新向 LLM 提供 last / bid / ask price、Source Metadata 与代码派生关系。Portfolio / Ledger / Market Data / Derived Facts 继续由确定性代码持有和校验。
+- Public API Shape 不变。Final `sources` 只纳入模型声明且验证成功的 Context，并按实际获取顺序稳定输出；失败 Tool Attempt 保留 status 以维持既有 `DEGRADED` 可观测性，但不能被声明为成功 Source。
+- 删除自然语言金融数字、购买能力、显式关系与 Price History Direction Guard；Current Quote Regex 和同义词表不再存在。自然语言 Grounding 质量转入 Prompt、Behavioral Eval 与 Human Review。
+- Non-Goals：inline citation、claim-to-evidence mapping、Citation UI、Earnings、Fundamentals、Market Context，以及把所有回答事实结构化。
+- Regression 覆盖正常 Quote Source、无 Tool Result、Provider Failure、wrong ticker、中文无空格、中文同义词、英文表达、Portfolio / History / News 统一 Source Tracking，以及成功但未声明 Context 的过滤。
+- Automated Review 确认成功 Source 只能来自声明与实际 Context 的交集；为避免吞掉既有 Failure Taxonomy，失败 Tool Attempt 继续出现在 Public `sources` 并携带非 `OK` status，但不会进入可声明 Source 集合。Repair Payload 也从旧 `guard_violations` 收敛为 `validation_errors`。
+- Review 后默认全量 pytest：269 passed、33 skipped；Ruff format / lint 与 mypy strict（49 source files）全部通过。
 
-该修改是既有 Grounding Boundary 的收紧，不新增 Provider、Framework 或公共 API 决策，因此不新增 ADR。
+该修改是已批准 Grounding Boundary 的职责收敛，不新增 Provider、Framework 或公共 API 决策，因此不新增 ADR。
