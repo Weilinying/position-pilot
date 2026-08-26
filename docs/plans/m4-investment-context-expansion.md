@@ -345,7 +345,7 @@ Alpaca / Benzinga News Provider、独立 NewsService Boundary、5 日 / 5 篇窗
 2026-08-26 Human Review 发现并修复三个跨 Slice 的确定性缺陷：
 
 - Historical Adapter 原先使用 `sort=asc + limit=30`，在 45 日窗口超过 30 根 Bar 时会截掉最新数据。现改为 `sort=desc` 获取最新 N 根，并在 Adapter Boundary 反转为 Domain 严格升序；Regression 同时验证真正最新的 `latest_close` 与 `period_end`。
-- Final Response Guard 原先只保存全局允许数字集合，导致 Cash、Average Cost、其他 ticker Quote 或 History bar count 可以凭数值相同冒充 Current Quote。现以 type、ticker、field、source 保存 Grounded Fact，并对低歧义 Current Quote 陈述执行语义归属校验。
+- Final Response Guard 原先只保存全局允许数字集合，导致 Cash、Average Cost、其他 ticker Quote 或 History bar count 可以凭数值相同冒充 Current Quote。第一轮修复曾以 type、ticker、field、source 保存 Grounded Fact，并用低歧义 Regex 校验 Quote 陈述；后续同义词与 Unicode 边界 Failure 证明该自然语言路径仍不闭环，最终由第 14 节的 Structured Fact Reference 取代。
 - Cash Event 原先允许未来 `occurred_at` 立即进入 Combined Replay。PortfolioService 现使用可注入 Clock，在确认 User 后、读取 Ledger 和写入前拒绝 future-dated Cash Event；Scheduled Cash Adjustment 保持 Non-Goal。
 
 这些修改均收紧既有 Source of Truth、Recent History 与 Grounding Invariants，不改变已批准产品语义，不新增 ADR。
@@ -355,3 +355,18 @@ Automated Review 进一步发现 future-time 校验若早于 User lookup，会�
 后续 Guard Review 发现 Unicode `\b` 会漏掉 `GOOG当前价格` / `GOOG的当前价格` 的 ticker，而全局 `IGNORECASE` 会把 `The current price` 中的 `The` 误识别为 ticker。Parser 已改用严格大写 ticker 的 ASCII 相邻边界，并把大小写忽略限制在自然语言短语；Unit 与完整 Agent Regression 同时覆盖 False Negative 和 False Positive。
 
 Review 后验证：默认全量 pytest 为 277 passed、33 skipped；Ruff format / lint、mypy strict（49 source files）、`uv lock --check`、Alembic head / history 与 `git diff --check` 全部通过。
+
+## 14. Current Quote Structured Fact Reference
+
+2026-08-26 后续 Human Review 确认 Current Quote 的 Regex-based Grounding 已出现同义词 hard-coding 的边际收益递减，并批准迁移为最小 Structured Answer Parts Vertical Slice。
+
+- 新增内部 `TextPart`、`FactReferencePart(CURRENT_QUOTE, ticker)`、严格 JSON Parser、Fact Resolver 与确定性 Renderer；FactRef 不包含且拒绝 LLM 生成的 `price`。
+- Quote Tool Result 不再向 LLM 暴露 last / bid / ask price，只暴露 Fact Reference 身份、Source Metadata 与代码派生关系；Application 继续持有完整 Quote。
+- FactRef 必须匹配本轮同 ticker 的成功 Quote Result。缺失 Result、Provider Failure、wrong ticker 或非法 Structured Answer 进入现有一次 Repair，仍失败则形成 Request Failure。
+- Backend 将 Quote value 渲染后继续返回兼容的 `answer: str`，Public API 与 Source Tracking Shape 不变。
+- 删除 Current Quote 自然语言 claim Regex 与对应同义词依赖；其他未迁移事实的 Guard 行为保持原状。
+- Regression 覆盖正常解析、Schema 禁止 price、无 Tool Result、Provider Failure、wrong ticker、中文无空格、中文同义词、英文表达、纯文本非法 Completion Repair，以及 Existing M4 行为。
+- Automated Review 补强内部 key 与 Tool Result payload ticker 不一致的拒绝路径，并确认 Quote 数值未进入 LLM Tool Context、Current Quote Regex 已不再参与 correctness path、Public Source Tracking 仍由实际 Tool Result 生成。
+- Review 后默认全量 pytest：291 passed、33 skipped；Ruff format / lint 与 mypy strict（51 source files）全部通过。
+
+该修改是既有 Grounding Boundary 的收紧，不新增 Provider、Framework 或公共 API 决策，因此不新增 ADR。

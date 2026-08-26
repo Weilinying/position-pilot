@@ -10,6 +10,13 @@ from time import monotonic
 from typing import Protocol
 from uuid import UUID
 
+from position_pilot.application.investment_answer import (
+    InvalidStructuredAnswer,
+    UnresolvedFactReference,
+    parse_structured_answer,
+    resolve_structured_answer,
+    structured_answer_schema,
+)
 from position_pilot.application.investment_context import (
     M4_CONTEXT_CAPABILITIES,
     PortfolioSnapshot,
@@ -21,6 +28,8 @@ from position_pilot.application.investment_context import (
     recent_price_history_response_contract,
 )
 from position_pilot.application.investment_response_guard import (
+    GroundingViolation,
+    GroundingViolationCode,
     build_repair_instruction,
     validate_final_response,
 )
@@ -92,6 +101,12 @@ SYSTEM_PROMPT = "\n".join(
         ),
         "8. 当前价格、历史价格与新闻只来自对应成功 Tool Result；失败或缺失必须明确为 UNKNOWN。",
         "9. 回答自然地区分事实、推断和未知信息，不要求固定标题。",
+        "10. 所有 Final Response 必须是符合 structured_answer_schema 的单一 JSON object。",
+        "TextPart 只负责解释和自然语言连接；不得在 TextPart 中复制或生成 Current Quote 数值。",
+        (
+            "需要呈现 Current Quote 时必须使用 fact_ref(CURRENT_QUOTE, ticker)，"
+            "且不得添加 price 字段；Application 会校验引用并填充 authoritative value。"
+        ),
         "cash_vs_one_share_price 只表示数值关系，不表示交易资格、能否成交或可买至少一股。",
         "executable_purchase_quantity=UNKNOWN 时，只能说明实际可执行购买数量未知。",
     )
@@ -473,14 +488,15 @@ class InvestmentAgent:
         """确定性检查 Final Response，并最多执行一次 No-Tool Repair。"""
 
         content = self._require_final_content(final_message)
-        violations = validate_final_response(
+        rendered_content, violations = self._evaluate_structured_response(
             content,
             snapshot,
             market_results_by_ticker,
             historical_results_by_ticker,
         )
         if not violations:
-            return content
+            assert rendered_content is not None
+            return rendered_content
 
         LOGGER.warning(
             "investment_agent_response_guard_failed",
@@ -489,10 +505,12 @@ class InvestmentAgent:
                 "violation_codes": [violation.code.value for violation in violations],
             },
         )
+        repair_payload = build_repair_instruction(violations)
+        repair_payload["structured_answer_schema"] = structured_answer_schema()
         repair_message = LLMMessage(
             LLMRole.USER,
             json.dumps(
-                build_repair_instruction(violations),
+                repair_payload,
                 ensure_ascii=False,
                 sort_keys=True,
             ),
@@ -512,7 +530,7 @@ class InvestmentAgent:
             )
 
         repaired_content = self._require_final_content(repaired_message)
-        remaining_violations = validate_final_response(
+        rendered_repaired_content, remaining_violations = self._evaluate_structured_response(
             repaired_content,
             snapshot,
             market_results_by_ticker,
@@ -531,7 +549,46 @@ class InvestmentAgent:
                 "LLM Final Response 在一次 Repair 后仍违反 Grounding Contract",
             )
         LOGGER.info("investment_agent_response_repaired", extra={"repair_attempt": 1})
-        return repaired_content
+        assert rendered_repaired_content is not None
+        return rendered_repaired_content
+
+    @staticmethod
+    def _evaluate_structured_response(
+        content: str,
+        snapshot: PortfolioSnapshot,
+        market_results_by_ticker: dict[str, MarketDataResult[MarketQuote]],
+        historical_results_by_ticker: dict[str, MarketDataResult[HistoricalBars]],
+    ) -> tuple[str | None, tuple[GroundingViolation, ...]]:
+        """解析 Fact References、确定性渲染，再校验剩余 LLM Text。"""
+
+        try:
+            structured_answer = parse_structured_answer(content)
+        except InvalidStructuredAnswer as error:
+            return None, (
+                GroundingViolation(
+                    GroundingViolationCode.INVALID_STRUCTURED_ANSWER,
+                    str(error),
+                ),
+            )
+        try:
+            resolved_answer = resolve_structured_answer(
+                structured_answer,
+                market_results_by_ticker,
+            )
+        except UnresolvedFactReference as error:
+            return None, (
+                GroundingViolation(
+                    GroundingViolationCode.UNRESOLVED_FACT_REFERENCE,
+                    str(error),
+                ),
+            )
+        violations = validate_final_response(
+            resolved_answer.llm_text,
+            snapshot,
+            market_results_by_ticker,
+            historical_results_by_ticker,
+        )
+        return resolved_answer.answer, violations
 
     @staticmethod
     def _initial_messages(
@@ -545,6 +602,7 @@ class InvestmentAgent:
                 "decision_context": m3_decision_context(),
                 "portfolio_snapshot": snapshot.as_dict(),
                 "response_contract": m3_response_contract(),
+                "structured_answer_schema": structured_answer_schema(),
             },
             ensure_ascii=False,
             sort_keys=True,
@@ -599,9 +657,11 @@ class InvestmentAgent:
                 "status": result.status.value,
                 "current_market_fact_available": True,
                 "ticker": quote.ticker,
-                "last_price": str(quote.last_price),
-                "bid_price": str(quote.bid_price) if quote.bid_price is not None else None,
-                "ask_price": str(quote.ask_price) if quote.ask_price is not None else None,
+                "available_fact_reference": {
+                    "fact_type": "CURRENT_QUOTE",
+                    "ticker": quote.ticker,
+                },
+                "authoritative_quote_value_in_llm_context": False,
                 "last_trade_at": quote.last_trade_at.isoformat(),
                 "quote_at": quote.quote_at.isoformat() if quote.quote_at else None,
                 "source": quote.source,

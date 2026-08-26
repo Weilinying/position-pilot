@@ -313,6 +313,8 @@ def quote_response_contract() -> dict[str, object]:
     """在最接近 Final Completion 的 Tool Result 中重申可验证边界。"""
 
     return {
+        "current_quote_value_rendering": "BACKEND_FACT_REFERENCE_ONLY",
+        "current_quote_value_in_text_part": "PROHIBITED",
         "cross_ticker_quote_comparison": "PROHIBITED_UNLESS_PROVIDED",
         "new_financial_calculations": "PROHIBITED",
         "purchase_execution_conclusion": "PROHIBITED",

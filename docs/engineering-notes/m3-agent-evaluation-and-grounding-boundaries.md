@@ -33,13 +33,12 @@
     1.  回答中出现了 Context 未提供的明确金融数值。
     2.  回答形成了明确的购买能力或“整股可执行性”结论。
     3.  回答显式复述了结构化的数值关系（如 Cash 与 Quote 的关系，或 Quote 与均价的关系），但与后端派生事实（Derived Fact）完全相反。
-    4.  回答明确把某个数值声明为指定 ticker 的 Current Quote，但该数值不能绑定到同一 ticker 的成功 Quote Source。Guard 内部事实必须保留 type、ticker、field 与 source；仅仅“某个相同数值存在于 Context”不构成 Grounding。
+    4.  `CURRENT_QUOTE(ticker)` Fact Reference 无法绑定到本轮同 ticker 的成功 Quote Source。Authoritative price 由 Application 解析和渲染，不再由 Guard 从自然语言中识别。
 
 ### 3. 拦截器策略收缩 (Guard 收缩)
 *   **踩过的坑：** Guard 曾尝试使用复杂的正则表达式（Regex）去检测“略高”、“微利”、“显著”等词汇，以及识别跨 Ticker 的开放式比较，甚至试图从复杂句式中推断操作数。这导致代码层面的 Guard 退化成了一个“自然语言启发式审核器 (Natural-language Heuristic Reviewer)”，并引发了实际的误报（False Positive）。
 *   **最终决定：** 彻底删除这些生产环境的阻断规则，以减少无意义的 Repair 修复、额外的 LLM 调用开销、Regex 的复杂度，并消除 Prompt/Guard 之间的重复逻辑。
-*   **事实身份例外：** “Ticker + 当前价格 + 明确数值”可以用低歧义规则提取，并能与结构化 Quote Source 精确比较，因此属于 System Contract，不属于开放式自然语言审核。该规则不得扩张为通用语义分类器。
-*   **Parser 边界：** Ticker 与中文相邻时不能使用 Unicode `\b`，因为英文字母和汉字都属于 word character；ticker 使用 ASCII 相邻边界并保持严格大写，大小写忽略只作用于“current price”等自然语言短语。禁止让全局 `IGNORECASE` 把 `The` 一类普通英文词误识别为 ticker，也禁止在明确 ticker 解析失败后静默归给唯一 Quote。
+*   **事实身份演进：** M4 曾尝试用“Ticker + 当前价格关键词 + 明确数值”的 Regex 绑定 Quote Source，但连续暴露 Unicode `\b` 中文边界、全局 `IGNORECASE` 把 `The` 识别为 ticker，以及“当前股价 / current stock price”等同义表达缺口。继续扩词表只会降低 Precision 并产生边际收益递减，因此 Current Quote 已迁移到 Structured Fact Reference；相关自然语言 Regex 已删除。
 *   **遗留处理：** 对于“关系幅度词汇、开放式语义比较、回答完整度、投资建议质量、仓位个性化程度、语言风格”等自然语言层面的问题，继续交由 Behavioral Eval（行为评估）或 Human Review（人工审查）去观察，后端代码不再强行介入。
 
 ---
@@ -85,3 +84,19 @@
 
 ## Summary
 Eval 遇到 failure 时是看LLM的回答是什么样的问题，如果是模型行为质量相关的问题，那么可以不用在代码/prompt里进行修改，因为这可能能随着模型的更换或者上下文信息量（证据）的增加而改善。核心就是“如果换成一个行为极好的完美模型，系统是否仍必须强制保证这件事？”如果是的话才需要进行修改。因为你永远写不完拦截规则。
+
+## M4 Current Quote Structured Fact Reference
+
+### Problem
+
+Quote Grounding 先后用全局 Decimal allow-list 和 Current Quote 自然语言 Regex 尝试事后证明数值来源。前者丢失 fact type / ticker / source，后者需要持续 hard-code 中文边界、大小写和同义词，既能漏放错误 ticker，也会误拦正确英文回答。
+
+### Decision
+
+LLM Final Completion 改为严格 JSON Answer Parts。`TextPart` 只承担解释和连接；`FactReferencePart` 当前只允许 `CURRENT_QUOTE + ticker`，Schema 不包含也拒绝 `price`。成功 Quote Tool Result 向 LLM 隐藏 authoritative price，只提供可引用 Fact 身份与派生关系；Application 持有完整 Quote，校验同 ticker 成功 Result，填充值并渲染最终字符串。无 Result、Provider Failure、wrong ticker 或非法 Parts 使用现有一次 Repair，仍失败则返回 `LLM_INVALID_PROVIDER_RESPONSE`。
+
+当前 Aliyun Adapter 不依赖 Provider-native `response_format`：Assistant `content` 使用严格 JSON Contract，由 Application 解析。这复用已存在的 OpenAI-compatible 消息能力，不增加 SDK 或 Provider 特有类型。
+
+### Boundary / Future
+
+本次只迁移 CURRENT_QUOTE。Cash、Average Cost、Position Value、Price History 与 News 继续使用现有 Context / Guard；它们只有在真实 Eval 证明相同 Failure Mode 时才逐类迁移。LLM 选择引用哪个 Fact 并解释含义；Application 独占 authoritative value、Fact Resolution、Validation、Rendering 与 Source Tracking。

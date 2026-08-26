@@ -16,6 +16,12 @@ from position_pilot.application.investment_agent import (
     InvestmentRequestFailure,
     InvestmentResponseStatus,
 )
+from position_pilot.application.investment_answer import (
+    InvalidStructuredAnswer,
+    UnresolvedFactReference,
+    parse_structured_answer,
+    resolve_structured_answer,
+)
 from position_pilot.application.investment_context import PortfolioSnapshot
 from position_pilot.application.investment_response_guard import validate_final_response
 from position_pilot.application.llm import (
@@ -163,8 +169,22 @@ def guard_failure_diagnostics(
         if result.completion is None or result.completion.message.content is None:
             continue
         content = result.completion.message.content
+        try:
+            structured_answer = parse_structured_answer(content)
+            resolved_answer = resolve_structured_answer(
+                structured_answer,
+                case.market_results,
+            )
+        except (InvalidStructuredAnswer, UnresolvedFactReference) as error:
+            diagnostics.append(
+                {
+                    "completion_index": completion_index,
+                    "structured_answer_error": str(error),
+                }
+            )
+            continue
         violations = validate_final_response(
-            content,
+            resolved_answer.llm_text,
             snapshot,
             case.market_results,
             case.historical_results,
@@ -172,7 +192,7 @@ def guard_failure_diagnostics(
         diagnostics.append(
             {
                 "completion_index": completion_index,
-                "answer": content,
+                "answer": resolved_answer.answer,
                 "guard_violations": [violation.as_dict() for violation in violations],
             }
         )

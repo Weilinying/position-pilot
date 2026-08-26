@@ -6,6 +6,14 @@ from uuid import UUID
 
 import pytest
 
+from position_pilot.application.investment_answer import (
+    AnswerFactType,
+    FactReferencePart,
+    StructuredInvestmentAnswer,
+    TextPart,
+    UnresolvedFactReference,
+    resolve_structured_answer,
+)
 from position_pilot.application.investment_context import PortfolioSnapshot
 from position_pilot.application.investment_response_guard import (
     GroundingViolationCode,
@@ -130,8 +138,7 @@ def test_accepts_only_provided_numbers_relations_and_unknown_execution() -> None
     """已提供事实的原样解释不得被 Guard 误拒绝。"""
 
     answer = (
-        "GOOG 当前价格为 210.25 USD，可用现金为 300 USD。"
-        "现金数值高于单股报价。"
+        "可用现金为 300 USD。现金数值高于单股报价。"
         "LONG_TERM 当前价格高于平均成本 200，SWING 当前价格低于平均成本 220。"
         "实际可执行购买数量为 UNKNOWN。"
     )
@@ -140,39 +147,37 @@ def test_accepts_only_provided_numbers_relations_and_unknown_execution() -> None
 
 
 def test_rejects_available_cash_presented_as_current_quote_without_quote_source() -> None:
-    """Portfolio Cash 数值不得在无 Quote Source 时冒充当前价格。"""
+    """Portfolio Cash 数值不得解析无 Quote Source 的 Fact Reference。"""
 
-    violations = validate_final_response(
-        "GOOG 当前价格为 300 美元。",
-        snapshot(),
-        {},
-    )
+    answer = StructuredInvestmentAnswer((FactReferencePart(AnswerFactType.CURRENT_QUOTE, "GOOG"),))
 
-    assert GroundingViolationCode.CURRENT_QUOTE_FACT_MISMATCH in {
-        violation.code for violation in violations
-    }
+    with pytest.raises(UnresolvedFactReference):
+        resolve_structured_answer(answer, {})
 
 
 def test_rejects_average_cost_presented_as_current_quote() -> None:
-    """同 ticker 的 Average Cost 不得冒充已获取的 last_price。"""
+    """Fact Reference 只能渲染 Quote last_price，不能选择 Average Cost。"""
 
-    codes = violation_codes("GOOG 当前价格为 200 美元。")
+    answer = StructuredInvestmentAnswer(
+        (
+            TextPart("GOOG 当前价格为 "),
+            FactReferencePart(AnswerFactType.CURRENT_QUOTE, "GOOG"),
+        )
+    )
 
-    assert GroundingViolationCode.CURRENT_QUOTE_FACT_MISMATCH in codes
+    resolved = resolve_structured_answer(answer, {"GOOG": quote("GOOG", "210.25")})
+
+    assert resolved.answer == "GOOG 当前价格为 210.25 USD"
+    assert "200" not in resolved.answer
 
 
 def test_rejects_other_ticker_quote_presented_as_current_quote() -> None:
-    """数值相同也不能跨 ticker 复用 Current Quote Source。"""
+    """MSFT Quote 不得解析 GOOG Current Quote Fact Reference。"""
 
-    violations = validate_final_response(
-        "GOOG 当前价格为 210.25 美元。",
-        snapshot(),
-        {"MSFT": quote("MSFT", "210.25")},
-    )
+    answer = StructuredInvestmentAnswer((FactReferencePart(AnswerFactType.CURRENT_QUOTE, "GOOG"),))
 
-    assert GroundingViolationCode.CURRENT_QUOTE_FACT_MISMATCH in {
-        violation.code for violation in violations
-    }
+    with pytest.raises(UnresolvedFactReference):
+        resolve_structured_answer(answer, {"MSFT": quote("MSFT", "210.25")})
 
 
 @pytest.mark.parametrize(
@@ -185,69 +190,42 @@ def test_rejects_other_ticker_quote_presented_as_current_quote() -> None:
 def test_rejects_contiguous_chinese_ticker_claim_using_other_quote(
     answer: str,
 ) -> None:
-    """Unicode 相邻字符不得让明确 ticker 丢失并回退到唯一 Quote。"""
+    """Text 表达不再负责 ticker 解析，Fact Reference 必须匹配 Tool Result。"""
 
-    violations = validate_final_response(
-        answer,
-        snapshot(),
-        {"MSFT": quote("MSFT", "500.50")},
+    structured = StructuredInvestmentAnswer(
+        (
+            TextPart(answer.replace("500.50 美元。", "")),
+            FactReferencePart(AnswerFactType.CURRENT_QUOTE, "GOOG"),
+        )
     )
 
-    assert GroundingViolationCode.CURRENT_QUOTE_FACT_MISMATCH in {
-        violation.code for violation in violations
-    }
+    with pytest.raises(UnresolvedFactReference):
+        resolve_structured_answer(structured, {"MSFT": quote("MSFT", "500.50")})
 
 
 def test_accepts_english_article_before_grounded_current_price() -> None:
-    """英文冠词不得因全局大小写忽略被误识别为 ticker。"""
+    """英文冠词只属于 TextPart，不参与 ticker Fact Resolution。"""
 
-    violations = validate_final_response(
-        "The current price is 210.25 USD.",
-        snapshot(),
-        {"GOOG": quote("GOOG", "210.25")},
+    answer = StructuredInvestmentAnswer(
+        (
+            TextPart("The current price is "),
+            FactReferencePart(AnswerFactType.CURRENT_QUOTE, "GOOG"),
+            TextPart("."),
+        )
     )
 
-    assert violations == ()
+    resolved = resolve_structured_answer(answer, {"GOOG": quote("GOOG", "210.25")})
+
+    assert resolved.answer == "The current price is 210.25 USD."
 
 
 def test_rejects_price_history_bar_count_presented_as_current_quote() -> None:
-    """Price History 的 bar_count 不得仅凭数值相等冒充 Current Quote。"""
+    """Price History bar_count 不得解析 Current Quote Fact Reference。"""
 
-    bars = tuple(
-        OHLCVBar(
-            NOW - timedelta(days=29 - index),
-            Decimal("200"),
-            Decimal("205"),
-            Decimal("198"),
-            Decimal("202"),
-            1000,
-        )
-        for index in range(30)
-    )
-    history = MarketDataResult.success(
-        HistoricalBars(
-            ticker="GOOG",
-            timeframe="1Day",
-            bars=bars,
-            source="FAKE_GUARD",
-            feed="FIXED",
-            coverage=MarketDataCoverage.SINGLE_EXCHANGE,
-            currency="USD",
-            adjustment="ALL",
-            fetched_at=NOW,
-        )
-    )
+    answer = StructuredInvestmentAnswer((FactReferencePart(AnswerFactType.CURRENT_QUOTE, "GOOG"),))
 
-    violations = validate_final_response(
-        "GOOG 当前价格为 30 美元。",
-        snapshot(),
-        {},
-        {"GOOG": history},
-    )
-
-    assert GroundingViolationCode.CURRENT_QUOTE_FACT_MISMATCH in {
-        violation.code for violation in violations
-    }
+    with pytest.raises(UnresolvedFactReference):
+        resolve_structured_answer(answer, {})
 
 
 def test_rejects_financial_numbers_not_present_in_context() -> None:
@@ -365,7 +343,7 @@ def test_accepts_grounded_quote_timestamp_components() -> None:
 def test_does_not_treat_list_ordinals_as_new_financial_numbers() -> None:
     """回答结构编号不是金融计算结果。"""
 
-    answer = "1. 当前价格为 210.25 USD。\n2. 实际可执行购买数量为 UNKNOWN。"
+    answer = "1. 可用现金为 300 USD。\n2. 实际可执行购买数量为 UNKNOWN。"
 
     assert violation_codes(answer) == set()
 

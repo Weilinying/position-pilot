@@ -50,13 +50,6 @@ _BUYING_POWER_PATTERNS = tuple(
 )
 _RELATION_VALUES_PATTERN = r"(ABOVE|BELOW|EQUAL)"
 _PRICE_DIRECTION_VALUES_PATTERN = r"(UP|DOWN|FLAT)"
-_TICKER_PATTERN = r"(?<![A-Za-z0-9])[A-Z][A-Z0-9.-]{0,9}(?![A-Za-z0-9.-])"
-_CURRENT_QUOTE_CLAIM_PATTERN = re.compile(
-    rf"(?:(?P<ticker>{_TICKER_PATTERN})\s*(?:的\s*)?)?"
-    r"(?i:(?:当前(?:价格|报价)|现价|current\s+(?:price|quote)|last\s+price)"
-    r"\s*(?:为|是|=|:|is)?\s*(?:USD\s*)?[$¥￥]?\s*)"
-    r"(?P<value>[-+]?\d[\d,]*(?:\.\d+)?)"
-)
 
 
 class GroundingViolationCode(StrEnum):
@@ -67,7 +60,8 @@ class GroundingViolationCode(StrEnum):
     CASH_QUOTE_RELATION_CONTRADICTION = "CASH_QUOTE_RELATION_CONTRADICTION"
     PRICE_COST_RELATION_CONTRADICTION = "PRICE_COST_RELATION_CONTRADICTION"
     PRICE_HISTORY_DIRECTION_CONTRADICTION = "PRICE_HISTORY_DIRECTION_CONTRADICTION"
-    CURRENT_QUOTE_FACT_MISMATCH = "CURRENT_QUOTE_FACT_MISMATCH"
+    INVALID_STRUCTURED_ANSWER = "INVALID_STRUCTURED_ANSWER"
+    UNRESOLVED_FACT_REFERENCE = "UNRESOLVED_FACT_REFERENCE"
 
 
 _REPAIR_INSTRUCTION_BY_CODE = {
@@ -88,9 +82,12 @@ _REPAIR_INSTRUCTION_BY_CODE = {
     GroundingViolationCode.PRICE_HISTORY_DIRECTION_CONTRADICTION: (
         "按 Guard 消息给出的代码方向原样修正 Price History 首尾收盘价方向。"
     ),
-    GroundingViolationCode.CURRENT_QUOTE_FACT_MISMATCH: (
-        "删除或修正无法绑定到同一 ticker 成功 Current Quote Source 的当前价格陈述；"
-        "不得用 Cash、Average Cost、Price History 或其他 ticker 的数值替代。"
+    GroundingViolationCode.INVALID_STRUCTURED_ANSWER: (
+        "严格按提供的 Structured Answer JSON Schema 返回 parts；不要返回 Markdown 或纯文本。"
+    ),
+    GroundingViolationCode.UNRESOLVED_FACT_REFERENCE: (
+        "删除无法绑定到本轮成功 Tool Result 的 Fact Reference，或将该事实保持为 UNKNOWN；"
+        "不得复制、猜测或替换 authoritative value。"
     ),
 }
 
@@ -112,7 +109,6 @@ class _FinancialFactType(StrEnum):
     """Guard 内部用于保留金融数字语义与来源的事实类型。"""
 
     PORTFOLIO = "PORTFOLIO"
-    CURRENT_QUOTE = "CURRENT_QUOTE"
     PRICE_HISTORY = "PRICE_HISTORY"
     SYSTEM = "SYSTEM"
 
@@ -147,14 +143,6 @@ def validate_final_response(
         )
     )
     violations.extend(_buying_power_violations(answer))
-    violations.extend(
-        _current_quote_fact_violations(
-            answer,
-            snapshot,
-            market_results_by_ticker,
-            historical_results,
-        )
-    )
     violations.extend(_cash_quote_relation_violations(answer, snapshot, market_results_by_ticker))
     violations.extend(_price_cost_relation_violations(answer, snapshot, market_results_by_ticker))
     violations.extend(_price_history_direction_violations(answer, historical_results))
@@ -224,55 +212,6 @@ def _buying_power_violations(answer: str) -> list[GroundingViolation]:
             "回答把 Cash/Quote 数值关系解释成了购买能力或整股可执行性",
         )
     ]
-
-
-def _current_quote_fact_violations(
-    answer: str,
-    snapshot: PortfolioSnapshot,
-    market_results_by_ticker: Mapping[str, MarketDataResult[MarketQuote]],
-    historical_results_by_ticker: Mapping[str, MarketDataResult[HistoricalBars]],
-) -> list[GroundingViolation]:
-    """只接受与同一 ticker 成功 Quote Source 绑定的当前价格数值。"""
-
-    quote_facts = {
-        fact.ticker: fact
-        for fact in _grounded_financial_facts(
-            snapshot,
-            market_results_by_ticker,
-            historical_results_by_ticker,
-        )
-        if fact.fact_type is _FinancialFactType.CURRENT_QUOTE and fact.field == "last_price"
-    }
-    violations: list[GroundingViolation] = []
-    for match in _CURRENT_QUOTE_CLAIM_PATTERN.finditer(answer):
-        value = _parse_decimal(match.group("value"))
-        if value is None:
-            continue
-        raw_ticker = match.group("ticker")
-        ticker = raw_ticker.upper() if raw_ticker is not None else None
-        if ticker is None and len(quote_facts) == 1:
-            ticker = next(iter(quote_facts))
-        fact = quote_facts.get(ticker)
-        if fact is None:
-            owner = ticker or "未明确 ticker"
-            violations.append(
-                GroundingViolation(
-                    GroundingViolationCode.CURRENT_QUOTE_FACT_MISMATCH,
-                    f"回答声称 {owner} 当前价格 {value}，但没有对应的成功 Current Quote Source",
-                )
-            )
-            continue
-        if value != fact.value:
-            violations.append(
-                GroundingViolation(
-                    GroundingViolationCode.CURRENT_QUOTE_FACT_MISMATCH,
-                    (
-                        f"回答声称 {fact.ticker} 当前价格 {value}，但对应 Current Quote "
-                        f"Source 的 last_price 为 {fact.value}"
-                    ),
-                )
-            )
-    return violations
 
 
 def _cash_quote_relation_violations(
@@ -460,36 +399,6 @@ def _grounded_financial_facts(
         )
         for ticker, weight in facts.position_cost_basis_weight_by_ticker
     )
-    for quote in _successful_quotes(market_results_by_ticker).values():
-        grounded.append(
-            _GroundedFinancialFact(
-                _FinancialFactType.CURRENT_QUOTE,
-                quote.ticker,
-                "last_price",
-                quote.last_price,
-                quote.source,
-            )
-        )
-        if quote.bid_price is not None:
-            grounded.append(
-                _GroundedFinancialFact(
-                    _FinancialFactType.CURRENT_QUOTE,
-                    quote.ticker,
-                    "bid_price",
-                    quote.bid_price,
-                    quote.source,
-                )
-            )
-        if quote.ask_price is not None:
-            grounded.append(
-                _GroundedFinancialFact(
-                    _FinancialFactType.CURRENT_QUOTE,
-                    quote.ticker,
-                    "ask_price",
-                    quote.ask_price,
-                    quote.source,
-                )
-            )
     for history in _successful_histories(historical_results_by_ticker).values():
         historical_facts = RecentPriceHistoryFacts.from_historical_bars(history)
         grounded.extend(

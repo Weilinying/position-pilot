@@ -2,6 +2,8 @@
 
 本目录的 Cases 使用真实 `AliyunLLMProvider` 与固定 Fake Market / News Data，验证真实模型的 Tool Selection、Portfolio Awareness、Grounding 和 Personalization。它们不属于默认 CI，也不把 Fake LLM Orchestration Test 误称为模型行为验证。
 
+Final Completion 必须返回内部 Structured Answer Parts；Current Quote 通过 `fact_ref(CURRENT_QUOTE, ticker)` 由 Application 填值。Human Review 应检查模型是否用 TextPart 解释、用 FactRef 引用 Quote，且没有在 TextPart 复制 authoritative quote value。
+
 运行前显式导出通用 LLM 配置，并启用开关：
 
 ```bash
