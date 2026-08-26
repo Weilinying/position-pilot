@@ -34,11 +34,13 @@ Reviewer 原则上应审查一个已经通过基础测试和已有质量检查�
 
 ## 3. Codex Subagent
 
-不要为了开发 PositionPilot 预先构建独立 Agent Framework。优先直接使用 Codex 已有能力：explorer 类能力适合代码库探索、依赖分析和测试定位；worker 类能力适合边界清楚的实现、修复和测试任务。
+不要为了开发 PositionPilot 预先构建独立 Agent Framework。优先使用 Codex 已有 explorer / worker 能力；前者适合代码库探索、依赖与测试定位，后者适合边界清楚、验收标准明确的实现、修复和测试任务。
 
-Codex 主线程可以承担 Planning、任务拆分和普通 Review，不要求项目启动前创建自定义 Planner 或 Reviewer。只有出现真实 Failure Mode，例如复杂 Milestone 经常拆错或 Review 持续遗漏同类问题时，才考虑在 `.codex/agents/` 中增加自定义角色。
+Codex subagent 属于开发工具，不属于 PositionPilot 产品架构。主线程负责 Planning、关键判断、最终整合、Automated Review 和 git commit；低判断密度、低耦合且边界明确的任务应优先考虑交给 subagents，以减少主线程上下文和推理开销。
 
-Codex subagent 属于开发工具，不属于 PositionPilot 产品架构。涉及同一核心模块、同一公共接口或存在明确依赖关系的写任务默认串行；只有真正独立且修改范围不冲突的任务才并行。
+涉及同一核心模块、公共接口或存在明确依赖关系的写任务默认串行；只有真正独立且修改范围不冲突的任务才并行。subagents 不得自行执行 `git add`、`git commit`、`git rebase`、`git merge`。
+
+只有出现真实 Failure Mode，例如复杂 Milestone 经常拆错或 Review 持续遗漏同类问题时，才考虑在 `.codex/agents/` 中增加自定义角色。
 
 ## 4. Human Review Gate
 
