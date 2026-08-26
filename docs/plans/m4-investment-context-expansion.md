@@ -339,3 +339,17 @@ Alpaca / Benzinga News Provider、独立 NewsService Boundary、5 日 / 5 篇窗
 
 - News Provider、Service Boundary、固定窗口、no-content policy、attributed reporting / causality boundary、4 次 Tool Budget 与 Public Source Contract 记录于 ADR 0006。
 - 本 Slice 没有引入 Database、Cache、新闻持久化、全文抓取、情绪模型或新 Agent 架构。
+
+## 13. Post-Implementation Correctness Review
+
+2026-08-26 Human Review 发现并修复三个跨 Slice 的确定性缺陷：
+
+- Historical Adapter 原先使用 `sort=asc + limit=30`，在 45 日窗口超过 30 根 Bar 时会截掉最新数据。现改为 `sort=desc` 获取最新 N 根，并在 Adapter Boundary 反转为 Domain 严格升序；Regression 同时验证真正最新的 `latest_close` 与 `period_end`。
+- Final Response Guard 原先只保存全局允许数字集合，导致 Cash、Average Cost、其他 ticker Quote 或 History bar count 可以凭数值相同冒充 Current Quote。现以 type、ticker、field、source 保存 Grounded Fact，并对低歧义 Current Quote 陈述执行语义归属校验。
+- Cash Event 原先允许未来 `occurred_at` 立即进入 Combined Replay。PortfolioService 现使用可注入 Clock，在确认 User 后、读取 Ledger 和写入前拒绝 future-dated Cash Event；Scheduled Cash Adjustment 保持 Non-Goal。
+
+这些修改均收紧既有 Source of Truth、Recent History 与 Grounding Invariants，不改变已批准产品语义，不新增 ADR。
+
+Automated Review 进一步发现 future-time 校验若早于 User lookup，会把未知 User 的既有 404 语义改成 422；实现已调整为先锁定并确认 User，再执行时间校验，同时保持 Ledger 未读取、无效事件未写入。
+
+Review 后验证：默认全量 pytest 为 272 passed、33 skipped；Ruff format / lint、mypy strict（49 source files）、`uv lock --check`、Alembic head / history 与 `git diff --check` 全部通过。

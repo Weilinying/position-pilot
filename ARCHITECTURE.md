@@ -113,7 +113,7 @@ RecordCashEventCommand（DEPOSIT / WITHDRAWAL + amount + occurred_at）
 同一数据库事务追加 Cash Event
 ```
 
-Cash Event amount 必须为正数且最多 8 位小数。`initial_cash` 不在该流程中更新；Application 没有 Cash Event 更新或删除接口，领域记录使用 frozen dataclass 保持 immutable ledger semantics。
+Cash Event amount 必须为正数且最多 8 位小数。Application 使用可注入 Clock 拒绝晚于当前时间的 `occurred_at`，避免尚未发生的资金调整提前进入 Available Cash；预约资金调整不属于当前 Ledger Contract。`initial_cash` 不在该流程中更新；Application 没有 Cash Event 更新或删除接口，领域记录使用 frozen dataclass 保持 immutable ledger semantics。
 
 ## 6. 主要模块
 
@@ -149,10 +149,10 @@ Cash Event amount 必须为正数且最多 8 位小数。`initial_cash` 不在�
 - 每次请求注入结构化 Context Capability Manifest。M4 的 Current Quote、Price History 与 News 可用；Earnings、Fundamentals、Market Context、Technical Analysis、Asset Metadata 和 Sector Classification 仍不可用。
 - Decision Context 将 Trading Plan、Exit Conditions 与 Risk Budget 显式标记为 `UNKNOWN`；它们不是 Conversation Memory，也不由模型从通用知识补足。
 - Agent 每个请求只允许一个 Tool Round，Current Quote、Recent Price History 与 Recent News 合计最多四个调用；仍按问题实际需要选择 Tool，不默认调用全部 Context Tools。不支持 Conversation Memory 或多阶段检索。
-- Recent Price History 的窗口由 Application 固定为截至当前时间至少 15 分钟前的最近 45 个日历日、最多 30 根 Daily Bars。LLM 只能选择 Ticker，不能控制 start、end 或 limit。Application 只提供 Bar 数量、首尾时间与收盘价、区间高低、首尾涨跌额/幅和 `UP / DOWN / FLAT` 方向；最新历史收盘价不等于 Current Quote，Price History 不提供移动平均、RSI、支撑阻力、交易信号或预测。
+- Recent Price History 的窗口由 Application 固定为截至当前时间至少 15 分钟前的最近 45 个日历日、最多 30 根 Daily Bars。Adapter 使用 Provider `sort=desc` 取得窗口内最新 N 根，再反转为 Domain 要求的 timestamp 严格升序，避免较早的 N 根冒充 Recent History。LLM 只能选择 Ticker，不能控制 start、end 或 limit。Application 只提供 Bar 数量、首尾时间与收盘价、区间高低、首尾涨跌额/幅和 `UP / DOWN / FLAT` 方向；最新历史收盘价不等于 Current Quote，Price History 不提供移动平均、RSI、支撑阻力、交易信号或预测。
 - Recent News 的窗口固定为截至当前时间至少 15 分钟前的最近 5 个日历日、最多 5 篇，且请求 `include_content=false`。文章只保留有界 headline、可选 summary、author、URL、reporting source、symbols 与时间戳；Provider Response 也必须服从窗口和条数上限。News Result 是 attributed reporting，不是 PositionPilot 独立验证事实。回答必须保留“来源报道声称”的归因，新闻与价格变化的关系最多是条件式 `INFERENCE`，不能确认用户的价格变化前提、唯一原因或结构化财报事实。
 - `NO_NEWS_FOUND` 只表示当前 Provider 在指定 ticker 和时间窗口内没有返回文章，不表示不存在相关新闻、事件或股价驱动因素。它与认证、限流、Provider 不可用和非法响应保持不同状态。
-- Final Response 返回用户前经过确定性 Guard。首次越界只允许一次不带 Tool Choice 的 Response Repair；Repair 后仍越界返回 `LLM_INVALID_PROVIDER_RESPONSE`。Guard 只阻断高置信的数值、购买能力、显式结构化关系值和 Price History 方向违规，不从开放文本推断操作数，也不替代 Human Behavioral Review。
+- Final Response 返回用户前经过确定性 Guard。首次越界只允许一次不带 Tool Choice 的 Response Repair；Repair 后仍越界返回 `LLM_INVALID_PROVIDER_RESPONSE`。Guard 的金融数值事实保留 type、ticker、field 与 source；可明确解析的 Current Quote 陈述必须匹配同一 ticker 的成功 `last_price`，Cash、Average Cost、Price History 或其他 ticker 的相同数值不能替代 Quote Source。Guard 只阻断高置信的数值、购买能力、显式结构化关系值和 Price History 方向违规，不尝试完成开放式自然语言事实分类，也不替代 Human Behavioral Review。
 - 同一轮内大小写或空白不同的重复调用按 `(tool_name, ticker)` 共用一次 Provider Result，但每个 Native Tool Call 都获得对应 Tool Message。Quote、History 与 News 即使 Ticker 相同仍是三个独立来源。
 - 超出 Portfolio Snapshot、成功 Current Quote、成功 Price History 与 attributed Recent News Tool Result 的事实保持 `UNKNOWN`；新闻报道不得自动升级为系统验证事实。
 - 当前仍无 Trading / Asset Metadata Context；未来 Capability 扩展点为确定性的 `tradable` 与 `fractionable`。不得由 LLM 假设整股或碎股资格，也不由 LLM 计算具体可购买股数。
