@@ -35,6 +35,7 @@ from position_pilot.application.investment_routing import ContextSelectionTrace
 from position_pilot.application.llm import (
     LLMMessage,
     LLMProvider,
+    LLMResponseFormat,
     LLMResult,
     LLMRole,
     LLMStatus,
@@ -71,6 +72,15 @@ NEWS_LOOKBACK_DAYS = 5
 NEWS_LIMIT = 5
 NEWS_END_LAG = timedelta(minutes=15)
 
+
+class QuoteRequestPurpose(StrEnum):
+    """由 LLM 通过 Native Tool Arguments 声明的 Quote 请求语义。"""
+
+    INFORMATION_RETRIEVAL = "INFORMATION_RETRIEVAL"
+    DISCRETIONARY_CURRENT_RISK_ACTION = "DISCRETIONARY_CURRENT_RISK_ACTION"
+    RULE_OR_EXECUTION_CHECK = "RULE_OR_EXECUTION_CHECK"
+
+
 SYSTEM_PROMPT = "\n".join(
     (
         "你是 PositionPilot 的 Single Investment Agent。",
@@ -87,6 +97,12 @@ SYSTEM_PROMPT = "\n".join(
         ),
         "询问今天或现在是否加仓、减仓或建仓，本身即需要 Current Quote；无需用户另行要求报价。",
         "若判断 Current Quote 必要且 Tool 可用，必须立即调用，不得询问用户是否需要调用。",
+        (
+            "每次 get_current_quote 调用必须声明 request_purpose：纯价格或购买能力事实使用 "
+            "INFORMATION_RETRIEVAL；没有明确既定交易规则、并要求判断当前是否应该增加或减少"
+            "风险暴露时使用 DISCRETIONARY_CURRENT_RISK_ACTION；按既定规则确认或执行已决定动作"
+            "时使用 RULE_OR_EXECUTION_CHECK。"
+        ),
         "Quote 对异动原因或最新财报不提供新证据时不得调用。",
         (
             "6. 判断近期价格路径、近一个月涨跌或区间高低时，必须调用 "
@@ -105,9 +121,14 @@ SYSTEM_PROMPT = "\n".join(
             "不表示不存在相关新闻、事件或股价驱动因素。"
         ),
         (
-            "8. 当前建仓、加仓、减仓、整体市场风险或 Market Regime 问题必须调用 "
-            "get_market_context；纯报价、Portfolio Facts、Recent Price History 或 Recent News "
-            "问题不得机械调用。"
+            "8. Market Context 是 Portfolio Risk Context / risk modifier，不是所有交易动作的"
+            "通用前置条件。没有明确既定交易规则、并要求判断当前是否应该增加或减少风险暴露"
+            "时，get_market_context 属于 minimum decision context。"
+        ),
+        (
+            "纯报价、Portfolio Facts、购买能力或 Cash/Quote 数值关系、Recent Price History、"
+            "Recent News，以及按明确 Strategy / Trade Plan / Exit Rule 确认或执行动作时，"
+            "不得仅因出现建仓、加仓或减仓字样机械调用 Market Context。"
         ),
         "Market Context 使用固定 SPY Daily Price Stress；SPY 只是美国大盘股代理，不代表完整市场。",
         (
@@ -144,9 +165,17 @@ CURRENT_QUOTE_TOOL = LLMToolDefinition(
             "ticker": {
                 "type": "string",
                 "description": "需要 Current Quote 的美股或美国上市 ETF ticker",
-            }
+            },
+            "request_purpose": {
+                "type": "string",
+                "enum": [purpose.value for purpose in QuoteRequestPurpose],
+                "description": (
+                    "声明 Quote 用于事实查询、无既定规则的当前风险动作判断，"
+                    "或既定规则/已决定动作的确认执行"
+                ),
+            },
         },
-        "required": ["ticker"],
+        "required": ["ticker", "request_purpose"],
         "additionalProperties": False,
     },
 )
@@ -195,8 +224,10 @@ MARKET_CONTEXT_TOOL = LLMToolDefinition(
     name=MARKET_CONTEXT_TOOL_NAME,
     description=(
         "获取基于固定 SPY 调整后 Daily Bars 的确定性 V1 Market Regime。"
-        "当前建仓、加仓、减仓、整体市场风险或 Market Regime 问题调用；"
-        "纯报价、Portfolio Facts、Recent Price History 或 Recent News 问题不得机械调用。"
+        "用于没有明确既定交易规则、并要求判断当前是否应该增加或减少风险暴露的问题，"
+        "以及明确的整体市场风险或 Market Regime 问题；"
+        "纯报价、购买能力、Portfolio Facts、Recent Price History、Recent News，"
+        "或按既定规则确认/执行动作时不得机械调用。"
         "该 Regime 是未回测的工程启发式市场压力描述，不是行业标准或投资信号。"
     ),
     parameters={
@@ -368,6 +399,7 @@ class InvestmentAgent:
         first_result = self._llm_provider.complete(
             initial_messages,
             tools=CONTEXT_TOOLS,
+            response_format=LLMResponseFormat.JSON_OBJECT,
         )
         first_failure = self._from_llm_failure(first_result)
         if first_failure is not None:
@@ -379,10 +411,26 @@ class InvestmentAgent:
         if tool_call_failure is not None:
             self._log_failure(tool_call_failure, started_at)
             return tool_call_failure
+        required_tool_calls = self._required_context_floor(first_message.tool_calls)
+        effective_tool_calls = (*first_message.tool_calls, *required_tool_calls)
+        floor_failure = self._validate_tool_calls(effective_tool_calls)
+        if floor_failure is not None:
+            self._log_failure(floor_failure, started_at)
+            return floor_failure
+        effective_first_message = (
+            first_message
+            if not required_tool_calls
+            else LLMMessage(
+                LLMRole.ASSISTANT,
+                first_message.content,
+                effective_tool_calls,
+            )
+        )
         selection_trace = ContextSelectionTrace.from_tool_calls(
             snapshot=snapshot,
             available_tools=CONTEXT_TOOL_NAMES,
-            tool_calls=first_message.tool_calls,
+            model_tool_calls=first_message.tool_calls,
+            required_tool_calls=required_tool_calls,
         )
         LOGGER.info(
             "investment_agent_context_selected",
@@ -391,7 +439,7 @@ class InvestmentAgent:
             ),
         )
 
-        if not first_message.tool_calls:
+        if not effective_tool_calls:
             validated_answer = self._validate_or_repair(
                 messages_before_final=initial_messages,
                 final_message=first_message,
@@ -414,7 +462,7 @@ class InvestmentAgent:
         news_results_by_ticker: dict[str, NewsResult[RecentNews]] = {}
         market_context_result: MarketDataResult[MarketRegimeContext] | None = None
         degraded = False
-        for tool_call in first_message.tool_calls:
+        for tool_call in effective_tool_calls:
             if tool_call.name == MARKET_CONTEXT_TOOL_NAME:
                 is_duplicate = market_context_result is not None
                 if is_duplicate:
@@ -519,8 +567,9 @@ class InvestmentAgent:
                 )
 
         final_result = self._llm_provider.complete(
-            (*initial_messages, first_message, *tool_messages),
+            (*initial_messages, effective_first_message, *tool_messages),
             tools=(),
+            response_format=LLMResponseFormat.JSON_OBJECT,
         )
         final_failure = self._from_llm_failure(final_result)
         if final_failure is not None:
@@ -536,7 +585,11 @@ class InvestmentAgent:
             return failure
 
         validated_answer = self._validate_or_repair(
-            messages_before_final=(*initial_messages, first_message, *tool_messages),
+            messages_before_final=(
+                *initial_messages,
+                effective_first_message,
+                *tool_messages,
+            ),
             final_message=final_message,
             sources=tuple(sources),
         )
@@ -595,6 +648,7 @@ class InvestmentAgent:
         repair_result = self._llm_provider.complete(
             (*messages_before_final, final_message, repair_message),
             tools=(),
+            response_format=LLMResponseFormat.JSON_OBJECT,
         )
         repair_failure = self._from_llm_failure(repair_result)
         if repair_failure is not None:
@@ -739,10 +793,15 @@ class InvestmentAgent:
                         f"{MARKET_CONTEXT_TOOL_NAME} arguments 必须为空 object",
                     )
                 continue
-            if set(tool_call.arguments) != {"ticker"}:
+            expected_arguments = (
+                {"ticker", "request_purpose"}
+                if tool_call.name == CURRENT_QUOTE_TOOL_NAME
+                else {"ticker"}
+            )
+            if set(tool_call.arguments) != expected_arguments:
                 return InvestmentRequestFailure(
                     InvestmentFailureCode.INVALID_TOOL_CALL,
-                    f"{tool_call.name} arguments 必须只包含 ticker",
+                    f"{tool_call.name} arguments 不符合 Tool Contract",
                 )
             ticker = tool_call.arguments.get("ticker")
             if not isinstance(ticker, str) or not ticker.strip():
@@ -750,7 +809,45 @@ class InvestmentAgent:
                     InvestmentFailureCode.INVALID_TOOL_CALL,
                     f"{tool_call.name} ticker 必须是非空字符串",
                 )
+            if tool_call.name == CURRENT_QUOTE_TOOL_NAME:
+                purpose = tool_call.arguments.get("request_purpose")
+                if not isinstance(purpose, str):
+                    return InvestmentRequestFailure(
+                        InvestmentFailureCode.INVALID_TOOL_CALL,
+                        f"{CURRENT_QUOTE_TOOL_NAME} request_purpose 无效",
+                    )
+                try:
+                    QuoteRequestPurpose(purpose)
+                except ValueError:
+                    return InvestmentRequestFailure(
+                        InvestmentFailureCode.INVALID_TOOL_CALL,
+                        f"{CURRENT_QUOTE_TOOL_NAME} request_purpose 无效",
+                    )
         return None
+
+    @staticmethod
+    def _required_context_floor(
+        model_tool_calls: tuple[LLMToolCall, ...],
+    ) -> tuple[LLMToolCall, ...]:
+        """只补足 LLM 已声明的 discretionary current risk action 所需 Market Context。"""
+
+        if any(call.name == MARKET_CONTEXT_TOOL_NAME for call in model_tool_calls):
+            return ()
+        requires_market_context = any(
+            call.name == CURRENT_QUOTE_TOOL_NAME
+            and call.arguments.get("request_purpose")
+            == QuoteRequestPurpose.DISCRETIONARY_CURRENT_RISK_ACTION.value
+            for call in model_tool_calls
+        )
+        if not requires_market_context:
+            return ()
+        existing_ids = {call.id for call in model_tool_calls}
+        call_id = "required-market-context"
+        suffix = 1
+        while call_id in existing_ids:
+            call_id = f"required-market-context-{suffix}"
+            suffix += 1
+        return (LLMToolCall(call_id, MARKET_CONTEXT_TOOL_NAME, {}),)
 
     @staticmethod
     def _quote_tool_result(

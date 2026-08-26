@@ -15,9 +15,11 @@ from position_pilot.application.investment_agent import (
     InvestmentFailureCode,
     InvestmentRequestFailure,
     InvestmentResponseStatus,
+    QuoteRequestPurpose,
 )
 from position_pilot.application.llm import (
     LLMMessage,
+    LLMResponseFormat,
     LLMResult,
     LLMRole,
     LLMStatus,
@@ -116,6 +118,7 @@ class FakeMarketData:
 class RecordedCompletion:
     messages: tuple[LLMMessage, ...]
     tools: tuple[LLMToolDefinition, ...]
+    response_format: LLMResponseFormat
 
 
 @dataclass(slots=True)
@@ -130,8 +133,9 @@ class ScriptedLLM:
         messages: tuple[LLMMessage, ...],
         *,
         tools: tuple[LLMToolDefinition, ...] = (),
+        response_format: LLMResponseFormat = LLMResponseFormat.TEXT,
     ) -> LLMResult:
-        self.completions.append(RecordedCompletion(messages, tools))
+        self.completions.append(RecordedCompletion(messages, tools, response_format))
         return self.results.pop(0)
 
 
@@ -290,7 +294,10 @@ def normal_market_context() -> MarketDataResult[MarketRegimeContext]:
     )
 
 
-def tool_message(*calls: tuple[str, str]) -> LLMResult:
+def tool_message(
+    *calls: tuple[str, str],
+    purpose: QuoteRequestPurpose = QuoteRequestPurpose.INFORMATION_RETRIEVAL,
+) -> LLMResult:
     """创建包含一个或多个 Current Quote Call 的 Fake Completion。"""
 
     return LLMResult.success(
@@ -298,7 +305,11 @@ def tool_message(*calls: tuple[str, str]) -> LLMResult:
             LLMRole.ASSISTANT,
             None,
             tuple(
-                LLMToolCall(call_id, "get_current_quote", {"ticker": ticker})
+                LLMToolCall(
+                    call_id,
+                    "get_current_quote",
+                    {"ticker": ticker, "request_purpose": purpose.value},
+                )
                 for call_id, ticker in calls
             ),
         )
@@ -316,7 +327,22 @@ def market_tool_message(*calls: tuple[str, str, str]) -> LLMResult:
                 LLMToolCall(
                     call_id,
                     tool_name,
-                    {} if tool_name == "get_market_context" else {"ticker": ticker},
+                    (
+                        {}
+                        if tool_name == "get_market_context"
+                        else {
+                            "ticker": ticker,
+                            **(
+                                {
+                                    "request_purpose": (
+                                        QuoteRequestPurpose.INFORMATION_RETRIEVAL.value
+                                    )
+                                }
+                                if tool_name == "get_current_quote"
+                                else {}
+                            ),
+                        }
+                    ),
                 )
                 for call_id, tool_name, ticker in calls
             ),
@@ -609,6 +635,7 @@ def test_no_tool_call_returns_ok_without_mechanical_market_request(
     assert market_data.news_queries == []
     assert market_data.market_context_requests == 0
     assert len(llm.completions) == 1
+    assert llm.completions[0].response_format is LLMResponseFormat.JSON_OBJECT
     assert [tool.name for tool in llm.completions[0].tools] == [
         "get_current_quote",
         "get_recent_price_history",
@@ -666,6 +693,10 @@ def test_executes_up_to_four_tools_in_one_round_then_requests_final_response(
     assert market_data.requested_tickers == ["GOOG", "MSFT", "NVDA", "AMZN"]
     assert len(llm.completions) == 2
     assert llm.completions[1].tools == ()
+    assert all(
+        completion.response_format is LLMResponseFormat.JSON_OBJECT
+        for completion in llm.completions
+    )
     tool_results = [
         message for message in llm.completions[1].messages if message.role is LLMRole.TOOL
     ]
@@ -689,6 +720,144 @@ def test_executes_up_to_four_tools_in_one_round_then_requests_final_response(
         "SWING",
     )
     assert selection_extra["selected_unheld_ticker_count"] == 3
+
+
+def test_required_context_floor_adds_market_context_after_llm_routing(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """LLM 声明 discretionary current action 时，Application 只补足缺失 Market Context。"""
+
+    caplog.set_level("INFO", logger="position_pilot.application.investment_agent")
+    agent, _, providers, llm = make_agent(
+        [
+            tool_message(
+                ("quote-1", "GOOG"),
+                purpose=QuoteRequestPurpose.DISCRETIONARY_CURRENT_RISK_ACTION,
+            ),
+            final_message(
+                "结合 Quote 与 Market Context 的条件式分析。",
+                source_refs=[
+                    source_ref("PORTFOLIO_SNAPSHOT"),
+                    source_ref("CURRENT_QUOTE", "GOOG"),
+                    source_ref("MARKET_CONTEXT", "SPY"),
+                ],
+            ),
+        ],
+        market_results={"GOOG": quote("GOOG", "210.25")},
+        market_context_result=normal_market_context(),
+    )
+
+    result = assert_answer(agent.answer(USER_ID, "GOOG 今天应该加仓吗？"))
+
+    assert result.status is InvestmentResponseStatus.OK
+    assert providers.requested_tickers == ["GOOG"]
+    assert providers.market_context_requests == 1
+    effective_calls = llm.completions[1].messages[-3].tool_calls
+    assert [call.name for call in effective_calls] == [
+        "get_current_quote",
+        "get_market_context",
+    ]
+    selection_record = next(
+        record for record in caplog.records if record.message == "investment_agent_context_selected"
+    )
+    assert selection_record.__dict__["selection_mode"] == "NATIVE_WITH_REQUIRED_CONTEXT"
+    assert selection_record.__dict__["model_selected_tools"] == ("get_current_quote",)
+    assert selection_record.__dict__["model_quote_request_purposes"] == (
+        "DISCRETIONARY_CURRENT_RISK_ACTION",
+    )
+    assert selection_record.__dict__["required_tools"] == ("get_market_context",)
+
+
+def test_required_context_floor_does_not_expand_four_call_budget() -> None:
+    """补足 Hard-required Context 时仍不得突破单轮四次调用预算。"""
+
+    agent, _, providers, _ = make_agent(
+        [
+            tool_message(
+                ("quote-1", "GOOG"),
+                ("quote-2", "MSFT"),
+                ("quote-3", "NVDA"),
+                ("quote-4", "AMZN"),
+                purpose=QuoteRequestPurpose.DISCRETIONARY_CURRENT_RISK_ACTION,
+            )
+        ]
+    )
+
+    failure = assert_failure(agent.answer(USER_ID, "现在是否应该增加这些仓位？"))
+
+    assert failure.code is InvestmentFailureCode.TOOL_CALL_LIMIT_EXCEEDED
+    assert providers.requested_tickers == []
+    assert providers.market_context_requests == 0
+
+
+@pytest.mark.parametrize(
+    "purpose",
+    [
+        QuoteRequestPurpose.INFORMATION_RETRIEVAL,
+        QuoteRequestPurpose.RULE_OR_EXECUTION_CHECK,
+    ],
+)
+def test_required_context_floor_does_not_expand_non_discretionary_quote(
+    purpose: QuoteRequestPurpose,
+) -> None:
+    """事实查询和既定规则执行仍由 LLM 自主选择 Optional Context。"""
+
+    agent, _, providers, _ = make_agent(
+        [
+            tool_message(("quote-1", "GOOG"), purpose=purpose),
+            quote_final_message("只回答已取得的 Quote Context。", "GOOG"),
+        ],
+        market_results={"GOOG": quote("GOOG", "210.25")},
+        market_context_result=normal_market_context(),
+    )
+
+    assert_answer(agent.answer(USER_ID, "按既定计划检查 GOOG 当前价格。"))
+
+    assert providers.requested_tickers == ["GOOG"]
+    assert providers.market_context_requests == 0
+
+
+def test_model_selected_market_context_is_not_added_twice() -> None:
+    """模型已选择 Market Context 时，Required Context Floor 不得制造重复调用。"""
+
+    first_message = LLMResult.success(
+        LLMMessage(
+            LLMRole.ASSISTANT,
+            None,
+            (
+                LLMToolCall(
+                    "quote-1",
+                    "get_current_quote",
+                    {
+                        "ticker": "GOOG",
+                        "request_purpose": (
+                            QuoteRequestPurpose.DISCRETIONARY_CURRENT_RISK_ACTION.value
+                        ),
+                    },
+                ),
+                LLMToolCall("market-1", "get_market_context", {}),
+            ),
+        )
+    )
+    agent, _, providers, _ = make_agent(
+        [
+            first_message,
+            final_message(
+                "模型已自主选择两个 Context。",
+                source_refs=[
+                    source_ref("PORTFOLIO_SNAPSHOT"),
+                    source_ref("CURRENT_QUOTE", "GOOG"),
+                    source_ref("MARKET_CONTEXT", "SPY"),
+                ],
+            ),
+        ],
+        market_results={"GOOG": quote("GOOG", "210.25")},
+        market_context_result=normal_market_context(),
+    )
+
+    assert_answer(agent.answer(USER_ID, "GOOG 今天应该加仓吗？"))
+
+    assert providers.market_context_requests == 1
 
 
 def test_quote_result_includes_only_proven_deterministic_relations() -> None:
@@ -1284,8 +1453,28 @@ def test_rejects_more_than_four_tool_calls_before_provider_execution() -> None:
     [
         LLMToolCall("call-1", "get_news", {"ticker": "GOOG"}),
         LLMToolCall("call-1", "get_current_quote", {"symbol": "GOOG"}),
-        LLMToolCall("call-1", "get_current_quote", {"ticker": "GOOG", "extra": True}),
-        LLMToolCall("call-1", "get_current_quote", {"ticker": " "}),
+        LLMToolCall(
+            "call-1",
+            "get_current_quote",
+            {
+                "ticker": "GOOG",
+                "request_purpose": QuoteRequestPurpose.INFORMATION_RETRIEVAL.value,
+                "extra": True,
+            },
+        ),
+        LLMToolCall(
+            "call-1",
+            "get_current_quote",
+            {
+                "ticker": " ",
+                "request_purpose": QuoteRequestPurpose.INFORMATION_RETRIEVAL.value,
+            },
+        ),
+        LLMToolCall(
+            "call-1",
+            "get_current_quote",
+            {"ticker": "GOOG", "request_purpose": "UNSUPPORTED"},
+        ),
         LLMToolCall("call-1", "get_recent_price_history", {"symbol": "GOOG"}),
         LLMToolCall("call-1", "get_recent_price_history", {"ticker": " "}),
         LLMToolCall("call-1", "get_recent_news", {"symbol": "GOOG"}),
@@ -1653,6 +1842,10 @@ def test_guard_repairs_non_json_final_into_structured_answer() -> None:
         "answer",
         "source_refs",
     ]
+    assert all(
+        completion.response_format is LLMResponseFormat.JSON_OBJECT
+        for completion in llm.completions
+    )
 
 
 def test_rejects_extra_field_in_source_reference() -> None:
@@ -1829,10 +2022,24 @@ def test_market_validation_failure_from_model_ticker_is_invalid_tool_call(
     """模型产生的非法 Ticker 属于 Tool Contract Failure，不属于 Provider 降级。"""
 
     if invalid_ticker.isspace():
-        call = LLMToolCall("call-1", "get_current_quote", {"ticker": invalid_ticker})
+        call = LLMToolCall(
+            "call-1",
+            "get_current_quote",
+            {
+                "ticker": invalid_ticker,
+                "request_purpose": QuoteRequestPurpose.INFORMATION_RETRIEVAL.value,
+            },
+        )
         expected_requests: list[str] = []
     else:
-        call = LLMToolCall("call-1", "get_current_quote", {"ticker": invalid_ticker})
+        call = LLMToolCall(
+            "call-1",
+            "get_current_quote",
+            {
+                "ticker": invalid_ticker,
+                "request_purpose": QuoteRequestPurpose.INFORMATION_RETRIEVAL.value,
+            },
+        )
         expected_requests = [invalid_ticker.upper()]
     agent, _, market_data, _ = make_agent(
         [LLMResult.success(LLMMessage(LLMRole.ASSISTANT, None, (call,)))],

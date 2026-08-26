@@ -57,11 +57,14 @@ def test_no_tool_selection_is_explicit_and_keeps_capability_list() -> None:
     trace = ContextSelectionTrace.from_tool_calls(
         snapshot=_snapshot(),
         available_tools=AVAILABLE_TOOLS,
-        tool_calls=(),
+        model_tool_calls=(),
     )
 
     assert trace.mode is ContextSelectionMode.NO_EXTERNAL_CONTEXT
     assert trace.available_tools == AVAILABLE_TOOLS
+    assert trace.model_selected_tools == ()
+    assert trace.model_quote_request_purposes == ()
+    assert trace.required_tools == ()
     assert trace.selected_tools == ()
     assert trace.selected_context_count == 0
     assert trace.selected_existing_position_types == ()
@@ -74,7 +77,7 @@ def test_selection_deduplicates_contexts_and_preserves_matching_position_types()
     trace = ContextSelectionTrace.from_tool_calls(
         snapshot=_snapshot(),
         available_tools=AVAILABLE_TOOLS,
-        tool_calls=(
+        model_tool_calls=(
             LLMToolCall("quote-1", "get_current_quote", {"ticker": "goog"}),
             LLMToolCall("quote-2", "get_current_quote", {"ticker": " GOOG "}),
             LLMToolCall("news-1", "get_recent_news", {"ticker": "GOOG"}),
@@ -98,7 +101,7 @@ def test_selection_counts_unheld_tickers_without_logging_their_identity() -> Non
     trace = ContextSelectionTrace.from_tool_calls(
         snapshot=_snapshot(),
         available_tools=AVAILABLE_TOOLS,
-        tool_calls=(
+        model_tool_calls=(
             LLMToolCall("quote-1", "get_current_quote", {"ticker": "MSFT"}),
             LLMToolCall("history-1", "get_recent_price_history", {"ticker": "MSFT"}),
         ),
@@ -119,7 +122,7 @@ def test_global_market_context_counts_without_ticker_or_position_match() -> None
     trace = ContextSelectionTrace.from_tool_calls(
         snapshot=_snapshot(),
         available_tools=AVAILABLE_TOOLS,
-        tool_calls=(
+        model_tool_calls=(
             LLMToolCall("market-1", "get_market_context", {}),
             LLMToolCall("market-2", "get_market_context", {}),
         ),
@@ -130,3 +133,29 @@ def test_global_market_context_counts_without_ticker_or_position_match() -> None
     assert trace.selected_existing_position_count == 0
     assert trace.selected_existing_position_types == ()
     assert trace.selected_unheld_ticker_count == 0
+
+
+def test_required_context_is_distinct_from_model_selection() -> None:
+    """Required Context Floor 必须可诊断，不能伪装成模型自主选择。"""
+
+    trace = ContextSelectionTrace.from_tool_calls(
+        snapshot=_snapshot(),
+        available_tools=AVAILABLE_TOOLS,
+        model_tool_calls=(
+            LLMToolCall(
+                "quote-1",
+                "get_current_quote",
+                {
+                    "ticker": "GOOG",
+                    "request_purpose": "DISCRETIONARY_CURRENT_RISK_ACTION",
+                },
+            ),
+        ),
+        required_tool_calls=(LLMToolCall("required-market", "get_market_context", {}),),
+    )
+
+    assert trace.mode is ContextSelectionMode.NATIVE_WITH_REQUIRED_CONTEXT
+    assert trace.model_selected_tools == ("get_current_quote",)
+    assert trace.model_quote_request_purposes == ("DISCRETIONARY_CURRENT_RISK_ACTION",)
+    assert trace.required_tools == ("get_market_context",)
+    assert trace.selected_tools == ("get_current_quote", "get_market_context")

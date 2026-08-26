@@ -13,6 +13,7 @@ class ContextSelectionMode(StrEnum):
 
     NO_EXTERNAL_CONTEXT = "NO_EXTERNAL_CONTEXT"
     NATIVE_TOOL_SELECTION = "NATIVE_TOOL_SELECTION"
+    NATIVE_WITH_REQUIRED_CONTEXT = "NATIVE_WITH_REQUIRED_CONTEXT"
 
 
 @dataclass(frozen=True, slots=True)
@@ -21,6 +22,9 @@ class ContextSelectionTrace:
 
     mode: ContextSelectionMode
     available_tools: tuple[str, ...]
+    model_selected_tools: tuple[str, ...]
+    model_quote_request_purposes: tuple[str, ...]
+    required_tools: tuple[str, ...]
     selected_tools: tuple[str, ...]
     selected_context_count: int
     selected_existing_position_count: int
@@ -33,10 +37,12 @@ class ContextSelectionTrace:
         *,
         snapshot: PortfolioSnapshot,
         available_tools: tuple[str, ...],
-        tool_calls: tuple[LLMToolCall, ...],
+        model_tool_calls: tuple[LLMToolCall, ...],
+        required_tool_calls: tuple[LLMToolCall, ...] = (),
     ) -> "ContextSelectionTrace":
         """从已通过参数校验的 Native Tool Calls 构造稳定 Trace。"""
 
+        tool_calls = (*model_tool_calls, *required_tool_calls)
         unique_contexts = tuple(
             dict.fromkeys(
                 (tool_call.name, _validated_optional_ticker(tool_call)) for tool_call in tool_calls
@@ -49,11 +55,31 @@ class ContextSelectionTrace:
         held_tickers = {position.ticker for position in snapshot.positions}
         return cls(
             mode=(
-                ContextSelectionMode.NATIVE_TOOL_SELECTION
-                if tool_calls
-                else ContextSelectionMode.NO_EXTERNAL_CONTEXT
+                ContextSelectionMode.NATIVE_WITH_REQUIRED_CONTEXT
+                if required_tool_calls
+                else (
+                    ContextSelectionMode.NATIVE_TOOL_SELECTION
+                    if model_tool_calls
+                    else ContextSelectionMode.NO_EXTERNAL_CONTEXT
+                )
             ),
             available_tools=available_tools,
+            model_selected_tools=tuple(
+                dict.fromkeys(tool_call.name for tool_call in model_tool_calls)
+            ),
+            model_quote_request_purposes=tuple(
+                dict.fromkeys(
+                    purpose
+                    for tool_call in model_tool_calls
+                    if isinstance(
+                        (purpose := tool_call.arguments.get("request_purpose")),
+                        str,
+                    )
+                )
+            ),
+            required_tools=tuple(
+                dict.fromkeys(tool_call.name for tool_call in required_tool_calls)
+            ),
             selected_tools=tuple(dict.fromkeys(tool_call.name for tool_call in tool_calls)),
             selected_context_count=len(unique_contexts),
             selected_existing_position_count=len(matching_positions),
@@ -72,6 +98,9 @@ class ContextSelectionTrace:
         return {
             "selection_mode": self.mode.value,
             "available_tools": self.available_tools,
+            "model_selected_tools": self.model_selected_tools,
+            "model_quote_request_purposes": self.model_quote_request_purposes,
+            "required_tools": self.required_tools,
             "selected_tools": self.selected_tools,
             "selected_context_count": self.selected_context_count,
             "selected_existing_position_count": self.selected_existing_position_count,

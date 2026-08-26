@@ -13,6 +13,7 @@ from urllib.request import Request, urlopen
 from position_pilot.application.llm import (
     LLMMessage,
     LLMProvider,
+    LLMResponseFormat,
     LLMResult,
     LLMRole,
     LLMStatus,
@@ -125,6 +126,7 @@ class AliyunLLMProvider(LLMProvider):
         messages: tuple[LLMMessage, ...],
         *,
         tools: tuple[LLMToolDefinition, ...] = (),
+        response_format: LLMResponseFormat = LLMResponseFormat.TEXT,
     ) -> LLMResult:
         """执行一次非流式 Completion，并隐藏 Provider Payload。"""
 
@@ -145,6 +147,8 @@ class AliyunLLMProvider(LLMProvider):
         if tools:
             payload["tools"] = [self._serialize_tool(tool) for tool in tools]
             payload["parallel_tool_calls"] = True
+        if response_format is LLMResponseFormat.JSON_OBJECT:
+            payload["response_format"] = {"type": "json_object"}
 
         try:
             response = self._transport.post_json(

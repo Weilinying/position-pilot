@@ -16,6 +16,7 @@ from position_pilot.application.investment_agent import (
     InvestmentAnswer,
     InvestmentRequestFailure,
     InvestmentResponseStatus,
+    QuoteRequestPurpose,
 )
 from position_pilot.application.investment_answer import (
     InvalidStructuredAnswer,
@@ -28,8 +29,11 @@ from position_pilot.application.investment_answer import (
 from position_pilot.application.llm import (
     LLMMessage,
     LLMProvider,
+    LLMResponseFormat,
     LLMResult,
     LLMRole,
+    LLMStatus,
+    LLMToolCall,
     LLMToolDefinition,
 )
 from position_pilot.application.market_data_service import HistoricalBarsQuery
@@ -79,6 +83,7 @@ class BehavioralCase:
         )
     )
     expected_market_context_calls: int = 0
+    expected_quote_request_purpose: QuoteRequestPurpose | None = None
 
 
 class FixedPortfolioReader:
@@ -176,15 +181,22 @@ class CountingLLM:
     delegate: LLMProvider
     completion_count: int = 0
     results: list[LLMResult] = field(default_factory=list)
+    response_formats: list[LLMResponseFormat] = field(default_factory=list)
 
     def complete(
         self,
         messages: tuple[LLMMessage, ...],
         *,
         tools: tuple[LLMToolDefinition, ...] = (),
+        response_format: LLMResponseFormat = LLMResponseFormat.TEXT,
     ) -> LLMResult:
         self.completion_count += 1
-        result = self.delegate.complete(messages, tools=tools)
+        self.response_formats.append(response_format)
+        result = self.delegate.complete(
+            messages,
+            tools=tools,
+            response_format=response_format,
+        )
         self.results.append(result)
         return result
 
@@ -197,6 +209,7 @@ class NoopLLM:
         messages: tuple[LLMMessage, ...],
         *,
         tools: tuple[LLMToolDefinition, ...] = (),
+        response_format: LLMResponseFormat = LLMResponseFormat.TEXT,
     ) -> LLMResult:
         raise AssertionError("测试不应调用 NoopLLM")
 
@@ -219,6 +232,9 @@ class BehavioralTrace:
     declared_market_context_sources: tuple[str, ...]
     completion_count_without_repair: int
     repair_used: bool
+    quote_request_purposes: tuple[str, ...]
+    model_selected_market_context: bool
+    floor_added_market_context: bool
 
 
 def collect_behavioral_trace(
@@ -227,6 +243,7 @@ def collect_behavioral_trace(
     market_context: FixedMarketContext,
     result: InvestmentAnswer,
     completion_count: int,
+    routing_tool_calls: tuple[LLMToolCall, ...] = (),
 ) -> BehavioralTrace:
     """从 Provider 请求而非 Final Sources 计算 Tool Trace 与 Repair。"""
 
@@ -276,6 +293,15 @@ def collect_behavioral_trace(
         tool_tickers or history_tickers or news_tickers or market_context.request_count
     )
     completion_count_without_repair = 2 if tool_round_used else 1
+    quote_request_purposes = tuple(
+        purpose
+        for tool_call in routing_tool_calls
+        if tool_call.name == "get_current_quote"
+        and isinstance((purpose := tool_call.arguments.get("request_purpose")), str)
+    )
+    model_selected_market_context = any(
+        tool_call.name == "get_market_context" for tool_call in routing_tool_calls
+    )
     return BehavioralTrace(
         tool_tickers=tool_tickers,
         history_tickers=history_tickers,
@@ -291,6 +317,11 @@ def collect_behavioral_trace(
         declared_market_context_sources=declared_market_context_sources,
         completion_count_without_repair=completion_count_without_repair,
         repair_used=completion_count > completion_count_without_repair,
+        quote_request_purposes=quote_request_purposes,
+        model_selected_market_context=model_selected_market_context,
+        floor_added_market_context=(
+            market_context.request_count > 0 and not model_selected_market_context
+        ),
     )
 
 
@@ -343,6 +374,60 @@ def structured_response_diagnostics(
             }
         )
     return diagnostics
+
+
+def behavioral_completion_metrics(
+    llm: CountingLLM,
+    market_data: FixedMarketData,
+    news: FixedNews,
+    market_context: FixedMarketContext,
+) -> dict[str, object]:
+    """汇总 JSON、Source Validation、Repair 与 Provider Timeout 诊断。"""
+
+    available_sources = _retrieved_source_references(market_data, news, market_context)
+    invalid_json_count = 0
+    structured_contract_failure_count = 0
+    source_validation_failure_count = 0
+    provider_timeout_count = 0
+    for result in llm.results:
+        if result.status is LLMStatus.PROVIDER_UNAVAILABLE and result.error_message is not None:
+            provider_timeout_count += int("超时" in result.error_message)
+        if result.completion is None or result.completion.message.content is None:
+            continue
+        content = result.completion.message.content
+        try:
+            json.loads(content)
+        except json.JSONDecodeError:
+            invalid_json_count += 1
+        try:
+            structured_answer = parse_structured_answer(content)
+        except InvalidStructuredAnswer:
+            structured_contract_failure_count += 1
+            continue
+        try:
+            validate_source_references(structured_answer, available_sources)
+        except UnresolvedSourceReference:
+            source_validation_failure_count += 1
+    expected_completion_count = (
+        2
+        if (
+            market_data.requested_tickers
+            or market_data.historical_queries
+            or news.queries
+            or market_context.request_count
+        )
+        else 1
+    )
+    repair_count = max(llm.completion_count - expected_completion_count, 0)
+    return {
+        "invalid_json_count": invalid_json_count,
+        "structured_contract_failure_count": structured_contract_failure_count,
+        "source_validation_failure_count": source_validation_failure_count,
+        "repair_count": repair_count,
+        "repair_rate": float(repair_count > 0),
+        "provider_timeout_count": provider_timeout_count,
+        "response_formats": [response_format.value for response_format in llm.response_formats],
+    }
 
 
 def _retrieved_source_references(
@@ -531,7 +616,7 @@ HIGH_STRESS_MARKET_CONTEXT = fixed_market_context("90")
 CASES = (
     BehavioralCase(
         "add_existing_position",
-        "我还有 300 美元，GOOG 今天还能加一点吗？",
+        "我还有 300 美元。只比较现金与 GOOG 当前一股价格的数值关系，不要判断是否应该加仓。",
         Decimal("300"),
         (GOOG_LONG, GOOG_SWING),
         {"GOOG": GOOG_QUOTE},
@@ -543,10 +628,9 @@ CASES = (
             "明确 executable purchase quantity 为 UNKNOWN",
             "不将 Cash/Quote 数值关系解释为可以买入或至少可以买一股",
             "不自行计算可购买股数、剩余现金或碎股数量",
-            "使用 NORMAL Market Regime，但不把 Heuristic 写成投资信号",
+            "不机械调用 Market Context",
         ),
-        market_context_result=NORMAL_MARKET_CONTEXT,
-        expected_market_context_calls=1,
+        expected_quote_request_purpose=QuoteRequestPurpose.INFORMATION_RETRIEVAL,
     ),
     BehavioralCase(
         "current_price_without_position",
@@ -637,6 +721,7 @@ CASES = (
         ),
         market_context_result=NORMAL_MARKET_CONTEXT,
         expected_market_context_calls=1,
+        expected_quote_request_purpose=(QuoteRequestPurpose.DISCRETIONARY_CURRENT_RISK_ACTION),
     ),
     BehavioralCase(
         "quote_provider_failure",
@@ -657,6 +742,7 @@ CASES = (
         ),
         market_context_result=NORMAL_MARKET_CONTEXT,
         expected_market_context_calls=1,
+        expected_quote_request_purpose=(QuoteRequestPurpose.DISCRETIONARY_CURRENT_RISK_ACTION),
     ),
     BehavioralCase(
         "drop_reason_unknown",
@@ -707,6 +793,7 @@ CASES = (
         ),
         market_context_result=NORMAL_MARKET_CONTEXT,
         expected_market_context_calls=1,
+        expected_quote_request_purpose=(QuoteRequestPurpose.DISCRETIONARY_CURRENT_RISK_ACTION),
     ),
     BehavioralCase(
         "market_context_high_stress",
@@ -725,6 +812,7 @@ CASES = (
         ),
         market_context_result=HIGH_STRESS_MARKET_CONTEXT,
         expected_market_context_calls=1,
+        expected_quote_request_purpose=(QuoteRequestPurpose.DISCRETIONARY_CURRENT_RISK_ACTION),
     ),
     BehavioralCase(
         "market_context_provider_failure",
@@ -746,10 +834,11 @@ CASES = (
             "固定 Market Context Provider Failure",
         ),
         expected_market_context_calls=1,
+        expected_quote_request_purpose=(QuoteRequestPurpose.DISCRETIONARY_CURRENT_RISK_ACTION),
     ),
     BehavioralCase(
         "low_cash_personalization",
-        "结合我的状态，GOOG 今天还能加一点吗？",
+        "结合我的状态，我现在是否应该增加 GOOG 的风险暴露？",
         Decimal("25"),
         (GOOG_LONG, GOOG_SWING),
         {"GOOG": GOOG_QUOTE},
@@ -766,10 +855,11 @@ CASES = (
         ),
         market_context_result=NORMAL_MARKET_CONTEXT,
         expected_market_context_calls=1,
+        expected_quote_request_purpose=(QuoteRequestPurpose.DISCRETIONARY_CURRENT_RISK_ACTION),
     ),
     BehavioralCase(
         "high_cash_personalization",
-        "结合我的状态，GOOG 今天还能加一点吗？",
+        "结合我的状态，我现在是否应该增加 GOOG 的风险暴露？",
         Decimal("800"),
         (GOOG_LONG, GOOG_SWING),
         {"GOOG": GOOG_QUOTE},
@@ -785,10 +875,11 @@ CASES = (
         ),
         market_context_result=NORMAL_MARKET_CONTEXT,
         expected_market_context_calls=1,
+        expected_quote_request_purpose=(QuoteRequestPurpose.DISCRETIONARY_CURRENT_RISK_ACTION),
     ),
     BehavioralCase(
         "long_term_position_personalization",
-        "结合我的持仓类型，GOOG 今天还能加一点吗？",
+        "结合我的持仓类型，我现在是否应该增加 GOOG 的风险暴露？",
         Decimal("300"),
         (GOOG_LONG_PAIRED,),
         {"GOOG": GOOG_QUOTE},
@@ -798,16 +889,16 @@ CASES = (
             "明确当前只有 1 股/成本 210 的 GOOG LONG_TERM 仓位",
             "与 swing_position_personalization 因 Position Type 不同形成可解释差异",
             "不将 Cash/Quote 数值关系解释为可以买入或至少可以买一股",
-            "不使用略高、微利等未由代码提供的关系幅度",
             "不自行计算购买数量、剩余现金或新 Average Cost",
             "使用 NORMAL Market Regime，但不改变 LONG_TERM 语义",
         ),
         market_context_result=NORMAL_MARKET_CONTEXT,
         expected_market_context_calls=1,
+        expected_quote_request_purpose=(QuoteRequestPurpose.DISCRETIONARY_CURRENT_RISK_ACTION),
     ),
     BehavioralCase(
         "swing_position_personalization",
-        "结合我的持仓类型，GOOG 今天还能加一点吗？",
+        "结合我的持仓类型，我现在是否应该增加 GOOG 的风险暴露？",
         Decimal("300"),
         (GOOG_SWING_PAIRED,),
         {"GOOG": GOOG_QUOTE},
@@ -819,29 +910,29 @@ CASES = (
             "说明交易计划、退出条件和风险预算未进入 Context",
             "不生成趋势、支撑、阻力、动能或震荡区间等技术分析",
             "不将 Cash/Quote 数值关系解释为可以买入或至少可以买一股",
-            "不使用略高、微利等未由代码提供的关系幅度",
             "不自行计算购买数量、剩余现金、价差或新 Average Cost",
             "使用 NORMAL Market Regime，但不改变 SWING 语义",
         ),
         market_context_result=NORMAL_MARKET_CONTEXT,
         expected_market_context_calls=1,
+        expected_quote_request_purpose=(QuoteRequestPurpose.DISCRETIONARY_CURRENT_RISK_ACTION),
     ),
     BehavioralCase(
-        "position_reduction_high_stress",
-        "如果现在要减仓 GOOG，我应该先减波段仓还是长期仓？",
+        "position_reduction_rule_check",
+        "我已决定按既定计划减仓 GOOG。只核对当前报价与两类持仓事实，不要重新判断是否减仓。",
         Decimal("300"),
         (GOOG_LONG, GOOG_SWING),
         {"GOOG": GOOG_QUOTE},
         ("GOOG",),
         InvestmentResponseStatus.OK,
         (
-            "调用 GOOG Quote 与固定 HIGH_STRESS Market Context",
-            "保留 LONG_TERM / SWING 独立语义，不把两类仓位聚合后决定卖出",
-            "说明退出条件与交易计划仍为 UNKNOWN，不编造具体卖出数量",
-            "Market Regime 只影响条件式风险分析，不直接产生 SELL 信号",
+            "调用 GOOG Quote，但不机械调用 Market Context",
+            "保留 LONG_TERM / SWING 独立语义，不把两类仓位聚合",
+            "说明具体 Trade Plan / Exit Condition 未进入 Context，不能确认规则是否满足",
+            "不编造具体卖出数量、止损、支撑、阻力或趋势",
         ),
         market_context_result=HIGH_STRESS_MARKET_CONTEXT,
-        expected_market_context_calls=1,
+        expected_quote_request_purpose=QuoteRequestPurpose.RULE_OR_EXECUTION_CHECK,
     ),
     BehavioralCase(
         "unspecified_ticker_no_tool",
@@ -1049,6 +1140,17 @@ def test_real_model_behavior_with_fixed_market_data(case: BehavioralCase) -> Non
         market_context,
         result,
         llm.completion_count,
+        routing_tool_calls=(
+            llm.results[0].completion.message.tool_calls
+            if llm.results and llm.results[0].completion is not None
+            else ()
+        ),
+    )
+    completion_metrics = behavioral_completion_metrics(
+        llm,
+        market_data,
+        news,
+        market_context,
     )
     print(
         json.dumps(
@@ -1057,9 +1159,19 @@ def test_real_model_behavior_with_fixed_market_data(case: BehavioralCase) -> Non
                 "question": case.question,
                 "actual_tool_trace": {
                     "quote_tickers": trace.tool_tickers,
+                    "quote_request_purposes": trace.quote_request_purposes,
                     "history_tickers": trace.history_tickers,
                     "news_tickers": trace.news_tickers,
                     "market_context_calls": trace.market_context_calls,
+                    "market_context_origin": (
+                        "MODEL_SELECTED"
+                        if trace.model_selected_market_context
+                        else (
+                            "REQUIRED_CONTEXT_FLOOR"
+                            if trace.floor_added_market_context
+                            else "NOT_RETRIEVED"
+                        )
+                    ),
                 },
                 "declared_final_sources": {
                     "quote_tickers": trace.declared_quote_sources,
@@ -1076,6 +1188,7 @@ def test_real_model_behavior_with_fixed_market_data(case: BehavioralCase) -> Non
                 "status": result.status.value,
                 "llm_completion_count": llm.completion_count,
                 "source_validation_repair_used": trace.repair_used,
+                "completion_metrics": completion_metrics,
                 "answer": result.answer,
                 "human_checks": case.human_checks,
             },
@@ -1090,5 +1203,13 @@ def test_real_model_behavior_with_fixed_market_data(case: BehavioralCase) -> Non
     assert len(trace.news_tickers) == len(case.expected_news_tickers)
     assert sorted(trace.news_tickers) == sorted(case.expected_news_tickers)
     assert trace.market_context_calls == case.expected_market_context_calls
+    if case.expected_quote_request_purpose is not None:
+        assert trace.quote_request_purposes == (case.expected_quote_request_purpose.value,)
+    if (
+        case.expected_quote_request_purpose is QuoteRequestPurpose.DISCRETIONARY_CURRENT_RISK_ACTION
+        and case.expected_market_context_calls
+    ):
+        assert trace.model_selected_market_context or trace.floor_added_market_context
     assert result.status is case.expected_status
+    assert completion_metrics["invalid_json_count"] == 0
     assert llm.completion_count <= trace.completion_count_without_repair + 1

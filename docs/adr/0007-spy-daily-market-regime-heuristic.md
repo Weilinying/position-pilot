@@ -46,7 +46,8 @@ Market Regime 必须由确定性代码生成。数据来源、阈值、公共 So
 - 输出保留全部指标原始值、触发规则、Observation Count、Period、Source、Feed、Coverage、Currency、Adjustment 与 Fetched At。
 - Methodology 固定标记为 `V1_HEURISTIC` / `1.0`，并显式声明：阈值是工程启发式规则，不是行业标准、未经历史回测验证，也不是投资信号。
 - 新增无参数内部 Tool `get_market_context()`；LLM 不能选择 Proxy、窗口、指标或阈值。
-- 当前建仓 / 加仓 / 减仓、整体市场风险与 Regime 问题需要 Market Context。纯 Portfolio Facts、Current Price、Recent Price History 或 Recent News 问题不机械调用。
+- Market Context 定位为 Portfolio Risk Context / risk modifier。只有在没有明确既定交易规则、并要求 Agent 判断当前是否应该增加或减少风险暴露时，它才是 minimum decision context；纯 Portfolio Facts、Current Price、购买能力、Recent Price History、Recent News，以及既定 Strategy / Trade Plan / Exit Rule 的确认或执行不机械调用。
+- LLM 继续通过 Native Function Calling 选择 Optional Tools；Current Quote Tool 的结构化 `request_purpose` 声明为 `DISCRETIONARY_CURRENT_RISK_ACTION` 且漏选 Market Context 时，Application 才补足该无参数 Tool。该保证是 model-declared context floor：它不解析问题关键词，也不替代模型的 Intent 判断；purpose 误分类仍属于必须由 Behavioral Eval 观察的 Routing Quality。
 - Tool Failure 使用既有 Market Data Failure Taxonomy，最终 Answer 标记为 `DEGRADED` 并保持 Regime `UNKNOWN`。
 - Public Source Type 增加 `MARKET_CONTEXT`，其 `ticker=SPY`；其他 Response 字段不变。
 - 单轮最多 4 次 Tool Call 的预算保持不变。

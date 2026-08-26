@@ -4,6 +4,8 @@
 
 Final Completion 必须返回内部 `{answer, source_refs}` JSON。`answer` 是自由文本；`source_refs` 声明回答实际使用的 Portfolio / Quote / History / News / Market Context，并由 Application 验证是否在本轮成功取得。Human Review 应检查 answer 是否准确使用这些来源，因为 Backend 不做逐 Claim 或逐数字验证。
 
+Final Completion 使用 Provider-native JSON Object Mode 降低语法失败；Application Parser、Source Validation 与一次 Repair 仍是必需防御层。运行输出同时记录 invalid JSON、Structured Contract Failure、Source Validation Failure、Repair Count / Rate 与 Provider Timeout，不能只看最终 pass/fail。
+
 运行前显式导出通用 LLM 配置，并启用开关：
 
 ```bash
@@ -17,6 +19,7 @@ uv run pytest tests/evaluation/test_real_model_behavior.py -s
 自动断言只检查可确定的 Tool Trace、Ticker、调用上限和 `OK` / `DEGRADED` 状态。运行时输出的 Final Answer 需要按每个 Case 的 Human Checks 审查：
 
 - Tool Selection 从 Fake Market / News / Market Context Provider 实际收到的请求计算，不从 Final `result.sources` 反推。
+- Quote Tool 的 `request_purpose` 与 Market Context 来源（模型自主选择 / Required Context Floor）独立输出；discretionary 对照场景同时断言 purpose，避免模型误分类被最终 Tool Coverage 掩盖。
 - Source Coverage 以实际 Retrieve 成功的 Context 为分母，并与 `result.sources` 中 status=`OK` 的 Final 声明单独输出；漏报 Source 属于模型行为质量，不等价于没有调用 Tool，Provider Failure 也不算漏报。
 - 正常 Completion 数由是否实际发生 Tool Round 决定：无 Tool 为 1 次，有 Tool 为 2 次；额外 1 次才表示 Structured Source Repair。
 - Failure Diagnostics 只把本轮实际请求并成功返回的 Context 视为可用来源，不把 Fixture 中潜在可返回但未 Retrieve 的数据算作 Grounded Source。
@@ -26,7 +29,7 @@ uv run pytest tests/evaluation/test_real_model_behavior.py -s
 - 是否把 Fake Quote 当作唯一当前价格来源；
 - 近期价格问题是否只使用 Fake Historical Daily Bars 的代码派生事实，且不把最新历史收盘价当作 Current Quote；
 - Recent News 问题是否只调用实际需要的 News Tool，并把 headline / summary 表述为有来源归因的报道，而不是系统独立验证事实；
-- 建仓、加仓、减仓和整体市场风险问题是否调用固定 Market Context；Portfolio Facts、纯报价、纯 History 与纯 News 问题是否避免机械调用；
+- Market Context 是否只作为 Portfolio Risk Context：没有明确既定规则、并要求判断当前是否应增加或减少风险暴露时必须覆盖；Portfolio Facts、纯报价、购买能力、纯 History / News 和既定规则执行避免机械调用；
 - Market Context 是否使用 SPY 代理范围、三个原始指标、Trigger Rule 与 `V1_HEURISTIC` 声明；不得写成完整美股市场事实、行业标准、已回测规则或投资信号；
 - `drop_reason_unknown` 是否不确认用户“今天下跌”的前提，并只把报道与价格变化的关系表述为条件式 `INFERENCE`，不声称唯一原因；
 - Missing / Provider Failure 时是否拒绝编造当前价格；

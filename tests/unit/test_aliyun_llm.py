@@ -7,6 +7,7 @@ import pytest
 
 from position_pilot.application.llm import (
     LLMMessage,
+    LLMResponseFormat,
     LLMRole,
     LLMStatus,
     LLMToolCall,
@@ -121,8 +122,33 @@ def test_serializes_generic_messages_tools_and_configured_model() -> None:
     assert request.payload["model"] == "configured-model"
     assert request.payload["enable_thinking"] is False
     assert request.payload["parallel_tool_calls"] is True
+    assert "response_format" not in request.payload
     assert request.headers["Authorization"] == "Bearer test-secret"
     assert "get_current_quote" in str(request.payload["tools"])
+
+
+@pytest.mark.parametrize("with_tools", [False, True])
+def test_json_object_mode_uses_provider_native_response_format(with_tools: bool) -> None:
+    """通用 JSON_OBJECT 只在调用方明确请求时映射为 Provider 原生参数。"""
+
+    transport = FakeLLMTransport(
+        [
+            LLMJsonHttpResponse(
+                200,
+                {"choices": [{"message": {"role": "assistant", "content": "{}"}}]},
+            )
+        ]
+    )
+
+    result = make_provider(transport).complete(
+        (LLMMessage(LLMRole.USER, "Return one JSON object"),),
+        tools=(current_quote_tool(),) if with_tools else (),
+        response_format=LLMResponseFormat.JSON_OBJECT,
+    )
+
+    assert result.status is LLMStatus.OK
+    assert transport.requests[0].payload["response_format"] == {"type": "json_object"}
+    assert ("tools" in transport.requests[0].payload) is with_tools
 
 
 def test_parses_multiple_function_calls_into_generic_schema() -> None:

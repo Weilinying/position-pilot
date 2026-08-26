@@ -69,6 +69,13 @@ M3 需要完成第一个 Stateful Investment Vertical Slice，让 Single Investm
 - Opt-in Behavioral Eval 使用真实 `AliyunLLMProvider` 与 Fake Market Data，固定市场事实后验证真实模型的 Tool Selection、Grounding 和 Personalization，不进入默认 CI。
 - 真实 LLM + 真实 Market Data 只用于少量 Integration Smoke Test，不作为 Behavioral Eval 的主要依据。
 
+## M5 Structured Final Response 演进
+
+- 真实 Qwen Behavioral Eval 暴露 Prompt-only JSON Contract 会频繁产生非法 JSON，并让一次性 Repair 接近正常路径。Application 因此新增 provider-neutral `TEXT / JSON_OBJECT` Completion Capability；具体 OpenAI-compatible `response_format={"type":"json_object"}` 只由 Aliyun Adapter 映射。
+- 可能直接形成 Final Answer 的首轮 Completion、Tool Result 后的 Final Completion 与异常 Repair 均请求 `JSON_OBJECT`。首轮同时暴露 Native Tools，是因为它也允许模型在无需 Tool 时直接返回 Final Answer；并未为纯 Tool 阶段新增第二套 Provider 参数。
+- Provider-native JSON 只约束 JSON 语法，不证明 `answer / source_refs` Schema 或来源真实性。Application Parser、Structured Source Validation 与最多一次 No-Tool Repair 全部保留，形成 defense-in-depth。
+- 默认 `qwen3.7-plus` 支持该模式；若通过配置替换模型，所选模型必须兼容 `JSON_OBJECT`。Provider 拒绝该能力时保持既有 LLM Failure Taxonomy，不静默回退到 Prompt-only TEXT。
+
 ## 重新考虑条件
 
 - Evaluation 证明 Native Function Calling 持续无法稳定完成 Tool Routing。

@@ -94,7 +94,9 @@ LLM Final Completion 使用严格外层 JSON：`answer` 是不做 Claim Parsing 
 
 Quote Tool Result 再次向 LLM 提供实际 price。Backend 不负责把 answer 中的 `210.25` 与 Tool Result 逐句比对，也不再校验 Cash、Average Cost、History 数字或购买能力措辞。确定性 Portfolio / Transaction / Cash / Market Data / Derived Facts 的生成与校验仍留在代码边界。
 
-当前 Aliyun Adapter 不依赖 Provider-native `response_format`：Assistant `content` 使用严格 JSON Contract，由 Application 解析。这复用已存在的 OpenAI-compatible 消息能力，不增加 SDK 或 Provider 特有类型。
+M5 真实 Qwen Behavioral Eval 证明 Prompt-only JSON enforcement 会让非法 JSON 与 Repair 频繁进入正常路径。当前 Application 使用 provider-neutral `JSON_OBJECT` 能力请求结构化 Final Completion，Aliyun Adapter 才将其映射为 OpenAI-compatible `response_format={"type":"json_object"}`。Parser、Structured Source Validation 与一次 Repair 仍保留；Provider 原生约束只减少 JSON 语法失败，不能替代来源真实性验证。
+
+M5 同时把 Required Context Policy 限定为极窄的 model-declared minimum context floor：LLM 仍是 Optional Tool 的 primary router，并在 Current Quote Native Tool 参数中结构化声明请求语义。只有模型声明“无既定规则的当前风险动作判断”且漏选 Market Context 时，Application 才补足无参数 `get_market_context`。该机制不扫描问题关键词，不扩展成完整 Intent Router，也不为购买能力或既定规则执行机械获取 Market Context；模型漏掉 Quote 或误分类 purpose 仍是 Routing Quality，而不是 Application 独立语义分类保证。
 
 ### Boundary / Future
 

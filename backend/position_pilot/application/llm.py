@@ -26,6 +26,13 @@ class LLMStatus(StrEnum):
     INVALID_PROVIDER_RESPONSE = "INVALID_PROVIDER_RESPONSE"
 
 
+class LLMResponseFormat(StrEnum):
+    """Provider-neutral Completion 输出格式约束。"""
+
+    TEXT = "TEXT"
+    JSON_OBJECT = "JSON_OBJECT"
+
+
 @dataclass(frozen=True, slots=True)
 class LLMToolCall:
     """模型请求 Application 执行的通用 Tool Call。"""
@@ -156,4 +163,5 @@ class LLMProvider(Protocol):
         messages: tuple[LLMMessage, ...],
         *,
         tools: tuple[LLMToolDefinition, ...] = (),
+        response_format: LLMResponseFormat = LLMResponseFormat.TEXT,
     ) -> LLMResult: ...

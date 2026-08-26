@@ -228,13 +228,17 @@ NORMAL / ELEVATED_VOLATILITY / HIGH_STRESS / EXTREME_STRESS
 PortfolioState
       ↓ deterministic Snapshot
 InvestmentAgent
+      ↓ LLM native optional tool selection
+validate minimum context floor
+      ↓ only declared discretionary current risk action may add Market Context
       ↓ LLMProvider Contract
 AliyunLLMProvider
       ↓ OpenAI-compatible HTTPS
 Alibaba Cloud Model Studio
 
 Final LLM {answer, source_refs}
-      ↓ strict outer JSON + Source Reference validation
+      ↓ provider-neutral JSON_OBJECT → Aliyun response_format=json_object
+      ↓ strict outer JSON parser + Source Reference validation
 Free-form answer + validated Context Sources
       ↓ no natural-language claim parsing
 Pass → existing answer:string API
@@ -247,7 +251,9 @@ LLM_INVALID_PROVIDER_RESPONSE
 - `LLMProvider` 的 Message、Tool Definition、Tool Call 与 Result 均为项目自身 Schema；Aliyun/OpenAI-compatible Payload 只存在于 Adapter。
 - `qwen3.7-plus` 是可通过 `LLM_MODEL` 覆盖的默认配置，不是 Domain 或 Application 类型。
 - Current Quote、Recent Price History、Recent News 或 Market Context Failure 会作为缺失事实返回 LLM，安全 Final Answer 由 Application 标记为 `DEGRADED`；LLM Failure 无法形成 Final Answer，返回 Request Failure。
-- Native Function Calling 可选择四类 Context Tool，但单轮总调用预算保持为 4；建仓 / 加仓 / 减仓和整体市场风险问题需要 Market Context，Portfolio Facts、纯报价、纯 History 或纯 News 问题不机械调用。
-- 首轮 Native Tool Selection 通过参数校验后记录一次结构化 Trace，包含可用 / 选中 Tool、唯一 Context 数量、匹配当前持仓的 Position Type、未持有标的数量与 Routing Latency；日志不保存问题正文、User ID 或 ticker。
+- Native Function Calling 可选择四类 Context Tool，LLM 仍是 primary router，单轮总调用预算保持为 4。Market Context 是 Portfolio Risk Context / risk modifier；只有没有明确既定交易规则、并要求判断当前是否应该增加或减少风险暴露时才是 minimum context。购买能力、纯事实查询和既定规则/已决定动作的确认执行不机械调用。
+- Current Quote Native Tool Call 通过 `request_purpose` 结构化声明事实查询、discretionary current risk action 或既定规则/执行检查。模型声明 discretionary action 且漏选 Market Context 时，Application 在同一 Tool Round 补足一次无参数调用；这是 model-declared floor，不解析问题关键词，也不替代模型的 Intent 判断或接管 Quote / History / News 的自主选择。
+- 首轮 Native Tool Selection 通过参数校验后记录一次结构化 Trace，区分模型选择的 Tool、模型声明的安全 purpose 枚举、Required Context Floor 补足的 Tool、最终有效 Context、匹配当前持仓的 Position Type、未持有标的数量与 Routing Latency；日志不保存问题正文、User ID 或 ticker。
+- Final、可能无 Tool 直接回答的首轮 Completion 与 Repair 请求 `LLMResponseFormat.JSON_OBJECT`。Aliyun Adapter 映射为 Provider-native JSON Mode；Parser、Source Validation 和一次 No-Tool Repair 继续作为防御层。Tool Call、Provider Failure 与 Source Contract 均未交给 JSON Mode 代替验证。
 - `FACT`、`INFERENCE`、`UNKNOWN` 是回答的语义约束，不强制固定输出标题。
 - 默认测试使用 Fake LLM；Opt-in Behavioral Eval 使用真实 Aliyun LLM 与固定 Fake Market Data，真实 LLM + 真实 Market Data 只用于 Smoke Test。

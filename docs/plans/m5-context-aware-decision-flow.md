@@ -65,7 +65,7 @@ Atomic Commits → Human Acceptance
 
 - 阈值元数据必须明确标记为 `V1_HEURISTIC`：它们是工程启发式规则，不是行业标准、没有经过历史回测验证，也不是投资信号。
 - Tool Result 必须保留三个原始指标、触发规则、观察数量、Period Start / End、Provider、Feed、Coverage、Adjustment 与 Fetched At，便于后续 Eval 或 Backtest 驱动调整。
-- 当前建仓 / 加仓 / 减仓、整体市场风险或 Market Regime 问题需要 Market Context；纯报价、Portfolio Facts、Recent News、Recent Price History 问题不机械调用。
+- Market Context 是 Portfolio Risk Context / risk modifier；没有明确既定规则、并要求判断当前是否应该增加或减少风险暴露时才属于 minimum decision context。购买能力、纯事实查询与既定规则执行不机械调用。
 - Market Context Failure 保持明确状态并产生 `DEGRADED` Answer；不得从用户前提、个股新闻或训练知识补造 Regime。
 - Public Source Type 增加 `MARKET_CONTEXT`，使用 `ticker=SPY`；其余 Response Shape 不变。
 - 单轮 Tool Call Budget 继续为 4，不因为新增能力默认提高调用成本。
@@ -99,8 +99,9 @@ Atomic Commits → Human Acceptance
 - Domain 使用固定 50 位 Decimal 中间精度计算 5-session Return、20-session Close Drawdown 与 20-return Annualized Realized Volatility，统一 4 位 Half-even 后按最高严重度分类。
 - Tool Result 保留三个原始指标、完整 Threshold Table、Trigger Rule、Period、Observation Count 与 Provider Metadata，并明确 `V1_HEURISTIC` 不是行业标准、未经历史回测验证且不是投资信号。
 - Context Capability 将 `market_context` 设为 `AVAILABLE`；Public Source Type 新增已批准的 `MARKET_CONTEXT` / `SPY`，其余 Response Shape 不变。
-- 当前建仓 / 加仓 / 减仓、整体市场风险与 Regime 问题要求 Market Context；Portfolio Facts、纯 Quote、纯 History 与纯 News 问题不机械调用。四类 Context 继续共享单轮最多 4 次调用预算。
-- Behavioral Dataset 增加相同问题下 `NORMAL` / `HIGH_STRESS` 对照、High-stress Position Reduction、Market Context Failure 和 Source / Retrieval Trace；既有 Cash 与 Position Type 对照继续保留。
+- LLM 仍通过 Native Function Calling 自主选择 Optional Tools；Current Quote Tool 结构化声明 `request_purpose`，仅当模型声明 discretionary current risk action 且漏选 Market Context 时，由 Application 在同一 Round 补足。该保证明确限定为 model-declared floor，purpose 误分类由 Behavioral Eval 诊断；四类 Context 继续共享最多 4 次调用预算，不增加关键词 Router。
+- Final Structured Response 使用 provider-neutral `JSON_OBJECT`，Aliyun Adapter 映射 Provider-native JSON Mode；Application Parser、Source Validation 与一次 Repair 保留为 defense-in-depth。
+- Behavioral Dataset 保留相同问题下 `NORMAL` / `HIGH_STRESS` 对照，并新增既定减仓规则检查不机械调用 Market Context、Market Context Failure 和 Source / Retrieval Trace；既有 Cash 与 Position Type 对照继续保留。
 - Market Context Provider Failure Case 要求成功 Quote 与失败 Market Context 同轮调用，自动验证 `DEGRADED` 与 Tool Trace，并由 Human Checks 确认 Regime 保持 `UNKNOWN`、不从训练知识或个股信息补造整体市场状态。
 
 ### Automated Review
@@ -114,7 +115,7 @@ Atomic Commits → Human Acceptance
 
 ### Verification
 
-- 默认全量 pytest：326 passed，36 skipped。
+- 默认全量 pytest：335 passed，36 skipped。
 - 跳过项为 22 条未显式启用的真实模型 Behavioral Eval、2 条在线 Alpaca Market Tests、1 条在线 Alpaca News Test、1 条真实 Agent Smoke Test，以及未配置 `TEST_DATABASE_URL` 的 10 条 PostgreSQL Integration Tests。
 - Ruff format check / lint：PASS；mypy strict：PASS（55 source files）。
 - `uv lock --check`、Alembic head / history 与 `git diff --check`：PASS。
@@ -125,4 +126,4 @@ Atomic Commits → Human Acceptance
 - SPY 只代表美国大盘股代理，V1 不包含 VIX、市场宽度、主要指数集合、Sector、Macro 或盘中 Market Regime。
 - Human Review 已批准 7 个日历日 Freshness Guard；最新 completed SPY Daily Bar 超过该边界时返回 `NO_DATA`，Regime 保持 `UNKNOWN`。该工程启发式只检测明显陈旧数据，不引入 Market Calendar。
 - 阈值没有历史回测验证；后续只能由固定 Eval、真实使用或 Backtest 证据驱动调整，不能因模型偏好修改。
-- 本次没有可用 Credential，因此未实际运行真实 LLM Behavioral Eval、在线 Alpaca Tests 或真实 Agent Smoke Test。
+- 已显式启用真实 LLM Behavioral Eval 命令，但当前环境没有 `LLM_API_KEY`，22 个真实模型 Cases 按既有 Gate 跳过；不能据此声称 Repair Rate 已改善。在线 Alpaca Tests 与真实 Agent Smoke Test 同样未运行。
