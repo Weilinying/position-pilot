@@ -1,14 +1,21 @@
 """Investment Agent 注入 LLM 的 Structured Context 与确定性派生事实。"""
 
 from dataclasses import dataclass
+from datetime import datetime
 from decimal import ROUND_HALF_EVEN, Decimal
 from enum import StrEnum
 from uuid import UUID
 
 from position_pilot.domain.market_data import HistoricalBars, MarketQuote
-from position_pilot.domain.portfolio import PortfolioState, PositionType
+from position_pilot.domain.portfolio import (
+    PortfolioState,
+    PositionType,
+    Transaction,
+    TransactionAction,
+)
 
 WEIGHT_PERCENT_QUANTUM = Decimal("0.01")
+HISTORICAL_BUYS_PER_POSITION_LIMIT = 5
 
 
 class ContextCapabilityStatus(StrEnum):
@@ -31,6 +38,7 @@ class ContextCapabilities:
     technical_analysis: ContextCapabilityStatus = ContextCapabilityStatus.UNAVAILABLE
     asset_metadata: ContextCapabilityStatus = ContextCapabilityStatus.UNAVAILABLE
     sector_classification: ContextCapabilityStatus = ContextCapabilityStatus.UNAVAILABLE
+    historical_buy_facts: ContextCapabilityStatus = ContextCapabilityStatus.UNAVAILABLE
 
     def as_dict(self) -> dict[str, str]:
         """生成发送给 LLM 的稳定 Capability Manifest。"""
@@ -45,6 +53,7 @@ class ContextCapabilities:
             "technical_analysis": self.technical_analysis.value,
             "asset_metadata": self.asset_metadata.value,
             "sector_classification": self.sector_classification.value,
+            "historical_buy_facts": self.historical_buy_facts.value,
         }
 
 
@@ -68,6 +77,7 @@ M5_CONTEXT_CAPABILITIES = ContextCapabilities(
     news=ContextCapabilityStatus.AVAILABLE,
     price_history=ContextCapabilityStatus.AVAILABLE,
     market_context=ContextCapabilityStatus.AVAILABLE,
+    historical_buy_facts=ContextCapabilityStatus.AVAILABLE,
 )
 
 
@@ -90,6 +100,133 @@ def m3_decision_context() -> dict[str, str]:
         "exit_conditions": "UNKNOWN",
         "risk_budget": "UNKNOWN",
     }
+
+
+@dataclass(frozen=True, slots=True)
+class HistoricalBuyFact:
+    """当前 Position 对应的一条确定性历史 BUY 事实。"""
+
+    sequence: int
+    ticker: str
+    position_type: PositionType
+    occurred_at: datetime
+    price: Decimal
+    shares: Decimal
+
+    @classmethod
+    def from_transaction(cls, transaction: Transaction) -> "HistoricalBuyFact":
+        """从已校验 Ledger Transaction 投影 LLM 所需字段。"""
+
+        return cls(
+            sequence=transaction.sequence,
+            ticker=transaction.ticker,
+            position_type=transaction.position_type,
+            occurred_at=transaction.occurred_at,
+            price=transaction.price,
+            shares=transaction.shares,
+        )
+
+    def as_dict(self) -> dict[str, object]:
+        """输出不包含 User ID、Transaction ID、费用或自由文本原因的事实。"""
+
+        return {
+            "sequence": self.sequence,
+            "ticker": self.ticker,
+            "position_type": self.position_type.value,
+            "occurred_at": self.occurred_at.isoformat(),
+            "price": str(self.price),
+            "shares": str(self.shares),
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class HistoricalBuyFacts:
+    """当前 Positions 的有界历史 BUY 投影，不替代完整 Transaction Ledger。"""
+
+    records: tuple[HistoricalBuyFact, ...]
+    total_count: int
+    included_count: int
+    truncated: bool
+    per_position_limit: int = HISTORICAL_BUYS_PER_POSITION_LIMIT
+
+    @classmethod
+    def from_transactions(
+        cls,
+        state: PortfolioState,
+        transactions: tuple[Transaction, ...],
+    ) -> "HistoricalBuyFacts":
+        """每个当前 `(ticker, position_type)` 保留最近固定数量的 BUY。"""
+
+        if any(transaction.user_id != state.user_id for transaction in transactions):
+            raise ValueError("历史 BUY 投影不能混合不同 User 的 Ledger Transaction")
+        active_positions = {
+            (position.ticker, position.position_type) for position in state.positions
+        }
+        eligible = tuple(
+            transaction
+            for transaction in sorted(transactions, key=lambda item: item.sequence)
+            if transaction.action is TransactionAction.BUY
+            and (transaction.ticker, transaction.position_type) in active_positions
+        )
+        grouped: dict[tuple[str, PositionType], list[Transaction]] = {}
+        for transaction in eligible:
+            grouped.setdefault((transaction.ticker, transaction.position_type), []).append(
+                transaction
+            )
+        included = tuple(
+            sorted(
+                (
+                    transaction
+                    for group in grouped.values()
+                    for transaction in group[-HISTORICAL_BUYS_PER_POSITION_LIMIT:]
+                ),
+                key=lambda item: item.sequence,
+            )
+        )
+        return cls(
+            records=tuple(HistoricalBuyFact.from_transaction(item) for item in included),
+            total_count=len(eligible),
+            included_count=len(included),
+            truncated=len(included) < len(eligible),
+        )
+
+    def as_dict(self) -> dict[str, object]:
+        """显式声明范围和截断状态，避免模型误称完整 Ledger。"""
+
+        return {
+            "status": "AVAILABLE",
+            "scope": "current_positions_only",
+            "record_type": "BUY_ONLY",
+            "per_position_limit": self.per_position_limit,
+            "total_count": self.total_count,
+            "included_count": self.included_count,
+            "truncated": self.truncated,
+            "records": [record.as_dict() for record in self.records],
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class InvestmentPortfolioContext:
+    """由同一批 Ledger Facts 生成的 Agent Portfolio Context。"""
+
+    portfolio: PortfolioState
+    historical_buy_facts: HistoricalBuyFacts
+
+    @classmethod
+    def from_ledger(
+        cls,
+        portfolio: PortfolioState,
+        transactions: tuple[Transaction, ...],
+    ) -> "InvestmentPortfolioContext":
+        """组合当前派生 State 与有界历史 BUY Facts。"""
+
+        return cls(
+            portfolio=portfolio,
+            historical_buy_facts=HistoricalBuyFacts.from_transactions(
+                portfolio,
+                transactions,
+            ),
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -188,17 +325,22 @@ class PortfolioDerivedFacts:
 
 @dataclass(frozen=True, slots=True)
 class PortfolioSnapshot:
-    """必定注入且不包含 Ledger History 的完整当前持仓快照。"""
+    """必定注入的完整当前持仓与有界历史 BUY 事实。"""
 
     user_id: UUID
     available_cash: Decimal
     positions: tuple[PortfolioPositionSnapshot, ...]
     deterministic_derived_facts: PortfolioDerivedFacts
+    historical_buy_facts: HistoricalBuyFacts
     positions_are_complete: bool = True
 
     @classmethod
-    def from_state(cls, state: PortfolioState) -> "PortfolioSnapshot":
-        """从确定性 Portfolio State 创建稳定 Snapshot。"""
+    def from_state(
+        cls,
+        state: PortfolioState,
+        historical_buy_facts: HistoricalBuyFacts,
+    ) -> "PortfolioSnapshot":
+        """从确定性 Portfolio State 与显式历史投影创建稳定 Snapshot。"""
 
         positions = tuple(
             PortfolioPositionSnapshot(
@@ -218,7 +360,14 @@ class PortfolioSnapshot:
             available_cash=state.cash.available_cash,
             positions=positions,
             deterministic_derived_facts=PortfolioDerivedFacts.from_positions(positions),
+            historical_buy_facts=historical_buy_facts,
         )
+
+    @classmethod
+    def from_context(cls, context: InvestmentPortfolioContext) -> "PortfolioSnapshot":
+        """从同一 Ledger Read 形成的 Agent Context 创建 Snapshot。"""
+
+        return cls.from_state(context.portfolio, context.historical_buy_facts)
 
     def as_dict(self) -> dict[str, object]:
         """显式声明 Positions 完整及缺席 Ticker 的含义。"""
@@ -229,6 +378,7 @@ class PortfolioSnapshot:
             "missing_ticker_means_no_current_position": True,
             "positions": [position.as_dict() for position in self.positions],
             "deterministic_derived_facts": self.deterministic_derived_facts.as_dict(),
+            "historical_buy_facts": self.historical_buy_facts.as_dict(),
         }
 
 

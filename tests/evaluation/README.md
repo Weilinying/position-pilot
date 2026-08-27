@@ -25,7 +25,7 @@ uv run pytest tests/evaluation/test_real_model_behavior.py -s \
 
 Dataset 内的 Coverage Matrix 将 V1 Requirement 映射到 Behavioral Case。Unit / Agent Tests 已有的 empty、failure 或 stale Contract Evidence 可以直接用于覆盖判断，不为矩阵对称性强行增加 Real-model Case。
 
-完整 V1 Success Criteria 仍缺少历史买入 Transaction Context；Dataset 将其保留为显式 Coverage Gap，不用现有 Portfolio Snapshot Case 伪装为完整覆盖。
+有界历史 BUY Facts 已进入 Portfolio Snapshot；完整 V1 Success Criteria 仍缺少真实模型 Factual Grounding 证据，Dataset 在 Real-model Eval 与 Human Review 完成前保留该 Coverage Gap。
 
 Controlled Contrast 尽量只改变一个输入变量：
 
@@ -69,6 +69,6 @@ Reporter 只使用 Evaluation 层已有数据，不为了补齐 Token、Cost、�
 
 ## Capability Boundary
 
-当前 `price_history`、`news` 与 `market_context` 为 `AVAILABLE`；News 只是 attributed reporting，Market Context 只是 SPY Daily Price Stress V1 Heuristic。`earnings`、`fundamentals`、`technical_analysis` 与 `asset_metadata` 仍不可用，不得由模型猜测当前财报、技术信号、`tradable`、`fractionable` 或可执行购买数量。
+当前 `price_history`、`news`、`market_context` 与 `historical_buy_facts` 为 `AVAILABLE`；Historical Buy Facts 是当前 Positions 的有界 BUY 投影，News 只是 attributed reporting，Market Context 只是 SPY Daily Price Stress V1 Heuristic。`earnings`、`fundamentals`、`technical_analysis` 与 `asset_metadata` 仍不可用，不得由模型猜测当前财报、技术信号、`tradable`、`fractionable` 或可执行购买数量。
 
 真实 LLM + 真实 Market Data 见 `tests/integration/test_investment_agent_online.py`。PostgreSQL、Alpaca Market / News 与真实 Agent Online Smoke 作为 Human Acceptance Evidence，不作为受第三方服务状态影响的常规 CI Gate。

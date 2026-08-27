@@ -17,6 +17,7 @@ from position_pilot.application.investment_agent import (
     InvestmentResponseStatus,
     QuoteRequestPurpose,
 )
+from position_pilot.application.investment_context import InvestmentPortfolioContext
 from position_pilot.application.llm import (
     LLMMessage,
     LLMResponseFormat,
@@ -57,14 +58,15 @@ NOW = datetime(2026, 8, 24, 8, 0, tzinfo=UTC)
 
 @dataclass(slots=True)
 class FakePortfolioReader:
-    """返回固定完整 Portfolio State，并记录读取。"""
+    """返回固定 Agent Portfolio Context，并记录读取。"""
 
     state: PortfolioState
+    transactions: tuple[Transaction, ...] = ()
     requested_user_ids: list[UUID] = field(default_factory=list)
 
-    def get_portfolio(self, user_id: UUID) -> PortfolioState:
+    def get_investment_context(self, user_id: UUID) -> InvestmentPortfolioContext:
         self.requested_user_ids.append(user_id)
-        return self.state
+        return InvestmentPortfolioContext.from_ledger(self.state, self.transactions)
 
 
 @dataclass(slots=True)
@@ -140,7 +142,7 @@ class ScriptedLLM:
 
 
 def make_portfolio(*, available_cash: str = "300") -> PortfolioState:
-    """创建同时包含长期仓和波段仓的固定 Snapshot。"""
+    """创建不声称带有 Ledger History 的固定当前 State。"""
 
     return PortfolioState(
         user_id=USER_ID,
@@ -165,7 +167,7 @@ def make_portfolio(*, available_cash: str = "300") -> PortfolioState:
                 average_cost=Decimal("220"),
             ),
         ),
-        transaction_count=8,
+        transaction_count=0,
     )
 
 
@@ -401,11 +403,12 @@ def make_agent(
     news_results: dict[str, NewsResult[RecentNews]] | None = None,
     market_context_result: MarketDataResult[MarketRegimeContext] | None = None,
     portfolio: PortfolioState | None = None,
+    transactions: tuple[Transaction, ...] = (),
     clock: datetime = NOW,
 ) -> tuple[InvestmentAgent, FakePortfolioReader, FakeMarketData, ScriptedLLM]:
     """组装完全不依赖真实 Provider 的 Agent。"""
 
-    portfolio_reader = FakePortfolioReader(portfolio or make_portfolio())
+    portfolio_reader = FakePortfolioReader(portfolio or make_portfolio(), transactions)
     market_data = FakeMarketData(
         market_results or {},
         historical_results or {},
@@ -445,10 +448,46 @@ def assert_failure(
     return result
 
 
-def test_always_injects_complete_portfolio_snapshot_without_transaction_history() -> None:
-    """Snapshot 必须声明完整持仓集合，且 M3 不默认注入 Transaction History。"""
+def test_always_injects_complete_portfolio_snapshot_with_bounded_buy_history() -> None:
+    """Snapshot 必须同时声明完整当前持仓和有界历史 BUY Facts。"""
 
-    agent, portfolio_reader, market_data, llm = make_agent([final_message()])
+    transactions = (
+        Transaction.create(
+            user_id=USER_ID,
+            sequence=1,
+            ticker="GOOG",
+            action=TransactionAction.BUY,
+            price=Decimal("200"),
+            shares=Decimal("2"),
+            position_type=PositionType.LONG_TERM,
+            occurred_at=NOW - timedelta(days=30),
+        ),
+        Transaction.create(
+            user_id=USER_ID,
+            sequence=2,
+            ticker="GOOG",
+            action=TransactionAction.BUY,
+            price=Decimal("220"),
+            shares=Decimal("1"),
+            position_type=PositionType.SWING,
+            occurred_at=NOW - timedelta(days=5),
+        ),
+    )
+    portfolio = rebuild_portfolio(
+        User.create(
+            user_id=USER_ID,
+            display_name="Historical Context User",
+            initial_cash=Decimal("1000"),
+            created_at=NOW - timedelta(days=60),
+        ),
+        list(transactions),
+        [],
+    )
+    agent, portfolio_reader, market_data, llm = make_agent(
+        [final_message()],
+        portfolio=portfolio,
+        transactions=transactions,
+    )
 
     result = assert_answer(agent.answer(USER_ID, "我现在有哪些持仓？"))
 
@@ -463,9 +502,35 @@ def test_always_injects_complete_portfolio_snapshot_without_transaction_history(
     snapshot = payload["portfolio_snapshot"]
     assert snapshot["positions_are_complete_current_set"] is True
     assert snapshot["missing_ticker_means_no_current_position"] is True
-    assert "transactions" not in snapshot
     assert "user_id" not in snapshot
-    assert snapshot["available_cash"] == "300"
+    assert snapshot["available_cash"] == "379.30000000"
+    assert snapshot["historical_buy_facts"] == {
+        "status": "AVAILABLE",
+        "scope": "current_positions_only",
+        "record_type": "BUY_ONLY",
+        "per_position_limit": 5,
+        "total_count": 2,
+        "included_count": 2,
+        "truncated": False,
+        "records": [
+            {
+                "sequence": 1,
+                "ticker": "GOOG",
+                "position_type": "LONG_TERM",
+                "occurred_at": (NOW - timedelta(days=30)).isoformat(),
+                "price": "200.00000000",
+                "shares": "2.00000000",
+            },
+            {
+                "sequence": 2,
+                "ticker": "GOOG",
+                "position_type": "SWING",
+                "occurred_at": (NOW - timedelta(days=5)).isoformat(),
+                "price": "220.00000000",
+                "shares": "1.00000000",
+            },
+        ],
+    }
     derived_facts = snapshot["deterministic_derived_facts"]
     assert derived_facts == {
         "current_market_value_weight": "UNAVAILABLE",
@@ -475,8 +540,8 @@ def test_always_injects_complete_portfolio_snapshot_without_transaction_history(
             "total_position_cost_basis_excluding_available_cash"
         ),
         "position_cost_basis_weight_unit": "PERCENT_ROUNDED_2DP",
-        "total_position_cost_basis": "620",
-        "total_shares_by_ticker": {"GOOG": "3"},
+        "total_position_cost_basis": "620.70000000",
+        "total_shares_by_ticker": {"GOOG": "3.00000000"},
         "total_shares_by_ticker_scope": "same_ticker_aggregation_only",
         "available_cash_weight": "UNAVAILABLE",
         "total_portfolio_value": "UNAVAILABLE",
@@ -504,6 +569,7 @@ def test_always_injects_complete_portfolio_snapshot_without_transaction_history(
         "current_quote": "AVAILABLE",
         "earnings": "UNAVAILABLE",
         "fundamentals": "UNAVAILABLE",
+        "historical_buy_facts": "AVAILABLE",
         "market_context": "AVAILABLE",
         "news": "AVAILABLE",
         "price_history": "AVAILABLE",
@@ -542,7 +608,7 @@ def test_quote_tool_description_distinguishes_portfolio_facts() -> None:
     assert "只有问题真正需要当前价格或基于当前价格的关系时才调用" in quote_tool.description
 
 
-def test_cash_event_adjusted_cash_reaches_agent_snapshot_without_ledger_history() -> None:
+def test_cash_event_adjusted_cash_reaches_agent_snapshot_without_cash_event_history() -> None:
     """Agent 应读取 Cash Event 重建后的现金，但不注入 Cash Event History。"""
 
     user = User.create(
@@ -569,7 +635,11 @@ def test_cash_event_adjusted_cash_reaches_agent_snapshot_without_ledger_history(
         occurred_at=datetime(2026, 8, 22, 8, 0, tzinfo=UTC),
     )
     portfolio = rebuild_portfolio(user, [transaction], [cash_event])
-    agent, _, _, llm = make_agent([final_message()], portfolio=portfolio)
+    agent, _, _, llm = make_agent(
+        [final_message()],
+        portfolio=portfolio,
+        transactions=(transaction,),
+    )
 
     assert_answer(agent.answer(USER_ID, "我还有多少可用现金？"))
 

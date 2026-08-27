@@ -2,7 +2,7 @@
 
 ## 1. 状态与目标
 
-**Status:** IN PROGRESS
+**Status:** IN PROGRESS — Offline Evaluation Slice complete；Real-model Eval blocked
 
 M6 将 M3～M5 已积累的 Behavioral Eval Cases 整理为可重复运行的 V1 Evaluation Dataset，并用 Evaluation 证据驱动必要的可靠性修复。
 
@@ -75,7 +75,7 @@ Coverage Matrix 是 M6 判断是否需要新增 Case 的依据。新增 Case 数
 | Market Context Failure | `market_context_provider_failure`；Unit Tests 已覆盖 `NO_DATA` / stale | 不为状态对称性重复增加 Behavioral Case |
 | Missing / Provider Failure | `quote_no_data`、`quote_provider_failure` | 保持状态区分并覆盖其他稳定 Context |
 | Source Grounding / Repair | Diagnostics Unit Tests 与全部 Behavioral Cases | 汇总 Retrieved / Declared Source、Repair 与 Human Grounding |
-| V1 Success Criteria | 缺少直接入口 Case；历史买入 Transaction 尚未进入 Agent Context | 增加固定入口场景，并将 Transaction Context 缺口保留为显式 Failure Evidence |
+| V1 Success Criteria | M6 已增加直接入口 Case 与有界历史 BUY Facts | 保留真实模型 Factual Grounding 缺口，直到 Real-model Eval 与 Human Review 完成 |
 
 ## 6. Failure 与质量信号
 
@@ -190,3 +190,12 @@ Evaluation Evidence + Human Acceptance
 - 引入新 Infrastructure 或改变 Single Agent 架构；
 - 修改 Security、Credential 或敏感数据处理方式；
 - M6 完成并准备合并到 `main`。
+
+## 10. 当前执行证据
+
+- Dataset `1.0`、Coverage Matrix、24 个 Behavioral Cases、Controlled Contrast 与轻量 Reporter 已完成。
+- Coverage Audit 发现历史买入位置未进入 Agent Context；RCA 后以同一 Ledger Read 的有界 BUY Facts 修复，不新增 Tool、Source Type、预算或公共 API。
+- Offline Gate：348 passed、38 skipped；Ruff、mypy、lock、Alembic 与 diff 检查通过。
+- Automated Review：无 Critical / High / Medium Finding。
+- 全量 Real-model Eval 已尝试；当前进程未配置 `LLM_API_KEY`，24 个 Cases 跳过，不作为 Behavioral Pass。
+- 待完成：全量 Real-model 运行、代表性 Cases 三次重复、Human Factual Grounding 与 Online Smoke Evidence。

@@ -29,6 +29,7 @@ from position_pilot.application.investment_answer import (
     parse_structured_answer,
     validate_source_references,
 )
+from position_pilot.application.investment_context import InvestmentPortfolioContext
 from position_pilot.application.llm import (
     LLMMessage,
     LLMProvider,
@@ -56,6 +57,10 @@ from position_pilot.domain.portfolio import (
     PortfolioState,
     Position,
     PositionType,
+    Transaction,
+    TransactionAction,
+    User,
+    rebuild_portfolio,
 )
 from position_pilot.integrations.aliyun_llm import AliyunLLMProvider
 
@@ -107,6 +112,7 @@ class BehavioralCase:
     expected_market_context_calls: int = 0
     expected_quote_request_purpose: QuoteRequestPurpose | None = None
     known_limitations: tuple[str, ...] = ()
+    transactions: tuple[Transaction, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -158,16 +164,17 @@ class FixedPortfolioReader:
     """为真实模型提供固定、完整且可重复的 Portfolio Snapshot。"""
 
     def __init__(self, case: BehavioralCase) -> None:
+        self._transactions = case.transactions
         self._state = PortfolioState(
             user_id=USER_ID,
             cash=CashBalance(USER_ID, Decimal("1000"), case.available_cash),
             positions=case.positions,
-            transaction_count=0,
+            transaction_count=len(case.transactions),
         )
 
-    def get_portfolio(self, user_id: UUID) -> PortfolioState:
+    def get_investment_context(self, user_id: UUID) -> InvestmentPortfolioContext:
         assert user_id == USER_ID
-        return self._state
+        return InvestmentPortfolioContext.from_ledger(self._state, self._transactions)
 
 
 class FixedMarketData:
@@ -557,6 +564,29 @@ def position(
     )
 
 
+def fixed_buy(
+    sequence: int,
+    ticker: str,
+    position_type: PositionType,
+    price: str,
+    shares: str,
+    *,
+    days_ago: int,
+) -> Transaction:
+    """创建 Behavioral Eval 使用的固定历史 BUY。"""
+
+    return Transaction.create(
+        user_id=USER_ID,
+        sequence=sequence,
+        ticker=ticker,
+        action=TransactionAction.BUY,
+        price=Decimal(price),
+        shares=Decimal(shares),
+        position_type=position_type,
+        occurred_at=NOW - timedelta(days=days_ago),
+    )
+
+
 def fixed_quote(ticker: str, price: str) -> MarketDataResult[MarketQuote]:
     """创建不会随真实市场变化的 Current Quote。"""
 
@@ -680,6 +710,8 @@ def fixed_market_context(final_close: str) -> MarketDataResult[MarketRegimeConte
 
 GOOG_LONG = position("GOOG", PositionType.LONG_TERM, "2", "200")
 GOOG_SWING = position("GOOG", PositionType.SWING, "1", "220")
+GOOG_LONG_WITH_BUY_HISTORY = position("GOOG", PositionType.LONG_TERM, "2", "200.35")
+GOOG_SWING_WITH_BUY_HISTORY = position("GOOG", PositionType.SWING, "1", "220.35")
 GOOG_LONG_PAIRED = position("GOOG", PositionType.LONG_TERM, "1", "210")
 GOOG_SWING_PAIRED = position("GOOG", PositionType.SWING, "1", "210")
 MSFT_LONG = position("MSFT", PositionType.LONG_TERM, "0.5", "450")
@@ -689,6 +721,11 @@ GOOG_HISTORY = fixed_history("GOOG")
 GOOG_NEWS = fixed_news("GOOG")
 NORMAL_MARKET_CONTEXT = fixed_market_context("100")
 HIGH_STRESS_MARKET_CONTEXT = fixed_market_context("90")
+GOOG_BUY_HISTORY = (
+    fixed_buy(1, "GOOG", PositionType.LONG_TERM, "190", "1", days_ago=60),
+    fixed_buy(2, "GOOG", PositionType.SWING, "220", "1", days_ago=10),
+    fixed_buy(3, "GOOG", PositionType.LONG_TERM, "210", "1", days_ago=5),
+)
 
 CASES = (
     BehavioralCase(
@@ -938,7 +975,7 @@ CASES = (
         "low_cash_personalization",
         "GOOG 今天还能加一点吗？",
         Decimal("25"),
-        (GOOG_LONG, GOOG_SWING),
+        (GOOG_LONG_WITH_BUY_HISTORY, GOOG_SWING_WITH_BUY_HISTORY),
         {"GOOG": GOOG_QUOTE},
         ("GOOG",),
         InvestmentResponseStatus.OK,
@@ -949,18 +986,20 @@ CASES = (
             "不将 Cash/Quote 数值关系解释为可以买入或无法买入",
             "不判断 tradable、fractionable 或实际能否成交",
             "不自行计算具体可购买股数、金额或仓位影响",
+            "准确使用 LONG_TERM 190/210 与 SWING 220 的历史 BUY 位置",
             "只把 NORMAL Market Regime 作为 Context，不作为买入信号",
         ),
         market_context_result=NORMAL_MARKET_CONTEXT,
         expected_market_context_calls=1,
         expected_quote_request_purpose=(QuoteRequestPurpose.DISCRETIONARY_CURRENT_RISK_ACTION),
         known_limitations=("Asset Metadata 与可执行购买数量当前不可用。",),
+        transactions=GOOG_BUY_HISTORY,
     ),
     BehavioralCase(
         "high_cash_personalization",
         "GOOG 今天还能加一点吗？",
         Decimal("800"),
-        (GOOG_LONG, GOOG_SWING),
+        (GOOG_LONG_WITH_BUY_HISTORY, GOOG_SWING_WITH_BUY_HISTORY),
         {"GOOG": GOOG_QUOTE},
         ("GOOG",),
         InvestmentResponseStatus.OK,
@@ -970,12 +1009,14 @@ CASES = (
             "明确 executable purchase quantity 为 UNKNOWN",
             "不将 Cash/Quote 数值关系解释为可以买入或至少可以买一股",
             "不自行计算可购买股数、剩余现金或交易后仓位比例",
+            "准确使用 LONG_TERM 190/210 与 SWING 220 的历史 BUY 位置",
             "只把 NORMAL Market Regime 作为 Context，不作为买入信号",
         ),
         market_context_result=NORMAL_MARKET_CONTEXT,
         expected_market_context_calls=1,
         expected_quote_request_purpose=(QuoteRequestPurpose.DISCRETIONARY_CURRENT_RISK_ACTION),
         known_limitations=("Asset Metadata 与可执行购买数量当前不可用。",),
+        transactions=GOOG_BUY_HISTORY,
     ),
     BehavioralCase(
         "long_term_position_personalization",
@@ -1186,10 +1227,10 @@ COVERAGE_MATRIX: dict[V1Requirement, tuple[str, ...]] = {
     ),
 }
 
-# PROJECT.md 的完整 V1 Success Criteria 还要求历史买入位置；当前 Agent Context
-# 只包含派生持仓与 Transaction Count，Coverage Matrix 必须显式保留该缺口。
-COVERAGE_KNOWN_GAPS: dict[V1Requirement, str] = {
-    V1Requirement.V1_SUCCESS_CRITERIA: "historical_buy_transactions_not_in_agent_context",
+# 历史 BUY Facts 已进入 Agent Context，但相关 Case 仍需真实模型 Grounding 证据。
+CASE_KNOWN_GAPS: dict[str, str] = {
+    "low_cash_personalization": "historical_buy_facts_real_model_grounding_not_verified",
+    "high_cash_personalization": "historical_buy_facts_real_model_grounding_not_verified",
 }
 
 CONTROLLED_CONTRASTS = (
@@ -1239,11 +1280,7 @@ def build_behavioral_case_report(
         "dataset_version": DATASET_VERSION,
         "case": case.id,
         "requirements": [requirement.value for requirement in requirements],
-        "coverage_known_gaps": [
-            COVERAGE_KNOWN_GAPS[requirement]
-            for requirement in requirements
-            if requirement in COVERAGE_KNOWN_GAPS
-        ],
+        "coverage_known_gaps": ([CASE_KNOWN_GAPS[case.id]] if case.id in CASE_KNOWN_GAPS else []),
         "question": case.question,
         "actual_tool_trace": {
             "quote_tickers": trace.tool_tickers,
@@ -1301,11 +1338,7 @@ def build_behavioral_failure_report(
         "dataset_version": DATASET_VERSION,
         "case": case.id,
         "requirements": [requirement.value for requirement in requirements],
-        "coverage_known_gaps": [
-            COVERAGE_KNOWN_GAPS[requirement]
-            for requirement in requirements
-            if requirement in COVERAGE_KNOWN_GAPS
-        ],
+        "coverage_known_gaps": ([CASE_KNOWN_GAPS[case.id]] if case.id in CASE_KNOWN_GAPS else []),
         "request_failure": {
             "code": failure.code.value,
             "message": failure.message,
@@ -1403,6 +1436,7 @@ def _case_inputs(case: BehavioralCase) -> dict[str, object]:
         "historical_results": case.historical_results,
         "news_results": case.news_results,
         "market_context_result": case.market_context_result,
+        "transactions": case.transactions,
     }
 
 
@@ -1419,9 +1453,30 @@ def test_v1_dataset_has_complete_requirement_mapping() -> None:
         case_id for mapped_case_ids in COVERAGE_MATRIX.values() for case_id in mapped_case_ids
     }
     assert mapped_case_ids == set(case_ids)
-    assert COVERAGE_KNOWN_GAPS == {
-        V1Requirement.V1_SUCCESS_CRITERIA: "historical_buy_transactions_not_in_agent_context"
+    assert CASE_KNOWN_GAPS == {
+        "low_cash_personalization": "historical_buy_facts_real_model_grounding_not_verified",
+        "high_cash_personalization": "historical_buy_facts_real_model_grounding_not_verified",
     }
+
+
+def test_historical_buy_eval_fixture_matches_current_positions() -> None:
+    """历史 BUY 对照的 Position 必须可由同一批 Transaction 确定性重建。"""
+
+    state = rebuild_portfolio(
+        User.create(
+            user_id=USER_ID,
+            display_name="Behavioral Eval Fixture",
+            initial_cash=Decimal("2000"),
+            created_at=NOW - timedelta(days=90),
+        ),
+        list(GOOG_BUY_HISTORY),
+        [],
+    )
+
+    assert state.positions == (
+        GOOG_LONG_WITH_BUY_HISTORY,
+        GOOG_SWING_WITH_BUY_HISTORY,
+    )
 
 
 @pytest.mark.parametrize("contrast", CONTROLLED_CONTRASTS, ids=lambda contrast: contrast.id)

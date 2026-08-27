@@ -9,6 +9,7 @@ from typing import Protocol, Self
 from uuid import UUID
 
 from position_pilot.application.errors import UserNotFound
+from position_pilot.application.investment_context import InvestmentPortfolioContext
 from position_pilot.domain.errors import InvalidPortfolioValue
 from position_pilot.domain.portfolio import (
     CashEvent,
@@ -221,6 +222,18 @@ class PortfolioService:
             transactions = unit_of_work.list_transactions(user.id)
             cash_events = unit_of_work.list_cash_events(user.id)
             return rebuild_portfolio(user, transactions, cash_events)
+
+    def get_investment_context(self, user_id: UUID) -> InvestmentPortfolioContext:
+        """用同一批 Ledger Facts 构造 Agent 所需 Portfolio Context。"""
+
+        with self._unit_of_work_factory() as unit_of_work:
+            user = unit_of_work.get_user(user_id)
+            if user is None:
+                raise UserNotFound(user_id)
+            transactions = unit_of_work.list_transactions(user.id)
+            cash_events = unit_of_work.list_cash_events(user.id)
+            portfolio = rebuild_portfolio(user, transactions, cash_events)
+            return InvestmentPortfolioContext.from_ledger(portfolio, tuple(transactions))
 
     def list_transactions(self, user_id: UUID) -> tuple[Transaction, ...]:
         """按 Ledger sequence 返回可追溯 Transaction。"""

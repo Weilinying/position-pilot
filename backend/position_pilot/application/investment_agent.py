@@ -22,6 +22,7 @@ from position_pilot.application.investment_answer import (
 )
 from position_pilot.application.investment_context import (
     M5_CONTEXT_CAPABILITIES,
+    InvestmentPortfolioContext,
     PortfolioSnapshot,
     QuoteDerivedFacts,
     RecentPriceHistoryFacts,
@@ -56,7 +57,6 @@ from position_pilot.domain.market_data import (
     MarketQuote,
 )
 from position_pilot.domain.news import NewsResult, NewsStatus, RecentNews
-from position_pilot.domain.portfolio import PortfolioState
 
 LOGGER = logging.getLogger(__name__)
 CURRENT_QUOTE_TOOL_NAME = "get_current_quote"
@@ -91,6 +91,12 @@ SYSTEM_PROMPT = "\n".join(
         "只按当前问题实际需要选择 Tool，不得默认调用全部可用 Context Tools。",
         "4. Portfolio positions 是完整当前持仓集合；缺少 ticker 表示当前无该持仓。",
         "必须保留 LONG_TERM / SWING 语义，不得让 ticker 聚合覆盖 Position Type。",
+        (
+            "Portfolio Snapshot 的 historical_buy_facts 只包含当前 Positions 对应的有界 BUY "
+            "记录；必须保留 Position Type、顺序、时间、价格与股数。"
+        ),
+        "historical_buy_facts.truncated=true 时不得把记录描述为完整 Transaction History。",
+        "不得使用历史 BUY 记录自行重算当前 Shares、Average Cost、Cash 或收益。",
         (
             "5. 判断需要当前价格、Cash/Quote 关系或 Quote/Average Cost 关系时，"
             "必须调用 get_current_quote。"
@@ -249,10 +255,10 @@ CONTEXT_TOOLS = (
 CONTEXT_TOOL_NAMES = tuple(tool.name for tool in CONTEXT_TOOLS)
 
 
-class PortfolioSnapshotReader(Protocol):
-    """Agent 读取当前完整 Portfolio State 的最小接口。"""
+class PortfolioContextReader(Protocol):
+    """Agent 同时读取当前 State 与有界历史 BUY Facts 的最小接口。"""
 
-    def get_portfolio(self, user_id: UUID) -> PortfolioState: ...
+    def get_investment_context(self, user_id: UUID) -> InvestmentPortfolioContext: ...
 
 
 class MarketDataReader(Protocol):
@@ -355,7 +361,7 @@ class InvestmentAgent:
 
     def __init__(
         self,
-        portfolio_reader: PortfolioSnapshotReader,
+        portfolio_reader: PortfolioContextReader,
         market_data: MarketDataReader,
         llm_provider: LLMProvider,
         *,
@@ -381,8 +387,8 @@ class InvestmentAgent:
             )
 
         started_at = monotonic()
-        portfolio = self._portfolio_reader.get_portfolio(user_id)
-        snapshot = PortfolioSnapshot.from_state(portfolio)
+        portfolio_context = self._portfolio_reader.get_investment_context(user_id)
+        snapshot = PortfolioSnapshot.from_context(portfolio_context)
         sources: list[ContextSource] = [
             ContextSource(
                 ContextSourceType.PORTFOLIO_SNAPSHOT,

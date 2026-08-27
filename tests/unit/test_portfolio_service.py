@@ -205,6 +205,50 @@ def test_records_transactions_with_lock_and_derived_financial_fields() -> None:
     assert recovered.cash.available_cash == Decimal("799.43275000")
 
 
+def test_get_investment_context_projects_history_from_same_ledger_read() -> None:
+    """Agent Context 应同时返回派生 Portfolio 与当前仓位的历史 BUY Facts。"""
+
+    service, _ = make_service()
+    user = service.create_user(
+        CreateUserCommand(display_name="Alice", initial_cash=Decimal("1000"))
+    )
+    service.record_transaction(
+        RecordTransactionCommand(
+            user_id=user.id,
+            ticker="GOOG",
+            action=TransactionAction.BUY,
+            price=Decimal("200"),
+            shares=Decimal("1"),
+            position_type=PositionType.LONG_TERM,
+            occurred_at=OCCURRED_AT,
+        )
+    )
+    service.record_transaction(
+        RecordTransactionCommand(
+            user_id=user.id,
+            ticker="GOOG",
+            action=TransactionAction.BUY,
+            price=Decimal("220"),
+            shares=Decimal("1"),
+            position_type=PositionType.SWING,
+            occurred_at=OCCURRED_AT + timedelta(days=1),
+        )
+    )
+
+    context = service.get_investment_context(user.id)
+
+    assert len(context.portfolio.positions) == 2
+    assert context.portfolio.transaction_count == 2
+    assert [record.price for record in context.historical_buy_facts.records] == [
+        Decimal("200.00000000"),
+        Decimal("220.00000000"),
+    ]
+    assert [record.position_type for record in context.historical_buy_facts.records] == [
+        PositionType.LONG_TERM,
+        PositionType.SWING,
+    ]
+
+
 def test_records_cash_events_with_lock_and_rebuilds_available_cash() -> None:
     """Cash Event 写入应锁定 User，并返回同事务重建后的现金状态。"""
 
