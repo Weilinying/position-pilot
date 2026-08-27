@@ -198,4 +198,5 @@ Evaluation Evidence + Human Acceptance
 - Offline Gate：348 passed、38 skipped；Ruff、mypy、lock、Alembic 与 diff 检查通过。
 - Automated Review：无 Critical / High / Medium Finding。
 - 全量 Real-model Eval 已尝试；当前进程未配置 `LLM_API_KEY`，24 个 Cases 跳过，不作为 Behavioral Pass。
+- Online Smoke 已尝试；当前进程未配置 Alpaca / LLM Credential，4 项跳过；PostgreSQL Integration 同样因未配置 `TEST_DATABASE_URL` 跳过。
 - 待完成：全量 Real-model 运行、代表性 Cases 三次重复、Human Factual Grounding 与 Online Smoke Evidence。
