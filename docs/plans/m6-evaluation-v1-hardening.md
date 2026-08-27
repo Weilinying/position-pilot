@@ -2,7 +2,7 @@
 
 ## 1. 状态与目标
 
-**Status:** DRAFT（等待 Human Review）
+**Status:** IN PROGRESS
 
 M6 将 M3～M5 已积累的 Behavioral Eval Cases 整理为可重复运行的 V1 Evaluation Dataset，并用 Evaluation 证据驱动必要的可靠性修复。
 
@@ -11,11 +11,11 @@ M6 遵循 **Eval First / Failure-driven Hardening**：Production Code、Prompt�
 ## 2. 当前基线与缺口
 
 - pytest 已同时承载默认自动测试与 Opt-in Real-model Behavioral Eval，继续作为 M6 的 Evaluation Execution Engine。
-- 当前有 22 个固定 Behavioral Cases，已覆盖 Portfolio Facts、Quote、History、News、Market Context、部分对照场景和 Failure Handling。
+- M6 启动时继承 22 个固定 Behavioral Cases，已覆盖 Portfolio Facts、Quote、History、News、Market Context、部分对照场景和 Failure Handling。
 - Tool Trace、Source Validation、Structured Answer Repair 与基础指标已存在，但 Dataset Definition、Fixtures、Execution / Reporting 职责仍较集中。
-- 最近记录的默认测试为 337 passed、36 skipped；22 个真实模型 Cases 因未配置 `LLM_API_KEY` 跳过，尚不能作为真实模型行为通过证据。
-- Entry / Add Position、自由判断减仓，以及 History / News 的空结果与 Provider Failure 等覆盖仍需通过 Coverage Matrix 确认。
-- 当前输出缺少 Dataset Version、运行元数据、聚合结果和正式 Human Review 记录。
+- M6 启动基线为 337 passed、36 skipped；22 个真实模型 Cases 因未配置 `LLM_API_KEY` 跳过，尚不能作为真实模型行为通过证据。
+- History / News / Market Context 的 empty、failure 与 stale Contract 已有 Unit / Agent Test Evidence；仅在模型行为或实际 Failure 证明必要时补充 Real-model Case。
+- M6 启动时的输出缺少 Dataset Version、运行元数据、聚合结果和正式 Human Review 记录。
 
 ## 3. Acceptance Criteria
 
@@ -75,7 +75,7 @@ Coverage Matrix 是 M6 判断是否需要新增 Case 的依据。新增 Case 数
 | Market Context Failure | `market_context_provider_failure`；Unit Tests 已覆盖 `NO_DATA` / stale | 不为状态对称性重复增加 Behavioral Case |
 | Missing / Provider Failure | `quote_no_data`、`quote_provider_failure` | 保持状态区分并覆盖其他稳定 Context |
 | Source Grounding / Repair | Diagnostics Unit Tests 与全部 Behavioral Cases | 汇总 Retrieved / Declared Source、Repair 与 Human Grounding |
-| V1 Success Criteria | 尚无完全对应的单一入口 Case | 增加“GOOG 今天还能加一点吗？”固定场景及必要 Contrast |
+| V1 Success Criteria | 缺少直接入口 Case；历史买入 Transaction 尚未进入 Agent Context | 增加固定入口场景，并将 Transaction Context 缺口保留为显式 Failure Evidence |
 
 ## 6. Failure 与质量信号
 

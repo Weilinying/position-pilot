@@ -1,10 +1,12 @@
-"""使用真实 Aliyun LLM 与固定 Context 的 M5 Behavioral Evaluation。"""
+"""使用真实 Aliyun LLM 与固定 Context 的 V1 Behavioral Evaluation。"""
 
 import json
 import os
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
+from enum import StrEnum
 from uuid import UUID
 
 import pytest
@@ -14,6 +16,7 @@ from position_pilot.application.investment_agent import (
     ContextSourceType,
     InvestmentAgent,
     InvestmentAnswer,
+    InvestmentFailureCode,
     InvestmentRequestFailure,
     InvestmentResponseStatus,
     QuoteRequestPurpose,
@@ -58,6 +61,25 @@ from position_pilot.integrations.aliyun_llm import AliyunLLMProvider
 
 USER_ID = UUID("00000000-0000-0000-0000-000000000101")
 NOW = datetime(2026, 8, 24, 8, 0, tzinfo=UTC)
+DATASET_VERSION = "1.0"
+
+
+class V1Requirement(StrEnum):
+    """M6 Coverage Matrix 使用的 V1 行为要求。"""
+
+    ENTRY_ADD_POSITION = "ENTRY_ADD_POSITION"
+    MARKET_DROP_EXPLANATION = "MARKET_DROP_EXPLANATION"
+    POST_EARNINGS_HOLDING = "POST_EARNINGS_HOLDING"
+    POSITION_REDUCTION = "POSITION_REDUCTION"
+    AVAILABLE_CASH = "AVAILABLE_CASH"
+    POSITION_TYPE = "POSITION_TYPE"
+    MARKET_REGIME = "MARKET_REGIME"
+    MISSING_UNKNOWN_DATA = "MISSING_UNKNOWN_DATA"
+    CONTEXT_SELECTION = "CONTEXT_SELECTION"
+    TOOL_USE = "TOOL_USE"
+    CURRENT_FACT_GROUNDING = "CURRENT_FACT_GROUNDING"
+    FAILURE_HANDLING = "FAILURE_HANDLING"
+    V1_SUCCESS_CRITERIA = "V1_SUCCESS_CRITERIA"
 
 
 @dataclass(frozen=True, slots=True)
@@ -84,6 +106,52 @@ class BehavioralCase:
     )
     expected_market_context_calls: int = 0
     expected_quote_request_purpose: QuoteRequestPurpose | None = None
+    known_limitations: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class ControlledContrast:
+    """声明只允许改变指定输入的对照场景。"""
+
+    id: str
+    case_ids: tuple[str, str]
+    changed_inputs: frozenset[str]
+
+
+@dataclass(slots=True)
+class BehavioralReporter:
+    """聚合 pytest 本轮已执行 Case 的轻量报告指标。"""
+
+    reports: list[dict[str, object]] = field(default_factory=list)
+    repair_counts: list[int] = field(default_factory=list)
+    request_failure_count: int = 0
+
+    def record(
+        self,
+        report: dict[str, object],
+        *,
+        repair_count: int,
+        request_failed: bool = False,
+    ) -> None:
+        """记录单个 Case，不介入 pytest 的执行与断言。"""
+
+        self.reports.append(report)
+        self.repair_counts.append(repair_count)
+        self.request_failure_count += int(request_failed)
+
+    def summary(self) -> dict[str, object]:
+        """返回本轮实际执行 Case 的聚合结果。"""
+
+        case_count = len(self.reports)
+        cases_with_repair = sum(repair_count > 0 for repair_count in self.repair_counts)
+        return {
+            "dataset_version": DATASET_VERSION,
+            "executed_case_count": case_count,
+            "repair_count": sum(self.repair_counts),
+            "cases_with_repair": cases_with_repair,
+            "repair_case_rate": cases_with_repair / case_count if case_count else 0.0,
+            "request_failure_count": self.request_failure_count,
+        }
 
 
 class FixedPortfolioReader:
@@ -433,7 +501,7 @@ def behavioral_completion_metrics(
         "structured_contract_failure_count": structured_contract_failure_count,
         "source_validation_failure_count": source_validation_failure_count,
         "repair_count": repair_count,
-        "repair_rate": float(repair_count > 0),
+        "case_used_repair": repair_count > 0,
         "provider_timeout_count": provider_timeout_count,
         "response_formats": [response_format.value for response_format in llm.response_formats],
     }
@@ -753,6 +821,26 @@ CASES = (
         expected_quote_request_purpose=(QuoteRequestPurpose.DISCRETIONARY_CURRENT_RISK_ACTION),
     ),
     BehavioralCase(
+        "entry_position_discretionary",
+        "结合我的状态，GOOG 今天适合开始建仓吗？",
+        Decimal("300"),
+        (),
+        {"GOOG": GOOG_QUOTE},
+        ("GOOG",),
+        InvestmentResponseStatus.OK,
+        (
+            "调用 GOOG Quote 与固定 SPY Market Context",
+            "明确当前没有 GOOG 持仓，并使用 300 美元 Available Cash",
+            "不把 Cash/Quote 数值关系解释为可执行购买数量",
+            "不判断 tradable、fractionable 或实际能否成交",
+            "不把 NORMAL Market Regime 直接等价为适合买入",
+        ),
+        market_context_result=NORMAL_MARKET_CONTEXT,
+        expected_market_context_calls=1,
+        expected_quote_request_purpose=QuoteRequestPurpose.DISCRETIONARY_CURRENT_RISK_ACTION,
+        known_limitations=("Asset Metadata 与可执行购买数量当前不可用。",),
+    ),
+    BehavioralCase(
         "drop_reason_unknown",
         "GOOG 今天为什么跌？",
         Decimal("300"),
@@ -769,6 +857,7 @@ CASES = (
         ),
         news_results={"GOOG": GOOG_NEWS},
         expected_news_tickers=("GOOG",),
+        known_limitations=("缺少可验证用户所述当日跌幅的 Intraday Change。",),
     ),
     BehavioralCase(
         "post_earnings_unknown",
@@ -784,6 +873,7 @@ CASES = (
             "不使用训练知识冒充最新财报",
             "不因为出现 GOOG 而机械调用 Quote",
         ),
+        known_limitations=("Earnings Capability 当前不可用。",),
     ),
     BehavioralCase(
         "market_context_normal",
@@ -846,7 +936,7 @@ CASES = (
     ),
     BehavioralCase(
         "low_cash_personalization",
-        "结合我的状态，我现在是否应该增加 GOOG 的风险暴露？",
+        "GOOG 今天还能加一点吗？",
         Decimal("25"),
         (GOOG_LONG, GOOG_SWING),
         {"GOOG": GOOG_QUOTE},
@@ -864,10 +954,11 @@ CASES = (
         market_context_result=NORMAL_MARKET_CONTEXT,
         expected_market_context_calls=1,
         expected_quote_request_purpose=(QuoteRequestPurpose.DISCRETIONARY_CURRENT_RISK_ACTION),
+        known_limitations=("Asset Metadata 与可执行购买数量当前不可用。",),
     ),
     BehavioralCase(
         "high_cash_personalization",
-        "结合我的状态，我现在是否应该增加 GOOG 的风险暴露？",
+        "GOOG 今天还能加一点吗？",
         Decimal("800"),
         (GOOG_LONG, GOOG_SWING),
         {"GOOG": GOOG_QUOTE},
@@ -884,6 +975,7 @@ CASES = (
         market_context_result=NORMAL_MARKET_CONTEXT,
         expected_market_context_calls=1,
         expected_quote_request_purpose=(QuoteRequestPurpose.DISCRETIONARY_CURRENT_RISK_ACTION),
+        known_limitations=("Asset Metadata 与可执行购买数量当前不可用。",),
     ),
     BehavioralCase(
         "long_term_position_personalization",
@@ -924,6 +1016,27 @@ CASES = (
         market_context_result=NORMAL_MARKET_CONTEXT,
         expected_market_context_calls=1,
         expected_quote_request_purpose=(QuoteRequestPurpose.DISCRETIONARY_CURRENT_RISK_ACTION),
+        known_limitations=("Trade Plan、Exit Condition 与 Risk Budget 当前未进入 Context。",),
+    ),
+    BehavioralCase(
+        "position_reduction_discretionary",
+        "结合当前整体市场状态，如果我现在需要减仓 GOOG，应该优先卖波段仓还是长期仓？",
+        Decimal("300"),
+        (GOOG_LONG, GOOG_SWING),
+        {"GOOG": GOOG_QUOTE},
+        ("GOOG",),
+        InvestmentResponseStatus.OK,
+        (
+            "调用 GOOG Quote 与固定 SPY Market Context",
+            "保留 LONG_TERM / SWING 独立语义，不把两类仓位聚合",
+            "将 Position Type、当前价格和 Market Regime 用于条件式减仓分析",
+            "不编造具体卖出数量、止损、支撑、阻力或趋势",
+            "不把 HIGH_STRESS 直接等价为必须卖出",
+        ),
+        market_context_result=HIGH_STRESS_MARKET_CONTEXT,
+        expected_market_context_calls=1,
+        expected_quote_request_purpose=QuoteRequestPurpose.DISCRETIONARY_CURRENT_RISK_ACTION,
+        known_limitations=("Trade Plan、Exit Condition 与 Risk Budget 当前未进入 Context。",),
     ),
     BehavioralCase(
         "position_reduction_rule_check",
@@ -941,6 +1054,7 @@ CASES = (
         ),
         market_context_result=HIGH_STRESS_MARKET_CONTEXT,
         expected_quote_request_purpose=QuoteRequestPurpose.RULE_OR_EXECUTION_CHECK,
+        known_limitations=("Trade Plan 与 Exit Condition 当前未进入 Context。",),
     ),
     BehavioralCase(
         "unspecified_ticker_no_tool",
@@ -961,6 +1075,7 @@ CASES = (
             "不推断 GOOG/MSFT 的行业关系或行业集中度",
             "不自行选择 Ticker 调用行情",
         ),
+        known_limitations=("Current Market Value Weight 与 Concentration Policy 当前不可用。",),
     ),
     BehavioralCase(
         "recent_price_history",
@@ -999,6 +1114,377 @@ CASES = (
         expected_news_tickers=("GOOG",),
     ),
 )
+
+CASES_BY_ID = {case.id: case for case in CASES}
+
+COVERAGE_MATRIX: dict[V1Requirement, tuple[str, ...]] = {
+    V1Requirement.ENTRY_ADD_POSITION: (
+        "entry_position_discretionary",
+        "low_cash_personalization",
+        "high_cash_personalization",
+    ),
+    V1Requirement.MARKET_DROP_EXPLANATION: ("drop_reason_unknown",),
+    V1Requirement.POST_EARNINGS_HOLDING: ("post_earnings_unknown",),
+    V1Requirement.POSITION_REDUCTION: (
+        "position_reduction_discretionary",
+        "position_reduction_rule_check",
+    ),
+    V1Requirement.AVAILABLE_CASH: (
+        "cash_only_no_tool",
+        "low_cash_personalization",
+        "high_cash_personalization",
+    ),
+    V1Requirement.POSITION_TYPE: (
+        "position_type_distinction",
+        "long_term_position_personalization",
+        "swing_position_personalization",
+        "position_reduction_discretionary",
+    ),
+    V1Requirement.MARKET_REGIME: (
+        "market_context_normal",
+        "market_context_high_stress",
+        "market_context_provider_failure",
+    ),
+    V1Requirement.MISSING_UNKNOWN_DATA: (
+        "missing_position_is_absence",
+        "quote_no_data",
+        "post_earnings_unknown",
+        "market_context_provider_failure",
+    ),
+    V1Requirement.CONTEXT_SELECTION: (
+        "cash_only_no_tool",
+        "positions_only_no_tool",
+        "unspecified_ticker_no_tool",
+        "compare_two_quotes",
+        "recent_price_history",
+        "recent_news",
+        "market_context_normal",
+    ),
+    V1Requirement.TOOL_USE: (
+        "cash_vs_quote_information",
+        "current_price_without_position",
+        "compare_two_quotes",
+        "recent_price_history",
+        "recent_news",
+    ),
+    V1Requirement.CURRENT_FACT_GROUNDING: (
+        "cash_vs_quote_information",
+        "current_price_without_position",
+        "drop_reason_unknown",
+        "recent_price_history",
+        "recent_news",
+    ),
+    V1Requirement.FAILURE_HANDLING: (
+        "quote_no_data",
+        "quote_provider_failure",
+        "market_context_provider_failure",
+    ),
+    V1Requirement.V1_SUCCESS_CRITERIA: (
+        "entry_position_discretionary",
+        "low_cash_personalization",
+        "high_cash_personalization",
+    ),
+}
+
+# PROJECT.md 的完整 V1 Success Criteria 还要求历史买入位置；当前 Agent Context
+# 只包含派生持仓与 Transaction Count，Coverage Matrix 必须显式保留该缺口。
+COVERAGE_KNOWN_GAPS: dict[V1Requirement, str] = {
+    V1Requirement.V1_SUCCESS_CRITERIA: "historical_buy_transactions_not_in_agent_context",
+}
+
+CONTROLLED_CONTRASTS = (
+    ControlledContrast(
+        "available_cash",
+        ("low_cash_personalization", "high_cash_personalization"),
+        frozenset({"available_cash"}),
+    ),
+    ControlledContrast(
+        "position_type",
+        ("long_term_position_personalization", "swing_position_personalization"),
+        frozenset({"positions"}),
+    ),
+    ControlledContrast(
+        "market_regime",
+        ("market_context_normal", "market_context_high_stress"),
+        frozenset({"market_context_result"}),
+    ),
+    ControlledContrast(
+        "position_reduction_intent",
+        ("position_reduction_discretionary", "position_reduction_rule_check"),
+        frozenset({"question"}),
+    ),
+)
+
+
+def _requirements_for_case(case_id: str) -> tuple[V1Requirement, ...]:
+    """返回 Coverage Matrix 中与 Case 关联的 Requirement。"""
+
+    return tuple(
+        requirement for requirement, case_ids in COVERAGE_MATRIX.items() if case_id in case_ids
+    )
+
+
+def build_behavioral_case_report(
+    case: BehavioralCase,
+    result: InvestmentAnswer,
+    trace: BehavioralTrace,
+    completion_metrics: dict[str, object],
+    *,
+    completion_count: int,
+) -> dict[str, object]:
+    """只用 Evaluation 层已有数据构造单 Case 报告。"""
+
+    requirements = _requirements_for_case(case.id)
+    report: dict[str, object] = {
+        "dataset_version": DATASET_VERSION,
+        "case": case.id,
+        "requirements": [requirement.value for requirement in requirements],
+        "coverage_known_gaps": [
+            COVERAGE_KNOWN_GAPS[requirement]
+            for requirement in requirements
+            if requirement in COVERAGE_KNOWN_GAPS
+        ],
+        "question": case.question,
+        "actual_tool_trace": {
+            "quote_tickers": trace.tool_tickers,
+            "quote_request_purposes": trace.quote_request_purposes,
+            "history_tickers": trace.history_tickers,
+            "news_tickers": trace.news_tickers,
+            "market_context_calls": trace.market_context_calls,
+            "market_context_origin": (
+                "MODEL_SELECTED"
+                if trace.model_selected_market_context
+                else (
+                    "REQUIRED_CONTEXT_FLOOR"
+                    if trace.floor_added_market_context
+                    else "NOT_RETRIEVED"
+                )
+            ),
+        },
+        "declared_final_sources": {
+            "quote_tickers": trace.declared_quote_sources,
+            "history_tickers": trace.declared_history_sources,
+            "news_tickers": trace.declared_news_sources,
+            "market_context_tickers": trace.declared_market_context_sources,
+        },
+        "retrieved_successful_contexts": {
+            "quote_tickers": trace.retrieved_quote_sources,
+            "history_tickers": trace.retrieved_history_sources,
+            "news_tickers": trace.retrieved_news_sources,
+            "market_context_tickers": trace.retrieved_market_context_sources,
+        },
+        "status": result.status.value,
+        "llm_completion_count": completion_count,
+        "source_validation_repair_used": trace.repair_used,
+        "completion_metrics": completion_metrics,
+        "answer": result.answer,
+        "human_checks": case.human_checks,
+    }
+    if case.known_limitations:
+        report["known_limitations"] = case.known_limitations
+    return report
+
+
+def build_behavioral_failure_report(
+    case: BehavioralCase,
+    failure: InvestmentRequestFailure,
+    completion_metrics: dict[str, object],
+    diagnostics: list[dict[str, object]],
+    execution_trace: dict[str, object],
+    *,
+    completion_count: int,
+) -> dict[str, object]:
+    """记录未形成 Final Answer 的 Case，供 Root Cause Analysis 使用。"""
+
+    requirements = _requirements_for_case(case.id)
+    report: dict[str, object] = {
+        "dataset_version": DATASET_VERSION,
+        "case": case.id,
+        "requirements": [requirement.value for requirement in requirements],
+        "coverage_known_gaps": [
+            COVERAGE_KNOWN_GAPS[requirement]
+            for requirement in requirements
+            if requirement in COVERAGE_KNOWN_GAPS
+        ],
+        "request_failure": {
+            "code": failure.code.value,
+            "message": failure.message,
+        },
+        "llm_completion_count": completion_count,
+        "completion_metrics": completion_metrics,
+        "structured_response_diagnostics": diagnostics,
+        "execution_trace": execution_trace,
+        "human_checks": case.human_checks,
+    }
+    if case.known_limitations:
+        report["known_limitations"] = case.known_limitations
+    return report
+
+
+def collect_failure_execution_trace(
+    llm: CountingLLM,
+    market_data: FixedMarketData,
+    news: FixedNews,
+    market_context: FixedMarketContext,
+) -> dict[str, object]:
+    """从 Evaluation Fake 记录提取 Request Failure 前的实际 Tool Trace。"""
+
+    routing_tool_calls = (
+        llm.results[0].completion.message.tool_calls
+        if llm.results and llm.results[0].completion is not None
+        else ()
+    )
+    return {
+        "model_tool_calls": [
+            {"name": tool_call.name, "arguments": tool_call.arguments}
+            for tool_call in routing_tool_calls
+        ],
+        "tool_attempts": [
+            *(
+                {
+                    "name": "get_current_quote",
+                    "ticker": ticker,
+                    "status": result.status.value,
+                }
+                for ticker, result in market_data.quote_results
+            ),
+            *(
+                {
+                    "name": "get_recent_price_history",
+                    "ticker": query.ticker,
+                    "status": result.status.value,
+                }
+                for query, result in market_data.historical_query_results
+            ),
+            *(
+                {
+                    "name": "get_recent_news",
+                    "ticker": query.ticker,
+                    "status": result.status.value,
+                }
+                for query, result in news.query_results
+            ),
+            *(
+                {
+                    "name": "get_market_context",
+                    "ticker": "SPY",
+                    "status": result.status.value,
+                }
+                for result in market_context.results
+            ),
+        ],
+    }
+
+
+@pytest.fixture(scope="session")
+def behavioral_reporter() -> Iterator[BehavioralReporter]:
+    """在 pytest Session 结束时输出真实模型 Case 的聚合摘要。"""
+
+    reporter = BehavioralReporter()
+    yield reporter
+    if reporter.reports:
+        print(
+            json.dumps(
+                {"behavioral_evaluation_summary": reporter.summary()},
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
+
+
+def _case_inputs(case: BehavioralCase) -> dict[str, object]:
+    """只返回 Controlled Contrast 允许比较的输入。"""
+
+    return {
+        "question": case.question,
+        "available_cash": case.available_cash,
+        "positions": case.positions,
+        "market_results": case.market_results,
+        "historical_results": case.historical_results,
+        "news_results": case.news_results,
+        "market_context_result": case.market_context_result,
+    }
+
+
+def test_v1_dataset_has_complete_requirement_mapping() -> None:
+    """Coverage Matrix 必须完整映射 V1 Requirement，并只引用现有 Case。"""
+
+    case_ids = [case.id for case in CASES]
+
+    assert DATASET_VERSION == "1.0"
+    assert len(case_ids) == len(set(case_ids))
+    assert set(COVERAGE_MATRIX) == set(V1Requirement)
+    assert all(COVERAGE_MATRIX.values())
+    mapped_case_ids = {
+        case_id for mapped_case_ids in COVERAGE_MATRIX.values() for case_id in mapped_case_ids
+    }
+    assert mapped_case_ids == set(case_ids)
+    assert COVERAGE_KNOWN_GAPS == {
+        V1Requirement.V1_SUCCESS_CRITERIA: "historical_buy_transactions_not_in_agent_context"
+    }
+
+
+@pytest.mark.parametrize("contrast", CONTROLLED_CONTRASTS, ids=lambda contrast: contrast.id)
+def test_controlled_contrast_changes_only_declared_inputs(contrast: ControlledContrast) -> None:
+    """对照场景除声明变量外必须保持输入一致。"""
+
+    left = _case_inputs(CASES_BY_ID[contrast.case_ids[0]])
+    right = _case_inputs(CASES_BY_ID[contrast.case_ids[1]])
+    changed_inputs = frozenset(key for key in left if left[key] != right[key])
+
+    assert changed_inputs == contrast.changed_inputs
+
+
+def test_behavioral_reporter_aggregates_repairs_across_cases() -> None:
+    """Repair Rate 必须按本轮 Case 聚合，不能复用单 Case 0/1 值。"""
+
+    reporter = BehavioralReporter()
+    reporter.record({"case": "first"}, repair_count=0)
+    reporter.record({"case": "second"}, repair_count=1, request_failed=True)
+
+    assert reporter.summary() == {
+        "dataset_version": "1.0",
+        "executed_case_count": 2,
+        "repair_count": 1,
+        "cases_with_repair": 1,
+        "repair_case_rate": 0.5,
+        "request_failure_count": 1,
+    }
+
+
+def test_request_failure_report_preserves_root_cause_diagnostics() -> None:
+    """Request Failure 必须进入统一报告，不能从 Session Summary 消失。"""
+
+    case = CASES_BY_ID["post_earnings_unknown"]
+    failure = InvestmentRequestFailure(
+        InvestmentFailureCode.LLM_INVALID_PROVIDER_RESPONSE,
+        "固定结构化响应失败",
+    )
+
+    report = build_behavioral_failure_report(
+        case,
+        failure,
+        {"repair_count": 1},
+        [{"completion_index": 2, "structured_answer_error": "固定错误"}],
+        {
+            "model_tool_calls": [{"name": "get_current_quote", "arguments": {}}],
+            "tool_attempts": [],
+        },
+        completion_count=3,
+    )
+
+    assert report["request_failure"] == {
+        "code": "LLM_INVALID_PROVIDER_RESPONSE",
+        "message": "固定结构化响应失败",
+    }
+    assert report["structured_response_diagnostics"] == [
+        {"completion_index": 2, "structured_answer_error": "固定错误"}
+    ]
+    assert report["execution_trace"] == {
+        "model_tool_calls": [{"name": "get_current_quote", "arguments": {}}],
+        "tool_attempts": [],
+    }
+    assert report["known_limitations"] == ("Earnings Capability 当前不可用。",)
 
 
 def test_tool_trace_source_declaration_and_repair_are_independent() -> None:
@@ -1158,7 +1644,10 @@ def create_real_llm() -> AliyunLLMProvider:
     reason="需要显式启用真实模型 Behavioral Eval",
 )
 @pytest.mark.parametrize("case", CASES, ids=lambda case: case.id)
-def test_real_model_behavior_with_fixed_market_data(case: BehavioralCase) -> None:
+def test_real_model_behavior_with_fixed_market_data(
+    case: BehavioralCase,
+    behavioral_reporter: BehavioralReporter,
+) -> None:
     """真实模型必须产生符合固定场景的 Tool Trace，并输出供 Human Review 的回答。"""
 
     llm = CountingLLM(create_real_llm())
@@ -1177,21 +1666,28 @@ def test_real_model_behavior_with_fixed_market_data(case: BehavioralCase) -> Non
     result = agent.answer(USER_ID, case.question)
 
     if isinstance(result, InvestmentRequestFailure):
-        pytest.fail(
-            f"{case.id} 未形成 Final Answer: {result}\n"
-            + json.dumps(
-                {
-                    "structured_response_diagnostics": structured_response_diagnostics(
-                        llm,
-                        market_data,
-                        news,
-                        market_context,
-                    )
-                },
-                ensure_ascii=False,
-                indent=2,
-            )
+        completion_metrics = behavioral_completion_metrics(
+            llm,
+            market_data,
+            news,
+            market_context,
         )
+        failure_report = build_behavioral_failure_report(
+            case,
+            result,
+            completion_metrics,
+            structured_response_diagnostics(llm, market_data, news, market_context),
+            collect_failure_execution_trace(llm, market_data, news, market_context),
+            completion_count=llm.completion_count,
+        )
+        repair_count = completion_metrics["repair_count"]
+        assert isinstance(repair_count, int)
+        behavioral_reporter.record(
+            failure_report,
+            repair_count=repair_count,
+            request_failed=True,
+        )
+        pytest.fail(json.dumps(failure_report, ensure_ascii=False, indent=2))
     assert isinstance(result, InvestmentAnswer)
     trace = collect_behavioral_trace(
         market_data,
@@ -1211,50 +1707,17 @@ def test_real_model_behavior_with_fixed_market_data(case: BehavioralCase) -> Non
         news,
         market_context,
     )
-    print(
-        json.dumps(
-            {
-                "case": case.id,
-                "question": case.question,
-                "actual_tool_trace": {
-                    "quote_tickers": trace.tool_tickers,
-                    "quote_request_purposes": trace.quote_request_purposes,
-                    "history_tickers": trace.history_tickers,
-                    "news_tickers": trace.news_tickers,
-                    "market_context_calls": trace.market_context_calls,
-                    "market_context_origin": (
-                        "MODEL_SELECTED"
-                        if trace.model_selected_market_context
-                        else (
-                            "REQUIRED_CONTEXT_FLOOR"
-                            if trace.floor_added_market_context
-                            else "NOT_RETRIEVED"
-                        )
-                    ),
-                },
-                "declared_final_sources": {
-                    "quote_tickers": trace.declared_quote_sources,
-                    "history_tickers": trace.declared_history_sources,
-                    "news_tickers": trace.declared_news_sources,
-                    "market_context_tickers": trace.declared_market_context_sources,
-                },
-                "retrieved_successful_contexts": {
-                    "quote_tickers": trace.retrieved_quote_sources,
-                    "history_tickers": trace.retrieved_history_sources,
-                    "news_tickers": trace.retrieved_news_sources,
-                    "market_context_tickers": trace.retrieved_market_context_sources,
-                },
-                "status": result.status.value,
-                "llm_completion_count": llm.completion_count,
-                "source_validation_repair_used": trace.repair_used,
-                "completion_metrics": completion_metrics,
-                "answer": result.answer,
-                "human_checks": case.human_checks,
-            },
-            ensure_ascii=False,
-            indent=2,
-        )
+    report = build_behavioral_case_report(
+        case,
+        result,
+        trace,
+        completion_metrics,
+        completion_count=llm.completion_count,
     )
+    repair_count = completion_metrics["repair_count"]
+    assert isinstance(repair_count, int)
+    behavioral_reporter.record(report, repair_count=repair_count)
+    print(json.dumps(report, ensure_ascii=False, indent=2))
     assert len(trace.tool_tickers) == len(case.expected_tickers)
     assert sorted(trace.tool_tickers) == sorted(case.expected_tickers)
     assert len(trace.history_tickers) == len(case.expected_history_tickers)
