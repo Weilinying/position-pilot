@@ -98,13 +98,26 @@ SYSTEM_PROMPT = "\n".join(
         "historical_buy_facts.truncated=true 时不得把记录描述为完整 Transaction History。",
         "不得使用历史 BUY 记录自行重算当前 Shares、Average Cost、Cash 或收益。",
         (
+            "回答建仓或加仓问题且相关 historical_buy_facts.records 非空时，必须按 Position Type "
+            "准确引用实际 BUY 价格；Average Cost 不能替代历史买入位置。"
+        ),
+        (
+            "仅询问 Portfolio Snapshot 已有的 Cash、Positions、Shares、Position Type、"
+            "Average Cost、缺席 Ticker 或确定性持仓结构时，必须直接回答且不得调用 Tool；"
+            "Portfolio 中出现 Ticker 本身不是调用 Quote 的理由。"
+        ),
+        (
             "5. 判断需要当前价格、Cash/Quote 关系或 Quote/Average Cost 关系时，"
             "必须调用 get_current_quote。"
         ),
         "询问今天或现在是否加仓、减仓或建仓，本身即需要 Current Quote；无需用户另行要求报价。",
+        (
+            "Market Context、Portfolio Facts 或历史 BUY 事实都不能替代"
+            "当前动作判断所需的 Current Quote。"
+        ),
         "若判断 Current Quote 必要且 Tool 可用，必须立即调用，不得询问用户是否需要调用。",
         (
-            "每次 get_current_quote 调用必须声明 request_purpose：纯价格或购买能力事实使用 "
+            "每次 get_current_quote 调用必须声明 request_purpose：纯价格或 Cash/Quote 数值比较使用 "
             "INFORMATION_RETRIEVAL；没有明确既定交易规则、并要求判断当前是否应该增加或减少"
             "风险暴露时使用 DISCRETIONARY_CURRENT_RISK_ACTION；按既定规则确认或执行已决定动作"
             "时使用 RULE_OR_EXECUTION_CHECK。"
@@ -132,7 +145,7 @@ SYSTEM_PROMPT = "\n".join(
             "时，get_market_context 属于 minimum decision context。"
         ),
         (
-            "纯报价、Portfolio Facts、购买能力或 Cash/Quote 数值关系、Recent Price History、"
+            "纯报价、Portfolio Facts、Cash/Quote 数值关系、Recent Price History、"
             "Recent News，以及按明确 Strategy / Trade Plan / Exit Rule 确认或执行动作时，"
             "不得仅因出现建仓、加仓或减仓字样机械调用 Market Context。"
         ),
@@ -163,8 +176,10 @@ CURRENT_QUOTE_TOOL = LLMToolDefinition(
         "获取美股或美国上市 ETF 的当前 Quote；回答需要当前价格、Cash/Quote 或 "
         "Quote/Average Cost 关系时立即调用；今天或现在是否加仓、减仓或建仓属于此类。"
         "Portfolio Snapshot 已包含 available cash、positions、shares 和 average cost；"
-        "若问题仅询问这些已存在的 Portfolio Facts，不需要调用 get_current_quote，"
+        "若问题仅询问 Cash、Position、Shares、Position Type、Average Cost、缺席 Ticker"
+        "或确定性持仓结构，不得调用 get_current_quote；Portfolio 中出现 Ticker 本身不是调用理由。"
         "只有问题真正需要当前价格或基于当前价格的关系时才调用。"
+        "Market Context 或 Historical Buy Facts 不能替代当前动作判断所需的 Current Quote。"
         "不得要求用户再次确认。"
         "不能用于解释异动原因或最新财报。"
     ),
@@ -235,7 +250,7 @@ MARKET_CONTEXT_TOOL = LLMToolDefinition(
         "获取基于固定 SPY 调整后 Daily Bars 的确定性 V1 Market Regime。"
         "用于没有明确既定交易规则、并要求判断当前是否应该增加或减少风险暴露的问题，"
         "以及明确的整体市场风险或 Market Regime 问题；"
-        "纯报价、购买能力、Portfolio Facts、Recent Price History、Recent News，"
+        "纯报价、Cash/Quote 数值比较、Portfolio Facts、Recent Price History、Recent News，"
         "或按既定规则确认/执行动作时不得机械调用。"
         "该 Regime 是未回测的工程启发式市场压力描述，不是行业标准或投资信号。"
     ),

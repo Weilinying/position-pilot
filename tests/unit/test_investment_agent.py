@@ -583,6 +583,10 @@ def test_always_injects_complete_portfolio_snapshot_with_bounded_buy_history() -
     assert "分析必须服从 Context Capabilities" in system_prompt
     assert "实际可执行购买数量未知" in system_prompt
     assert "是否加仓、减仓或建仓，本身即需要 Current Quote" in system_prompt
+    assert "Average Cost 不能替代历史买入位置" in system_prompt
+    assert "Portfolio 中出现 Ticker 本身不是调用 Quote 的理由" in system_prompt
+    assert "Market Context、Portfolio Facts 或历史 BUY 事实都不能替代" in system_prompt
+    assert "纯价格或购买能力事实" not in system_prompt
     assert "answer 是自由自然语言" in system_prompt
     assert "Application 只验证来源真实性" in system_prompt
     assert portfolio_reader.requested_user_ids == [USER_ID]
@@ -602,9 +606,10 @@ def test_quote_tool_description_distinguishes_portfolio_facts() -> None:
     assert "Portfolio Snapshot 已包含 available cash、positions、shares 和 average cost" in (
         quote_tool.description
     )
-    assert "若问题仅询问这些已存在的 Portfolio Facts，不需要调用 get_current_quote" in (
+    assert "若问题仅询问 Cash、Position、Shares、Position Type、Average Cost" in (
         quote_tool.description
     )
+    assert "Portfolio 中出现 Ticker 本身不是调用理由" in quote_tool.description
     assert "只有问题真正需要当前价格或基于当前价格的关系时才调用" in quote_tool.description
 
 

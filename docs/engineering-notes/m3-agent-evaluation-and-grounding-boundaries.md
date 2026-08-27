@@ -115,3 +115,17 @@ M6 Coverage Audit 发现，V1 Success Criteria 要求使用历史买入位置，
 ### Boundary / Future
 
 当前 State 仍是 Cash、Position、Shares 与 Average Cost 的 Source of Truth；历史 BUY Facts 不能用于重算这些值或收益。只有未来 Evaluation 证明需要查询已清仓标的、任意时间范围或完整 Ledger 时，才重新评估独立 Transaction History Tool。
+
+## M6 首轮 Real-model Failure Triage
+
+### Problem
+
+首轮全量 Eval 有 7 个 Routing Assertion Failure；三次代表性重复共 5 次失败，并出现 3 次 Repair。没有虚构 Source、预算突破、错误 Status、Provider / `NO_DATA` 混淆或未恢复的结构化失败。Human Review 同时发现低现金回答重复把数值关系解释为“不能买一股”，且加仓回答没有实际引用历史 BUY 位置。
+
+### Decision
+
+Routing 波动与 Repair 继续作为 Quality Signal，不升级为 Hard Contract Failure，也不新增确定性 Router 或自然语言 Guard。RCA 发现 Prompt 将 Cash/Quote 数值比较称为“购买能力事实”，与执行能力必须为 `UNKNOWN` 的边界冲突；同时历史 BUY 只要求保留、未要求加仓回答实际引用。M6 只修正这些已证实歧义，并明确 Portfolio-only 与当前动作的 Tool 边界。
+
+### Trigger / Future
+
+修正后重新运行全量 Dataset 与代表性三次对照。若相同 Grounding Failure 仍稳定出现，再评估 Context Shape 或 Model Selection；在新证据前不扩大 Production Contract。

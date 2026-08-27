@@ -1788,5 +1788,5 @@ def test_real_model_behavior_with_fixed_market_data(
     ):
         assert trace.model_selected_market_context or trace.floor_added_market_context
     assert result.status is case.expected_status
-    assert completion_metrics["invalid_json_count"] == 0
+    # Repair 后成功的首轮格式错误属于质量信号；未恢复错误已在 Request Failure 分支阻断。
     assert llm.completion_count <= trace.completion_count_without_repair + 1

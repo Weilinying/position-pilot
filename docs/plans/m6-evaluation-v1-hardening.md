@@ -2,7 +2,7 @@
 
 ## 1. 状态与目标
 
-**Status:** IN PROGRESS — Offline Evaluation Slice complete；Real-model Eval blocked
+**Status:** IN PROGRESS — Real-model Failure-driven Hardening；Re-run pending
 
 M6 将 M3～M5 已积累的 Behavioral Eval Cases 整理为可重复运行的 V1 Evaluation Dataset，并用 Evaluation 证据驱动必要的可靠性修复。
 
@@ -197,6 +197,8 @@ Evaluation Evidence + Human Acceptance
 - Coverage Audit 发现历史买入位置未进入 Agent Context；RCA 后以同一 Ledger Read 的有界 BUY Facts 修复，不新增 Tool、Source Type、预算或公共 API。
 - Offline Gate：348 passed、38 skipped；Ruff、mypy、lock、Alembic 与 diff 检查通过。
 - Automated Review：无 Critical / High / Medium Finding。
-- 全量 Real-model Eval 已尝试；当前进程未配置 `LLM_API_KEY`，24 个 Cases 跳过，不作为 Behavioral Pass。
-- Online Smoke 已尝试；当前进程未配置 Alpaca / LLM Credential，4 项跳过；PostgreSQL Integration 同样因未配置 `TEST_DATABASE_URL` 跳过。
-- 待完成：全量 Real-model 运行、代表性 Cases 三次重复、Human Factual Grounding 与 Online Smoke Evidence。
+- 首轮全量 Real-model Eval：28 passed、7 failed；24 个 Behavioral Cases 中 17 个通过。未发现 Hard Contract Failure；失败为 Tool Routing Quality Signal。
+- 代表性 Cases 三次重复：22 / 27 通过；原始 5 次失败中 1 次为 Repair 后成功的非法 JSON，已按 Quality Signal 重新分类。
+- Human Review 发现低现金 Case 重复把数值关系解释为“不能买一股”，且加仓回答未实际引用历史 BUY 位置；RCA 指向 Prompt Contract 歧义。
+- Alpaca Market / News 3 项和真实 Agent Online Smoke 1 项通过；PostgreSQL Integration 因未配置 `TEST_DATABASE_URL` 跳过。
+- 待完成：修正后的全量与代表性 Real-model Re-run、Human Factual Grounding、PostgreSQL Evidence（环境可用时）。
