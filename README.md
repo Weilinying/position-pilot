@@ -1,6 +1,6 @@
 # PositionPilot
 
-当前仓库包含可运行的 Python 工程基础、Portfolio / Transaction Structured State、最小 Market Data，以及 M3 Single Investment Agent Vertical Slice。
+当前仓库已完成 Portfolio / Transaction Structured State、Current Quote、Price History、Recent News、SPY Market Context，以及基于 Native Function Calling 的 Single Investment Agent。当前 Milestone 为 M6 Evaluation & V1 Hardening。
 
 ## 前置条件
 
@@ -55,9 +55,9 @@ RUN_ALPACA_ONLINE_TESTS=1 uv run pytest tests/integration/test_alpaca_market_dat
 
 默认测试不会访问 Alpaca。Provider 选择、数据覆盖限制和备选方案见 [`ADR 0004`](docs/adr/0004-alpaca-market-data-provider.md)。
 
-## Minimal Investment Agent
+## Investment Agent
 
-M3 使用 Single Agent + Native Function Calling。Portfolio Snapshot 必定注入，Current Quote 由 Agent 按需调用；默认 LLM Provider 为阿里云 Model Studio，业务层只依赖通用 `LLMProvider`。
+Agent 使用 Single Agent + Native Function Calling。Portfolio Snapshot 必定注入，Quote、History、News 与 Market Context 由 Agent 按需调用；默认 LLM Provider 为阿里云 Model Studio，业务层只依赖通用 `LLMProvider`。
 
 在本地 `.env` 配置 `LLM_API_KEY` 后，可以调用开发用问答接口：
 
