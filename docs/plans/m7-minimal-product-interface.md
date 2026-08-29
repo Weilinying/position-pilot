@@ -2,7 +2,7 @@
 
 ## 1. 状态与目标
 
-**Status:** IMPLEMENTED — Awaiting Human Acceptance
+**Status:** COMPLETE — Human Accepted 2026-08-30
 
 M7 为已完成核心 V1 能力的 PositionPilot 增加一个可直接使用和演示的最小 Web Interface。界面必须忠实展示后端 Structured State、Agent Answer、Source Tracking 与 Failure State，不在浏览器中复制 Portfolio Calculation、Market Regime 或其他金融业务规则。
 
