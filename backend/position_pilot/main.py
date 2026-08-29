@@ -2,10 +2,13 @@
 
 from datetime import datetime
 from decimal import Decimal
+from pathlib import Path
 from typing import Annotated
 from uuid import UUID
 
 from fastapi import Depends, FastAPI, HTTPException, status
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from position_pilot.application.errors import UserNotFound
@@ -26,6 +29,8 @@ from position_pilot.application.portfolio_service import (
 from position_pilot.bootstrap import get_investment_agent, get_portfolio_service
 from position_pilot.domain.errors import InsufficientCash, InvalidPortfolioValue
 from position_pilot.domain.portfolio import CashEventType, PositionType
+
+FRONTEND_DIR = Path(__file__).resolve().parents[2] / "frontend"
 
 
 class HealthResponse(BaseModel):
@@ -137,6 +142,14 @@ class PortfolioSnapshotResponse(BaseModel):
 
 
 app = FastAPI(title="PositionPilot")
+app.mount("/static", StaticFiles(directory=FRONTEND_DIR), name="static")
+
+
+@app.get("/app/", include_in_schema=False)
+def get_product_interface() -> FileResponse:
+    """返回 M7 本地同源产品界面。"""
+
+    return FileResponse(FRONTEND_DIR / "index.html")
 
 
 @app.get("/health", response_model=HealthResponse)
