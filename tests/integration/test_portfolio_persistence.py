@@ -248,6 +248,54 @@ def test_persists_and_recovers_combined_cash_and_transaction_ledgers() -> None:
         engine.dispose()
 
 
+def test_persists_application_clock_for_omitted_ledger_timestamps() -> None:
+    """两类 Public Write 省略时间时应持久化同一个 Application Clock。"""
+
+    engine = create_database_engine(get_test_database_url())
+    session_factory = create_session_factory(engine)
+    application_now = datetime(2026, 8, 26, 9, 30, tzinfo=UTC)
+    service = PortfolioService(
+        SqlAlchemyPortfolioUnitOfWorkFactory(session_factory),
+        clock=lambda: application_now,
+    )
+    user = service.create_user(
+        CreateUserCommand(display_name="Clock User", initial_cash=Decimal("100"))
+    )
+
+    try:
+        cash_result = service.record_cash_event(
+            RecordCashEventCommand(
+                user_id=user.id,
+                event_type=CashEventType.DEPOSIT,
+                amount=Decimal("100"),
+            )
+        )
+        transaction = service.record_transaction(
+            RecordTransactionCommand(
+                user_id=user.id,
+                ticker="GOOG",
+                action=TransactionAction.BUY,
+                price=Decimal("10"),
+                shares=Decimal("1"),
+                position_type=PositionType.LONG_TERM,
+            )
+        )
+
+        recovered_transaction = service.list_transactions(user.id)[0]
+        recovered_cash_event = service.list_cash_events(user.id)[0]
+
+        assert cash_result.cash_event.occurred_at == application_now
+        assert transaction.occurred_at == application_now
+        assert recovered_cash_event.occurred_at == application_now
+        assert recovered_transaction.occurred_at == application_now
+    finally:
+        with engine.begin() as connection:
+            connection.execute(delete(CashEventModel).where(CashEventModel.user_id == user.id))
+            connection.execute(delete(TransactionModel).where(TransactionModel.user_id == user.id))
+            connection.execute(delete(UserModel).where(UserModel.id == user.id))
+        engine.dispose()
+
+
 def test_failed_withdrawal_does_not_persist_cash_event() -> None:
     """不足现金失败后数据库不得出现无效 Cash Event。"""
 

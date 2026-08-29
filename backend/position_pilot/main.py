@@ -26,10 +26,11 @@ from position_pilot.application.portfolio_service import (
     CreateUserCommand,
     PortfolioService,
     RecordCashEventCommand,
+    RecordTransactionCommand,
 )
 from position_pilot.bootstrap import get_investment_agent, get_portfolio_service
-from position_pilot.domain.errors import InsufficientCash, InvalidPortfolioValue
-from position_pilot.domain.portfolio import CashEventType, PositionType
+from position_pilot.domain.errors import InsufficientCash, InsufficientShares, InvalidPortfolioValue
+from position_pilot.domain.portfolio import CashEventType, PositionType, TransactionAction
 
 FRONTEND_DIR = Path(__file__).resolve().parents[2] / "frontend"
 
@@ -89,6 +90,8 @@ class ApiErrorDetail(BaseModel):
 class CreatePortfolioRequest(BaseModel):
     """创建本地 Portfolio Owner 的最小输入。"""
 
+    model_config = ConfigDict(extra="forbid")
+
     display_name: str = Field(min_length=1, max_length=200)
     initial_cash: Decimal = Field(ge=0, max_digits=28, decimal_places=8)
 
@@ -117,14 +120,16 @@ class CashEventRequest(BaseModel):
 
     event_type: CashEventType
     amount: Decimal = Field(gt=0, max_digits=28, decimal_places=8)
-    occurred_at: datetime
+    occurred_at: datetime | None = None
     reason: str | None = Field(default=None, max_length=1000)
 
     @field_validator("occurred_at")
     @classmethod
-    def require_timezone(cls, value: datetime) -> datetime:
-        """实际发生时间必须携带明确时区。"""
+    def require_timezone(cls, value: datetime | None) -> datetime | None:
+        """历史补录时间必须带时区，空值由 Application Clock 补齐。"""
 
+        if value is None:
+            return None
         if value.tzinfo is None or value.utcoffset() is None:
             raise ValueError("occurred_at 必须包含时区")
         return value
@@ -147,6 +152,55 @@ class CashAdjustmentResponse(BaseModel):
 
     cash_event: CashEventResponse
     available_cash: Decimal
+
+
+class TransactionRequest(BaseModel):
+    """追加不可变 Transaction 的显式用户输入。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    ticker: str = Field(min_length=1, max_length=100)
+    action: TransactionAction
+    price: Decimal = Field(gt=0, max_digits=28, decimal_places=8)
+    shares: Decimal = Field(gt=0, max_digits=28, decimal_places=8)
+    position_type: PositionType
+    occurred_at: datetime | None = None
+    reason: str | None = Field(default=None, max_length=1000)
+
+    @field_validator("occurred_at")
+    @classmethod
+    def require_timezone(cls, value: datetime | None) -> datetime | None:
+        """历史补录时间必须带时区，空值由 Application Clock 补齐。"""
+
+        if value is None:
+            return None
+        if value.tzinfo is None or value.utcoffset() is None:
+            raise ValueError("occurred_at 必须包含时区")
+        return value
+
+
+class LedgerTransactionResponse(BaseModel):
+    """API 暴露的不可变 Transaction Ledger Record。"""
+
+    id: UUID
+    user_id: UUID
+    sequence: int
+    ticker: str
+    action: TransactionAction
+    price: Decimal
+    shares: Decimal
+    amount: Decimal
+    commission: Decimal
+    fee_schedule: str
+    position_type: PositionType
+    occurred_at: datetime
+    reason: str | None
+
+
+class TransactionWriteResponse(BaseModel):
+    """成功追加后返回由后端完整派生的 Transaction。"""
+
+    transaction: LedgerTransactionResponse
 
 
 class PositionResponse(BaseModel):
@@ -268,6 +322,76 @@ def get_portfolio_snapshot(
         available_cash=portfolio.cash.available_cash,
         positions_are_complete=True,
         positions=positions,
+    )
+
+
+@app.post(
+    "/v1/portfolios/{user_id}/transactions",
+    response_model=TransactionWriteResponse,
+    status_code=status.HTTP_201_CREATED,
+    responses={
+        404: {"description": "Portfolio User 不存在"},
+        409: {"description": "现金或指定仓位 Shares 不足"},
+        422: {"description": "Transaction 输入不满足领域约束"},
+    },
+)
+def record_transaction(
+    user_id: UUID,
+    request: TransactionRequest,
+    portfolio_service: Annotated[PortfolioService, Depends(get_portfolio_service_dependency)],
+) -> TransactionWriteResponse:
+    """追加 BUY / SELL，并返回后端派生的不可变 Ledger Record。"""
+
+    try:
+        transaction = portfolio_service.record_transaction(
+            RecordTransactionCommand(
+                user_id=user_id,
+                ticker=request.ticker,
+                action=request.action,
+                price=request.price,
+                shares=request.shares,
+                position_type=request.position_type,
+                occurred_at=request.occurred_at,
+                reason=request.reason,
+            )
+        )
+    except UserNotFound:
+        _raise_api_error(
+            status.HTTP_404_NOT_FOUND,
+            ApiErrorDetail(code="USER_NOT_FOUND", message="Portfolio User 不存在"),
+        )
+    except InsufficientCash as error:
+        _raise_api_error(
+            status.HTTP_409_CONFLICT,
+            ApiErrorDetail(code="INSUFFICIENT_CASH", message=str(error)),
+        )
+    except InsufficientShares as error:
+        _raise_api_error(
+            status.HTTP_409_CONFLICT,
+            ApiErrorDetail(code="INSUFFICIENT_SHARES", message=str(error)),
+        )
+    except InvalidPortfolioValue as error:
+        _raise_api_error(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            ApiErrorDetail(code="INVALID_TRANSACTION", message=str(error)),
+        )
+
+    return TransactionWriteResponse(
+        transaction=LedgerTransactionResponse(
+            id=transaction.id,
+            user_id=transaction.user_id,
+            sequence=transaction.sequence,
+            ticker=transaction.ticker,
+            action=transaction.action,
+            price=transaction.price,
+            shares=transaction.shares,
+            amount=transaction.amount,
+            commission=transaction.commission,
+            fee_schedule=transaction.fee_schedule,
+            position_type=transaction.position_type,
+            occurred_at=transaction.occurred_at,
+            reason=transaction.reason,
+        )
     )
 
 

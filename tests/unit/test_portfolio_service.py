@@ -205,6 +205,78 @@ def test_records_transactions_with_lock_and_derived_financial_fields() -> None:
     assert recovered.cash.available_cash == Decimal("799.43275000")
 
 
+def test_transaction_without_occurred_at_uses_application_clock() -> None:
+    """省略交易时间时只能使用可注入的 Application Clock。"""
+
+    service, _ = make_service()
+    user = service.create_user(
+        CreateUserCommand(display_name="Alice", initial_cash=Decimal("1000"))
+    )
+
+    transaction = service.record_transaction(
+        RecordTransactionCommand(
+            user_id=user.id,
+            ticker="GOOG",
+            action=TransactionAction.BUY,
+            price=Decimal("10"),
+            shares=Decimal("1"),
+            position_type=PositionType.LONG_TERM,
+        )
+    )
+
+    assert transaction.occurred_at == NOW
+
+
+def test_future_transaction_is_rejected_before_ledger_read_or_persistence() -> None:
+    """尚未发生的交易不得提前改变当前 Portfolio。"""
+
+    service, store = make_service()
+    user = service.create_user(
+        CreateUserCommand(display_name="Alice", initial_cash=Decimal("1000"))
+    )
+
+    with pytest.raises(InvalidPortfolioValue, match="occurred_at 不得晚于当前时间"):
+        service.record_transaction(
+            RecordTransactionCommand(
+                user_id=user.id,
+                ticker="GOOG",
+                action=TransactionAction.BUY,
+                price=Decimal("10"),
+                shares=Decimal("1"),
+                position_type=PositionType.LONG_TERM,
+                occurred_at=NOW + timedelta(seconds=1),
+            )
+        )
+
+    assert service.list_transactions(user.id) == ()
+    assert store.lock_requests == [user.id]
+    assert store.commit_count == 1
+
+
+def test_transaction_normalizes_explicit_offset_time_to_utc() -> None:
+    """历史补录可使用明确 Offset，但持久化语义统一为 UTC。"""
+
+    service, _ = make_service()
+    user = service.create_user(
+        CreateUserCommand(display_name="Alice", initial_cash=Decimal("1000"))
+    )
+
+    transaction = service.record_transaction(
+        RecordTransactionCommand(
+            user_id=user.id,
+            ticker="GOOG",
+            action=TransactionAction.BUY,
+            price=Decimal("10"),
+            shares=Decimal("1"),
+            position_type=PositionType.LONG_TERM,
+            occurred_at=datetime.fromisoformat("2026-08-20T20:00:00+08:00"),
+        )
+    )
+
+    assert transaction.occurred_at == OCCURRED_AT
+    assert transaction.occurred_at.tzinfo is UTC
+
+
 def test_get_investment_context_projects_history_from_same_ledger_read() -> None:
     """Agent Context 应同时返回派生 Portfolio 与当前仓位的历史 BUY Facts。"""
 
@@ -285,6 +357,25 @@ def test_records_cash_events_with_lock_and_rebuilds_available_cash() -> None:
     assert state.cash_event_count == 2
     assert store.lock_requests == [user.id, user.id]
     assert store.commit_count == 3
+
+
+def test_cash_event_without_occurred_at_uses_application_clock() -> None:
+    """省略现金事件时间时使用同一个 Application Clock。"""
+
+    service, _ = make_service()
+    user = service.create_user(
+        CreateUserCommand(display_name="Alice", initial_cash=Decimal("1000"))
+    )
+
+    result = service.record_cash_event(
+        RecordCashEventCommand(
+            user_id=user.id,
+            event_type=CashEventType.DEPOSIT,
+            amount=Decimal("500"),
+        )
+    )
+
+    assert result.cash_event.occurred_at == NOW
 
 
 def test_failed_withdrawal_is_not_added_or_committed() -> None:

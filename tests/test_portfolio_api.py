@@ -1,4 +1,4 @@
-"""M4 Cash Adjustment API Contract 测试。"""
+"""Portfolio Public API Contract 测试。"""
 
 from collections.abc import Iterator
 from dataclasses import dataclass, field
@@ -14,8 +14,13 @@ from position_pilot.application.portfolio_service import (
     CashAdjustmentResult,
     CreateUserCommand,
     RecordCashEventCommand,
+    RecordTransactionCommand,
 )
-from position_pilot.domain.errors import InsufficientCash, InvalidPortfolioValue
+from position_pilot.domain.errors import (
+    InsufficientCash,
+    InsufficientShares,
+    InvalidPortfolioValue,
+)
 from position_pilot.domain.portfolio import (
     CashBalance,
     CashEvent,
@@ -23,6 +28,8 @@ from position_pilot.domain.portfolio import (
     PortfolioState,
     Position,
     PositionType,
+    Transaction,
+    TransactionAction,
     User,
     rebuild_portfolio,
 )
@@ -30,6 +37,7 @@ from position_pilot.main import app, get_portfolio_service_dependency
 
 USER_ID = UUID("00000000-0000-0000-0000-000000000001")
 EVENT_ID = UUID("00000000-0000-0000-0000-000000000002")
+TRANSACTION_ID = UUID("00000000-0000-0000-0000-000000000003")
 OCCURRED_AT = datetime(2026, 8, 25, 8, 30, tzinfo=UTC)
 
 
@@ -55,6 +63,20 @@ class FakePortfolioCreator:
     commands: list[CreateUserCommand] = field(default_factory=list)
 
     def create_user(self, command: CreateUserCommand) -> User:
+        self.commands.append(command)
+        if isinstance(self.result, Exception):
+            raise self.result
+        return self.result
+
+
+@dataclass(slots=True)
+class FakeTransactionWriter:
+    """返回固定 Transaction，并记录 API Command。"""
+
+    result: Transaction | Exception
+    commands: list[RecordTransactionCommand] = field(default_factory=list)
+
+    def record_transaction(self, command: RecordTransactionCommand) -> Transaction:
         self.commands.append(command)
         if isinstance(self.result, Exception):
             raise self.result
@@ -108,8 +130,27 @@ def make_result() -> CashAdjustmentResult:
     )
 
 
+def make_transaction() -> Transaction:
+    """创建 API Response 使用的固定 BUY Ledger Record。"""
+
+    return Transaction.create(
+        transaction_id=TRANSACTION_ID,
+        user_id=USER_ID,
+        sequence=1,
+        ticker="GOOG",
+        action=TransactionAction.BUY,
+        price=Decimal("180.25"),
+        shares=Decimal("2"),
+        position_type=PositionType.LONG_TERM,
+        occurred_at=OCCURRED_AT,
+        reason="Initial long-term position",
+    )
+
+
 def override_service(
-    service: FakePortfolioService | FakePortfolioCreator | FakePortfolioReader,
+    service: (
+        FakePortfolioService | FakePortfolioCreator | FakeTransactionWriter | FakePortfolioReader
+    ),
 ) -> None:
     """避免 API Contract Test 读取真实数据库。"""
 
@@ -203,6 +244,11 @@ def test_maps_invalid_portfolio_creation_to_stable_422(client: TestClient) -> No
         {"display_name": "   ", "initial_cash": "10"},
         {"display_name": "My Portfolio", "initial_cash": "-1"},
         {"display_name": "My Portfolio", "initial_cash": "1.000000001"},
+        {
+            "display_name": "My Portfolio",
+            "initial_cash": "10",
+            "user_id": str(USER_ID),
+        },
     ],
 )
 def test_rejects_invalid_portfolio_creation_before_service_call(
@@ -288,6 +334,161 @@ def test_maps_missing_portfolio_snapshot_user_to_404(client: TestClient) -> None
     assert service.user_ids == [USER_ID]
 
 
+def test_records_transaction_and_returns_backend_derived_fields(client: TestClient) -> None:
+    """Transaction API 不接收派生字段，并完整返回后端 Ledger Record。"""
+
+    service = FakeTransactionWriter(make_transaction())
+    override_service(service)
+
+    response = client.post(
+        f"/v1/portfolios/{USER_ID}/transactions",
+        json={
+            "ticker": "goog",
+            "action": "BUY",
+            "price": "180.25",
+            "shares": "2",
+            "position_type": "LONG_TERM",
+            "reason": "Initial long-term position",
+        },
+    )
+
+    assert response.status_code == 201
+    assert response.json() == {
+        "transaction": {
+            "id": str(TRANSACTION_ID),
+            "user_id": str(USER_ID),
+            "sequence": 1,
+            "ticker": "GOOG",
+            "action": "BUY",
+            "price": "180.25000000",
+            "shares": "2.00000000",
+            "amount": "360.50000000",
+            "commission": "0.35000000",
+            "fee_schedule": "IBKR_PRO_TIERED_US_2026_08",
+            "position_type": "LONG_TERM",
+            "occurred_at": "2026-08-25T08:30:00Z",
+            "reason": "Initial long-term position",
+        }
+    }
+    assert len(service.commands) == 1
+    command = service.commands[0]
+    assert command.user_id == USER_ID
+    assert command.ticker == "goog"
+    assert command.action is TransactionAction.BUY
+    assert command.price == Decimal("180.25")
+    assert command.shares == Decimal("2")
+    assert command.position_type is PositionType.LONG_TERM
+    assert command.occurred_at is None
+
+
+@pytest.mark.parametrize(
+    ("error", "expected_status", "expected_code"),
+    [
+        (UserNotFound(USER_ID), 404, "USER_NOT_FOUND"),
+        (
+            InsufficientCash(available=Decimal("10"), required=Decimal("11")),
+            409,
+            "INSUFFICIENT_CASH",
+        ),
+        (
+            InsufficientShares(available=Decimal("1"), required=Decimal("2")),
+            409,
+            "INSUFFICIENT_SHARES",
+        ),
+        (InvalidPortfolioValue("ticker 格式无效"), 422, "INVALID_TRANSACTION"),
+    ],
+)
+def test_maps_transaction_application_errors(
+    client: TestClient,
+    error: Exception,
+    expected_status: int,
+    expected_code: str,
+) -> None:
+    """Transaction Application Failure 应映射为稳定且可区分的状态。"""
+
+    override_service(FakeTransactionWriter(error))
+
+    response = client.post(
+        f"/v1/portfolios/{USER_ID}/transactions",
+        json={
+            "ticker": "GOOG",
+            "action": "SELL",
+            "price": "10",
+            "shares": "2",
+            "position_type": "SWING",
+        },
+    )
+
+    assert response.status_code == expected_status
+    assert response.json()["detail"]["code"] == expected_code
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {
+            "ticker": "GOOG",
+            "action": "DIVIDEND",
+            "price": "10",
+            "shares": "1",
+            "position_type": "LONG_TERM",
+        },
+        {
+            "ticker": "GOOG",
+            "action": "BUY",
+            "price": "0",
+            "shares": "1",
+            "position_type": "LONG_TERM",
+        },
+        {
+            "ticker": "GOOG",
+            "action": "BUY",
+            "price": "10",
+            "shares": "1.000000001",
+            "position_type": "LONG_TERM",
+        },
+        {
+            "ticker": "GOOG",
+            "action": "BUY",
+            "price": "10",
+            "shares": "1",
+            "position_type": "DAY_TRADE",
+        },
+        {
+            "ticker": "GOOG",
+            "action": "BUY",
+            "price": "10",
+            "shares": "1",
+            "position_type": "LONG_TERM",
+            "occurred_at": "2026-08-25T08:30:00",
+        },
+        {
+            "ticker": "GOOG",
+            "action": "BUY",
+            "price": "10",
+            "shares": "1",
+            "position_type": "LONG_TERM",
+            "amount": "10",
+            "commission": "0.35",
+            "fee_schedule": "CLIENT_VALUE",
+        },
+    ],
+)
+def test_rejects_invalid_transaction_request_before_service_call(
+    client: TestClient,
+    payload: dict[str, str],
+) -> None:
+    """非法 Transaction Request 不得进入 Application Service。"""
+
+    service = FakeTransactionWriter(make_transaction())
+    override_service(service)
+
+    response = client.post(f"/v1/portfolios/{USER_ID}/transactions", json=payload)
+
+    assert response.status_code == 422
+    assert service.commands == []
+
+
 def test_records_deposit_and_returns_rebuilt_available_cash(client: TestClient) -> None:
     """成功写入应返回 201、不可变事件和重建后的 Available Cash。"""
 
@@ -322,7 +523,24 @@ def test_records_deposit_and_returns_rebuilt_available_cash(client: TestClient) 
     assert command.user_id == USER_ID
     assert command.event_type is CashEventType.DEPOSIT
     assert command.amount == Decimal("500")
+    assert command.occurred_at is not None
     assert command.occurred_at.utcoffset() is not None
+
+
+def test_cash_event_allows_application_clock_default(client: TestClient) -> None:
+    """Cash Event API 省略时间时不使用 Browser Clock。"""
+
+    service = FakePortfolioService(make_result())
+    override_service(service)
+
+    response = client.post(
+        f"/v1/portfolios/{USER_ID}/cash-events",
+        json={"event_type": "DEPOSIT", "amount": "500"},
+    )
+
+    assert response.status_code == 201
+    assert len(service.commands) == 1
+    assert service.commands[0].occurred_at is None
 
 
 def test_maps_insufficient_cash_to_conflict(client: TestClient) -> None:
@@ -391,7 +609,6 @@ def test_maps_application_errors(
             "amount": "1.000000001",
             "occurred_at": "2026-08-25T08:30:00Z",
         },
-        {"event_type": "DEPOSIT", "amount": "1"},
         {"event_type": "DEPOSIT", "amount": "1", "occurred_at": "2026-08-25T08:30:00"},
     ],
 )

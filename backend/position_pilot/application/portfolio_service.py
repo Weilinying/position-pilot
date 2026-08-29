@@ -89,7 +89,7 @@ class RecordCashEventCommand:
     user_id: UUID
     event_type: CashEventType
     amount: Decimal
-    occurred_at: datetime
+    occurred_at: datetime | None = None
     reason: str | None = None
 
 
@@ -133,6 +133,11 @@ class PortfolioService:
             if user is None:
                 raise UserNotFound(command.user_id)
 
+            current_time = normalize_timestamp(self._clock())
+            occurred_at = normalize_timestamp(command.occurred_at or current_time)
+            if occurred_at > current_time:
+                raise InvalidPortfolioValue("Transaction occurred_at 不得晚于当前时间")
+
             transactions = unit_of_work.list_transactions(user.id)
             cash_events = unit_of_work.list_cash_events(user.id)
             # 重新派生顺序前先验证已持久化 Ledger，避免意外掩盖 sequence 损坏。
@@ -145,7 +150,7 @@ class PortfolioService:
                 price=command.price,
                 shares=command.shares,
                 position_type=command.position_type,
-                occurred_at=command.occurred_at,
+                occurred_at=occurred_at,
                 reason=command.reason,
             )
 
@@ -176,8 +181,9 @@ class PortfolioService:
             if user is None:
                 raise UserNotFound(command.user_id)
 
-            occurred_at = normalize_timestamp(command.occurred_at)
-            if occurred_at > normalize_timestamp(self._clock()):
+            current_time = normalize_timestamp(self._clock())
+            occurred_at = normalize_timestamp(command.occurred_at or current_time)
+            if occurred_at > current_time:
                 raise InvalidPortfolioValue("Cash Event occurred_at 不得晚于当前时间")
 
             transactions = unit_of_work.list_transactions(user.id)
