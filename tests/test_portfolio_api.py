@@ -15,7 +15,16 @@ from position_pilot.application.portfolio_service import (
     RecordCashEventCommand,
 )
 from position_pilot.domain.errors import InsufficientCash, InvalidPortfolioValue
-from position_pilot.domain.portfolio import CashEvent, CashEventType, User, rebuild_portfolio
+from position_pilot.domain.portfolio import (
+    CashBalance,
+    CashEvent,
+    CashEventType,
+    PortfolioState,
+    Position,
+    PositionType,
+    User,
+    rebuild_portfolio,
+)
 from position_pilot.main import app, get_portfolio_service_dependency
 
 USER_ID = UUID("00000000-0000-0000-0000-000000000001")
@@ -32,6 +41,20 @@ class FakePortfolioService:
 
     def record_cash_event(self, command: RecordCashEventCommand) -> CashAdjustmentResult:
         self.commands.append(command)
+        if isinstance(self.result, Exception):
+            raise self.result
+        return self.result
+
+
+@dataclass(slots=True)
+class FakePortfolioReader:
+    """返回固定 Portfolio State，并记录只读查询。"""
+
+    result: PortfolioState | Exception
+    user_ids: list[UUID] = field(default_factory=list)
+
+    def get_portfolio(self, user_id: UUID) -> PortfolioState:
+        self.user_ids.append(user_id)
         if isinstance(self.result, Exception):
             raise self.result
         return self.result
@@ -70,10 +93,106 @@ def make_result() -> CashAdjustmentResult:
     )
 
 
-def override_service(service: FakePortfolioService) -> None:
+def override_service(service: FakePortfolioService | FakePortfolioReader) -> None:
     """避免 API Contract Test 读取真实数据库。"""
 
     app.dependency_overrides[get_portfolio_service_dependency] = lambda: service
+
+
+def make_portfolio_state(*, positions: tuple[Position, ...] | None = None) -> PortfolioState:
+    """创建包含稳定 Decimal 与可控持仓顺序的只读 Snapshot。"""
+
+    return PortfolioState(
+        user_id=USER_ID,
+        cash=CashBalance(
+            user_id=USER_ID,
+            initial_cash=Decimal("2000.00000000"),
+            available_cash=Decimal("1679.30000000"),
+        ),
+        positions=(
+            positions
+            if positions is not None
+            else (
+                Position(
+                    ticker="GOOG",
+                    position_type=PositionType.SWING,
+                    shares=Decimal("1.00000000"),
+                    cost_basis=Decimal("120.35000000"),
+                    average_cost=Decimal("120.35000000"),
+                ),
+                Position(
+                    ticker="GOOG",
+                    position_type=PositionType.LONG_TERM,
+                    shares=Decimal("2.00000000"),
+                    cost_basis=Decimal("200.35000000"),
+                    average_cost=Decimal("100.17500000"),
+                ),
+            )
+        ),
+        transaction_count=2,
+    )
+
+
+def test_returns_complete_portfolio_snapshot_with_stable_position_order(
+    client: TestClient,
+) -> None:
+    """只读 API 应保持 Decimal 精度并独立展示两类仓位。"""
+
+    service = FakePortfolioReader(make_portfolio_state())
+    override_service(service)
+
+    response = client.get(f"/v1/portfolios/{USER_ID}")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "user_id": str(USER_ID),
+        "available_cash": "1679.30000000",
+        "positions_are_complete": True,
+        "positions": [
+            {
+                "ticker": "GOOG",
+                "position_type": "LONG_TERM",
+                "shares": "2.00000000",
+                "average_cost": "100.17500000",
+                "cost_basis": "200.35000000",
+            },
+            {
+                "ticker": "GOOG",
+                "position_type": "SWING",
+                "shares": "1.00000000",
+                "average_cost": "120.35000000",
+                "cost_basis": "120.35000000",
+            },
+        ],
+    }
+    assert service.user_ids == [USER_ID]
+
+
+def test_returns_empty_portfolio_as_complete_snapshot(client: TestClient) -> None:
+    """空持仓仍是成功加载的完整当前集合。"""
+
+    override_service(FakePortfolioReader(make_portfolio_state(positions=())))
+
+    response = client.get(f"/v1/portfolios/{USER_ID}")
+
+    assert response.status_code == 200
+    assert response.json()["positions_are_complete"] is True
+    assert response.json()["positions"] == []
+
+
+def test_maps_missing_portfolio_snapshot_user_to_404(client: TestClient) -> None:
+    """未知 User 应使用稳定错误 Contract。"""
+
+    service = FakePortfolioReader(UserNotFound(USER_ID))
+    override_service(service)
+
+    response = client.get(f"/v1/portfolios/{USER_ID}")
+
+    assert response.status_code == 404
+    assert response.json() == {
+        "detail": {"code": "USER_NOT_FOUND", "message": "Portfolio User 不存在"}
+    }
+    assert service.user_ids == [USER_ID]
 
 
 def test_records_deposit_and_returns_rebuilt_available_cash(client: TestClient) -> None:

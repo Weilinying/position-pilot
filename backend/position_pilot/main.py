@@ -25,7 +25,7 @@ from position_pilot.application.portfolio_service import (
 )
 from position_pilot.bootstrap import get_investment_agent, get_portfolio_service
 from position_pilot.domain.errors import InsufficientCash, InvalidPortfolioValue
-from position_pilot.domain.portfolio import CashEventType
+from position_pilot.domain.portfolio import CashEventType, PositionType
 
 
 class HealthResponse(BaseModel):
@@ -117,6 +117,25 @@ class CashAdjustmentResponse(BaseModel):
     available_cash: Decimal
 
 
+class PositionResponse(BaseModel):
+    """只读 Portfolio Snapshot 中保留仓位意图的确定性持仓。"""
+
+    ticker: str
+    position_type: PositionType
+    shares: Decimal
+    average_cost: Decimal
+    cost_basis: Decimal
+
+
+class PortfolioSnapshotResponse(BaseModel):
+    """从完整 Ledger 确定性重建的当前 Portfolio Snapshot。"""
+
+    user_id: UUID
+    available_cash: Decimal
+    positions_are_complete: bool
+    positions: tuple[PositionResponse, ...]
+
+
 app = FastAPI(title="PositionPilot")
 
 
@@ -137,6 +156,46 @@ def get_portfolio_service_dependency() -> PortfolioService:
     """延迟装配 Portfolio Service，允许 API Contract Test 替换。"""
 
     return get_portfolio_service()
+
+
+@app.get(
+    "/v1/portfolios/{user_id}",
+    response_model=PortfolioSnapshotResponse,
+    responses={404: {"description": "Portfolio User 不存在"}},
+)
+def get_portfolio_snapshot(
+    user_id: UUID,
+    portfolio_service: Annotated[PortfolioService, Depends(get_portfolio_service_dependency)],
+) -> PortfolioSnapshotResponse:
+    """返回 Ledger 重放产生的完整当前持仓集合。"""
+
+    try:
+        portfolio = portfolio_service.get_portfolio(user_id)
+    except UserNotFound:
+        _raise_api_error(
+            status.HTTP_404_NOT_FOUND,
+            ApiErrorDetail(code="USER_NOT_FOUND", message="Portfolio User 不存在"),
+        )
+
+    positions = tuple(
+        PositionResponse(
+            ticker=position.ticker,
+            position_type=position.position_type,
+            shares=position.shares,
+            average_cost=position.average_cost,
+            cost_basis=position.cost_basis,
+        )
+        for position in sorted(
+            portfolio.positions,
+            key=lambda item: (item.ticker, item.position_type.value),
+        )
+    )
+    return PortfolioSnapshotResponse(
+        user_id=portfolio.user_id,
+        available_cash=portfolio.cash.available_cash,
+        positions_are_complete=True,
+        positions=positions,
+    )
 
 
 @app.post(
