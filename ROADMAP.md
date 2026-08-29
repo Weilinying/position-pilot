@@ -10,10 +10,10 @@
 
 ## 2. Current Status
 
-**Current Milestone:** M7 — Minimal Product Interface
-**Status:** DONE — Human Accepted 2026-08-30
-**Current Release State:** pre-`v1.0.0` Demo Core；M7 已完成
-**Next Planned Milestone:** M8 — Local Portfolio Management（Roadmap 与执行计划已获 Human Approval，等待 Milestone Start）
+**Current Milestone:** M8 — Local Portfolio Management
+**Status:** IN PROGRESS
+**Current Release State:** pre-`v1.0.0`；M7 Demo Core 已完成，M8 Local Self-Service 开发中
+**Next Planned Milestone:** M9 — Portfolio Import（依赖 M8 完成，尚未开始）
 
 Milestone 状态统一使用 `NOT STARTED`、`IN PROGRESS`、`DONE`，不维护百分比进度。
 
@@ -237,7 +237,7 @@ M6 不从零开始 Evaluation，而是在 M3～M5 已积累的 Behavioral Eval C
 
 ## M8 — Local Portfolio Management
 
-**Status:** NOT STARTED — Roadmap 与执行计划已获 Human Approval
+**Status:** IN PROGRESS — Roadmap 与执行计划已获 Human Approval
 
 **Goal**
 

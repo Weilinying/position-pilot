@@ -2,7 +2,7 @@
 
 ## 1. 状态与目标
 
-**Status:** APPROVED — Awaiting Milestone Start
+**Status:** IN PROGRESS — Human Approved 2026-08-30
 
 M8 将当前“需要 Demo Seed 或已知 UUID 才能使用”的 M7 Interface，扩展为本地用户可从零开始并持续维护的 Self-Service MVP。M8 完成并通过 Human Acceptance 后形成 `v1.0.0`。
 

@@ -1,6 +1,6 @@
 # PositionPilot
 
-当前仓库已完成 Portfolio / Transaction Structured State、Current Quote、Price History、Recent News、SPY Market Context，以及基于 Native Function Calling 的 Single Investment Agent。当前 Milestone 为 M7 Minimal Product Interface。
+当前仓库已完成 Portfolio / Transaction Structured State、Current Quote、Price History、Recent News、SPY Market Context、Single Investment Agent 与 M7 Minimal Product Interface。当前 Milestone 为 M8 Local Portfolio Management。
 
 ## 前置条件
 
