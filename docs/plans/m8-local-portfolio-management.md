@@ -96,12 +96,11 @@ Request：
   "price": "180.25",
   "shares": "2",
   "position_type": "LONG_TERM",
-  "occurred_at": "2026-08-30T08:00:00Z",
   "reason": "Initial long-term position"
 }
 ```
 
-`occurred_at` 与 `reason` 可省略；省略时间时由 Application Clock 产生当前 UTC 时间。Response `201`：
+`occurred_at` 与 `reason` 可省略；以上默认请求不发送 `occurred_at`，由 Application Clock 产生当前实际发生时间。只有历史补录才显式发送 offset-aware ISO timestamp。Response `201`：
 
 ```json
 {
@@ -128,27 +127,50 @@ Request：
 - Pydantic Request Validation 失败仍为 422；前端安全展示字段级或通用输入提示，不展示内部堆栈。
 - 不新增 Update / Delete / Bulk Import / Transaction List API。
 
-### D3 — Transaction 实际发生时间
+M8 API 中的“Portfolio”是现有 `User → Portfolio State` 模型的产品与 Resource 呈现，不新增独立 Portfolio Entity，也不为 REST 命名重构当前 Domain Model。User / Portfolio Resource Boundary 等到 V2 Multiple Portfolios 时根据 Ownership / Authorization 需求重新评估。
 
-**建议：Transaction 与 Cash Event 一致，只允许已经发生的 Ledger Fact。**
+### D3 — Ledger 实际发生时间
 
-- `PortfolioService.record_transaction()` 使用可注入 Clock；省略 `occurred_at` 时使用该 Clock，而不是在 Domain 内另取系统时间。
+**建议：Transaction 与 Cash Event 使用同一默认时间语义，只允许已经发生的 Ledger Fact。**
+
+- UI 的 `occurred_at` 默认留空；空值不进入 JSON Payload，Browser Clock 不作为默认 Ledger 时间 Source of Truth。
+- Transaction 与 Cash Event 的 Public Request 均允许省略 `occurred_at`；省略时由对应 Application Service 的可注入 Clock 产生当前 UTC 时间。Cash Event 继续复用现有 Endpoint，只对其时间字段作这一最小兼容扩展。
+- `PortfolioService.record_transaction()` 省略时间时使用 Application Clock，而不是在 Domain 内另取系统时间；Backend Application Clock 是“Now”的唯一默认。
 - 明确时间先规范化到 UTC；future timestamp 在读取完整 Ledger 或写数据库前返回 `InvalidPortfolioValue`。
-- 允许带时区的历史补录，并保留当前 resequence 与完整 replay validation。
-- UI 的本地日期时间必须明确转换为带时区 ISO Timestamp；不得把 naive datetime 发送给 API。
+- 只有用户主动输入历史时间时，浏览器才将 local datetime 按本地时区解释并转换为 offset-aware ISO timestamp；naive timestamp 不得进入 Public API Contract。
+- 历史补录保留当前 resequence 与完整 replay validation。
 - Scheduled Order / Future Trade 不属于 Transaction，留到未来独立建模。
 
 ### D4 — Mutation UI Correctness
 
-**建议：所有写操作只绑定当前 `loadedUserId`，写后重读，绝不 Optimistic Update。**
+**建议：有副作用的 POST 通过禁止并发身份切换保持简单；所有 Portfolio Mutation 只绑定当前 `loadedUserId`，写后重读，绝不 Optimistic Update。**
 
 - Portfolio 未加载、已 stale 或正在切换身份时，BUY / SELL / DEPOSIT / WITHDRAWAL 全部禁用。
-- Mutation 发起时捕获 `loadedUserId` 与独立 Write Generation；Response 只有仍属于当前 User / Generation 时才更新 UI。
+- Mutation 使用以下顺序，不增加 Write Generation：
+
+```text
+Mutation 开始
+→ 捕获当前 loadedUserId
+→ 禁止 Create / Load / Forget / User Identity 切换
+→ 禁止同一表单重复提交
+→ POST Mutation
+→ 成功后 GET 最新 Snapshot
+→ 失败或结果不确定时将当前 Snapshot 标记 stale / refresh_required
+→ Mutation 结束后恢复 Identity 操作
+```
+
+- Read Request 继续通过 `portfolioGeneration` / `questionGeneration` 处理 stale response；Mutation 期间既然不能切换 Identity，就不设计 A 的 Mutation Response 返回后发现已经切换到 B 的运行状态。
 - POST 是有副作用请求，浏览器 Abort 不能被当作“服务端未写入”的保证；不自动 Retry。
-- 若网络在提交后中断，显示“写入结果未知”，使 Snapshot stale，并要求 Reload 后再决定是否重试。
+- Transaction / Cash Event POST timeout 或 connection lost 时，显示“写入结果未知”，使 Snapshot stale，并要求 Reload。Reload 只重新取得当前 deterministic Portfolio State，供用户检查最新状态；M8 不保证通过 Snapshot 精确识别某一次不确定 POST 是否已经执行。
 - 成功 Response 不直接修改 Cash / Position；立即 GET 最新 Snapshot。若 GET 失败，明确显示“写入成功、刷新失败”，并保持 Context stale。
-- 提交期间禁用同一表单，防止重复点击；M8 不为本地手工录入引入 Idempotency Infrastructure。
+- M8 不增加 Idempotency Key、Transaction List、Mutation Reconciliation 或自动 Retry；确有需求时再单独设计。
 - 所有 API、User Input 和动态错误文本继续通过安全 DOM Text API 渲染。
+
+**Known Limitation — Create Portfolio Network Ambiguity**
+
+`POST /v1/portfolios` 可能已在 Server 成功创建，但 Response 在返回 UUID 前丢失。此时当前 UI 无法通过 Portfolio Enumeration、Session 或 Idempotency 恢复该 UUID。页面必须显示“Portfolio creation result unknown. Do not automatically retry.”或等价双语文案，不得错误声明创建失败，也不得自动 Retry。
+
+M8 接受这一低概率 localhost 限制，不引入 client-generated UUID、Idempotency Infrastructure、Portfolio List 或 Server-side Session。
 
 ## 4. Acceptance Criteria
 
@@ -158,11 +180,12 @@ Request：
 - 页面仍支持通过 UUID 加载既有 Portfolio，但 UUID 被明确描述为本地恢复标识，不是安全凭证。
 - 只有当前有效 `loadedUserId` 可以提交 Ledger Entry 或 Investment Question。
 - BUY / SELL 支持 ticker、price、shares、`LONG_TERM / SWING`、可选 occurred time 与 reason；派生 amount / commission / fee schedule 只由后端产生。
-- DEPOSIT / WITHDRAWAL 复用现有 Cash Event API，并支持 amount、实际发生时间与可选 reason。
+- DEPOSIT / WITHDRAWAL 复用现有 Cash Event API，并支持 amount、可选历史发生时间与可选 reason；时间留空时同样使用 Backend Application Clock。
 - future / naive timestamp、非法 Ticker / Decimal / Enum、Insufficient Cash、Oversell 与 Unknown User 具有清晰且不混淆的 Failure State。
 - 写入失败不产生部分 Ledger；成功写入后必须重读 Snapshot，前端不计算或猜测新的 Portfolio State。
-- 修改 User ID、创建新 Portfolio 或加载其他 Portfolio 时，旧 Snapshot、Question、Answer、Sources 与 Mutation Response 不得显示在新 Portfolio Context 下。
-- Network Ambiguity 不自动重试，也不把未知结果宣称为失败或成功。
+- Mutation 期间 Create、Load、Forget 与 User Identity 切换被禁用；Read Request 仍不得用 stale Response 覆盖当前 Portfolio Context。
+- Transaction / Cash Event Network Ambiguity 不自动重试，Snapshot 标记为 `refresh_required`；Reload 后只提供当前 State，不保证识别某一次 POST 是否执行。
+- Create Portfolio Response 丢失时明确显示结果未知，不自动重试，并接受当前 UI 可能无法恢复 Server 已创建 Portfolio 的 Known Limitation。
 - 页面在英文和中文下均能完成 Create、Load、BUY、SELL、DEPOSIT、WITHDRAWAL 与 Ask Flow；语言切换不改变身份或请求状态。
 - 所有动态文本遵守 M7 XSS Boundary；静态模板之外不使用动态 HTML 字符串拼接。
 - README、Architecture、Roadmap、Plan 与实际本地流程一致；默认只绑定 loopback。
@@ -191,20 +214,20 @@ userIdInput        = 当前 UUID 输入值
 loadedUserId       = 当前成功加载 Snapshot 的 User
 portfolioGeneration / questionGeneration
 createGeneration   = 当前 Create Request 代次
-writeGeneration    = 当前 Ledger Mutation 代次
 writeState         = idle | submitting | refresh_required
 ```
 
 - local pointer 只在 Create 成功或 GET Snapshot 成功后写入。
 - Create、Load 与 Mutation 开始时必须正确使旧 Question / Result stale；语言切换不得重建 Client State。
-- Mutation Response 不属于当前 User 时只丢弃显示更新；由于 POST 可能已经提交，必要时提示重新加载原 Portfolio。
+- Mutation 进入 `submitting` 时捕获 `loadedUserId`，禁用 Create / Load / Forget / User ID 输入及同一 Mutation Form；完成后恢复 Identity 操作。
+- Mutation 失败或结果不确定时进入 `refresh_required`，Snapshot、Ledger Entry 与 Question 保持禁用，直到用户成功 Reload。
 - 新 Portfolio 创建成功但后续 GET 失败时，保留生成的 UUID / local pointer，并提供显式 Reload，不重复 Create。
 
 ### 5.3 表单与时间
 
 - Decimal 使用文本 / decimal input 传输为 JSON string；不使用 JavaScript 浮点计算金额或费用。
 - Ticker 可在提交前 `trim + uppercase`，最终合法性仍以后端为准。
-- 默认实际发生时间为当前本地时间；发送前转换为带时区 ISO 字符串。用户选择历史时间时显示本地时区提示。
+- `occurred_at` 默认留空且不发送；Backend Application Clock 是默认 Ledger 时间来源。只有用户主动选择历史时间时，才按浏览器本地时区解释并转换为 offset-aware ISO 字符串，同时显示本地时区提示。
 - BUY / SELL、DEPOSIT / WITHDRAWAL 必须同时用文字和控件状态区分，不只依赖颜色。
 - 成功消息说明记录类型与后端返回 ID / sequence；金融状态只展示随后 GET 的 Snapshot。
 
@@ -215,7 +238,7 @@ T0 M7 Acceptance / Merge + M8 Baseline
   ↓
 T1 Create Portfolio API
   ↓
-T2 Transaction Time Rule + Write API
+T2 Ledger Time Rule + Transaction Write API
   ↓
 T3 Local Onboarding / Recovery
   ↓
@@ -243,10 +266,11 @@ T6 Automated Review → Fix → Re-check → Human Acceptance
 
 ### T2 — Transaction Write API Slice
 
-- 在 Application Service 统一 Transaction actual-time rule，并补充省略时间、UTC normalization、future rejection 与 backdated replay Tests。
+- 在 Application Service 统一 Transaction / Cash Event actual-time default，并补充省略时间、UTC normalization、future rejection 与 backdated replay Tests。
 - 增加 Transaction Request / Response Schema 和 `POST /v1/portfolios/{user_id}/transactions`。
 - 复用 `RecordTransactionCommand` 与既有 Domain / UoW；API 不计算 amount、commission、Cash、Average Cost 或 Position。
-- 增加 API Tests：BUY / SELL、双 Position Type、Decimal string、默认 / 指定时间、404、409 Cash、409 Shares、422 Domain / Request Validation。
+- 现有 Cash Event Endpoint 保持 Resource 与行为边界，仅允许省略 `occurred_at` 并由 Application Clock 补齐。
+- 增加 API Tests：BUY / SELL、双 Position Type、Decimal string、默认 / 历史时间、404、409 Cash、409 Shares、422 Domain / Request Validation。
 - 增加 PostgreSQL Integration：写入后 Ledger Record 与 GET Snapshot 一致，失败不 Commit，历史补录 sequence 稳定。
 
 ### T3 — Local Onboarding 与恢复
@@ -261,21 +285,21 @@ T6 Automated Review → Fix → Re-check → Human Acceptance
 
 - 增加独立 Trade / Cash 表单，字段与 D2 Contract 一致；只在 `loadedUserId` 有效时启用。
 - Cash Form 调用既有 Endpoint；Transaction Form 调用新增 Endpoint。
-- 实现 Write Generation、重复提交保护、Network Ambiguity、成功后 GET、刷新失败 stale state 与安全错误映射。
-- 创建或加载其他 Portfolio 时，隔离旧写响应；不得让 A 的成功 / 失败消息改变 B 的 Snapshot。
+- 实现 `writeState`、Mutation 期间 Identity Lock、重复提交保护、Network Ambiguity、成功后 GET、刷新失败 stale state 与安全错误映射。
+- Transaction / Cash Event ambiguity 只要求 Reload 当前 State，不声称能识别某一次 POST；Create ambiguity 使用独立结果未知文案并接受 UUID 可能不可恢复。
 - 扩充静态 Contract Tests；复杂异步 Side-effect 场景继续使用可控 Browser Smoke，不为 M8 自动引入 Node / Playwright。
 
 ### T5 — Verification、Release Documentation 与版本
 
-- 固定 Browser Smoke 覆盖完整自助闭环、双语、响应式布局、XSS Payload 和延迟 / 模糊写入状态。
+- 固定 Browser Smoke 聚焦正常自助闭环与主要领域失败；Network Ambiguity、POST 后 GET Failure、XSS Payload 与 delayed stale read 作为定向 Engineering Verification / Automated Review，不要求每次 Human Acceptance 全量人工复现。
 - 更新 README：无需 Seed 的主流程、既有 UUID 恢复、local pointer 限制、Ledger Entry、loopback 与无 Auth 警告；Demo Seed 保留为开发 Fixture，不再是正常使用前置条件。
-- 更新 ARCHITECTURE：两个新增 API、local pointer 信任边界与 Browser 不持有金融 Source of Truth。
+- 更新 ARCHITECTURE：两个新增 API、local pointer 信任边界、Browser 不持有金融 Source of Truth，以及 M8 “Portfolio”仍是现有 `User → Portfolio State` 的 API 呈现；独立 Portfolio Entity 留到 V2 Multiple Portfolios 重新评估。
 - 检查是否需要 Engineering Note；D1 的 local pointer / no-auth trade-off 若仅停留在已批准 Plan 与 Architecture，不机械新增 ADR。
 - Human Acceptance 前将 `pyproject.toml` 版本更新为 `1.0.0` 并同步 lock metadata；不自动创建 Git Tag、GitHub Release 或 Push。
 
 ### T6 — Review 与收口
 
-- 基础检查通过后执行 Automated Review，重点检查 Public API、Ledger Atomicity、future timestamp、Decimal、重复写入、POST Network Ambiguity、跨 User stale response、XSS 与 localStorage Boundary。
+- 基础检查通过后执行 Automated Review，重点检查 Public API、Ledger Atomicity、future timestamp、Decimal、Mutation Identity Lock、重复写入、POST Network Ambiguity、stale read response、XSS 与 localStorage Boundary。
 - 修复 Critical / High Findings，按影响重新运行 Unit、API、Integration、Static Contract 与 Browser Flow。
 - 将 Plan、Roadmap 和 Architecture 状态同步为实际结果，记录环境 Skip 与已知限制。
 - 提交 Human Acceptance Evidence；通过后合并到本地 `main`，不自动 Push、删 Branch 或公开部署。
@@ -288,28 +312,32 @@ T6 Automated Review → Fix → Re-check → Human Acceptance
 | API Contract | 201 Payload、Decimal、Enum、404 / 409 / 422 | FastAPI TestClient |
 | Persistence | User / Transaction / Cash Event 写入与 replay 一致 | Opt-in PostgreSQL Integration |
 | Local Recovery | URL 优先、local pointer、404 cleanup、forget | Static Contract + Browser Smoke |
-| UI Identity | loaded user only、A → B、stale Create / Write / Answer | Controlled-delay Browser Smoke |
-| UI Mutation | 重复点击、成功后 GET、refresh failure、ambiguous network | Browser Smoke + API Fixtures |
+| UI Identity | loaded user only、Mutation Identity Lock、stale Read / Answer | Static Contract + 定向 Controlled-delay Verification |
+| UI Mutation | 重复点击、成功后 GET、refresh_required、两类 POST ambiguity | API Fixtures + 定向 Engineering Verification |
 | Security | 动态文本、localStorage 内容、loopback / no-auth 边界 | Code Review + Browser Injection |
 | Regression | M7 Portfolio / QA / Sources 与 Backend 不退化 | pytest、Ruff、mypy、lock / Alembic checks |
 
 固定 Human Browser Smoke 至少包含：
 
-- [ ] 首次访问创建 zero-cash 与 funded Portfolio。
-- [ ] 创建成功自动加载，刷新页面自动恢复。
+- [ ] Create Portfolio。
+- [ ] Refresh / local pointer recovery。
+- [ ] Load Existing UUID。
 - [ ] Forget Pointer 只清理本地引用，不删除 Portfolio。
-- [ ] 通过既有 UUID 加载并更新最近 Portfolio。
-- [ ] BUY 后 Cash、Shares、Average Cost 来自重读 Snapshot。
+- [ ] BUY 与 SELL，且写后重新取得 Snapshot。
 - [ ] 同 ticker 的 `LONG_TERM` / `SWING` 独立。
-- [ ] 部分 SELL 与全部 SELL。
 - [ ] DEPOSIT 与 WITHDRAWAL。
-- [ ] Insufficient Cash、Oversell、非法字段、future time、404。
-- [ ] POST 成功但 GET 刷新失败时不显示 Optimistic State。
-- [ ] POST Network Ambiguity 不自动重试，并要求 Reload。
-- [ ] A 的延迟 Create / Write / Snapshot / Answer 不更新 B 的 UI。
-- [ ] 动态 XSS Payload 全部作为文本。
-- [ ] 中文 / 英文完整闭环和窄屏布局。
-- [ ] Ask Question、OK / DEGRADED、Sources 与 Provider Failure 保持 M7 行为。
+- [ ] Insufficient Cash 与 Oversell。
+- [ ] Invalid / future input。
+- [ ] Investment QA 与 `OK` / `DEGRADED` / Sources 保持 M7 行为。
+- [ ] 中文 / 英文完整闭环。
+- [ ] Narrow-screen basic usability。
+
+以下场景保留为定向 Engineering Verification / Automated Review，不要求每次 Human Acceptance 全量手工复现：
+
+- Transaction / Cash Event / Create Portfolio Network Ambiguity；
+- POST 成功后的 GET refresh failure；
+- XSS adversarial payload；
+- delayed stale read response。
 
 Browser Smoke 是可重复的 Human Verification Evidence，不计入默认 Automated Regression Gate。
 
