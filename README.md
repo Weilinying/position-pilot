@@ -77,7 +77,7 @@ LLM_API_KEY=<local-secret> \
 uv run pytest tests/evaluation/test_real_model_behavior.py -s
 ```
 
-详细 Human Rubric 与真实 Provider Smoke Test 说明见 [`tests/evaluation/README.md`](tests/evaluation/README.md)，Agent / LLM 决策见 [`ADR 0005`](docs/adr/0005-native-function-calling-and-llm-provider-boundary.md)。
+长期 Evaluation 入口、Human Grounding 与 Model Selection 说明见 [`docs/evaluation/README.md`](docs/evaluation/README.md)，Agent / LLM 决策见 [`ADR 0005`](docs/adr/0005-native-function-calling-and-llm-provider-boundary.md)。
 
 停止本地数据库：
 

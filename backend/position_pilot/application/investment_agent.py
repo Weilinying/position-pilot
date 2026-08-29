@@ -423,7 +423,7 @@ class InvestmentAgent:
         first_result = self._llm_provider.complete(
             initial_messages,
             tools=CONTEXT_TOOLS,
-            response_format=LLMResponseFormat.JSON_OBJECT,
+            response_format=LLMResponseFormat.TEXT,
         )
         first_failure = self._from_llm_failure(first_result)
         if first_failure is not None:

@@ -727,7 +727,7 @@ def test_no_tool_call_returns_ok_without_mechanical_market_request(
     assert market_data.news_queries == []
     assert market_data.market_context_requests == 0
     assert len(llm.completions) == 1
-    assert llm.completions[0].response_format is LLMResponseFormat.JSON_OBJECT
+    assert llm.completions[0].response_format is LLMResponseFormat.TEXT
     assert [tool.name for tool in llm.completions[0].tools] == [
         "get_current_quote",
         "get_recent_price_history",
@@ -785,10 +785,10 @@ def test_executes_up_to_four_tools_in_one_round_then_requests_final_response(
     assert market_data.requested_tickers == ["GOOG", "MSFT", "NVDA", "AMZN"]
     assert len(llm.completions) == 2
     assert llm.completions[1].tools == ()
-    assert all(
-        completion.response_format is LLMResponseFormat.JSON_OBJECT
-        for completion in llm.completions
-    )
+    assert [completion.response_format for completion in llm.completions] == [
+        LLMResponseFormat.TEXT,
+        LLMResponseFormat.JSON_OBJECT,
+    ]
     tool_results = [
         message for message in llm.completions[1].messages if message.role is LLMRole.TOOL
     ]
@@ -1934,10 +1934,10 @@ def test_guard_repairs_non_json_final_into_structured_answer() -> None:
         "answer",
         "source_refs",
     ]
-    assert all(
-        completion.response_format is LLMResponseFormat.JSON_OBJECT
-        for completion in llm.completions
-    )
+    assert [completion.response_format for completion in llm.completions] == [
+        LLMResponseFormat.TEXT,
+        LLMResponseFormat.JSON_OBJECT,
+    ]
 
 
 def test_rejects_extra_field_in_source_reference() -> None:

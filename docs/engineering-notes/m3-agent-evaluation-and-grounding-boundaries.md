@@ -129,3 +129,21 @@ Routing 波动与 Repair 继续作为 Quality Signal，不升级为 Hard Contrac
 ### Trigger / Future
 
 修正后重新运行全量 Dataset 与代表性三次对照。若相同 Grounding Failure 仍稳定出现，再评估 Context Shape 或 Model Selection；在新证据前不扩大 Production Contract。
+
+## M6 Routing Response Format Compatibility RCA
+
+### Problem
+
+Qwen 3.8 Max 与 DeepSeek V4 Pro 在全部 Tool-required Model Comparison Cases 中都未产生 Native Tool Calls，但纯 Portfolio Cases 稳定通过。请求 Model ID 不同，失败分界却与是否需要 Tool 完全一致。
+
+### Evidence / Decision
+
+Evaluation-only Controlled Contrast 只改变 `market_context_normal` 首轮 Routing Response Format。DeepSeek 默认 `JSON_OBJECT` Automated 0 / 4、`TEXT` 3 / 3；Qwen 3.8 默认 `JSON_OBJECT` 0 / 3、`TEXT` 3 / 3。两个模型的 `TEXT` 路径均产生 GOOG Quote 与 SPY Market Context，随后 Final Completion 继续使用 `JSON_OBJECT`，0 Repair。该证据将主要 RCA 从“模型未切换”收敛到 Model Studio 下 `tools + response_format=json_object` 的兼容性。
+
+因此原 8-Case Comparison 只能保留为旧 Contract 下的 Diagnostic Evidence；`Qwen 3.7 Comparative Leader` 不再作为模型能力或选型结论。模型选择必须在统一 `TEXT` Routing Contract 下重新比较。
+
+RCA 期间不修改 Production。首轮 Completion 同时允许 No-Tool Final Answer，因此先验证 `TEXT` 对纯 Portfolio Case 的 JSON / Repair 影响，再检查默认模型的 Tool 路径。只有出现阻断性退化时，才评估独立 Routing / Final 阶段；不新增 Prompt Guard 或 Typed Router。
+
+代表性 `cash_only_no_tool` 对照中，三个模型使用 `TEXT` 均 Automated 3 / 3 且无 Tool Call / Request Failure。Qwen 3.7 Repair 3 / 3、Qwen 3.8 Repair 0 / 3，均与默认 `JSON_OBJECT` 基线一致；DeepSeek 从 0 / 3 增至 1 / 3 可恢复 Repair。该结果没有暴露阻断性 No-Tool Regression，但只覆盖一个 Cash Case。
+
+默认 Qwen 3.7 的 `market_context_normal + TEXT` Automated 3 / 3，每次都取得 GOOG Quote 与 SPY Market Context，0 Repair / Invalid JSON / Request Failure。2 / 3 由模型选择 Market Context，1 / 3 由 Required Context Floor 补齐；一次存在 Cash / Quote 数值关系误述。这些记为 Quality Signal，不改变 Routing Format RCA。Human Decision 批准后，Production 首轮 Routing Completion 已改为 `TEXT`，Final 与 Repair 继续使用 `JSON_OBJECT`。

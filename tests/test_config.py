@@ -98,7 +98,7 @@ def test_settings_uses_configurable_generic_llm_defaults(
     settings = Settings(_env_file=None)  # type: ignore[call-arg]
 
     assert str(settings.llm_base_url) == ("https://dashscope.aliyuncs.com/compatible-mode/v1")
-    assert settings.llm_model == "qwen3.7-plus"
+    assert settings.llm_model == "deepseek-v4-pro-0813"
     assert settings.llm_api_key is None
 
 

@@ -2,7 +2,7 @@
 
 ## 1. 状态与目标
 
-**Status:** IN PROGRESS — Real-model Failure-driven Hardening；Re-run pending
+**Status:** COMPLETE — Human Accepted 2026-08-29
 
 M6 将 M3～M5 已积累的 Behavioral Eval Cases 整理为可重复运行的 V1 Evaluation Dataset，并用 Evaluation 证据驱动必要的可靠性修复。
 
@@ -195,10 +195,26 @@ Evaluation Evidence + Human Acceptance
 
 - Dataset `1.0`、Coverage Matrix、24 个 Behavioral Cases、Controlled Contrast 与轻量 Reporter 已完成。
 - Coverage Audit 发现历史买入位置未进入 Agent Context；RCA 后以同一 Ledger Read 的有界 BUY Facts 修复，不新增 Tool、Source Type、预算或公共 API。
-- Offline Gate：348 passed、38 skipped；Ruff、mypy、lock、Alembic 与 diff 检查通过。
+- Offline Gate：359 passed、38 skipped；Ruff 与 mypy 通过。历史 lock 与 Alembic 检查已通过。
 - Automated Review：无 Critical / High / Medium Finding。
 - 首轮全量 Real-model Eval：28 passed、7 failed；24 个 Behavioral Cases 中 17 个通过。未发现 Hard Contract Failure；失败为 Tool Routing Quality Signal。
 - 代表性 Cases 三次重复：22 / 27 通过；原始 5 次失败中 1 次为 Repair 后成功的非法 JSON，已按 Quality Signal 重新分类。
 - Human Review 发现低现金 Case 重复把数值关系解释为“不能买一股”，且加仓回答未实际引用历史 BUY 位置；RCA 指向 Prompt Contract 歧义。
-- Alpaca Market / News 3 项和真实 Agent Online Smoke 1 项通过；PostgreSQL Integration 因未配置 `TEST_DATABASE_URL` 跳过。
-- 待完成：修正后的全量与代表性 Real-model Re-run、Human Factual Grounding、PostgreSQL Evidence（环境可用时）。
+- Alpaca Market / News 3 项和切换前 Qwen 真实 Agent Online Smoke 1 项通过；DeepSeek Real-model Eval 与真实 Provider Evidence 分层覆盖，Human Acceptance 不要求重复组合 Smoke。PostgreSQL Integration 因未配置 `TEST_DATABASE_URL` 跳过。
+- Production Prompt / Tool Contract 保持不变；跨模型 Run Metadata、长期 Evaluation 文档与 Model Selection Report Template 已完成。
+- `qwen3.7-plus-2026-05-26` 已完成：Automated 15 / 24，Request Success 21 / 24；`qwen3.8-max` 已完成：Automated 12 / 24，Request Success 22 / 24。
+- `deepseek-v4-pro-0813` 已完成：Automated 12 / 24，Request Success 24 / 24。
+- 原 `qwen3.7-plus-2026-05-26` Comparative Leader 结论受 Routing Format Confound 影响，已标记为 Superseded；不作为模型选型依据。
+- DeepSeek `market_context_normal` Routing `JSON_OBJECT` Automated 0 / 4、`TEXT` 3 / 3；Qwen 3.8 默认 `JSON_OBJECT` 0 / 3、`TEXT` 3 / 3。跨模型结果支持 Tool RCA；RCA 期间 Production 未修改。
+- 三模型 `cash_only_no_tool` 使用 `TEXT` 均 Automated 3 / 3；Qwen 3.7 / 3.8 Repair 与默认基线一致，DeepSeek 增加 1 / 3 可恢复 Repair。
+- 默认 Qwen 3.7 `market_context_normal + TEXT` Automated 3 / 3，0 Repair / Invalid JSON / Request Failure；一次 Market Context 由 Required Context Floor 补齐，一次存在 Cash / Quote 数值关系误述，作为 Quality Signal 记录。
+- Human Decision 已批准并应用最小修改：Production 首轮 Routing Completion 改为 `TEXT`，Final 与 Repair 保持 `JSON_OBJECT`。
+- 修改后 Qwen 3.7 Full Dataset：Automated 18 / 24，Request Success 24 / 24，2 次可恢复 Repair，0 Hard Failure；6 个失败均为 Tool Routing Quality Signal。
+- Full Run 暴露 `git_revision` 未区分 tracked dirty worktree；Harness 已改为追加 `-dirty`，不增加 Production Instrumentation。
+- 修正后 Adaptive Comparison 已完成：Qwen 3.8 Automated 12 / 15，DeepSeek 15 / 15，均无 Request / Hard Failure；DeepSeek 进入 Full Dataset。
+- DeepSeek Full Dataset：Automated 22 / 24，Request Success 24 / 24，5 个 Case 经一次 Repair 恢复，0 Hard Failure；2 个失败均为 Unauthorized Tool Call Quality Signal。
+- DeepSeek Full Human Factual Grounding 已复核；Historical BUY、Purchase Boundary 与 Market Regime 整体优于 Qwen 3.7，仍保留 4 个 Case-specific Quality Signal。
+- Qwen 3.8 Full Dataset：Automated 22 / 24，Request Success 24 / 24，0 Repair，0 Hard Failure；2 个失败均为 Required Quote Miss Quality Signal。
+- 三模型 Full Dataset 与代表性 5 Case × 3 Repetitions 已完成。Qwen 3.7 Selected Matrix 为 Automated 9 / 15、Request Success 10 / 15、0 Repair、0 Hard Failure；5 次 Provider Timeout 与 1 次 Unauthorized Quote 分开记录。
+- Human Review 已批准并应用 `deepseek-v4-pro-0813` 作为默认模型；Provider、Prompt、Tool Contract 与 Agent Architecture 保持不变。
+- Human Acceptance 于 2026-08-29 通过；接受 DeepSeek 已记录 Quality Signals，以及 PostgreSQL Integration 因未配置 `TEST_DATABASE_URL` 跳过的环境限制。

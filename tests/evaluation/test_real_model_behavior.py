@@ -2,12 +2,14 @@
 
 import json
 import os
-from collections.abc import Iterator
+import subprocess
+from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from enum import StrEnum
-from uuid import UUID
+from pathlib import Path
+from uuid import UUID, uuid4
 
 import pytest
 
@@ -67,6 +69,138 @@ from position_pilot.integrations.aliyun_llm import AliyunLLMProvider
 USER_ID = UUID("00000000-0000-0000-0000-000000000101")
 NOW = datetime(2026, 8, 24, 8, 0, tzinfo=UTC)
 DATASET_VERSION = "1.0"
+EVALUATION_PROVIDER = "ALIYUN_MODEL_STUDIO"
+DEFAULT_EVALUATION_MODEL = "deepseek-v4-pro-0813"
+UNKNOWN_GIT_REVISION = "UNKNOWN"
+EVAL_ROUTING_RESPONSE_FORMAT_ENV = "EVAL_ROUTING_RESPONSE_FORMAT"
+
+
+@dataclass(frozen=True, slots=True)
+class EvaluationRunMetadata:
+    """一次 pytest Behavioral Eval Session 的可重复性元数据。"""
+
+    dataset_version: str
+    provider: str
+    model: str
+    git_revision: str
+    run_id: str
+    repetition_index: int
+    routing_response_format: str
+    started_at: str
+
+    def as_dict(self) -> dict[str, object]:
+        """返回可直接写入 Case 与 Session Report 的稳定字段。"""
+
+        return {
+            "dataset_version": self.dataset_version,
+            "provider": self.provider,
+            "model": self.model,
+            "git_revision": self.git_revision,
+            "run_id": self.run_id,
+            "repetition_index": self.repetition_index,
+            "routing_response_format": self.routing_response_format,
+            "started_at": self.started_at,
+        }
+
+
+def _revision_with_worktree_state(
+    revision: str | None,
+    tracked_status: str | None,
+) -> str:
+    """合并 Commit 与已跟踪工作区状态，避免把未提交代码误记为纯 Commit。"""
+
+    if not revision or tracked_status is None:
+        return UNKNOWN_GIT_REVISION
+    return f"{revision}-dirty" if tracked_status else revision
+
+
+def _read_git_output(repository_root: Path, arguments: list[str]) -> str | None:
+    """执行只读 Git 命令；失败时保留明确的不可用状态。"""
+
+    try:
+        completed = subprocess.run(
+            ["git", *arguments],
+            cwd=repository_root,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=2,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if completed.returncode != 0:
+        return None
+    return completed.stdout.strip()
+
+
+def read_git_revision() -> str:
+    """读取当前 Commit 与 tracked dirty 状态；Git 失败时返回 UNKNOWN。"""
+
+    repository_root = Path(__file__).resolve().parents[2]
+    revision = _read_git_output(repository_root, ["rev-parse", "HEAD"])
+    tracked_status = _read_git_output(
+        repository_root,
+        ["status", "--porcelain=v1", "--untracked-files=no"],
+    )
+    return _revision_with_worktree_state(revision, tracked_status)
+
+
+def _new_run_suffix() -> str:
+    """为未显式命名的本地运行生成短随机后缀。"""
+
+    return uuid4().hex[:8]
+
+
+def evaluation_routing_response_format(
+    environment: Mapping[str, str] | None = None,
+) -> LLMResponseFormat:
+    """读取 Evaluation-only Routing Response Format，默认保持 Production Contract。"""
+
+    values = os.environ if environment is None else environment
+    raw_value = values.get(
+        EVAL_ROUTING_RESPONSE_FORMAT_ENV,
+        LLMResponseFormat.TEXT.value,
+    )
+    try:
+        return LLMResponseFormat(raw_value.strip().upper())
+    except ValueError as error:
+        raise ValueError(
+            f"{EVAL_ROUTING_RESPONSE_FORMAT_ENV} 只支持 text 或 json_object"
+        ) from error
+
+
+def create_evaluation_run_metadata(
+    *,
+    environment: Mapping[str, str] | None = None,
+    revision_reader: Callable[[], str] = read_git_revision,
+    clock: Callable[[], datetime] = lambda: datetime.now(UTC),
+    run_suffix_factory: Callable[[], str] = _new_run_suffix,
+) -> EvaluationRunMetadata:
+    """从本轮实际 Process Environment 构造 Session Metadata。"""
+
+    values = os.environ if environment is None else environment
+    started_at = clock().astimezone(UTC)
+    raw_repetition_index = values.get("EVAL_REPETITION_INDEX", "1")
+    try:
+        repetition_index = int(raw_repetition_index)
+    except ValueError as error:
+        raise ValueError("EVAL_REPETITION_INDEX 必须是正整数") from error
+    if repetition_index < 1:
+        raise ValueError("EVAL_REPETITION_INDEX 必须是正整数")
+    run_id = values.get("EVAL_RUN_ID", "").strip()
+    if not run_id:
+        timestamp = started_at.strftime("%Y%m%dT%H%M%SZ")
+        run_id = f"eval-{timestamp}-{run_suffix_factory()}"
+    return EvaluationRunMetadata(
+        dataset_version=DATASET_VERSION,
+        provider=EVALUATION_PROVIDER,
+        model=values.get("LLM_MODEL", DEFAULT_EVALUATION_MODEL),
+        git_revision=revision_reader() or UNKNOWN_GIT_REVISION,
+        run_id=run_id,
+        repetition_index=repetition_index,
+        routing_response_format=evaluation_routing_response_format(values).value,
+        started_at=started_at.isoformat(),
+    )
 
 
 class V1Requirement(StrEnum):
@@ -128,6 +262,7 @@ class ControlledContrast:
 class BehavioralReporter:
     """聚合 pytest 本轮已执行 Case 的轻量报告指标。"""
 
+    run_metadata: EvaluationRunMetadata
     reports: list[dict[str, object]] = field(default_factory=list)
     repair_counts: list[int] = field(default_factory=list)
     request_failure_count: int = 0
@@ -151,7 +286,7 @@ class BehavioralReporter:
         case_count = len(self.reports)
         cases_with_repair = sum(repair_count > 0 for repair_count in self.repair_counts)
         return {
-            "dataset_version": DATASET_VERSION,
+            **self.run_metadata.as_dict(),
             "executed_case_count": case_count,
             "repair_count": sum(self.repair_counts),
             "cases_with_repair": cases_with_repair,
@@ -257,6 +392,7 @@ class CountingLLM:
     completion_count: int = 0
     results: list[LLMResult] = field(default_factory=list)
     response_formats: list[LLMResponseFormat] = field(default_factory=list)
+    routing_response_format_override: LLMResponseFormat | None = None
 
     def complete(
         self,
@@ -265,12 +401,17 @@ class CountingLLM:
         tools: tuple[LLMToolDefinition, ...] = (),
         response_format: LLMResponseFormat = LLMResponseFormat.TEXT,
     ) -> LLMResult:
+        effective_response_format = (
+            self.routing_response_format_override
+            if tools and self.routing_response_format_override is not None
+            else response_format
+        )
         self.completion_count += 1
-        self.response_formats.append(response_format)
+        self.response_formats.append(effective_response_format)
         result = self.delegate.complete(
             messages,
             tools=tools,
-            response_format=response_format,
+            response_format=effective_response_format,
         )
         self.results.append(result)
         return result
@@ -287,6 +428,23 @@ class NoopLLM:
         response_format: LLMResponseFormat = LLMResponseFormat.TEXT,
     ) -> LLMResult:
         raise AssertionError("测试不应调用 NoopLLM")
+
+
+@dataclass(slots=True)
+class ResponseFormatRecordingLLM:
+    """记录 Delegate 实际收到的 Response Format。"""
+
+    response_formats: list[LLMResponseFormat] = field(default_factory=list)
+
+    def complete(
+        self,
+        messages: tuple[LLMMessage, ...],
+        *,
+        tools: tuple[LLMToolDefinition, ...] = (),
+        response_format: LLMResponseFormat = LLMResponseFormat.TEXT,
+    ) -> LLMResult:
+        self.response_formats.append(response_format)
+        return LLMResult.success(LLMMessage(LLMRole.ASSISTANT, '{"answer":"ok"}'))
 
 
 @dataclass(frozen=True, slots=True)
@@ -1270,6 +1428,7 @@ def build_behavioral_case_report(
     result: InvestmentAnswer,
     trace: BehavioralTrace,
     completion_metrics: dict[str, object],
+    run_metadata: EvaluationRunMetadata,
     *,
     completion_count: int,
 ) -> dict[str, object]:
@@ -1277,12 +1436,12 @@ def build_behavioral_case_report(
 
     requirements = _requirements_for_case(case.id)
     report: dict[str, object] = {
-        "dataset_version": DATASET_VERSION,
+        **run_metadata.as_dict(),
         "case": case.id,
         "requirements": [requirement.value for requirement in requirements],
         "coverage_known_gaps": ([CASE_KNOWN_GAPS[case.id]] if case.id in CASE_KNOWN_GAPS else []),
         "question": case.question,
-        "actual_tool_trace": {
+        "tool_trace": {
             "quote_tickers": trace.tool_tickers,
             "quote_request_purposes": trace.quote_request_purposes,
             "history_tickers": trace.history_tickers,
@@ -1311,6 +1470,9 @@ def build_behavioral_case_report(
             "market_context_tickers": trace.retrieved_market_context_sources,
         },
         "status": result.status.value,
+        "request_failure": None,
+        "repair_count": completion_metrics.get("repair_count", 0),
+        "invalid_json_count": completion_metrics.get("invalid_json_count", 0),
         "llm_completion_count": completion_count,
         "source_validation_repair_used": trace.repair_used,
         "completion_metrics": completion_metrics,
@@ -1328,6 +1490,7 @@ def build_behavioral_failure_report(
     completion_metrics: dict[str, object],
     diagnostics: list[dict[str, object]],
     execution_trace: dict[str, object],
+    run_metadata: EvaluationRunMetadata,
     *,
     completion_count: int,
 ) -> dict[str, object]:
@@ -1335,18 +1498,21 @@ def build_behavioral_failure_report(
 
     requirements = _requirements_for_case(case.id)
     report: dict[str, object] = {
-        "dataset_version": DATASET_VERSION,
+        **run_metadata.as_dict(),
         "case": case.id,
         "requirements": [requirement.value for requirement in requirements],
         "coverage_known_gaps": ([CASE_KNOWN_GAPS[case.id]] if case.id in CASE_KNOWN_GAPS else []),
+        "status": "REQUEST_FAILURE",
         "request_failure": {
             "code": failure.code.value,
             "message": failure.message,
         },
+        "repair_count": completion_metrics.get("repair_count", 0),
+        "invalid_json_count": completion_metrics.get("invalid_json_count", 0),
         "llm_completion_count": completion_count,
         "completion_metrics": completion_metrics,
         "structured_response_diagnostics": diagnostics,
-        "execution_trace": execution_trace,
+        "tool_trace": execution_trace,
         "human_checks": case.human_checks,
     }
     if case.known_limitations:
@@ -1413,7 +1579,7 @@ def collect_failure_execution_trace(
 def behavioral_reporter() -> Iterator[BehavioralReporter]:
     """在 pytest Session 结束时输出真实模型 Case 的聚合摘要。"""
 
-    reporter = BehavioralReporter()
+    reporter = BehavioralReporter(create_evaluation_run_metadata())
     yield reporter
     if reporter.reports:
         print(
@@ -1438,6 +1604,21 @@ def _case_inputs(case: BehavioralCase) -> dict[str, object]:
         "market_context_result": case.market_context_result,
         "transactions": case.transactions,
     }
+
+
+def _fixed_run_metadata() -> EvaluationRunMetadata:
+    """为 deterministic Harness Tests 创建稳定运行元数据。"""
+
+    return EvaluationRunMetadata(
+        dataset_version="1.0",
+        provider="ALIYUN_MODEL_STUDIO",
+        model="fixed-model",
+        git_revision="abc123",
+        run_id="fixed-run",
+        repetition_index=2,
+        routing_response_format="JSON_OBJECT",
+        started_at="2026-08-27T10:00:00+00:00",
+    )
 
 
 def test_v1_dataset_has_complete_requirement_mapping() -> None:
@@ -1493,18 +1674,133 @@ def test_controlled_contrast_changes_only_declared_inputs(contrast: ControlledCo
 def test_behavioral_reporter_aggregates_repairs_across_cases() -> None:
     """Repair Rate 必须按本轮 Case 聚合，不能复用单 Case 0/1 值。"""
 
-    reporter = BehavioralReporter()
+    reporter = BehavioralReporter(_fixed_run_metadata())
     reporter.record({"case": "first"}, repair_count=0)
     reporter.record({"case": "second"}, repair_count=1, request_failed=True)
 
     assert reporter.summary() == {
         "dataset_version": "1.0",
+        "provider": "ALIYUN_MODEL_STUDIO",
+        "model": "fixed-model",
+        "git_revision": "abc123",
+        "run_id": "fixed-run",
+        "repetition_index": 2,
+        "routing_response_format": "JSON_OBJECT",
+        "started_at": "2026-08-27T10:00:00+00:00",
         "executed_case_count": 2,
         "repair_count": 1,
         "cases_with_repair": 1,
         "repair_case_rate": 0.5,
         "request_failure_count": 1,
     }
+
+
+def test_evaluation_run_metadata_uses_actual_configuration() -> None:
+    """正式比较所需字段必须来自本轮环境与可注入运行上下文。"""
+
+    metadata = create_evaluation_run_metadata(
+        environment={
+            "LLM_MODEL": "candidate-model",
+            "EVAL_RUN_ID": "m6-model-comparison",
+            "EVAL_REPETITION_INDEX": "3",
+            "EVAL_ROUTING_RESPONSE_FORMAT": "text",
+        },
+        revision_reader=lambda: "revision-123",
+        clock=lambda: datetime(2026, 8, 27, 9, 30, tzinfo=UTC),
+        run_suffix_factory=lambda: "unused",
+    )
+
+    assert metadata.as_dict() == {
+        "dataset_version": "1.0",
+        "provider": "ALIYUN_MODEL_STUDIO",
+        "model": "candidate-model",
+        "git_revision": "revision-123",
+        "run_id": "m6-model-comparison",
+        "repetition_index": 3,
+        "routing_response_format": "TEXT",
+        "started_at": "2026-08-27T09:30:00+00:00",
+    }
+
+
+def test_evaluation_run_metadata_falls_back_when_git_revision_is_unavailable() -> None:
+    """Git Revision 无法取得时必须记录 UNKNOWN，不能阻断 Eval。"""
+
+    metadata = create_evaluation_run_metadata(
+        environment={},
+        revision_reader=lambda: "",
+        clock=lambda: datetime(2026, 8, 27, 9, 30, tzinfo=UTC),
+        run_suffix_factory=lambda: "fixed123",
+    )
+
+    assert metadata.git_revision == "UNKNOWN"
+    assert metadata.model == "deepseek-v4-pro-0813"
+    assert metadata.run_id == "eval-20260827T093000Z-fixed123"
+    assert metadata.repetition_index == 1
+    assert metadata.routing_response_format == "TEXT"
+
+
+@pytest.mark.parametrize(
+    ("revision", "tracked_status", "expected"),
+    [
+        ("abc123", "", "abc123"),
+        ("abc123", " M backend/file.py", "abc123-dirty"),
+        (None, "", "UNKNOWN"),
+        ("abc123", None, "UNKNOWN"),
+    ],
+)
+def test_git_revision_includes_tracked_worktree_state(
+    revision: str | None,
+    tracked_status: str | None,
+    expected: str,
+) -> None:
+    """未提交的 tracked 修改必须进入 Eval 可复现性元数据。"""
+
+    assert _revision_with_worktree_state(revision, tracked_status) == expected
+
+
+@pytest.mark.parametrize("value", ["0", "-1", "not-an-integer"])
+def test_evaluation_run_metadata_rejects_invalid_repetition_index(value: str) -> None:
+    """Repetition 配置错误必须作为 Harness Configuration Failure 暴露。"""
+
+    with pytest.raises(ValueError, match="EVAL_REPETITION_INDEX 必须是正整数"):
+        create_evaluation_run_metadata(environment={"EVAL_REPETITION_INDEX": value})
+
+
+def test_evaluation_run_metadata_rejects_invalid_routing_response_format() -> None:
+    """RCA 开关配置错误必须作为 Harness Failure 暴露。"""
+
+    with pytest.raises(
+        ValueError,
+        match="EVAL_ROUTING_RESPONSE_FORMAT 只支持 text 或 json_object",
+    ):
+        create_evaluation_run_metadata(environment={"EVAL_ROUTING_RESPONSE_FORMAT": "unsupported"})
+
+
+def test_routing_response_format_override_only_applies_to_completion_with_tools() -> None:
+    """Evaluation RCA 只能覆盖带 Tool 的 Routing，不能改变 Final / Repair Contract。"""
+
+    delegate = ResponseFormatRecordingLLM()
+    llm = CountingLLM(
+        delegate,
+        routing_response_format_override=LLMResponseFormat.TEXT,
+    )
+    messages = (LLMMessage(LLMRole.USER, "固定测试"),)
+    tools = (
+        LLMToolDefinition(
+            "fixed_tool",
+            "固定测试 Tool",
+            {"type": "object", "properties": {}},
+        ),
+    )
+
+    llm.complete(messages, tools=tools, response_format=LLMResponseFormat.JSON_OBJECT)
+    llm.complete(messages, response_format=LLMResponseFormat.JSON_OBJECT)
+
+    assert delegate.response_formats == [
+        LLMResponseFormat.TEXT,
+        LLMResponseFormat.JSON_OBJECT,
+    ]
+    assert llm.response_formats == delegate.response_formats
 
 
 def test_request_failure_report_preserves_root_cause_diagnostics() -> None:
@@ -1525,6 +1821,7 @@ def test_request_failure_report_preserves_root_cause_diagnostics() -> None:
             "model_tool_calls": [{"name": "get_current_quote", "arguments": {}}],
             "tool_attempts": [],
         },
+        _fixed_run_metadata(),
         completion_count=3,
     )
 
@@ -1532,10 +1829,15 @@ def test_request_failure_report_preserves_root_cause_diagnostics() -> None:
         "code": "LLM_INVALID_PROVIDER_RESPONSE",
         "message": "固定结构化响应失败",
     }
+    assert report["status"] == "REQUEST_FAILURE"
+    assert report["model"] == "fixed-model"
+    assert report["git_revision"] == "abc123"
+    assert report["repair_count"] == 1
+    assert report["invalid_json_count"] == 0
     assert report["structured_response_diagnostics"] == [
         {"completion_index": 2, "structured_answer_error": "固定错误"}
     ]
-    assert report["execution_trace"] == {
+    assert report["tool_trace"] == {
         "model_tool_calls": [{"name": "get_current_quote", "arguments": {}}],
         "tool_attempts": [],
     }
@@ -1585,6 +1887,31 @@ def test_tool_trace_source_declaration_and_repair_are_independent() -> None:
     assert trace.declared_market_context_sources == ()
     assert trace.completion_count_without_repair == 2
     assert trace.repair_used is False
+
+    report = build_behavioral_case_report(
+        CASES_BY_ID["recent_news"],
+        result,
+        trace,
+        {"repair_count": 0, "invalid_json_count": 0},
+        _fixed_run_metadata(),
+        completion_count=2,
+    )
+
+    assert report["provider"] == "ALIYUN_MODEL_STUDIO"
+    assert report["model"] == "fixed-model"
+    assert report["repetition_index"] == 2
+    assert report["status"] == "OK"
+    assert report["request_failure"] is None
+    assert report["repair_count"] == 0
+    assert report["invalid_json_count"] == 0
+    assert report["tool_trace"] == {
+        "quote_tickers": ("GOOG",),
+        "quote_request_purposes": (),
+        "history_tickers": ("GOOG",),
+        "news_tickers": ("GOOG",),
+        "market_context_calls": 0,
+        "market_context_origin": "NOT_RETRIEVED",
+    }
 
 
 def test_diagnostics_only_accept_sources_retrieved_in_actual_tool_round() -> None:
@@ -1687,7 +2014,7 @@ def create_real_llm() -> AliyunLLMProvider:
             "LLM_BASE_URL",
             "https://dashscope.aliyuncs.com/compatible-mode/v1",
         ),
-        model=os.getenv("LLM_MODEL", "qwen3.7-plus"),
+        model=os.getenv("LLM_MODEL", DEFAULT_EVALUATION_MODEL),
         timeout_seconds=float(os.getenv("LLM_REQUEST_TIMEOUT_SECONDS", "30")),
     )
 
@@ -1705,7 +2032,12 @@ def test_real_model_behavior_with_fixed_market_data(
 ) -> None:
     """真实模型必须产生符合固定场景的 Tool Trace，并输出供 Human Review 的回答。"""
 
-    llm = CountingLLM(create_real_llm())
+    llm = CountingLLM(
+        create_real_llm(),
+        routing_response_format_override=LLMResponseFormat(
+            behavioral_reporter.run_metadata.routing_response_format
+        ),
+    )
     market_data = FixedMarketData(case.market_results, case.historical_results)
     news = FixedNews(case.news_results)
     market_context = FixedMarketContext(case.market_context_result)
@@ -1733,6 +2065,7 @@ def test_real_model_behavior_with_fixed_market_data(
             completion_metrics,
             structured_response_diagnostics(llm, market_data, news, market_context),
             collect_failure_execution_trace(llm, market_data, news, market_context),
+            behavioral_reporter.run_metadata,
             completion_count=llm.completion_count,
         )
         repair_count = completion_metrics["repair_count"]
@@ -1767,6 +2100,7 @@ def test_real_model_behavior_with_fixed_market_data(
         result,
         trace,
         completion_metrics,
+        behavioral_reporter.run_metadata,
         completion_count=llm.completion_count,
     )
     repair_count = completion_metrics["repair_count"]

@@ -58,7 +58,7 @@ def test_real_llm_and_market_data_complete_single_agent_round() -> None:
             "LLM_BASE_URL",
             "https://dashscope.aliyuncs.com/compatible-mode/v1",
         ),
-        model=os.getenv("LLM_MODEL", "qwen3.7-plus"),
+        model=os.getenv("LLM_MODEL", "deepseek-v4-pro-0813"),
         timeout_seconds=float(os.getenv("LLM_REQUEST_TIMEOUT_SECONDS", "30")),
     )
     market_data = MarketDataService(
