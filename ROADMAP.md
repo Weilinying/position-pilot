@@ -10,7 +10,7 @@
 
 ## 2. Current Status
 
-**Current Milestone:** M6 — Evaluation & V1 Hardening
+**Current Milestone:** M7 — Minimal Product Interface
 **Status:** IN PROGRESS
 
 Milestone 状态统一使用 `NOT STARTED`、`IN PROGRESS`、`DONE`，不维护百分比进度。
@@ -25,9 +25,10 @@ M0 Project Foundation
 → M4 Investment Context Expansion
 → M5 Context-Aware Decision Flow
 → M6 Evaluation & V1 Hardening
+→ M7 Minimal Product Interface
 ```
 
-M0～M3 应尽快形成第一个端到端可用闭环；M4～M6 再逐步增加上下文质量、动态路由和可靠性。
+M0～M3 应尽快形成第一个端到端可用闭环；M4～M6 再逐步增加上下文质量、动态路由和可靠性；M7 提供最小可使用和演示界面。
 
 ## M0 — Project Foundation
 
