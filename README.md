@@ -1,6 +1,6 @@
 # PositionPilot
 
-当前仓库已完成 Portfolio / Transaction Structured State、Current Quote、Price History、Recent News、SPY Market Context，以及基于 Native Function Calling 的 Single Investment Agent。当前 Milestone 为 M6 Evaluation & V1 Hardening。
+当前仓库已完成 Portfolio / Transaction Structured State、Current Quote、Price History、Recent News、SPY Market Context，以及基于 Native Function Calling 的 Single Investment Agent。当前 Milestone 为 M7 Minimal Product Interface。
 
 ## 前置条件
 
@@ -26,10 +26,17 @@ docker compose up -d postgres
 uv run alembic upgrade head
 
 # 启动应用
-uv run uvicorn --app-dir backend position_pilot.main:app --reload
+uv run uvicorn --app-dir backend position_pilot.main:app \
+  --host 127.0.0.1 --port 8000 --reload
 ```
 
-应用启动后，可在另一个终端检查：
+应用启动后，可访问本地界面：
+
+```text
+http://127.0.0.1:8000/app/
+```
+
+也可以在另一个终端检查：
 
 ```bash
 curl http://127.0.0.1:8000/health
@@ -42,6 +49,20 @@ curl http://127.0.0.1:8000/health
 ```
 
 `/health` 只表示应用进程存活，**不检查数据库或其他外部依赖**。
+
+## Minimal Product Interface
+
+M7 页面由 FastAPI 同源托管，不需要 Node、前端安装或单独构建步骤。页面支持加载只读 Portfolio Snapshot、提交 Investment Question，并展示 Answer、`OK` / `DEGRADED` 和本轮 Context Sources。
+
+准备好 PostgreSQL 与 Migration 后，可以创建一份新的隔离 Demo Portfolio：
+
+```bash
+uv run --directory backend python -m position_pilot.demo_seed
+```
+
+命令会通过正式 Application Service 创建 User 与三条 BUY Ledger Records，并输出 User ID 与可直接访问的本地页面 URL。重复执行会创建新的 Demo User，不覆盖既有 Portfolio。
+
+当前没有 Authentication / Authorization，User ID 不是访问控制。推荐启动命令只绑定 `127.0.0.1`；不得把该 Demo Server 直接暴露到公网或不受控局域网。
 
 ## Market Data
 

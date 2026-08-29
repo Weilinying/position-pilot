@@ -2,11 +2,17 @@
 
 ## 1. 当前范围
 
-本文档描述 M6 Evaluation & V1 Hardening 当前已实现的系统结构。系统包含 Portfolio Structured State、Transaction / Cash Event Ledgers、Provider-neutral Market / News Data，以及可按问题选择 Current Quote、固定近期 Daily Price History、attributed Recent News 或 SPY Market Context 的 Single Investment Agent；Agent Context 同时包含由同一 Ledger Read 生成的当前 State 与有界历史 BUY Facts。
+本文档描述 M7 Minimal Product Interface 当前已实现的系统结构。系统包含 Portfolio Structured State、Transaction / Cash Event Ledgers、Provider-neutral Market / News Data，以及可按问题选择 Current Quote、固定近期 Daily Price History、attributed Recent News 或 SPY Market Context 的 Single Investment Agent；Agent Context 同时包含由同一 Ledger Read 生成的当前 State 与有界历史 BUY Facts。M7 在其上增加同源静态 Web Interface 与只读 Portfolio Snapshot API，不改变 Domain Source of Truth。
 
 ## 2. 依赖方向
 
 ```text
+GET /app/ + /static/*
+      ↓
+Vanilla HTML / CSS / ES Modules
+  ├── GET /v1/portfolios/{user_id}
+  └── POST /v1/investment/questions
+
 FastAPI /health
 
 POST /v1/investment/questions
@@ -136,11 +142,13 @@ Cash Event amount 必须为正数且最多 8 位小数。Application 使用可�
 - `backend/position_pilot/integrations/aliyun_llm.py`：阿里云 Model Studio OpenAI-compatible Adapter。
 - `backend/position_pilot/integrations/alpaca_news.py`：Alpaca News beta JSON、attribution 与 Failure Mapping Adapter。
 - `backend/position_pilot/bootstrap.py`：Portfolio、Market Data 与 LLM Provider 的依赖装配。
+- `backend/position_pilot/demo_seed.py`：通过正式 Application Service 创建隔离本地 Demo Portfolio 的显式命令。
+- `frontend/`：由 FastAPI 同源托管的无构建静态产品界面，只负责输入、状态协调和安全展示。
 - `alembic/versions/`：M1 Schema、金额舍入、手续费约束与 M4 Cash Event Migration。
 
 ## 7. 当前限制
 
-- 投资问答 API 由调用方提供 `user_id`，当前没有 Authentication / Authorization，只适合本地或开发环境。
+- Portfolio 与投资问答 API 由调用方提供 `user_id`，当前没有 Authentication / Authorization；M7 推荐服务器只绑定 `127.0.0.1`，仅适合本地或受控开发环境，不应暴露到公网或不受控局域网。
 - 当前没有 Cash / Position Projection；只有实际性能问题出现后才考虑可重建投影或快照。
 - Cash Event 只支持 `DEPOSIT` 与 `WITHDRAWAL`；不支持 Dividend、Fee、Interest、Tax、Margin、多币种、Broker Synchronization 或投资收益率计算。
 - Transaction 与 Cash Event 还没有跨表全局 sequence；相同 `occurred_at` 使用 Cash Event 优先的固定重放顺序。只有后续现金流类型或对账需求证明必要时才重新评估全局 Event Store。
@@ -163,7 +171,26 @@ Cash Event amount 必须为正数且最多 8 位小数。Application 使用可�
 - 超出 Portfolio Snapshot、成功 Current Quote、成功 Price History、attributed Recent News 与成功 SPY Market Context Tool Result 的事实保持 `UNKNOWN`；新闻报道不得自动升级为系统验证事实，Market Context Failure 时不得从其他来源补造 Regime。
 - 当前仍无 Trading / Asset Metadata Context；未来 Capability 扩展点为确定性的 `tradable` 与 `fractionable`。不得由 LLM 假设整股或碎股资格，也不由 LLM 计算具体可购买股数。
 
-## 8. Market Data Boundary
+## 8. Minimal Product Interface Boundary
+
+```text
+userIdInput ──成功 Load──> loadedUserId
+     │                         │
+     └──发生变化──> stale/null └──唯一允许用于 Question Request 的身份
+
+Portfolio / Question Request
+        ↓ capture User ID + Request Generation
+Response only updates DOM when both still match current state
+```
+
+- `GET /app/` 与 `/static/*` 由同一 FastAPI 进程提供，Browser 调用相对路径 API，不需要 CORS、Reverse Proxy 或独立 Frontend Service。
+- `GET /v1/portfolios/{user_id}` 直接映射 `PortfolioService.get_portfolio()` 的 Ledger Replay Result；Response 只包含 User ID、Available Cash、完整性声明和按 `(ticker, position_type)` 稳定排序的当前 Positions。Decimal 保持字符串，不返回实时价格、收益、Ledger History 或风险结论。
+- Browser 显式区分输入框的 `userIdInput` 与已成功加载的 `loadedUserId`。Question 只能使用后者；输入变化会立即使 Context 失效。Portfolio 与 Question 各自维护 Request Generation，旧 User 或旧 Generation 的 Response 不得更新 DOM。
+- 所有 API、LLM、Provider 与用户输入产生的动态文本使用 `textContent`、DOM Property 或等价安全接口。静态 Template 之外不使用动态 HTML 字符串，也不执行 Markdown HTML。
+- Source Cards 只展示后端已经验证绑定的 Source Identity / Status 和失败 Tool Attempt；它们不等价于逐 Claim Citation，也不返回完整 Tool Payload。
+- M7 使用固定 Checklist 的 Human Browser Smoke 作为界面 Evidence，不把它描述为自动化 E2E，也不将其纳入默认 Regression Gate。
+
+## 9. Market Data Boundary
 
 ```text
 Ticker / HistoricalBarsQuery
@@ -180,7 +207,7 @@ MarketDataResult[MarketQuote | HistoricalBars]
 - `integrations/alpaca_market_data.py` 负责 Credential、REST、IEX / SIP feed、分页以及 HTTP / Payload Failure 映射。
 - 正常空结果使用 `NO_DATA`；认证、限流、Provider 不可用和非法响应具有不同状态，失败结果不携带伪造数据。
 
-## 9. News Data Boundary
+## 10. News Data Boundary
 
 ```text
 NewsQuery
@@ -197,7 +224,7 @@ NewsResult[RecentNews]
 - Adapter 只请求 Metadata、headline 与 summary，不请求 `content`，并拒绝窗口外、超上限或缺少 attribution 的 Provider Response。
 - `NO_NEWS_FOUND` 是局部查询结果，不是世界状态；它不会被解释成没有相关新闻、事件或驱动因素。
 
-## 10. Market Context 与 Regime Boundary
+## 11. Market Context 与 Regime Boundary
 
 ```text
 get_market_context() 无模型参数
@@ -223,7 +250,7 @@ NORMAL / ELEVATED_VOLATILITY / HIGH_STRESS / EXTREME_STRESS
 - 少于 21 根 completed Bars 同样为 `NO_DATA`；认证、限流、Provider 不可用与非法成功 Payload 继续保持独立状态。
 - 决策、阈值、局限与重新考虑条件见 ADR 0007。
 
-## 11. Investment Agent 与 LLM Boundary
+## 12. Investment Agent 与 LLM Boundary
 
 ```text
 Transaction + Cash Event Ledgers
