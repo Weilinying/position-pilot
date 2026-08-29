@@ -2,7 +2,7 @@
 
 ## 1. 状态与目标
 
-**Status:** IMPLEMENTED（等待 Human Acceptance）
+**Status:** DONE
 
 M5 在 M4 已提供 Portfolio Snapshot、Current Quote、Recent Price History 与 Recent News 的基础上，验证 Single Investment Agent 能否按问题选择最小充分 Context，并补齐 Market Context / Market Regime 对相关决策问题的影响。
 

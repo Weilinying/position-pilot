@@ -3,7 +3,7 @@
 from decimal import Decimal
 from uuid import UUID
 
-from position_pilot.application.investment_context import PortfolioSnapshot
+from position_pilot.application.investment_context import HistoricalBuyFacts, PortfolioSnapshot
 from position_pilot.application.investment_routing import (
     ContextSelectionMode,
     ContextSelectionTrace,
@@ -26,29 +26,28 @@ AVAILABLE_TOOLS = (
 
 
 def _snapshot() -> PortfolioSnapshot:
-    return PortfolioSnapshot.from_state(
-        PortfolioState(
-            user_id=USER_ID,
-            cash=CashBalance(USER_ID, Decimal("1000"), Decimal("300")),
-            positions=(
-                Position(
-                    ticker="GOOG",
-                    position_type=PositionType.LONG_TERM,
-                    shares=Decimal("2"),
-                    average_cost=Decimal("200"),
-                    cost_basis=Decimal("400"),
-                ),
-                Position(
-                    ticker="GOOG",
-                    position_type=PositionType.SWING,
-                    shares=Decimal("1"),
-                    average_cost=Decimal("220"),
-                    cost_basis=Decimal("220"),
-                ),
+    state = PortfolioState(
+        user_id=USER_ID,
+        cash=CashBalance(USER_ID, Decimal("1000"), Decimal("300")),
+        positions=(
+            Position(
+                ticker="GOOG",
+                position_type=PositionType.LONG_TERM,
+                shares=Decimal("2"),
+                average_cost=Decimal("200"),
+                cost_basis=Decimal("400"),
             ),
-            transaction_count=2,
-        )
+            Position(
+                ticker="GOOG",
+                position_type=PositionType.SWING,
+                shares=Decimal("1"),
+                average_cost=Decimal("220"),
+                cost_basis=Decimal("220"),
+            ),
+        ),
+        transaction_count=0,
     )
+    return PortfolioSnapshot.from_state(state, HistoricalBuyFacts.from_transactions(state, ()))
 
 
 def test_no_tool_selection_is_explicit_and_keeps_capability_list() -> None:

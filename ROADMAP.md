@@ -10,7 +10,7 @@
 
 ## 2. Current Status
 
-**Current Milestone:** M5 — Context-Aware Decision Flow
+**Current Milestone:** M6 — Evaluation & V1 Hardening
 **Status:** IN PROGRESS
 
 Milestone 状态统一使用 `NOT STARTED`、`IN PROGRESS`、`DONE`，不维护百分比进度。

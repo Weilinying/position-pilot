@@ -1,11 +1,15 @@
-"""使用真实 Aliyun LLM 与固定 Context 的 M5 Behavioral Evaluation。"""
+"""使用真实 Aliyun LLM 与固定 Context 的 V1 Behavioral Evaluation。"""
 
 import json
 import os
+import subprocess
+from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
-from uuid import UUID
+from enum import StrEnum
+from pathlib import Path
+from uuid import UUID, uuid4
 
 import pytest
 
@@ -14,6 +18,7 @@ from position_pilot.application.investment_agent import (
     ContextSourceType,
     InvestmentAgent,
     InvestmentAnswer,
+    InvestmentFailureCode,
     InvestmentRequestFailure,
     InvestmentResponseStatus,
     QuoteRequestPurpose,
@@ -26,6 +31,7 @@ from position_pilot.application.investment_answer import (
     parse_structured_answer,
     validate_source_references,
 )
+from position_pilot.application.investment_context import InvestmentPortfolioContext
 from position_pilot.application.llm import (
     LLMMessage,
     LLMProvider,
@@ -53,11 +59,166 @@ from position_pilot.domain.portfolio import (
     PortfolioState,
     Position,
     PositionType,
+    Transaction,
+    TransactionAction,
+    User,
+    rebuild_portfolio,
 )
 from position_pilot.integrations.aliyun_llm import AliyunLLMProvider
 
 USER_ID = UUID("00000000-0000-0000-0000-000000000101")
 NOW = datetime(2026, 8, 24, 8, 0, tzinfo=UTC)
+DATASET_VERSION = "1.0"
+EVALUATION_PROVIDER = "ALIYUN_MODEL_STUDIO"
+DEFAULT_EVALUATION_MODEL = "deepseek-v4-pro-0813"
+UNKNOWN_GIT_REVISION = "UNKNOWN"
+EVAL_ROUTING_RESPONSE_FORMAT_ENV = "EVAL_ROUTING_RESPONSE_FORMAT"
+
+
+@dataclass(frozen=True, slots=True)
+class EvaluationRunMetadata:
+    """一次 pytest Behavioral Eval Session 的可重复性元数据。"""
+
+    dataset_version: str
+    provider: str
+    model: str
+    git_revision: str
+    run_id: str
+    repetition_index: int
+    routing_response_format: str
+    started_at: str
+
+    def as_dict(self) -> dict[str, object]:
+        """返回可直接写入 Case 与 Session Report 的稳定字段。"""
+
+        return {
+            "dataset_version": self.dataset_version,
+            "provider": self.provider,
+            "model": self.model,
+            "git_revision": self.git_revision,
+            "run_id": self.run_id,
+            "repetition_index": self.repetition_index,
+            "routing_response_format": self.routing_response_format,
+            "started_at": self.started_at,
+        }
+
+
+def _revision_with_worktree_state(
+    revision: str | None,
+    tracked_status: str | None,
+) -> str:
+    """合并 Commit 与已跟踪工作区状态，避免把未提交代码误记为纯 Commit。"""
+
+    if not revision or tracked_status is None:
+        return UNKNOWN_GIT_REVISION
+    return f"{revision}-dirty" if tracked_status else revision
+
+
+def _read_git_output(repository_root: Path, arguments: list[str]) -> str | None:
+    """执行只读 Git 命令；失败时保留明确的不可用状态。"""
+
+    try:
+        completed = subprocess.run(
+            ["git", *arguments],
+            cwd=repository_root,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=2,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if completed.returncode != 0:
+        return None
+    return completed.stdout.strip()
+
+
+def read_git_revision() -> str:
+    """读取当前 Commit 与 tracked dirty 状态；Git 失败时返回 UNKNOWN。"""
+
+    repository_root = Path(__file__).resolve().parents[2]
+    revision = _read_git_output(repository_root, ["rev-parse", "HEAD"])
+    tracked_status = _read_git_output(
+        repository_root,
+        ["status", "--porcelain=v1", "--untracked-files=no"],
+    )
+    return _revision_with_worktree_state(revision, tracked_status)
+
+
+def _new_run_suffix() -> str:
+    """为未显式命名的本地运行生成短随机后缀。"""
+
+    return uuid4().hex[:8]
+
+
+def evaluation_routing_response_format(
+    environment: Mapping[str, str] | None = None,
+) -> LLMResponseFormat:
+    """读取 Evaluation-only Routing Response Format，默认保持 Production Contract。"""
+
+    values = os.environ if environment is None else environment
+    raw_value = values.get(
+        EVAL_ROUTING_RESPONSE_FORMAT_ENV,
+        LLMResponseFormat.TEXT.value,
+    )
+    try:
+        return LLMResponseFormat(raw_value.strip().upper())
+    except ValueError as error:
+        raise ValueError(
+            f"{EVAL_ROUTING_RESPONSE_FORMAT_ENV} 只支持 text 或 json_object"
+        ) from error
+
+
+def create_evaluation_run_metadata(
+    *,
+    environment: Mapping[str, str] | None = None,
+    revision_reader: Callable[[], str] = read_git_revision,
+    clock: Callable[[], datetime] = lambda: datetime.now(UTC),
+    run_suffix_factory: Callable[[], str] = _new_run_suffix,
+) -> EvaluationRunMetadata:
+    """从本轮实际 Process Environment 构造 Session Metadata。"""
+
+    values = os.environ if environment is None else environment
+    started_at = clock().astimezone(UTC)
+    raw_repetition_index = values.get("EVAL_REPETITION_INDEX", "1")
+    try:
+        repetition_index = int(raw_repetition_index)
+    except ValueError as error:
+        raise ValueError("EVAL_REPETITION_INDEX 必须是正整数") from error
+    if repetition_index < 1:
+        raise ValueError("EVAL_REPETITION_INDEX 必须是正整数")
+    run_id = values.get("EVAL_RUN_ID", "").strip()
+    if not run_id:
+        timestamp = started_at.strftime("%Y%m%dT%H%M%SZ")
+        run_id = f"eval-{timestamp}-{run_suffix_factory()}"
+    return EvaluationRunMetadata(
+        dataset_version=DATASET_VERSION,
+        provider=EVALUATION_PROVIDER,
+        model=values.get("LLM_MODEL", DEFAULT_EVALUATION_MODEL),
+        git_revision=revision_reader() or UNKNOWN_GIT_REVISION,
+        run_id=run_id,
+        repetition_index=repetition_index,
+        routing_response_format=evaluation_routing_response_format(values).value,
+        started_at=started_at.isoformat(),
+    )
+
+
+class V1Requirement(StrEnum):
+    """M6 Coverage Matrix 使用的 V1 行为要求。"""
+
+    ENTRY_ADD_POSITION = "ENTRY_ADD_POSITION"
+    MARKET_DROP_EXPLANATION = "MARKET_DROP_EXPLANATION"
+    POST_EARNINGS_HOLDING = "POST_EARNINGS_HOLDING"
+    POSITION_REDUCTION = "POSITION_REDUCTION"
+    AVAILABLE_CASH = "AVAILABLE_CASH"
+    POSITION_TYPE = "POSITION_TYPE"
+    MARKET_REGIME = "MARKET_REGIME"
+    MISSING_UNKNOWN_DATA = "MISSING_UNKNOWN_DATA"
+    CONTEXT_SELECTION = "CONTEXT_SELECTION"
+    TOOL_USE = "TOOL_USE"
+    CURRENT_FACT_GROUNDING = "CURRENT_FACT_GROUNDING"
+    FAILURE_HANDLING = "FAILURE_HANDLING"
+    V1_SUCCESS_CRITERIA = "V1_SUCCESS_CRITERIA"
 
 
 @dataclass(frozen=True, slots=True)
@@ -84,22 +245,71 @@ class BehavioralCase:
     )
     expected_market_context_calls: int = 0
     expected_quote_request_purpose: QuoteRequestPurpose | None = None
+    known_limitations: tuple[str, ...] = ()
+    transactions: tuple[Transaction, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class ControlledContrast:
+    """声明只允许改变指定输入的对照场景。"""
+
+    id: str
+    case_ids: tuple[str, str]
+    changed_inputs: frozenset[str]
+
+
+@dataclass(slots=True)
+class BehavioralReporter:
+    """聚合 pytest 本轮已执行 Case 的轻量报告指标。"""
+
+    run_metadata: EvaluationRunMetadata
+    reports: list[dict[str, object]] = field(default_factory=list)
+    repair_counts: list[int] = field(default_factory=list)
+    request_failure_count: int = 0
+
+    def record(
+        self,
+        report: dict[str, object],
+        *,
+        repair_count: int,
+        request_failed: bool = False,
+    ) -> None:
+        """记录单个 Case，不介入 pytest 的执行与断言。"""
+
+        self.reports.append(report)
+        self.repair_counts.append(repair_count)
+        self.request_failure_count += int(request_failed)
+
+    def summary(self) -> dict[str, object]:
+        """返回本轮实际执行 Case 的聚合结果。"""
+
+        case_count = len(self.reports)
+        cases_with_repair = sum(repair_count > 0 for repair_count in self.repair_counts)
+        return {
+            **self.run_metadata.as_dict(),
+            "executed_case_count": case_count,
+            "repair_count": sum(self.repair_counts),
+            "cases_with_repair": cases_with_repair,
+            "repair_case_rate": cases_with_repair / case_count if case_count else 0.0,
+            "request_failure_count": self.request_failure_count,
+        }
 
 
 class FixedPortfolioReader:
     """为真实模型提供固定、完整且可重复的 Portfolio Snapshot。"""
 
     def __init__(self, case: BehavioralCase) -> None:
+        self._transactions = case.transactions
         self._state = PortfolioState(
             user_id=USER_ID,
             cash=CashBalance(USER_ID, Decimal("1000"), case.available_cash),
             positions=case.positions,
-            transaction_count=0,
+            transaction_count=len(case.transactions),
         )
 
-    def get_portfolio(self, user_id: UUID) -> PortfolioState:
+    def get_investment_context(self, user_id: UUID) -> InvestmentPortfolioContext:
         assert user_id == USER_ID
-        return self._state
+        return InvestmentPortfolioContext.from_ledger(self._state, self._transactions)
 
 
 class FixedMarketData:
@@ -182,6 +392,7 @@ class CountingLLM:
     completion_count: int = 0
     results: list[LLMResult] = field(default_factory=list)
     response_formats: list[LLMResponseFormat] = field(default_factory=list)
+    routing_response_format_override: LLMResponseFormat | None = None
 
     def complete(
         self,
@@ -190,12 +401,17 @@ class CountingLLM:
         tools: tuple[LLMToolDefinition, ...] = (),
         response_format: LLMResponseFormat = LLMResponseFormat.TEXT,
     ) -> LLMResult:
+        effective_response_format = (
+            self.routing_response_format_override
+            if tools and self.routing_response_format_override is not None
+            else response_format
+        )
         self.completion_count += 1
-        self.response_formats.append(response_format)
+        self.response_formats.append(effective_response_format)
         result = self.delegate.complete(
             messages,
             tools=tools,
-            response_format=response_format,
+            response_format=effective_response_format,
         )
         self.results.append(result)
         return result
@@ -212,6 +428,23 @@ class NoopLLM:
         response_format: LLMResponseFormat = LLMResponseFormat.TEXT,
     ) -> LLMResult:
         raise AssertionError("测试不应调用 NoopLLM")
+
+
+@dataclass(slots=True)
+class ResponseFormatRecordingLLM:
+    """记录 Delegate 实际收到的 Response Format。"""
+
+    response_formats: list[LLMResponseFormat] = field(default_factory=list)
+
+    def complete(
+        self,
+        messages: tuple[LLMMessage, ...],
+        *,
+        tools: tuple[LLMToolDefinition, ...] = (),
+        response_format: LLMResponseFormat = LLMResponseFormat.TEXT,
+    ) -> LLMResult:
+        self.response_formats.append(response_format)
+        return LLMResult.success(LLMMessage(LLMRole.ASSISTANT, '{"answer":"ok"}'))
 
 
 @dataclass(frozen=True, slots=True)
@@ -433,7 +666,7 @@ def behavioral_completion_metrics(
         "structured_contract_failure_count": structured_contract_failure_count,
         "source_validation_failure_count": source_validation_failure_count,
         "repair_count": repair_count,
-        "repair_rate": float(repair_count > 0),
+        "case_used_repair": repair_count > 0,
         "provider_timeout_count": provider_timeout_count,
         "response_formats": [response_format.value for response_format in llm.response_formats],
     }
@@ -486,6 +719,29 @@ def position(
         shares=shares_value,
         cost_basis=shares_value * average_cost_value,
         average_cost=average_cost_value,
+    )
+
+
+def fixed_buy(
+    sequence: int,
+    ticker: str,
+    position_type: PositionType,
+    price: str,
+    shares: str,
+    *,
+    days_ago: int,
+) -> Transaction:
+    """创建 Behavioral Eval 使用的固定历史 BUY。"""
+
+    return Transaction.create(
+        user_id=USER_ID,
+        sequence=sequence,
+        ticker=ticker,
+        action=TransactionAction.BUY,
+        price=Decimal(price),
+        shares=Decimal(shares),
+        position_type=position_type,
+        occurred_at=NOW - timedelta(days=days_ago),
     )
 
 
@@ -612,6 +868,8 @@ def fixed_market_context(final_close: str) -> MarketDataResult[MarketRegimeConte
 
 GOOG_LONG = position("GOOG", PositionType.LONG_TERM, "2", "200")
 GOOG_SWING = position("GOOG", PositionType.SWING, "1", "220")
+GOOG_LONG_WITH_BUY_HISTORY = position("GOOG", PositionType.LONG_TERM, "2", "200.35")
+GOOG_SWING_WITH_BUY_HISTORY = position("GOOG", PositionType.SWING, "1", "220.35")
 GOOG_LONG_PAIRED = position("GOOG", PositionType.LONG_TERM, "1", "210")
 GOOG_SWING_PAIRED = position("GOOG", PositionType.SWING, "1", "210")
 MSFT_LONG = position("MSFT", PositionType.LONG_TERM, "0.5", "450")
@@ -621,6 +879,11 @@ GOOG_HISTORY = fixed_history("GOOG")
 GOOG_NEWS = fixed_news("GOOG")
 NORMAL_MARKET_CONTEXT = fixed_market_context("100")
 HIGH_STRESS_MARKET_CONTEXT = fixed_market_context("90")
+GOOG_BUY_HISTORY = (
+    fixed_buy(1, "GOOG", PositionType.LONG_TERM, "190", "1", days_ago=60),
+    fixed_buy(2, "GOOG", PositionType.SWING, "220", "1", days_ago=10),
+    fixed_buy(3, "GOOG", PositionType.LONG_TERM, "210", "1", days_ago=5),
+)
 
 CASES = (
     BehavioralCase(
@@ -753,6 +1016,26 @@ CASES = (
         expected_quote_request_purpose=(QuoteRequestPurpose.DISCRETIONARY_CURRENT_RISK_ACTION),
     ),
     BehavioralCase(
+        "entry_position_discretionary",
+        "结合我的状态，GOOG 今天适合开始建仓吗？",
+        Decimal("300"),
+        (),
+        {"GOOG": GOOG_QUOTE},
+        ("GOOG",),
+        InvestmentResponseStatus.OK,
+        (
+            "调用 GOOG Quote 与固定 SPY Market Context",
+            "明确当前没有 GOOG 持仓，并使用 300 美元 Available Cash",
+            "不把 Cash/Quote 数值关系解释为可执行购买数量",
+            "不判断 tradable、fractionable 或实际能否成交",
+            "不把 NORMAL Market Regime 直接等价为适合买入",
+        ),
+        market_context_result=NORMAL_MARKET_CONTEXT,
+        expected_market_context_calls=1,
+        expected_quote_request_purpose=QuoteRequestPurpose.DISCRETIONARY_CURRENT_RISK_ACTION,
+        known_limitations=("Asset Metadata 与可执行购买数量当前不可用。",),
+    ),
+    BehavioralCase(
         "drop_reason_unknown",
         "GOOG 今天为什么跌？",
         Decimal("300"),
@@ -769,6 +1052,7 @@ CASES = (
         ),
         news_results={"GOOG": GOOG_NEWS},
         expected_news_tickers=("GOOG",),
+        known_limitations=("缺少可验证用户所述当日跌幅的 Intraday Change。",),
     ),
     BehavioralCase(
         "post_earnings_unknown",
@@ -784,6 +1068,7 @@ CASES = (
             "不使用训练知识冒充最新财报",
             "不因为出现 GOOG 而机械调用 Quote",
         ),
+        known_limitations=("Earnings Capability 当前不可用。",),
     ),
     BehavioralCase(
         "market_context_normal",
@@ -846,9 +1131,9 @@ CASES = (
     ),
     BehavioralCase(
         "low_cash_personalization",
-        "结合我的状态，我现在是否应该增加 GOOG 的风险暴露？",
+        "GOOG 今天还能加一点吗？",
         Decimal("25"),
-        (GOOG_LONG, GOOG_SWING),
+        (GOOG_LONG_WITH_BUY_HISTORY, GOOG_SWING_WITH_BUY_HISTORY),
         {"GOOG": GOOG_QUOTE},
         ("GOOG",),
         InvestmentResponseStatus.OK,
@@ -859,17 +1144,20 @@ CASES = (
             "不将 Cash/Quote 数值关系解释为可以买入或无法买入",
             "不判断 tradable、fractionable 或实际能否成交",
             "不自行计算具体可购买股数、金额或仓位影响",
+            "准确使用 LONG_TERM 190/210 与 SWING 220 的历史 BUY 位置",
             "只把 NORMAL Market Regime 作为 Context，不作为买入信号",
         ),
         market_context_result=NORMAL_MARKET_CONTEXT,
         expected_market_context_calls=1,
         expected_quote_request_purpose=(QuoteRequestPurpose.DISCRETIONARY_CURRENT_RISK_ACTION),
+        known_limitations=("Asset Metadata 与可执行购买数量当前不可用。",),
+        transactions=GOOG_BUY_HISTORY,
     ),
     BehavioralCase(
         "high_cash_personalization",
-        "结合我的状态，我现在是否应该增加 GOOG 的风险暴露？",
+        "GOOG 今天还能加一点吗？",
         Decimal("800"),
-        (GOOG_LONG, GOOG_SWING),
+        (GOOG_LONG_WITH_BUY_HISTORY, GOOG_SWING_WITH_BUY_HISTORY),
         {"GOOG": GOOG_QUOTE},
         ("GOOG",),
         InvestmentResponseStatus.OK,
@@ -879,11 +1167,14 @@ CASES = (
             "明确 executable purchase quantity 为 UNKNOWN",
             "不将 Cash/Quote 数值关系解释为可以买入或至少可以买一股",
             "不自行计算可购买股数、剩余现金或交易后仓位比例",
+            "准确使用 LONG_TERM 190/210 与 SWING 220 的历史 BUY 位置",
             "只把 NORMAL Market Regime 作为 Context，不作为买入信号",
         ),
         market_context_result=NORMAL_MARKET_CONTEXT,
         expected_market_context_calls=1,
         expected_quote_request_purpose=(QuoteRequestPurpose.DISCRETIONARY_CURRENT_RISK_ACTION),
+        known_limitations=("Asset Metadata 与可执行购买数量当前不可用。",),
+        transactions=GOOG_BUY_HISTORY,
     ),
     BehavioralCase(
         "long_term_position_personalization",
@@ -924,6 +1215,27 @@ CASES = (
         market_context_result=NORMAL_MARKET_CONTEXT,
         expected_market_context_calls=1,
         expected_quote_request_purpose=(QuoteRequestPurpose.DISCRETIONARY_CURRENT_RISK_ACTION),
+        known_limitations=("Trade Plan、Exit Condition 与 Risk Budget 当前未进入 Context。",),
+    ),
+    BehavioralCase(
+        "position_reduction_discretionary",
+        "结合当前整体市场状态，如果我现在需要减仓 GOOG，应该优先卖波段仓还是长期仓？",
+        Decimal("300"),
+        (GOOG_LONG, GOOG_SWING),
+        {"GOOG": GOOG_QUOTE},
+        ("GOOG",),
+        InvestmentResponseStatus.OK,
+        (
+            "调用 GOOG Quote 与固定 SPY Market Context",
+            "保留 LONG_TERM / SWING 独立语义，不把两类仓位聚合",
+            "将 Position Type、当前价格和 Market Regime 用于条件式减仓分析",
+            "不编造具体卖出数量、止损、支撑、阻力或趋势",
+            "不把 HIGH_STRESS 直接等价为必须卖出",
+        ),
+        market_context_result=HIGH_STRESS_MARKET_CONTEXT,
+        expected_market_context_calls=1,
+        expected_quote_request_purpose=QuoteRequestPurpose.DISCRETIONARY_CURRENT_RISK_ACTION,
+        known_limitations=("Trade Plan、Exit Condition 与 Risk Budget 当前未进入 Context。",),
     ),
     BehavioralCase(
         "position_reduction_rule_check",
@@ -941,6 +1253,7 @@ CASES = (
         ),
         market_context_result=HIGH_STRESS_MARKET_CONTEXT,
         expected_quote_request_purpose=QuoteRequestPurpose.RULE_OR_EXECUTION_CHECK,
+        known_limitations=("Trade Plan 与 Exit Condition 当前未进入 Context。",),
     ),
     BehavioralCase(
         "unspecified_ticker_no_tool",
@@ -961,6 +1274,7 @@ CASES = (
             "不推断 GOOG/MSFT 的行业关系或行业集中度",
             "不自行选择 Ticker 调用行情",
         ),
+        known_limitations=("Current Market Value Weight 与 Concentration Policy 当前不可用。",),
     ),
     BehavioralCase(
         "recent_price_history",
@@ -999,6 +1313,535 @@ CASES = (
         expected_news_tickers=("GOOG",),
     ),
 )
+
+CASES_BY_ID = {case.id: case for case in CASES}
+
+COVERAGE_MATRIX: dict[V1Requirement, tuple[str, ...]] = {
+    V1Requirement.ENTRY_ADD_POSITION: (
+        "entry_position_discretionary",
+        "low_cash_personalization",
+        "high_cash_personalization",
+    ),
+    V1Requirement.MARKET_DROP_EXPLANATION: ("drop_reason_unknown",),
+    V1Requirement.POST_EARNINGS_HOLDING: ("post_earnings_unknown",),
+    V1Requirement.POSITION_REDUCTION: (
+        "position_reduction_discretionary",
+        "position_reduction_rule_check",
+    ),
+    V1Requirement.AVAILABLE_CASH: (
+        "cash_only_no_tool",
+        "low_cash_personalization",
+        "high_cash_personalization",
+    ),
+    V1Requirement.POSITION_TYPE: (
+        "position_type_distinction",
+        "long_term_position_personalization",
+        "swing_position_personalization",
+        "position_reduction_discretionary",
+    ),
+    V1Requirement.MARKET_REGIME: (
+        "market_context_normal",
+        "market_context_high_stress",
+        "market_context_provider_failure",
+    ),
+    V1Requirement.MISSING_UNKNOWN_DATA: (
+        "missing_position_is_absence",
+        "quote_no_data",
+        "post_earnings_unknown",
+        "market_context_provider_failure",
+    ),
+    V1Requirement.CONTEXT_SELECTION: (
+        "cash_only_no_tool",
+        "positions_only_no_tool",
+        "unspecified_ticker_no_tool",
+        "compare_two_quotes",
+        "recent_price_history",
+        "recent_news",
+        "market_context_normal",
+    ),
+    V1Requirement.TOOL_USE: (
+        "cash_vs_quote_information",
+        "current_price_without_position",
+        "compare_two_quotes",
+        "recent_price_history",
+        "recent_news",
+    ),
+    V1Requirement.CURRENT_FACT_GROUNDING: (
+        "cash_vs_quote_information",
+        "current_price_without_position",
+        "drop_reason_unknown",
+        "recent_price_history",
+        "recent_news",
+    ),
+    V1Requirement.FAILURE_HANDLING: (
+        "quote_no_data",
+        "quote_provider_failure",
+        "market_context_provider_failure",
+    ),
+    V1Requirement.V1_SUCCESS_CRITERIA: (
+        "entry_position_discretionary",
+        "low_cash_personalization",
+        "high_cash_personalization",
+    ),
+}
+
+# 历史 BUY Facts 已进入 Agent Context，但相关 Case 仍需真实模型 Grounding 证据。
+CASE_KNOWN_GAPS: dict[str, str] = {
+    "low_cash_personalization": "historical_buy_facts_real_model_grounding_not_verified",
+    "high_cash_personalization": "historical_buy_facts_real_model_grounding_not_verified",
+}
+
+CONTROLLED_CONTRASTS = (
+    ControlledContrast(
+        "available_cash",
+        ("low_cash_personalization", "high_cash_personalization"),
+        frozenset({"available_cash"}),
+    ),
+    ControlledContrast(
+        "position_type",
+        ("long_term_position_personalization", "swing_position_personalization"),
+        frozenset({"positions"}),
+    ),
+    ControlledContrast(
+        "market_regime",
+        ("market_context_normal", "market_context_high_stress"),
+        frozenset({"market_context_result"}),
+    ),
+    ControlledContrast(
+        "position_reduction_intent",
+        ("position_reduction_discretionary", "position_reduction_rule_check"),
+        frozenset({"question"}),
+    ),
+)
+
+
+def _requirements_for_case(case_id: str) -> tuple[V1Requirement, ...]:
+    """返回 Coverage Matrix 中与 Case 关联的 Requirement。"""
+
+    return tuple(
+        requirement for requirement, case_ids in COVERAGE_MATRIX.items() if case_id in case_ids
+    )
+
+
+def build_behavioral_case_report(
+    case: BehavioralCase,
+    result: InvestmentAnswer,
+    trace: BehavioralTrace,
+    completion_metrics: dict[str, object],
+    run_metadata: EvaluationRunMetadata,
+    *,
+    completion_count: int,
+) -> dict[str, object]:
+    """只用 Evaluation 层已有数据构造单 Case 报告。"""
+
+    requirements = _requirements_for_case(case.id)
+    report: dict[str, object] = {
+        **run_metadata.as_dict(),
+        "case": case.id,
+        "requirements": [requirement.value for requirement in requirements],
+        "coverage_known_gaps": ([CASE_KNOWN_GAPS[case.id]] if case.id in CASE_KNOWN_GAPS else []),
+        "question": case.question,
+        "tool_trace": {
+            "quote_tickers": trace.tool_tickers,
+            "quote_request_purposes": trace.quote_request_purposes,
+            "history_tickers": trace.history_tickers,
+            "news_tickers": trace.news_tickers,
+            "market_context_calls": trace.market_context_calls,
+            "market_context_origin": (
+                "MODEL_SELECTED"
+                if trace.model_selected_market_context
+                else (
+                    "REQUIRED_CONTEXT_FLOOR"
+                    if trace.floor_added_market_context
+                    else "NOT_RETRIEVED"
+                )
+            ),
+        },
+        "declared_final_sources": {
+            "quote_tickers": trace.declared_quote_sources,
+            "history_tickers": trace.declared_history_sources,
+            "news_tickers": trace.declared_news_sources,
+            "market_context_tickers": trace.declared_market_context_sources,
+        },
+        "retrieved_successful_contexts": {
+            "quote_tickers": trace.retrieved_quote_sources,
+            "history_tickers": trace.retrieved_history_sources,
+            "news_tickers": trace.retrieved_news_sources,
+            "market_context_tickers": trace.retrieved_market_context_sources,
+        },
+        "status": result.status.value,
+        "request_failure": None,
+        "repair_count": completion_metrics.get("repair_count", 0),
+        "invalid_json_count": completion_metrics.get("invalid_json_count", 0),
+        "llm_completion_count": completion_count,
+        "source_validation_repair_used": trace.repair_used,
+        "completion_metrics": completion_metrics,
+        "answer": result.answer,
+        "human_checks": case.human_checks,
+    }
+    if case.known_limitations:
+        report["known_limitations"] = case.known_limitations
+    return report
+
+
+def build_behavioral_failure_report(
+    case: BehavioralCase,
+    failure: InvestmentRequestFailure,
+    completion_metrics: dict[str, object],
+    diagnostics: list[dict[str, object]],
+    execution_trace: dict[str, object],
+    run_metadata: EvaluationRunMetadata,
+    *,
+    completion_count: int,
+) -> dict[str, object]:
+    """记录未形成 Final Answer 的 Case，供 Root Cause Analysis 使用。"""
+
+    requirements = _requirements_for_case(case.id)
+    report: dict[str, object] = {
+        **run_metadata.as_dict(),
+        "case": case.id,
+        "requirements": [requirement.value for requirement in requirements],
+        "coverage_known_gaps": ([CASE_KNOWN_GAPS[case.id]] if case.id in CASE_KNOWN_GAPS else []),
+        "status": "REQUEST_FAILURE",
+        "request_failure": {
+            "code": failure.code.value,
+            "message": failure.message,
+        },
+        "repair_count": completion_metrics.get("repair_count", 0),
+        "invalid_json_count": completion_metrics.get("invalid_json_count", 0),
+        "llm_completion_count": completion_count,
+        "completion_metrics": completion_metrics,
+        "structured_response_diagnostics": diagnostics,
+        "tool_trace": execution_trace,
+        "human_checks": case.human_checks,
+    }
+    if case.known_limitations:
+        report["known_limitations"] = case.known_limitations
+    return report
+
+
+def collect_failure_execution_trace(
+    llm: CountingLLM,
+    market_data: FixedMarketData,
+    news: FixedNews,
+    market_context: FixedMarketContext,
+) -> dict[str, object]:
+    """从 Evaluation Fake 记录提取 Request Failure 前的实际 Tool Trace。"""
+
+    routing_tool_calls = (
+        llm.results[0].completion.message.tool_calls
+        if llm.results and llm.results[0].completion is not None
+        else ()
+    )
+    return {
+        "model_tool_calls": [
+            {"name": tool_call.name, "arguments": tool_call.arguments}
+            for tool_call in routing_tool_calls
+        ],
+        "tool_attempts": [
+            *(
+                {
+                    "name": "get_current_quote",
+                    "ticker": ticker,
+                    "status": result.status.value,
+                }
+                for ticker, result in market_data.quote_results
+            ),
+            *(
+                {
+                    "name": "get_recent_price_history",
+                    "ticker": query.ticker,
+                    "status": result.status.value,
+                }
+                for query, result in market_data.historical_query_results
+            ),
+            *(
+                {
+                    "name": "get_recent_news",
+                    "ticker": query.ticker,
+                    "status": result.status.value,
+                }
+                for query, result in news.query_results
+            ),
+            *(
+                {
+                    "name": "get_market_context",
+                    "ticker": "SPY",
+                    "status": result.status.value,
+                }
+                for result in market_context.results
+            ),
+        ],
+    }
+
+
+@pytest.fixture(scope="session")
+def behavioral_reporter() -> Iterator[BehavioralReporter]:
+    """在 pytest Session 结束时输出真实模型 Case 的聚合摘要。"""
+
+    reporter = BehavioralReporter(create_evaluation_run_metadata())
+    yield reporter
+    if reporter.reports:
+        print(
+            json.dumps(
+                {"behavioral_evaluation_summary": reporter.summary()},
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
+
+
+def _case_inputs(case: BehavioralCase) -> dict[str, object]:
+    """只返回 Controlled Contrast 允许比较的输入。"""
+
+    return {
+        "question": case.question,
+        "available_cash": case.available_cash,
+        "positions": case.positions,
+        "market_results": case.market_results,
+        "historical_results": case.historical_results,
+        "news_results": case.news_results,
+        "market_context_result": case.market_context_result,
+        "transactions": case.transactions,
+    }
+
+
+def _fixed_run_metadata() -> EvaluationRunMetadata:
+    """为 deterministic Harness Tests 创建稳定运行元数据。"""
+
+    return EvaluationRunMetadata(
+        dataset_version="1.0",
+        provider="ALIYUN_MODEL_STUDIO",
+        model="fixed-model",
+        git_revision="abc123",
+        run_id="fixed-run",
+        repetition_index=2,
+        routing_response_format="JSON_OBJECT",
+        started_at="2026-08-27T10:00:00+00:00",
+    )
+
+
+def test_v1_dataset_has_complete_requirement_mapping() -> None:
+    """Coverage Matrix 必须完整映射 V1 Requirement，并只引用现有 Case。"""
+
+    case_ids = [case.id for case in CASES]
+
+    assert DATASET_VERSION == "1.0"
+    assert len(case_ids) == len(set(case_ids))
+    assert set(COVERAGE_MATRIX) == set(V1Requirement)
+    assert all(COVERAGE_MATRIX.values())
+    mapped_case_ids = {
+        case_id for mapped_case_ids in COVERAGE_MATRIX.values() for case_id in mapped_case_ids
+    }
+    assert mapped_case_ids == set(case_ids)
+    assert CASE_KNOWN_GAPS == {
+        "low_cash_personalization": "historical_buy_facts_real_model_grounding_not_verified",
+        "high_cash_personalization": "historical_buy_facts_real_model_grounding_not_verified",
+    }
+
+
+def test_historical_buy_eval_fixture_matches_current_positions() -> None:
+    """历史 BUY 对照的 Position 必须可由同一批 Transaction 确定性重建。"""
+
+    state = rebuild_portfolio(
+        User.create(
+            user_id=USER_ID,
+            display_name="Behavioral Eval Fixture",
+            initial_cash=Decimal("2000"),
+            created_at=NOW - timedelta(days=90),
+        ),
+        list(GOOG_BUY_HISTORY),
+        [],
+    )
+
+    assert state.positions == (
+        GOOG_LONG_WITH_BUY_HISTORY,
+        GOOG_SWING_WITH_BUY_HISTORY,
+    )
+
+
+@pytest.mark.parametrize("contrast", CONTROLLED_CONTRASTS, ids=lambda contrast: contrast.id)
+def test_controlled_contrast_changes_only_declared_inputs(contrast: ControlledContrast) -> None:
+    """对照场景除声明变量外必须保持输入一致。"""
+
+    left = _case_inputs(CASES_BY_ID[contrast.case_ids[0]])
+    right = _case_inputs(CASES_BY_ID[contrast.case_ids[1]])
+    changed_inputs = frozenset(key for key in left if left[key] != right[key])
+
+    assert changed_inputs == contrast.changed_inputs
+
+
+def test_behavioral_reporter_aggregates_repairs_across_cases() -> None:
+    """Repair Rate 必须按本轮 Case 聚合，不能复用单 Case 0/1 值。"""
+
+    reporter = BehavioralReporter(_fixed_run_metadata())
+    reporter.record({"case": "first"}, repair_count=0)
+    reporter.record({"case": "second"}, repair_count=1, request_failed=True)
+
+    assert reporter.summary() == {
+        "dataset_version": "1.0",
+        "provider": "ALIYUN_MODEL_STUDIO",
+        "model": "fixed-model",
+        "git_revision": "abc123",
+        "run_id": "fixed-run",
+        "repetition_index": 2,
+        "routing_response_format": "JSON_OBJECT",
+        "started_at": "2026-08-27T10:00:00+00:00",
+        "executed_case_count": 2,
+        "repair_count": 1,
+        "cases_with_repair": 1,
+        "repair_case_rate": 0.5,
+        "request_failure_count": 1,
+    }
+
+
+def test_evaluation_run_metadata_uses_actual_configuration() -> None:
+    """正式比较所需字段必须来自本轮环境与可注入运行上下文。"""
+
+    metadata = create_evaluation_run_metadata(
+        environment={
+            "LLM_MODEL": "candidate-model",
+            "EVAL_RUN_ID": "m6-model-comparison",
+            "EVAL_REPETITION_INDEX": "3",
+            "EVAL_ROUTING_RESPONSE_FORMAT": "text",
+        },
+        revision_reader=lambda: "revision-123",
+        clock=lambda: datetime(2026, 8, 27, 9, 30, tzinfo=UTC),
+        run_suffix_factory=lambda: "unused",
+    )
+
+    assert metadata.as_dict() == {
+        "dataset_version": "1.0",
+        "provider": "ALIYUN_MODEL_STUDIO",
+        "model": "candidate-model",
+        "git_revision": "revision-123",
+        "run_id": "m6-model-comparison",
+        "repetition_index": 3,
+        "routing_response_format": "TEXT",
+        "started_at": "2026-08-27T09:30:00+00:00",
+    }
+
+
+def test_evaluation_run_metadata_falls_back_when_git_revision_is_unavailable() -> None:
+    """Git Revision 无法取得时必须记录 UNKNOWN，不能阻断 Eval。"""
+
+    metadata = create_evaluation_run_metadata(
+        environment={},
+        revision_reader=lambda: "",
+        clock=lambda: datetime(2026, 8, 27, 9, 30, tzinfo=UTC),
+        run_suffix_factory=lambda: "fixed123",
+    )
+
+    assert metadata.git_revision == "UNKNOWN"
+    assert metadata.model == "deepseek-v4-pro-0813"
+    assert metadata.run_id == "eval-20260827T093000Z-fixed123"
+    assert metadata.repetition_index == 1
+    assert metadata.routing_response_format == "TEXT"
+
+
+@pytest.mark.parametrize(
+    ("revision", "tracked_status", "expected"),
+    [
+        ("abc123", "", "abc123"),
+        ("abc123", " M backend/file.py", "abc123-dirty"),
+        (None, "", "UNKNOWN"),
+        ("abc123", None, "UNKNOWN"),
+    ],
+)
+def test_git_revision_includes_tracked_worktree_state(
+    revision: str | None,
+    tracked_status: str | None,
+    expected: str,
+) -> None:
+    """未提交的 tracked 修改必须进入 Eval 可复现性元数据。"""
+
+    assert _revision_with_worktree_state(revision, tracked_status) == expected
+
+
+@pytest.mark.parametrize("value", ["0", "-1", "not-an-integer"])
+def test_evaluation_run_metadata_rejects_invalid_repetition_index(value: str) -> None:
+    """Repetition 配置错误必须作为 Harness Configuration Failure 暴露。"""
+
+    with pytest.raises(ValueError, match="EVAL_REPETITION_INDEX 必须是正整数"):
+        create_evaluation_run_metadata(environment={"EVAL_REPETITION_INDEX": value})
+
+
+def test_evaluation_run_metadata_rejects_invalid_routing_response_format() -> None:
+    """RCA 开关配置错误必须作为 Harness Failure 暴露。"""
+
+    with pytest.raises(
+        ValueError,
+        match="EVAL_ROUTING_RESPONSE_FORMAT 只支持 text 或 json_object",
+    ):
+        create_evaluation_run_metadata(environment={"EVAL_ROUTING_RESPONSE_FORMAT": "unsupported"})
+
+
+def test_routing_response_format_override_only_applies_to_completion_with_tools() -> None:
+    """Evaluation RCA 只能覆盖带 Tool 的 Routing，不能改变 Final / Repair Contract。"""
+
+    delegate = ResponseFormatRecordingLLM()
+    llm = CountingLLM(
+        delegate,
+        routing_response_format_override=LLMResponseFormat.TEXT,
+    )
+    messages = (LLMMessage(LLMRole.USER, "固定测试"),)
+    tools = (
+        LLMToolDefinition(
+            "fixed_tool",
+            "固定测试 Tool",
+            {"type": "object", "properties": {}},
+        ),
+    )
+
+    llm.complete(messages, tools=tools, response_format=LLMResponseFormat.JSON_OBJECT)
+    llm.complete(messages, response_format=LLMResponseFormat.JSON_OBJECT)
+
+    assert delegate.response_formats == [
+        LLMResponseFormat.TEXT,
+        LLMResponseFormat.JSON_OBJECT,
+    ]
+    assert llm.response_formats == delegate.response_formats
+
+
+def test_request_failure_report_preserves_root_cause_diagnostics() -> None:
+    """Request Failure 必须进入统一报告，不能从 Session Summary 消失。"""
+
+    case = CASES_BY_ID["post_earnings_unknown"]
+    failure = InvestmentRequestFailure(
+        InvestmentFailureCode.LLM_INVALID_PROVIDER_RESPONSE,
+        "固定结构化响应失败",
+    )
+
+    report = build_behavioral_failure_report(
+        case,
+        failure,
+        {"repair_count": 1},
+        [{"completion_index": 2, "structured_answer_error": "固定错误"}],
+        {
+            "model_tool_calls": [{"name": "get_current_quote", "arguments": {}}],
+            "tool_attempts": [],
+        },
+        _fixed_run_metadata(),
+        completion_count=3,
+    )
+
+    assert report["request_failure"] == {
+        "code": "LLM_INVALID_PROVIDER_RESPONSE",
+        "message": "固定结构化响应失败",
+    }
+    assert report["status"] == "REQUEST_FAILURE"
+    assert report["model"] == "fixed-model"
+    assert report["git_revision"] == "abc123"
+    assert report["repair_count"] == 1
+    assert report["invalid_json_count"] == 0
+    assert report["structured_response_diagnostics"] == [
+        {"completion_index": 2, "structured_answer_error": "固定错误"}
+    ]
+    assert report["tool_trace"] == {
+        "model_tool_calls": [{"name": "get_current_quote", "arguments": {}}],
+        "tool_attempts": [],
+    }
+    assert report["known_limitations"] == ("Earnings Capability 当前不可用。",)
 
 
 def test_tool_trace_source_declaration_and_repair_are_independent() -> None:
@@ -1044,6 +1887,31 @@ def test_tool_trace_source_declaration_and_repair_are_independent() -> None:
     assert trace.declared_market_context_sources == ()
     assert trace.completion_count_without_repair == 2
     assert trace.repair_used is False
+
+    report = build_behavioral_case_report(
+        CASES_BY_ID["recent_news"],
+        result,
+        trace,
+        {"repair_count": 0, "invalid_json_count": 0},
+        _fixed_run_metadata(),
+        completion_count=2,
+    )
+
+    assert report["provider"] == "ALIYUN_MODEL_STUDIO"
+    assert report["model"] == "fixed-model"
+    assert report["repetition_index"] == 2
+    assert report["status"] == "OK"
+    assert report["request_failure"] is None
+    assert report["repair_count"] == 0
+    assert report["invalid_json_count"] == 0
+    assert report["tool_trace"] == {
+        "quote_tickers": ("GOOG",),
+        "quote_request_purposes": (),
+        "history_tickers": ("GOOG",),
+        "news_tickers": ("GOOG",),
+        "market_context_calls": 0,
+        "market_context_origin": "NOT_RETRIEVED",
+    }
 
 
 def test_diagnostics_only_accept_sources_retrieved_in_actual_tool_round() -> None:
@@ -1146,7 +2014,7 @@ def create_real_llm() -> AliyunLLMProvider:
             "LLM_BASE_URL",
             "https://dashscope.aliyuncs.com/compatible-mode/v1",
         ),
-        model=os.getenv("LLM_MODEL", "qwen3.7-plus"),
+        model=os.getenv("LLM_MODEL", DEFAULT_EVALUATION_MODEL),
         timeout_seconds=float(os.getenv("LLM_REQUEST_TIMEOUT_SECONDS", "30")),
     )
 
@@ -1158,10 +2026,18 @@ def create_real_llm() -> AliyunLLMProvider:
     reason="需要显式启用真实模型 Behavioral Eval",
 )
 @pytest.mark.parametrize("case", CASES, ids=lambda case: case.id)
-def test_real_model_behavior_with_fixed_market_data(case: BehavioralCase) -> None:
+def test_real_model_behavior_with_fixed_market_data(
+    case: BehavioralCase,
+    behavioral_reporter: BehavioralReporter,
+) -> None:
     """真实模型必须产生符合固定场景的 Tool Trace，并输出供 Human Review 的回答。"""
 
-    llm = CountingLLM(create_real_llm())
+    llm = CountingLLM(
+        create_real_llm(),
+        routing_response_format_override=LLMResponseFormat(
+            behavioral_reporter.run_metadata.routing_response_format
+        ),
+    )
     market_data = FixedMarketData(case.market_results, case.historical_results)
     news = FixedNews(case.news_results)
     market_context = FixedMarketContext(case.market_context_result)
@@ -1177,21 +2053,29 @@ def test_real_model_behavior_with_fixed_market_data(case: BehavioralCase) -> Non
     result = agent.answer(USER_ID, case.question)
 
     if isinstance(result, InvestmentRequestFailure):
-        pytest.fail(
-            f"{case.id} 未形成 Final Answer: {result}\n"
-            + json.dumps(
-                {
-                    "structured_response_diagnostics": structured_response_diagnostics(
-                        llm,
-                        market_data,
-                        news,
-                        market_context,
-                    )
-                },
-                ensure_ascii=False,
-                indent=2,
-            )
+        completion_metrics = behavioral_completion_metrics(
+            llm,
+            market_data,
+            news,
+            market_context,
         )
+        failure_report = build_behavioral_failure_report(
+            case,
+            result,
+            completion_metrics,
+            structured_response_diagnostics(llm, market_data, news, market_context),
+            collect_failure_execution_trace(llm, market_data, news, market_context),
+            behavioral_reporter.run_metadata,
+            completion_count=llm.completion_count,
+        )
+        repair_count = completion_metrics["repair_count"]
+        assert isinstance(repair_count, int)
+        behavioral_reporter.record(
+            failure_report,
+            repair_count=repair_count,
+            request_failed=True,
+        )
+        pytest.fail(json.dumps(failure_report, ensure_ascii=False, indent=2))
     assert isinstance(result, InvestmentAnswer)
     trace = collect_behavioral_trace(
         market_data,
@@ -1211,50 +2095,18 @@ def test_real_model_behavior_with_fixed_market_data(case: BehavioralCase) -> Non
         news,
         market_context,
     )
-    print(
-        json.dumps(
-            {
-                "case": case.id,
-                "question": case.question,
-                "actual_tool_trace": {
-                    "quote_tickers": trace.tool_tickers,
-                    "quote_request_purposes": trace.quote_request_purposes,
-                    "history_tickers": trace.history_tickers,
-                    "news_tickers": trace.news_tickers,
-                    "market_context_calls": trace.market_context_calls,
-                    "market_context_origin": (
-                        "MODEL_SELECTED"
-                        if trace.model_selected_market_context
-                        else (
-                            "REQUIRED_CONTEXT_FLOOR"
-                            if trace.floor_added_market_context
-                            else "NOT_RETRIEVED"
-                        )
-                    ),
-                },
-                "declared_final_sources": {
-                    "quote_tickers": trace.declared_quote_sources,
-                    "history_tickers": trace.declared_history_sources,
-                    "news_tickers": trace.declared_news_sources,
-                    "market_context_tickers": trace.declared_market_context_sources,
-                },
-                "retrieved_successful_contexts": {
-                    "quote_tickers": trace.retrieved_quote_sources,
-                    "history_tickers": trace.retrieved_history_sources,
-                    "news_tickers": trace.retrieved_news_sources,
-                    "market_context_tickers": trace.retrieved_market_context_sources,
-                },
-                "status": result.status.value,
-                "llm_completion_count": llm.completion_count,
-                "source_validation_repair_used": trace.repair_used,
-                "completion_metrics": completion_metrics,
-                "answer": result.answer,
-                "human_checks": case.human_checks,
-            },
-            ensure_ascii=False,
-            indent=2,
-        )
+    report = build_behavioral_case_report(
+        case,
+        result,
+        trace,
+        completion_metrics,
+        behavioral_reporter.run_metadata,
+        completion_count=llm.completion_count,
     )
+    repair_count = completion_metrics["repair_count"]
+    assert isinstance(repair_count, int)
+    behavioral_reporter.record(report, repair_count=repair_count)
+    print(json.dumps(report, ensure_ascii=False, indent=2))
     assert len(trace.tool_tickers) == len(case.expected_tickers)
     assert sorted(trace.tool_tickers) == sorted(case.expected_tickers)
     assert len(trace.history_tickers) == len(case.expected_history_tickers)
@@ -1270,5 +2122,5 @@ def test_real_model_behavior_with_fixed_market_data(case: BehavioralCase) -> Non
     ):
         assert trace.model_selected_market_context or trace.floor_added_market_context
     assert result.status is case.expected_status
-    assert completion_metrics["invalid_json_count"] == 0
+    # Repair 后成功的首轮格式错误属于质量信号；未恢复错误已在 Request Failure 分支阻断。
     assert llm.completion_count <= trace.completion_count_without_repair + 1

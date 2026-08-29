@@ -11,6 +11,7 @@ from position_pilot.application.investment_agent import (
     InvestmentAgent,
     InvestmentAnswer,
 )
+from position_pilot.application.investment_context import InvestmentPortfolioContext
 from position_pilot.application.market_context_service import MarketContextService
 from position_pilot.application.market_data_service import MarketDataService
 from position_pilot.application.news_service import NewsService
@@ -27,13 +28,16 @@ USER_ID = UUID("00000000-0000-0000-0000-000000000201")
 class FixedEmptyPortfolioReader:
     """隔离数据库，只让 Smoke Test 覆盖两个真实外部 Provider。"""
 
-    def get_portfolio(self, user_id: UUID) -> PortfolioState:
+    def get_investment_context(self, user_id: UUID) -> InvestmentPortfolioContext:
         assert user_id == USER_ID
-        return PortfolioState(
-            user_id=USER_ID,
-            cash=CashBalance(USER_ID, Decimal("1000"), Decimal("300")),
-            positions=(),
-            transaction_count=0,
+        return InvestmentPortfolioContext.from_ledger(
+            PortfolioState(
+                user_id=USER_ID,
+                cash=CashBalance(USER_ID, Decimal("1000"), Decimal("300")),
+                positions=(),
+                transaction_count=0,
+            ),
+            (),
         )
 
 
@@ -54,7 +58,7 @@ def test_real_llm_and_market_data_complete_single_agent_round() -> None:
             "LLM_BASE_URL",
             "https://dashscope.aliyuncs.com/compatible-mode/v1",
         ),
-        model=os.getenv("LLM_MODEL", "qwen3.7-plus"),
+        model=os.getenv("LLM_MODEL", "deepseek-v4-pro-0813"),
         timeout_seconds=float(os.getenv("LLM_REQUEST_TIMEOUT_SECONDS", "30")),
     )
     market_data = MarketDataService(

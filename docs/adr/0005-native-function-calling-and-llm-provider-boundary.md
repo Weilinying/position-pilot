@@ -4,6 +4,13 @@
 
 已接受（2026-08-24）
 
+## 后续演进状态（2026-08-27）
+
+- Native Function Calling、Single Agent、通用 `LLMProvider` 与阿里云 Model Studio 默认 Provider 决策继续有效。
+- 下文 M3 的 deterministic natural-language Grounding Guard 已被 M4 / M5 的 Free-form Answer + Structured Source Validation 取代。当前 Application 不扫描 `answer` 中的金融数字、购买能力措辞或自然语言 Claim；只验证外层 Structured Answer、Source Type 及其与本轮成功 Context 的绑定。
+- 一次 No-Tool Repair 继续存在，但只处理非法 Structured Answer 或 Source Reference；不再由自然语言 Financial Claim Guard 触发。
+- 当前一个 Tool Round 最多四次调用，支持 Quote、Price History、Recent News 与 Market Context；M6 同时加入当前 Positions 的有界历史 BUY Facts。下文“三次 Quote”和“不包含 Transaction History”保留为 M3 当时的历史决策背景。
+
 ## 背景
 
 M3 需要完成第一个 Stateful Investment Vertical Slice，让 Single Investment Agent 读取 Portfolio Snapshot、按需获取 Current Quote，并生成个性化回答。`PROJECT.md` 已确定 V1 使用 Single Investment Agent；M3 仍需选择最小 Agent Orchestration 方式与初始 LLM Integration，同时避免具体 Provider 或 Model 进入核心业务边界。
@@ -27,7 +34,7 @@ M3 需要完成第一个 Stateful Investment Vertical Slice，让 Single Investm
 
 - 提供支持 Function Calling 的模型与 OpenAI-compatible HTTP 接口，适合国内直连并可控制当前成本。
 - OpenAI-compatible 请求、响应和错误语义需要限制在 Integration Adapter，不能成为 Application Contract。
-- `qwen3.7-plus` 可作为当前默认配置，但模型别名可能演进，不应成为领域或架构类型。
+- `qwen3.7-plus` 是 M3 初始默认配置；模型别名可能演进，不应成为领域或架构类型。
 
 ## 决策
 
@@ -41,7 +48,7 @@ M3 需要完成第一个 Stateful Investment Vertical Slice，让 Single Investm
 - Transaction History 不在 M3 默认 Context 中；后续仅由真实需求、Evaluation Failure 或新的 Context Retrieval 能力引入。
 - Application 只依赖通用 `LLMProvider`。Message、Tool Definition、Tool Call 和 Completion Result 使用项目自身的 Application Schema。
 - 初始 Integration Adapter 使用阿里云 Model Studio OpenAI-compatible API；Provider 请求、响应、Credential 和错误映射只存在于 Adapter。
-- `qwen3.7-plus` 是 `LLM_MODEL` 的 V1 默认配置，可通过环境变量覆盖，不创建绑定具体模型的业务类型。
+- `deepseek-v4-pro-0813` 是当前 `LLM_MODEL` 的 V1 默认配置，可通过环境变量覆盖，不创建绑定具体模型的业务类型。
 - Market Data Provider Failure 与 LLM Provider Failure 使用不同 Failure Taxonomy。Market Data Failure 可以在明确缺失事实后降级为 `DEGRADED`；LLM Provider Failure 无法形成 Final Response，必须返回 Request Failure。
 - `OK` / `DEGRADED` 由 Application 根据 Tool Execution Result 确定，不交给 LLM 判断。
 
@@ -72,9 +79,16 @@ M3 需要完成第一个 Stateful Investment Vertical Slice，让 Single Investm
 ## M5 Structured Final Response 演进
 
 - 真实 Qwen Behavioral Eval 暴露 Prompt-only JSON Contract 会频繁产生非法 JSON，并让一次性 Repair 接近正常路径。Application 因此新增 provider-neutral `TEXT / JSON_OBJECT` Completion Capability；具体 OpenAI-compatible `response_format={"type":"json_object"}` 只由 Aliyun Adapter 映射。
-- 可能直接形成 Final Answer 的首轮 Completion、Tool Result 后的 Final Completion 与异常 Repair 均请求 `JSON_OBJECT`。首轮同时暴露 Native Tools，是因为它也允许模型在无需 Tool 时直接返回 Final Answer；并未为纯 Tool 阶段新增第二套 Provider 参数。
+- M6 Controlled Evaluation 证明 Model Studio 下 `tools + response_format=json_object` 会让部分模型稳定遗漏 Native Tool Calls。首轮 Routing Completion 因此使用 `TEXT`；Tool Result 后的 Final Completion 与异常 Repair 继续使用 `JSON_OBJECT`。首轮无 Tool Final Answer 仍由现有 Parser 与最多一次 Repair 处理。
 - Provider-native JSON 只约束 JSON 语法，不证明 `answer / source_refs` Schema 或来源真实性。Application Parser、Structured Source Validation 与最多一次 No-Tool Repair 全部保留，形成 defense-in-depth。
-- 默认 `qwen3.7-plus` 支持该模式；若通过配置替换模型，所选模型必须兼容 `JSON_OBJECT`。Provider 拒绝该能力时保持既有 LLM Failure Taxonomy，不静默回退到 Prompt-only TEXT。
+- 可替换模型必须在真实 Evaluation 中同时验证 Native Tool Calling 与 Final `JSON_OBJECT` Contract；Provider 拒绝已请求的能力时保持既有 LLM Failure Taxonomy，不静默改写 Contract。
+
+## M6 默认模型选择
+
+- 修正 `tools + JSON_OBJECT` Routing Format Confound 后，三模型在相同 Dataset、Prompt、Tool、Fixtures 与 Evaluation Rules 下完成 Full Dataset 与代表性重复矩阵。
+- `deepseek-v4-pro-0813` Full Dataset Automated 22 / 24，代表性矩阵 Automated 与 Request Success 均为 15 / 15；Required Tool Recall、Historical BUY 与 Market Regime Grounding 最强。
+- Human Review 于 2026-08-29 批准将默认模型由 `qwen3.7-plus` 更换为 `deepseek-v4-pro-0813`。Provider、Prompt、Tool Contract、Single Agent Architecture 与 Request Timeout 保持不变。
+- DeepSeek 的可恢复 Repair 与 Recommendation Quality Signal 继续由 Evaluation 记录，不通过新增 Guard 或 Prompt 调优掩盖。
 
 ## 重新考虑条件
 

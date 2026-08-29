@@ -101,3 +101,49 @@ M5 同时把 Required Context Policy 限定为极窄的 model-declared minimum c
 ### Boundary / Future
 
 该方案不是 sentence-level citation，也不证明每个 Claim 都由 `source_refs` 支撑；没有 `[1]`、claim-to-evidence mapping 或 Citation UI。已知残余 Failure 包括：模型可能抄错已提供数字、用错误方式解释确定性关系、在 answer 使用某来源却漏报 source ref，或声明来源但实际文本没有使用。PositionPilot V1 通过 Prompt 与 Behavioral Eval 衡量这些模型级 Grounding Failure；若未来产品明确需要逐 Claim 可审计性，再单独评估更强的 Citation Contract。
+
+## M6 Bounded Historical BUY Context
+
+### Problem
+
+M6 Coverage Audit 发现，V1 Success Criteria 要求使用历史买入位置，但 Agent 只接收重建后的当前 `PortfolioState`；即使模型行为完美，也无法获得历史 BUY 事实。
+
+### Decision
+
+`PortfolioService` 在同一 UoW 中读取 Transaction / Cash Event Ledgers，重建当前 State，并生成 Agent 专用的 `historical_buy_facts`。投影只包含当前 Positions 的 BUY，每个 `(ticker, position_type)` 保留最近 5 条，并声明总数与截断状态；不包含 User / Transaction ID、自由文本原因、完整 Ledger 或 Cash Event History。它继续属于 `PORTFOLIO_SNAPSHOT`，不新增 Tool、Source Type、调用预算或公共 API。
+
+### Boundary / Future
+
+当前 State 仍是 Cash、Position、Shares 与 Average Cost 的 Source of Truth；历史 BUY Facts 不能用于重算这些值或收益。只有未来 Evaluation 证明需要查询已清仓标的、任意时间范围或完整 Ledger 时，才重新评估独立 Transaction History Tool。
+
+## M6 首轮 Real-model Failure Triage
+
+### Problem
+
+首轮全量 Eval 有 7 个 Routing Assertion Failure；三次代表性重复共 5 次失败，并出现 3 次 Repair。没有虚构 Source、预算突破、错误 Status、Provider / `NO_DATA` 混淆或未恢复的结构化失败。Human Review 同时发现低现金回答重复把数值关系解释为“不能买一股”，且加仓回答没有实际引用历史 BUY 位置。
+
+### Decision
+
+Routing 波动与 Repair 继续作为 Quality Signal，不升级为 Hard Contract Failure，也不新增确定性 Router 或自然语言 Guard。RCA 发现 Prompt 将 Cash/Quote 数值比较称为“购买能力事实”，与执行能力必须为 `UNKNOWN` 的边界冲突；同时历史 BUY 只要求保留、未要求加仓回答实际引用。M6 只修正这些已证实歧义，并明确 Portfolio-only 与当前动作的 Tool 边界。
+
+### Trigger / Future
+
+修正后重新运行全量 Dataset 与代表性三次对照。若相同 Grounding Failure 仍稳定出现，再评估 Context Shape 或 Model Selection；在新证据前不扩大 Production Contract。
+
+## M6 Routing Response Format Compatibility RCA
+
+### Problem
+
+Qwen 3.8 Max 与 DeepSeek V4 Pro 在全部 Tool-required Model Comparison Cases 中都未产生 Native Tool Calls，但纯 Portfolio Cases 稳定通过。请求 Model ID 不同，失败分界却与是否需要 Tool 完全一致。
+
+### Evidence / Decision
+
+Evaluation-only Controlled Contrast 只改变 `market_context_normal` 首轮 Routing Response Format。DeepSeek 默认 `JSON_OBJECT` Automated 0 / 4、`TEXT` 3 / 3；Qwen 3.8 默认 `JSON_OBJECT` 0 / 3、`TEXT` 3 / 3。两个模型的 `TEXT` 路径均产生 GOOG Quote 与 SPY Market Context，随后 Final Completion 继续使用 `JSON_OBJECT`，0 Repair。该证据将主要 RCA 从“模型未切换”收敛到 Model Studio 下 `tools + response_format=json_object` 的兼容性。
+
+因此原 8-Case Comparison 只能保留为旧 Contract 下的 Diagnostic Evidence；`Qwen 3.7 Comparative Leader` 不再作为模型能力或选型结论。模型选择必须在统一 `TEXT` Routing Contract 下重新比较。
+
+RCA 期间不修改 Production。首轮 Completion 同时允许 No-Tool Final Answer，因此先验证 `TEXT` 对纯 Portfolio Case 的 JSON / Repair 影响，再检查默认模型的 Tool 路径。只有出现阻断性退化时，才评估独立 Routing / Final 阶段；不新增 Prompt Guard 或 Typed Router。
+
+代表性 `cash_only_no_tool` 对照中，三个模型使用 `TEXT` 均 Automated 3 / 3 且无 Tool Call / Request Failure。Qwen 3.7 Repair 3 / 3、Qwen 3.8 Repair 0 / 3，均与默认 `JSON_OBJECT` 基线一致；DeepSeek 从 0 / 3 增至 1 / 3 可恢复 Repair。该结果没有暴露阻断性 No-Tool Regression，但只覆盖一个 Cash Case。
+
+默认 Qwen 3.7 的 `market_context_normal + TEXT` Automated 3 / 3，每次都取得 GOOG Quote 与 SPY Market Context，0 Repair / Invalid JSON / Request Failure。2 / 3 由模型选择 Market Context，1 / 3 由 Required Context Floor 补齐；一次存在 Cash / Quote 数值关系误述。这些记为 Quality Signal，不改变 Routing Format RCA。Human Decision 批准后，Production 首轮 Routing Completion 已改为 `TEXT`，Final 与 Repair 继续使用 `JSON_OBJECT`。

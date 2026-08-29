@@ -1,6 +1,6 @@
 # PositionPilot
 
-当前仓库包含可运行的 Python 工程基础、Portfolio / Transaction Structured State、最小 Market Data，以及 M3 Single Investment Agent Vertical Slice。
+当前仓库已完成 Portfolio / Transaction Structured State、Current Quote、Price History、Recent News、SPY Market Context，以及基于 Native Function Calling 的 Single Investment Agent。当前 Milestone 为 M6 Evaluation & V1 Hardening。
 
 ## 前置条件
 
@@ -55,9 +55,9 @@ RUN_ALPACA_ONLINE_TESTS=1 uv run pytest tests/integration/test_alpaca_market_dat
 
 默认测试不会访问 Alpaca。Provider 选择、数据覆盖限制和备选方案见 [`ADR 0004`](docs/adr/0004-alpaca-market-data-provider.md)。
 
-## Minimal Investment Agent
+## Investment Agent
 
-M3 使用 Single Agent + Native Function Calling。Portfolio Snapshot 必定注入，Current Quote 由 Agent 按需调用；默认 LLM Provider 为阿里云 Model Studio，业务层只依赖通用 `LLMProvider`。
+Agent 使用 Single Agent + Native Function Calling。Portfolio Snapshot 必定注入，Quote、History、News 与 Market Context 由 Agent 按需调用；默认 LLM Provider 为阿里云 Model Studio，业务层只依赖通用 `LLMProvider`。
 
 在本地 `.env` 配置 `LLM_API_KEY` 后，可以调用开发用问答接口：
 
@@ -77,7 +77,7 @@ LLM_API_KEY=<local-secret> \
 uv run pytest tests/evaluation/test_real_model_behavior.py -s
 ```
 
-详细 Human Rubric 与真实 Provider Smoke Test 说明见 [`tests/evaluation/README.md`](tests/evaluation/README.md)，Agent / LLM 决策见 [`ADR 0005`](docs/adr/0005-native-function-calling-and-llm-provider-boundary.md)。
+长期 Evaluation 入口、Human Grounding 与 Model Selection 说明见 [`docs/evaluation/README.md`](docs/evaluation/README.md)，Agent / LLM 决策见 [`ADR 0005`](docs/adr/0005-native-function-calling-and-llm-provider-boundary.md)。
 
 停止本地数据库：
 

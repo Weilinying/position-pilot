@@ -2,7 +2,7 @@
 
 ## 1. 当前范围
 
-本文档描述 M5 Context-Aware Decision Flow 当前已实现的系统结构。系统包含 Portfolio Structured State、Transaction / Cash Event Ledgers、Provider-neutral Market / News Data，以及可按问题选择 Current Quote、固定近期 Daily Price History、attributed Recent News 或 SPY Market Context 的 Single Investment Agent；M5 同时提供不记录问题正文或用户身份的 Context Selection Trace。
+本文档描述 M6 Evaluation & V1 Hardening 当前已实现的系统结构。系统包含 Portfolio Structured State、Transaction / Cash Event Ledgers、Provider-neutral Market / News Data，以及可按问题选择 Current Quote、固定近期 Daily Price History、attributed Recent News 或 SPY Market Context 的 Single Investment Agent；Agent Context 同时包含由同一 Ledger Read 生成的当前 State 与有界历史 BUY Facts。
 
 ## 2. 依赖方向
 
@@ -12,7 +12,8 @@ FastAPI /health
 POST /v1/investment/questions
       ↓
 Application / InvestmentAgent
-  ├── PortfolioService → SQLAlchemy UoW → PostgreSQL Ledger
+  ├── PortfolioService → current State + bounded historical BUY Facts
+  │     ↓ SQLAlchemy UoW → PostgreSQL Ledger
   ├── Current Quote / Recent Price History Tools
   │     ↓ MarketDataService → AlpacaMarketDataProvider
   ├── Market Context Tool
@@ -123,7 +124,7 @@ Cash Event amount 必须为正数且最多 8 位小数。Application 使用可�
 - `backend/position_pilot/domain/market_context.py`：SPY Daily Price Stress 指标、确定性 Market Regime 与 V1 Heuristic 元数据。
 - `backend/position_pilot/domain/news.py`：Provider-neutral News Article、归因、时间、稳定排序与 Failure Status。
 - `backend/position_pilot/domain/errors.py`：明确的领域失败状态。
-- `backend/position_pilot/application/portfolio_service.py`：Transaction / Cash Event Use Case、写入 Command 和 Unit of Work Contract。
+- `backend/position_pilot/application/portfolio_service.py`：Transaction / Cash Event Use Case、写入 Command、Unit of Work Contract，以及同一 Ledger Read 的 Agent Portfolio Context。
 - `backend/position_pilot/application/llm.py`：Provider-neutral Message、Tool、Completion 与 Failure Contract。
 - `backend/position_pilot/application/investment_agent.py`：Portfolio Snapshot、单轮 Native Function Calling、Structured Source Validation、Source Tracking 与 Request Failure。
 - `backend/position_pilot/application/investment_answer.py`：自由文本 Answer 外层 JSON、统一 Source Reference Schema 与真实性校验。
@@ -147,10 +148,10 @@ Cash Event amount 必须为正数且最多 8 位小数。Application 使用可�
 - 不处理税费、多币种、拆股、公司行动、转仓或外部券商同步。
 - Current Quote 默认来自 Alpaca Basic 的实时 IEX feed，只代表单一交易所覆盖；Historical Daily OHLCV 来自至少延迟 15 分钟的 SIP feed。
 - 不包含 WebSocket、行情 / 新闻缓存或持久化、通用技术指标、VIX、市场宽度、宏观 Context、News 全文抓取、Earnings 或 Fundamentals；Market Regime 仅为已批准的 SPY Daily Price Stress V1 Heuristic。
-- Portfolio Snapshot 是 Agent 必定注入的完整当前持仓集合，不默认包含 Transaction 或 Cash Event History。
+- Portfolio Snapshot 是 Agent 必定注入的完整当前持仓集合，并包含当前 Positions 对应的有界历史 BUY Facts；它不包含完整 Transaction Ledger 或 Cash Event History。每个 `(ticker, position_type)` 只保留最近 5 条 BUY，并显式声明总数与截断状态。
 - 发给 LLM 的 Snapshot 不包含内部 User ID，并提供由代码计算的 Ticker 数量、总持仓历史成本和按 Ticker 聚合、保留两位小数的历史成本权重百分比。历史成本权重不包含 Available Cash，也不表示当前市值权重；原始 `LONG_TERM` / `SWING` Position 继续独立保留。
 - Quote 成功后，Tool Result 向 LLM 提供实际 last / bid / ask price、Source Metadata、统一的 `CURRENT_QUOTE(ticker)` Source Reference，以及代码派生的 Cash/Quote、Quote/Average Cost 关系。Cash/Quote 关系是纯数值比较，不能支持交易执行结论，真实可执行购买数量保持 `UNKNOWN`。Portfolio Context 继续提供同 Ticker 股数汇总，并将现金权重、总组合价值、当前市值权重和缺少策略阈值时的集中度结论标为 `UNAVAILABLE` 或 `UNKNOWN`。
-- 每次请求注入结构化 Context Capability Manifest。Current Quote、Price History、News 与 Market Context 可用；Earnings、Fundamentals、Technical Analysis、Asset Metadata 和 Sector Classification 仍不可用。
+- 每次请求注入结构化 Context Capability Manifest。Current Quote、Price History、News、Market Context 与 Historical Buy Facts 可用；Earnings、Fundamentals、Technical Analysis、Asset Metadata 和 Sector Classification 仍不可用。
 - Decision Context 将 Trading Plan、Exit Conditions 与 Risk Budget 显式标记为 `UNKNOWN`；它们不是 Conversation Memory，也不由模型从通用知识补足。
 - Agent 每个请求只允许一个 Tool Round，Current Quote、Recent Price History、Recent News 与 Market Context 合计最多四个调用；仍按问题实际需要选择 Tool，不默认调用全部 Context Tools。不支持 Conversation Memory 或多阶段检索。
 - Recent Price History 的窗口由 Application 固定为截至当前时间至少 15 分钟前的最近 45 个日历日、最多 30 根 Daily Bars。Adapter 使用 Provider `sort=desc` 取得窗口内最新 N 根，再反转为 Domain 要求的 timestamp 严格升序，避免较早的 N 根冒充 Recent History。LLM 只能选择 Ticker，不能控制 start、end 或 limit。Application 只提供 Bar 数量、首尾时间与收盘价、区间高低、首尾涨跌额/幅和 `UP / DOWN / FLAT` 方向；最新历史收盘价不等于 Current Quote，Price History 不提供移动平均、RSI、支撑阻力、交易信号或预测。
@@ -225,7 +226,9 @@ NORMAL / ELEVATED_VOLATILITY / HIGH_STRESS / EXTREME_STRESS
 ## 11. Investment Agent 与 LLM Boundary
 
 ```text
-PortfolioState
+Transaction + Cash Event Ledgers
+      ↓ same-UoW deterministic Portfolio Context
+Current PortfolioState + bounded Historical BUY Facts
       ↓ deterministic Snapshot
 InvestmentAgent
       ↓ LLM native optional tool selection
@@ -247,13 +250,13 @@ Fail → one no-tool Repair → parse / validate sources
 LLM_INVALID_PROVIDER_RESPONSE
 ```
 
-- Snapshot 明确声明 Positions 是完整当前集合；未出现的 Ticker 表示当前无持仓。Agent 不额外执行确定性 Ticker Extraction。
+- Snapshot 明确声明 Positions 是完整当前集合；未出现的 Ticker 表示当前无持仓。Historical BUY Facts 只投影当前 Position、保持 `LONG_TERM` / `SWING` 独立并声明截断，不能用于重算当前 Shares、Average Cost、Cash 或收益。Agent 不额外执行确定性 Ticker Extraction。
 - `LLMProvider` 的 Message、Tool Definition、Tool Call 与 Result 均为项目自身 Schema；Aliyun/OpenAI-compatible Payload 只存在于 Adapter。
-- `qwen3.7-plus` 是可通过 `LLM_MODEL` 覆盖的默认配置，不是 Domain 或 Application 类型。
+- `deepseek-v4-pro-0813` 是可通过 `LLM_MODEL` 覆盖的默认配置，不是 Domain 或 Application 类型。
 - Current Quote、Recent Price History、Recent News 或 Market Context Failure 会作为缺失事实返回 LLM，安全 Final Answer 由 Application 标记为 `DEGRADED`；LLM Failure 无法形成 Final Answer，返回 Request Failure。
 - Native Function Calling 可选择四类 Context Tool，LLM 仍是 primary router，单轮总调用预算保持为 4。Market Context 是 Portfolio Risk Context / risk modifier；只有没有明确既定交易规则、并要求判断当前是否应该增加或减少风险暴露时才是 minimum context。购买能力、纯事实查询和既定规则/已决定动作的确认执行不机械调用。
 - Current Quote Native Tool Call 通过 `request_purpose` 结构化声明事实查询、discretionary current risk action 或既定规则/执行检查。模型声明 discretionary action 且漏选 Market Context 时，Application 在同一 Tool Round 补足一次无参数调用；这是 model-declared floor，不解析问题关键词，也不替代模型的 Intent 判断或接管 Quote / History / News 的自主选择。
 - 首轮 Native Tool Selection 通过参数校验后记录一次结构化 Trace，区分模型选择的 Tool、模型声明的安全 purpose 枚举、Required Context Floor 补足的 Tool、最终有效 Context、匹配当前持仓的 Position Type、未持有标的数量与 Routing Latency；日志不保存问题正文、User ID 或 ticker。
-- Final、可能无 Tool 直接回答的首轮 Completion 与 Repair 请求 `LLMResponseFormat.JSON_OBJECT`。Aliyun Adapter 映射为 Provider-native JSON Mode；Parser、Source Validation 和一次 No-Tool Repair 继续作为防御层。Tool Call、Provider Failure 与 Source Contract 均未交给 JSON Mode 代替验证。
+- 首轮 Routing Completion 使用 `LLMResponseFormat.TEXT`，允许选择 Tool 或直接形成无 Tool Answer；Tool Result 后的 Final 与 Repair 使用 `LLMResponseFormat.JSON_OBJECT`。Aliyun Adapter 映射 Provider-native JSON Mode；Parser、Source Validation 和一次 No-Tool Repair 继续作为防御层。Tool Call、Provider Failure 与 Source Contract 均未交给 JSON Mode 代替验证。
 - `FACT`、`INFERENCE`、`UNKNOWN` 是回答的语义约束，不强制固定输出标题。
 - 默认测试使用 Fake LLM；Opt-in Behavioral Eval 使用真实 Aliyun LLM 与固定 Fake Market Data，真实 LLM + 真实 Market Data 只用于 Smoke Test。

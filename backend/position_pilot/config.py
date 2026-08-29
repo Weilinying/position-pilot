@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     alpaca_request_timeout_seconds: float = 10.0
     llm_base_url: AnyHttpUrl = AnyHttpUrl("https://dashscope.aliyuncs.com/compatible-mode/v1")
     llm_api_key: SecretStr | None = None
-    llm_model: str = "qwen3.7-plus"
+    llm_model: str = "deepseek-v4-pro-0813"
     llm_request_timeout_seconds: float = 30.0
 
     model_config = SettingsConfigDict(
