@@ -29,6 +29,7 @@ from position_pilot.main import (
 USER_A = UUID("10000000-0000-4000-8000-000000000001")
 USER_B = UUID("20000000-0000-4000-8000-000000000002")
 SLOW_USER = UUID("30000000-0000-4000-8000-000000000003")
+EMPTY_USER = UUID("40000000-0000-4000-8000-000000000004")
 NOW = datetime(2026, 8, 29, 8, 0, tzinfo=UTC)
 
 
@@ -66,6 +67,17 @@ class BrowserSmokePortfolioService:
     """按 User ID 返回稳定 Portfolio，并提供一个可控延迟场景。"""
 
     def get_portfolio(self, user_id: UUID) -> PortfolioState:
+        if user_id == EMPTY_USER:
+            return PortfolioState(
+                user_id=user_id,
+                cash=CashBalance(
+                    user_id=user_id,
+                    initial_cash=Decimal("10000.00000000"),
+                    available_cash=Decimal("10000.00000000"),
+                ),
+                positions=(),
+                transaction_count=0,
+            )
         if user_id == SLOW_USER:
             sleep(0.6)
             return _portfolio(user_id, ticker="SLOW")

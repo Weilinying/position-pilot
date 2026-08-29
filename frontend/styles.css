@@ -65,6 +65,12 @@ footer {
   padding: 0 4px 20px;
 }
 
+.topbar-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
 .brand {
   display: inline-flex;
   gap: 11px;
@@ -106,6 +112,17 @@ footer {
 
 .environment-pill {
   padding: 8px 12px;
+}
+
+.language-toggle {
+  min-width: 48px;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--signal-dark);
+  background: rgba(251, 250, 245, 0.9);
+  font-size: 12px;
+  letter-spacing: 0.03em;
 }
 
 .live-dot {
@@ -531,18 +548,36 @@ button:disabled {
 }
 
 .source-metadata {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px 14px;
+  display: grid;
+  gap: 7px;
   margin-top: 11px;
   color: #718079;
   font-size: 11px;
 }
 
-.source-metadata span + span::before {
-  margin-right: 14px;
-  color: #b0b8b3;
-  content: "·";
+.source-metadata-item {
+  display: grid;
+  grid-template-columns: minmax(78px, auto) 1fr;
+  gap: 10px;
+  align-items: baseline;
+}
+
+.source-metadata-label {
+  color: #53645d;
+  font-weight: 720;
+}
+
+.source-metadata-label::after {
+  content: ":";
+}
+
+.source-metadata-value {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.source-context-note {
+  color: #718079;
 }
 
 [hidden] {

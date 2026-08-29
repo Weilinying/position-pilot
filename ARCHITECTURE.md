@@ -187,7 +187,8 @@ Response only updates DOM when both still match current state
 - `GET /v1/portfolios/{user_id}` 直接映射 `PortfolioService.get_portfolio()` 的 Ledger Replay Result；Response 只包含 User ID、Available Cash、完整性声明和按 `(ticker, position_type)` 稳定排序的当前 Positions。Decimal 保持字符串，不返回实时价格、收益、Ledger History 或风险结论。
 - Browser 显式区分输入框的 `userIdInput` 与已成功加载的 `loadedUserId`。Question 只能使用后者；输入变化会立即使 Context 失效。Portfolio 与 Question 各自维护 Request Generation，旧 User 或旧 Generation 的 Response 不得更新 DOM。
 - 所有 API、LLM、Provider 与用户输入产生的动态文本使用 `textContent`、DOM Property 或等价安全接口。静态 Template 之外不使用动态 HTML 字符串，也不执行 Markdown HTML。
-- Source Cards 只展示后端已经验证绑定的 Source Identity / Status 和失败 Tool Attempt；它们不等价于逐 Claim Citation，也不返回完整 Tool Payload。
+- Source Cards 只展示后端已经验证绑定的 Source Identity / Status 和失败 Tool Attempt；Ticker、Provider、Feed、Market Time 与 Fetched At 使用显式字段标签，不等价于逐 Claim Citation，也不返回完整 Tool Payload。
+- Browser 提供不持久化的中文 / 英文显示模式。切换只重绘静态标签、状态文案和本地化时间格式，不改变 `userIdInput`、`loadedUserId`、Request Generation、Agent Answer 或 Provider 原始值。
 - M7 使用固定 Checklist 的 Human Browser Smoke 作为界面 Evidence，不把它描述为自动化 E2E，也不将其纳入默认 Regression Gate。
 
 ## 9. Market Data Boundary

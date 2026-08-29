@@ -17,6 +17,7 @@ M7 需要为已经稳定的 FastAPI V1 Vertical Slice 增加一个可直接使�
 - 新增只读 `GET /v1/portfolios/{user_id}`，直接映射现有 `PortfolioService.get_portfolio()` 的确定性 Ledger Replay Result。
 - Browser 只保存 `userIdInput`、`loadedUserId` 与 Portfolio / Question Request Generation。Question 只能使用 `loadedUserId`，过期 User 或 Generation 的 Response 必须丢弃。
 - 所有动态文本使用安全 DOM Text API；LLM Answer、Source Metadata、API Error 与 User Input 不生成动态 HTML。
+- 界面内置不持久化的中文 / 英文文案表和一键切换；Source 与 Position 字段标签、状态文案和时间格式本地化，Agent Answer 与 Provider 原始值保持不变，不引入通用 i18n Framework。
 - 默认本地启动命令只绑定 `127.0.0.1`。M7 不在代码中禁止其他 Host，但无 Authentication 的实例不得被描述为可安全公开部署。
 - Browser Smoke 是固定 Checklist 驱动的 Human Verification Evidence，不是默认自动化 E2E Gate。
 
@@ -38,6 +39,7 @@ M7 需要为已经稳定的 FastAPI V1 Vertical Slice 增加一个可直接使�
 
 - 无构建静态界面保持了最小依赖和同源安全边界，但没有独立 JavaScript Unit Test Toolchain。
 - Human Browser Smoke 可以验证当前有限交互，但不提供自动化 E2E Regression Guarantee。
+- 内置双语文案避免增加 Runtime / Build Dependency；代价是新增界面文案需要同步维护两种语言，且当前不保存用户语言偏好。
 - 新 Snapshot API 增加了稳定 Public Contract；未来扩展字段仍需保持 Domain Source of Truth 和 Human Review Gate。
 - Local-only 约束避免在 M7 引入 Authentication，但 User ID 本身不是访问控制。
 

@@ -52,7 +52,7 @@ curl http://127.0.0.1:8000/health
 
 ## Minimal Product Interface
 
-M7 页面由 FastAPI 同源托管，不需要 Node、前端安装或单独构建步骤。页面支持加载只读 Portfolio Snapshot、提交 Investment Question，并展示 Answer、`OK` / `DEGRADED` 和本轮 Context Sources。
+M7 页面由 FastAPI 同源托管，不需要 Node、前端安装或单独构建步骤。页面支持加载只读 Portfolio Snapshot、提交 Investment Question，并展示 Answer、`OK` / `DEGRADED` 和本轮 Context Sources。界面可在中文与英文之间一键切换；切换只改变本地展示文案与时间格式，不翻译或改写 Agent Answer、Provider Metadata 等后端原始值。
 
 准备好 PostgreSQL 与 Migration 后，可以创建一份新的隔离 Demo Portfolio：
 

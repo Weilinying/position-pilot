@@ -17,6 +17,8 @@ def test_serves_product_interface_and_static_assets() -> None:
     assert "PositionPilot · Decision Desk" in page.text
     assert 'id="portfolio-form"' in page.text
     assert 'id="question-form"' in page.text
+    assert 'id="language-toggle"' in page.text
+    assert 'data-i18n="context_sources"' in page.text
     assert script.status_code == 200
     assert stylesheet.status_code == 200
 
@@ -32,6 +34,13 @@ def test_client_script_preserves_identity_and_safe_text_boundary() -> None:
     assert "questionGeneration" in script
     assert ".textContent" in script
     assert "innerHTML" not in script
+    assert 'source_ticker: "Ticker"' in script
+    assert 'source_market_time: "Market time"' in script
+    assert 'source_fetched: "Fetched"' in script
+    assert 'source_ticker: "标的"' in script
+    assert "portfolio_empty_initial" in script
+    assert "portfolio_empty_loaded" in script
+    assert "toggleLanguage" in script
 
 
 def test_static_mount_does_not_shadow_existing_routes() -> None:

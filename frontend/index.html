@@ -1,11 +1,12 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta
       name="description"
-      content="PositionPilot — 基于真实持仓与当前市场上下文的投资决策辅助界面。"
+      content="PositionPilot — investment decision support grounded in your portfolio and current market context."
+      data-i18n-content="meta_description"
     />
     <title>PositionPilot · Decision Desk</title>
     <link rel="stylesheet" href="/static/styles.css" />
@@ -14,13 +15,23 @@
   <body>
     <div class="page-shell">
       <header class="topbar">
-        <a class="brand" href="/app/" aria-label="PositionPilot 首页">
+        <a class="brand" href="/app/" aria-label="PositionPilot home" data-i18n-aria-label="brand_home">
           <span class="brand-mark" aria-hidden="true">PP</span>
           <span>PositionPilot</span>
         </a>
-        <div class="environment-pill">
-          <span class="live-dot" aria-hidden="true"></span>
-          Local decision workspace
+        <div class="topbar-actions">
+          <div class="environment-pill">
+            <span class="live-dot" aria-hidden="true"></span>
+            <span data-i18n="local_workspace">Local decision workspace</span>
+          </div>
+          <button
+            class="language-toggle"
+            id="language-toggle"
+            type="button"
+            aria-label="切换到中文"
+          >
+            中文
+          </button>
         </div>
       </header>
 
@@ -28,14 +39,14 @@
         <aside class="portfolio-panel" aria-labelledby="portfolio-title">
           <div class="section-heading">
             <div>
-              <p class="eyebrow">Structured state</p>
-              <h2 id="portfolio-title">Your portfolio</h2>
+              <p class="eyebrow" data-i18n="structured_state">Structured state</p>
+              <h2 id="portfolio-title" data-i18n="your_portfolio">Your portfolio</h2>
             </div>
             <span class="context-chip" id="portfolio-state">Not loaded</span>
           </div>
 
           <form class="portfolio-loader" id="portfolio-form" novalidate>
-            <label for="user-id">Portfolio User ID</label>
+            <label for="user-id" data-i18n="portfolio_user_id">Portfolio User ID</label>
             <div class="input-row">
               <input
                 id="user-id"
@@ -45,24 +56,26 @@
                 autocomplete="off"
                 placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
               />
-              <button class="secondary-button" type="submit">Load</button>
+              <button class="secondary-button" type="submit" data-i18n="load">Load</button>
             </div>
-            <p class="field-note">Use the ID printed by the local demo seed.</p>
+            <p class="field-note" data-i18n="seed_hint">Use the ID printed by the local demo seed.</p>
           </form>
 
-          <section class="cash-card" aria-label="Available cash">
-            <span>Available cash</span>
+          <section class="cash-card" aria-label="Available cash" data-i18n-aria-label="available_cash">
+            <span data-i18n="available_cash">Available cash</span>
             <strong id="available-cash">—</strong>
-            <small>Ledger-derived · USD</small>
+            <small data-i18n="ledger_derived">Ledger-derived · USD</small>
           </section>
 
           <div class="positions-header">
-            <span>Open positions</span>
+            <span data-i18n="open_positions">Open positions</span>
             <span id="position-count">—</span>
           </div>
           <div class="empty-state" id="positions-empty">
             <span class="empty-index">01</span>
-            <p>Load a portfolio to reveal the complete current position set.</p>
+            <p data-i18n="portfolio_empty_initial">
+              Load a portfolio to reveal the complete current position set.
+            </p>
           </div>
           <div class="position-list" id="position-list" aria-live="polite"></div>
           <p class="panel-message" id="portfolio-message" role="status"></p>
@@ -70,30 +83,36 @@
 
         <section class="decision-panel" aria-labelledby="decision-title">
           <div class="hero-copy">
-            <p class="eyebrow">Context-aware decision support</p>
-            <h1 id="decision-title">Know the position.<br />Read the moment.</h1>
-            <p class="hero-summary">
+            <p class="eyebrow" data-i18n="context_aware">Context-aware decision support</p>
+            <h1 id="decision-title" data-i18n="hero_title">Know the position. Read the moment.</h1>
+            <p class="hero-summary" data-i18n="hero_summary">
               Ask a focused investment question. PositionPilot combines your actual ledger state
               with only the market context the question needs.
             </p>
           </div>
 
           <form class="question-card" id="question-form">
-            <label for="question">Investment question</label>
+            <label for="question" data-i18n="investment_question">Investment question</label>
             <textarea
               id="question"
               name="question"
               rows="3"
               maxlength="4000"
-              placeholder="例如：GOOG 今天还能加一点吗？"
+              placeholder="For example: Can I add a little more GOOG today?"
+              data-i18n-placeholder="question_placeholder"
               disabled
             ></textarea>
             <div class="question-actions">
-              <span id="question-hint">Load a portfolio before asking.</span>
-              <button class="primary-button" id="ask-button" type="submit" disabled>
-                Ask PositionPilot
-                <span aria-hidden="true">↗</span>
-              </button>
+              <span id="question-hint" data-i18n="question_load_first">
+                Load a portfolio before asking.
+              </span>
+              <button
+                class="primary-button"
+                id="ask-button"
+                type="submit"
+                disabled
+                data-i18n="ask"
+              >Ask PositionPilot ↗</button>
             </div>
           </form>
 
@@ -105,21 +124,21 @@
           >
             <div class="result-heading">
               <div>
-                <p class="eyebrow">Decision response</p>
-                <h2 id="result-title">Awaiting a question</h2>
+                <p class="eyebrow" data-i18n="decision_response">Decision response</p>
+                <h2 id="result-title" data-i18n="result_awaiting">Awaiting a question</h2>
               </div>
               <span class="response-badge" id="response-status">Idle</span>
             </div>
-            <div class="answer-copy" id="answer-copy">
+            <div class="answer-copy" id="answer-copy" data-i18n="answer_initial">
               Your answer will appear here with the exact context sources used for this request.
             </div>
             <div class="source-section">
               <div class="source-heading">
-                <span>Context sources</span>
+                <span data-i18n="context_sources">Context sources</span>
                 <span id="source-count">0</span>
               </div>
               <div class="source-list" id="source-list">
-                <div class="source-placeholder">No sources yet.</div>
+                <div class="source-placeholder" data-i18n="sources_none">No sources yet.</div>
               </div>
             </div>
           </section>
@@ -127,8 +146,8 @@
       </main>
 
       <footer>
-        <span>Decision support, not automated trading.</span>
-        <span>Facts · Inference · Unknown</span>
+        <span data-i18n="footer_disclaimer">Decision support, not automated trading.</span>
+        <span data-i18n="footer_boundary">Facts · Inference · Unknown</span>
       </footer>
     </div>
   </body>

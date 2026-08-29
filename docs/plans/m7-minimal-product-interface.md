@@ -259,6 +259,9 @@ M7 Browser Smoke 是可重复、带固定 Checklist 和结果记录的 **Human V
 - [x] HTTP 422。
 - [x] HTTP 503 / controlled Provider Failure。
 - [x] Answer、Source、Error 与 User Input 中的 XSS Payload 均作为文本展示。
+- [x] Source Metadata 使用字段标签区分 Ticker、Provider、Feed、Market Time 与 Fetched At。
+- [x] 空仓 Snapshot 失效后恢复为未加载提示，不保留旧 Portfolio 的空仓语义。
+- [x] 中文 / 英文可一键切换，且切换不改变已加载身份、请求状态、Answer 或 Provider 原始值。
 
 不为满足矩阵擅自引入新的前端测试框架。若实际实现显示 Vanilla JS 状态逻辑已复杂到 Human Browser Smoke 无法稳定覆盖，应暂停并提交新增 Playwright / Node Toolchain 的 Decision Proposal。
 
@@ -285,7 +288,7 @@ M7 Browser Smoke 是可重复、带固定 Checklist 和结果记录的 **Human V
 - 在前端计算 Average Cost、Current Market Value、Position Weight、Market Regime、购买数量或买卖信号。
 - 修改 LLM Provider、Prompt、Tool Contract、Market / News Provider 或 Evaluation Dataset。
 - 将 Source Tracking 扩展为逐 Claim Citation 或返回完整 Tool Payload。
-- 移动端专项适配、国际化、Accessibility Certification 或 Production Analytics；基础键盘操作、语义标签和可读对比度仍属于正常实现质量。
+- 移动端专项适配、通用国际化 Framework、语言偏好持久化、Accessibility Certification 或 Production Analytics；已批准的中英静态界面切换、基础键盘操作、语义标签和可读对比度仍属于正常实现质量。
 - Deployment / Hosting；若 Human Review 要求发布，再单独制定 Hosting / Security 计划。
 
 ## 10. 已知限制与重新考虑条件
@@ -317,6 +320,7 @@ Human Review 于 2026-08-29 全部批准：
 - Browser 显式维护 `userIdInput`、`loadedUserId`、Portfolio Generation 与 Question Generation。User ID 输入变化会立即使 Context 失效，旧 User / 旧 Generation Response 被丢弃。
 - 所有动态 Portfolio、Answer、Source、Error 与 User Input 文本均使用安全 DOM Text API；Static Contract Test 禁止 `innerHTML`，Browser Injection Cases 未创建 Image / Script DOM，也未执行 Payload。
 - 2026-08-29 使用 Codex In-app Browser 完成固定 Human Browser Smoke：Portfolio Load、双 Position Type、Input Invalidation、延迟 Portfolio / Answer A → B、`OK`、`DEGRADED`、`NO_DATA`、Provider Failure、404、422、503、Network Failure 与 XSS Cases 均通过；Browser Console 无 Error / Warning。
+- Human Acceptance Review 追加修复 Source Metadata 标签与 Empty Portfolio stale copy，并增加不持久化的中英一键切换。复验确认五类 Source Metadata 标签及双语时间格式清晰展示；空仓 User 改变后恢复未加载提示并禁用 Question；切换语言不改变已加载身份、Answer 或 Provider 原始值；Browser Console 仍无 Error / Warning。
 - Browser Smoke 期间发现两项按钮状态恢复问题：中止 Portfolio Load 后 Load Button 可能保持禁用，以及中止 Question 后 Ask Button 可能保留 `Analyzing…` 文案。Root Cause 均为旧 Generation 的 `finally` 正确拒绝更新后，显式 Invalidation 未恢复控件状态；已在 Invalidation Path 修复并重验 A → B 场景。
 - Automated Review 继续补充了 Portfolio / Answer Payload Shape Validation 与 Portfolio Response User ID 一致性拒绝；修复后无未解决 Critical / High / Medium Finding。
 - 最终默认 Gate：367 passed、38 skipped；Skip 仍为需要显式真实模型、Alpaca 或 `TEST_DATABASE_URL` 的既有 Online / Integration Tests。
