@@ -201,7 +201,7 @@ Evaluation Evidence + Human Acceptance
 - 代表性 Cases 三次重复：22 / 27 通过；原始 5 次失败中 1 次为 Repair 后成功的非法 JSON，已按 Quality Signal 重新分类。
 - Human Review 发现低现金 Case 重复把数值关系解释为“不能买一股”，且加仓回答未实际引用历史 BUY 位置；RCA 指向 Prompt Contract 歧义。
 - Alpaca Market / News 3 项和切换前 Qwen 真实 Agent Online Smoke 1 项通过；DeepSeek Real-model Eval 与真实 Provider Evidence 分层覆盖，Human Acceptance 不要求重复组合 Smoke。PostgreSQL Integration 因未配置 `TEST_DATABASE_URL` 跳过。
-- Production Prompt / Tool Contract 保持不变；跨模型 Run Metadata、长期 Evaluation 文档与 Model Selection Report Template 已完成。
+- Failure-driven Prompt clarification 已完成；Routing Format RCA 与后续 Model Selection 阶段未再修改 Production Prompt / Tool Contract。跨模型 Run Metadata、长期 Evaluation 文档与 Model Selection Report Template 已完成。
 - `qwen3.7-plus-2026-05-26` 已完成：Automated 15 / 24，Request Success 21 / 24；`qwen3.8-max` 已完成：Automated 12 / 24，Request Success 22 / 24。
 - `deepseek-v4-pro-0813` 已完成：Automated 12 / 24，Request Success 24 / 24。
 - 原 `qwen3.7-plus-2026-05-26` Comparative Leader 结论受 Routing Format Confound 影响，已标记为 Superseded；不作为模型选型依据。

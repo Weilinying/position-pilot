@@ -1385,12 +1385,6 @@ COVERAGE_MATRIX: dict[V1Requirement, tuple[str, ...]] = {
     ),
 }
 
-# 历史 BUY Facts 已进入 Agent Context，但相关 Case 仍需真实模型 Grounding 证据。
-CASE_KNOWN_GAPS: dict[str, str] = {
-    "low_cash_personalization": "historical_buy_facts_real_model_grounding_not_verified",
-    "high_cash_personalization": "historical_buy_facts_real_model_grounding_not_verified",
-}
-
 CONTROLLED_CONTRASTS = (
     ControlledContrast(
         "available_cash",
@@ -1439,7 +1433,6 @@ def build_behavioral_case_report(
         **run_metadata.as_dict(),
         "case": case.id,
         "requirements": [requirement.value for requirement in requirements],
-        "coverage_known_gaps": ([CASE_KNOWN_GAPS[case.id]] if case.id in CASE_KNOWN_GAPS else []),
         "question": case.question,
         "tool_trace": {
             "quote_tickers": trace.tool_tickers,
@@ -1501,7 +1494,6 @@ def build_behavioral_failure_report(
         **run_metadata.as_dict(),
         "case": case.id,
         "requirements": [requirement.value for requirement in requirements],
-        "coverage_known_gaps": ([CASE_KNOWN_GAPS[case.id]] if case.id in CASE_KNOWN_GAPS else []),
         "status": "REQUEST_FAILURE",
         "request_failure": {
             "code": failure.code.value,
@@ -1634,10 +1626,6 @@ def test_v1_dataset_has_complete_requirement_mapping() -> None:
         case_id for mapped_case_ids in COVERAGE_MATRIX.values() for case_id in mapped_case_ids
     }
     assert mapped_case_ids == set(case_ids)
-    assert CASE_KNOWN_GAPS == {
-        "low_cash_personalization": "historical_buy_facts_real_model_grounding_not_verified",
-        "high_cash_personalization": "historical_buy_facts_real_model_grounding_not_verified",
-    }
 
 
 def test_historical_buy_eval_fixture_matches_current_positions() -> None:
