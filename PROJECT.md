@@ -28,6 +28,8 @@ V1 只支持美股及必要的美国上市 ETF。
 
 用户已经明确提供并持久化的信息不应被重复询问，除非该信息可能过期、发生冲突或需要确认更新。
 
+M0～M7 只构成以上核心能力与 Demo Interface 的内部 Engineering Milestones。正式 `v1.0.0` 还要求本地用户无需预先知道 UUID 或运行 Demo Seed，即可创建 Portfolio，并通过 BUY / SELL / DEPOSIT / WITHDRAWAL 持续维护 Structured State；Version / Release 与 Milestone 的对应关系由 `ROADMAP.md` 管理。
+
 ## 3. Decision Context
 
 Agent 的判断不能只依赖用户最新一句话。一次投资问题的有效上下文可抽象为：
@@ -147,6 +149,8 @@ V1 不实现自动交易、券商账户控制、自动调仓、期权策略、�
 
 V1 也暂不实现自动投资复盘、行为偏差分析、复杂 Semantic Memory、Vector Database、大型 RAG Pipeline 和 Multi-Agent；不为了增加技术复杂度主动加入 Redis、Kafka、Microservices、Kubernetes、MCP Server 或多个未实际使用的 LLM Provider。
 
+V1.x 保持本地、受控环境与单 Portfolio Context，不实现 Authentication、Cloud Account、Broker Sync、Multiple Portfolio Management、完整 Portfolio Performance History、Dividend 或 Corporate Action；这些 connected product 与 accounting 边界留到 V2。
+
 复杂度必须由真实需求证明。
 
 ## 12. Evaluation
@@ -169,4 +173,4 @@ Evaluation 不只判断“Agent 能不能回答”，还应逐步覆盖 Intent U
 
 最终回答应明显体现：这是基于“当前这个用户 + 当前这个市场 + 当前这只股票”的分析。
 
-如果这一闭环能够稳定实现，V1 即达到主要产品目标。
+当本地用户还能在不预先取得 UUID 或运行 Demo Seed 的情况下创建并维护上述 Structured State，这一闭环即达到 `v1.0.0` Local Self-Service MVP 的主要产品目标。

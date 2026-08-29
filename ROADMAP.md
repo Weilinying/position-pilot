@@ -1,8 +1,8 @@
-# PositionPilot V1 Roadmap
+# PositionPilot Product Roadmap
 
 ## 1. 文档目的
 
-本文件只定义 PositionPilot V1 的 Milestone、范围和完成标准，用于回答“现在开发到哪一步、下一步要做到什么”。
+本文件定义 PositionPilot 的 Engineering Milestone、Release Mapping、范围和完成标准，用于回答“现在开发到哪一步、何时形成用户可感知的 Release、下一步要做到什么”。
 
 具体类、接口、Task 拆分和并行关系不在本文件中维护。复杂 Milestone 开始前，由 Codex 根据当前 Repository 状态生成或更新 `docs/plans/<milestone>.md`。
 
@@ -12,10 +12,25 @@
 
 **Current Milestone:** M7 — Minimal Product Interface
 **Status:** IN PROGRESS
+**Current Release State:** pre-`v1.0.0` Demo Core；M7 已实现，等待 Human Acceptance
+**Next Planned Milestone:** M8 — Local Portfolio Management（Roadmap 等待 Human Approval，尚未开始）
 
 Milestone 状态统一使用 `NOT STARTED`、`IN PROGRESS`、`DONE`，不维护百分比进度。
 
-## 3. V1 Milestones
+## 3. Milestone 与 Version / Release
+
+Milestone 表示内部开发阶段；Version / Release 表示用户可感知的产品能力边界。完成一个 Milestone 不自动等于发布一个 Version。
+
+| Release | Engineering Milestone | 用户可感知边界 |
+|---|---|---|
+| Demo Core（pre-`v1.0.0`） | M0～M7 | 核心 Ledger、Market / News Context、Single Agent、Evaluation 与需预置 User ID 的 Demo Interface |
+| `v1.0.0` | M8 | 本地用户无需 UUID 或 Demo Seed 即可创建并持续维护 Portfolio，完成 Self-Service MVP |
+| `v1.1.0` | M9 | 通过 Text / Screenshot Draft 与人工确认降低 Portfolio 初始化成本 |
+| `v1.2.0` | M10 | Broker-neutral Fee Policy 基础与语义明确的第一阶段 Accounting / P&L |
+| `v1.3.0` | M11 | 按需路由的确定性 Technical Context |
+| V2 | 后续另行规划 | Connected Product：账户、Broker Sync、多 Portfolio 与完整绩效历史 |
+
+## 4. V1 Engineering Milestones
 
 ```text
 M0 Project Foundation
@@ -26,9 +41,13 @@ M0 Project Foundation
 → M5 Context-Aware Decision Flow
 → M6 Evaluation & V1 Hardening
 → M7 Minimal Product Interface
+→ M8 Local Portfolio Management (`v1.0.0`)
+→ M9 Portfolio Import (`v1.1.0`)
+→ M10 Accounting & P&L (`v1.2.0`)
+→ M11 Technical Context (`v1.3.0`)
 ```
 
-M0～M3 应尽快形成第一个端到端可用闭环；M4～M6 再逐步增加上下文质量、动态路由和可靠性；M7 提供最小可使用和演示界面。
+M0～M7 是构建 PositionPilot V1 Core 与 Demo Interface 的内部 Engineering Milestones，不直接等同于正式 `v1.0.0`。M8 完成 Local Self-Service 闭环后才形成 `v1.0.0`；M9～M11 在保持本地、单用户上下文与现有核心架构的前提下形成后续 V1.x Release。
 
 ## M0 — Project Foundation
 
@@ -216,8 +235,137 @@ M6 不从零开始 Evaluation，而是在 M3～M5 已积累的 Behavioral Eval C
 * V1 可以通过界面完成端到端演示；
 * Human Acceptance 通过。
 
-## 4. V1 之后
+## M8 — Local Portfolio Management
 
-V1 完成前不展开 V2～V5 的详细 Roadmap。后续方向继续以 `PROJECT.md` 为准，并根据 V1 的真实使用、Evaluation 和 Failure Mode 再制定下一阶段 Roadmap。
+**Status:** NOT STARTED — 等待 Roadmap Human Approval
 
-Framework、Skill、Semantic Memory、Vector Database、Multi-Agent、额外 Infrastructure 等能力不作为预设 Milestone；只有真实需求证明其必要性时，再进入后续 Roadmap 或 ADR。
+**Goal**
+
+让本地用户无需预先知道 UUID、无需 Demo Seed，即可从零创建并持续维护 Portfolio；M8 完成后发布 Local Self-Service MVP `v1.0.0`。
+
+**Scope**
+
+在现有同源 Web Interface 中增加本地 Portfolio 创建、Initial Cash 输入与创建后自动加载。提供最小 Ledger Entry UI：BUY / SELL 输入 ticker、quantity、price、`LONG_TERM / SWING`、可选实际发生时间与 reason / note；DEPOSIT / WITHDRAWAL 复用 M4 已实现的 Cash Event Domain、Service 与 Public API。任何成功写入后重新读取 Portfolio Snapshot，State 继续完全由现有 immutable Transaction / Cash Event Ledger 与 deterministic replay 产生。
+
+现有后端尚无 User 创建和 Transaction 写入 Public API；M8 只补齐调用 `PortfolioService.create_user()` / `record_transaction()` 的最薄 API Adapter，不复制 Domain Validation、金额、手续费、Average Cost、Cash 或 Position 计算，具体 Public API Contract 在 M8 执行计划中进入 Human Review。M8 的“修改 Portfolio”只表示追加新的不可变 Ledger Record，不允许原地编辑或删除历史 Transaction。
+
+保留 M7 的 Portfolio View、Investment QA、Source Grounding、Failure State、身份一致性与安全文本渲染。
+
+**Non-goals**
+
+- Authentication、Cloud Account、Broker Sync 或 Multiple Portfolio Management；
+- Chart、Portfolio Performance History 或 Full Transaction History Editor；
+- 修改 / 删除既有 immutable Transaction 或 Cash Event；
+- React / Frontend Framework Migration 或公开部署。
+
+**Done**
+
+* 本地用户可从页面创建 Portfolio、输入 Initial Cash，并自动加载新 Portfolio；
+* 页面可追加 BUY、SELL、DEPOSIT 与 WITHDRAWAL，且支持既有 `LONG_TERM / SWING` 语义；
+* 非法 Ticker / Decimal、Insufficient Cash、Oversell、Unknown User 与非法时间具有明确失败状态，失败不产生部分写入；
+* 每次写入后 Portfolio Snapshot 反映最新 deterministic Ledger replay，不在前端计算金融事实；
+* `Create Portfolio → Initial Funding → BUY / SELL / DEPOSIT / WITHDRAWAL → Deterministic Portfolio State → Ask Question → Grounded Answer` 可稳定完成；
+* Automated Review、相关 Regression Gate 与 Human Browser Smoke 通过；
+* Human Acceptance 通过，并形成 `v1.0.0` Release。
+
+## M9 — Portfolio Import
+
+**Status:** NOT STARTED
+
+**Goal**
+
+通过 Text / Screenshot Import 降低用户初始化 Portfolio 的录入成本，形成 `v1.1.0`。
+
+**Scope**
+
+建立 `Text / Screenshot → Structured Import Draft → Uncertain / Missing Field Highlight → Human Confirmation → Deterministic Validation → Portfolio Write` 流程。识别结果不得直接写 Ledger；原始图片默认不持久化，错误与低置信度 / `UNKNOWN` 字段必须可解释。
+
+M9 重点评估“系统开始跟踪时已经存在的持仓状态”这一领域语义。截图中的 ticker、shares 与 average cost 不能伪造成真实历史 BUY；实现前应比较 `OPENING_POSITION`、`POSITION_IMPORT` 或等价概念。若该选择改变 Ledger invariants、replay semantics 或 Cost Basis 来源，必须先提交候选 ADR 并进入 Human Review Gate。Vision / OCR Provider 与图片安全边界同样必须在 M9 实现前评估，不默认假设当前 LLM Adapter 支持图片。
+
+**Non-goals**
+
+- 识别结果绕过确认直接写入；
+- 默认持久化原始图片，或把图片内容写入普通日志；
+- Broker Sync、自动 Reconciliation 或覆盖所有券商截图格式；
+- 从不完整图片推测缺失的 Ticker、Position Type、Shares 或 Cost Basis。
+
+**Done**
+
+* Text 与受支持 Screenshot 均只能生成可审查的 Structured Import Draft；
+* 不确定、缺失与非法字段在写入前明确展示并阻止未确认导入；
+* Human Confirmation 后复用 deterministic Domain Validation，失败不产生部分 Portfolio State；
+* Imported Opening Position 语义不冒充已知历史交易，并保留 `LONG_TERM / SWING`；
+* 图片隐私、大小 / 类型限制、Provider Failure 与 Injection Boundary 有明确测试和文档；
+* Human Acceptance 通过，并形成 `v1.1.0` Release。
+
+## M10 — Accounting & P&L
+
+**Status:** NOT STARTED
+
+**Goal**
+
+先建立版本化、Broker-neutral 的 Fee Policy 基础，再提供语义明确且可确定计算的第一阶段 Accounting / P&L，形成 `v1.2.0`。
+
+**Scope**
+
+依赖顺序固定为 `Fee Policy → Cost Basis → Realized / Unrealized P&L → Return Metrics`。将当前唯一的 `IBKR_PRO_TIERED_US_2026_08` 演化为轻量 Fee Policy Contract / Registry，至少保留既有策略并评估 `ZERO_COMMISSION_US`；不为未来券商构建 Plugin System。Historical Transaction 永久保留创建时的 fee policy 与已持久化 fee，策略演进不得重算历史记录。
+
+第一阶段只提供 Current Market Value、Unrealized P&L、Unrealized Return 与 Realized P&L。Current Market Value 与未实现指标必须保留 Market Price source / timestamp；默认不扣除未来卖出手续费，除非届时批准了明确规则。`LONG_TERM / SWING` 必须先独立核算，才允许向 ticker 或 portfolio 层聚合。Fee Policy、持久化约束和历史重放校验的具体演进属于候选 ADR / Human Review 范围。
+
+**Non-goals**
+
+- 用 `current_value / cumulative_deposit - 1` 冒充完整 Portfolio Return；
+- TWR、MWR / XIRR、Return Curve 或 Daily Valuation History；
+- Dividend、Tax、Corporate Action、多币种或完整 Broker Statement Accounting；
+- 通用 Fee Plugin Framework、未经证实的券商费率或改写历史费用。
+
+**Done**
+
+* 至少两个明确、版本化的 Fee Policy 可独立测试，既有 IBKR Ledger 结果保持不变；
+* Historical Transaction 的 fee policy 与实际 fee 不因当前默认策略变化而改变；
+* Market Value 与 P&L 使用 Decimal、明确公式和结构化 Source / Timestamp；
+* Realized / Unrealized P&L 与 Unrealized Return 对 BUY、部分 / 全部 SELL、费用和 `LONG_TERM / SWING` 有边界测试；
+* 缺少或陈旧 Market Price 时不编造 Current Value / Unrealized Metrics，并给出明确状态；
+* Human Acceptance 通过，并形成 `v1.2.0` Release。
+
+## M11 — Technical Context
+
+**Status:** NOT STARTED
+
+**Goal**
+
+在现有 Context Routing 与 Price History Tool 上增加按需使用的 deterministic Technical Context，形成 `v1.3.0`；不建设自动交易信号引擎。
+
+**Scope**
+
+保持 `Question → Context Routing → Price History Tool → Deterministic Python Calculation → Structured Derived Facts → LLM Explanation`。初步评估 SMA20、SMA50、Distance to SMA20、Distance to SMA50，并保留现有 range / direction facts。只有问题需要趋势、位置或均线 Context 时才调用 Price History；LLM 只解释已提供事实，不负责指标计算。
+
+当前 Recent Price History 固定为最近 45 个日历日、最多 30 根 Daily Bars，不足以计算 SMA50；M11 必须在保留 completed-bar、freshness、adjustment、source / feed / timestamp 与 Provider Failure 语义的前提下扩展窗口。优先丰富现有 Price History Context，不为指标数量机械增加独立 Tool。
+
+**Non-goals**
+
+- 把 Technical Context 定义为 BUY / SELL Signal；
+- 机械注入所有问题，或让 LLM 从原始 Bars 自行计算指标；
+- RSI、MACD、Support / Resistance、Candlestick Pattern 或通用 Technical Analysis Engine；
+- 分钟级 / 实时指标流、WebSocket、缓存或图表平台。
+
+**Done**
+
+* SMA20 / SMA50 与距离指标由确定性 Python / Decimal 代码计算并具有边界测试；
+* Price History 窗口足以支持已批准指标，completed / stale / insufficient data 状态明确；
+* 与技术趋势无关的问题不机械调用 Price History，相关问题能够取得并解释 Structured Derived Facts；
+* Source Grounding 保留 Provider、Feed、Adjustment、Market Timestamp 与 Fetched At；
+* 指标不被表示为自动 BUY / SELL Signal；
+* Human Acceptance 通过，并形成 `v1.3.0` Release。
+
+## 5. V2 — Connected Product
+
+V2 只保留高层范围，等 V1.x 的真实使用、Evaluation 与 Failure Mode 提供证据后再制定详细 Milestone：
+
+- Authentication、User Account 与 Credential Security；
+- Multiple Portfolios 与明确 Ownership / Authorization；
+- Broker Sync、External Transaction Identity、Idempotency、Partial Fill、Reconciliation 与 Broker / Local Conflict；
+- Complete Portfolio Performance History，包括 Daily Valuation、TWR、MWR / XIRR 与 Return Curve；
+- Dividend、Corporate Action 及 connected accounting requirements。
+
+Broker Sync 会引入新的信任、身份、对账、幂等与 Credential Security 边界，因此属于 V2，而不是 V1.x 的普通功能增强。Framework、Semantic Memory、Vector Database、Multi-Agent、Cache、Queue 或额外 Infrastructure 仍不作为预设能力；只有真实需求证明必要时，才进入后续 Roadmap、Human Review 与 ADR。
