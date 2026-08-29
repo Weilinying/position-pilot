@@ -2,7 +2,7 @@
 
 ## 1. 状态与目标
 
-**Status:** IN PROGRESS — Human Approved 2026-08-29
+**Status:** IMPLEMENTED — Awaiting Human Acceptance
 
 M7 为已完成核心 V1 能力的 PositionPilot 增加一个可直接使用和演示的最小 Web Interface。界面必须忠实展示后端 Structured State、Agent Answer、Source Tracking 与 Failure State，不在浏览器中复制 Portfolio Calculation、Market Regime 或其他金融业务规则。
 
@@ -248,17 +248,17 @@ T6 Automated Review → Fix → Re-check → Human Acceptance
 
 M7 Browser Smoke 是可重复、带固定 Checklist 和结果记录的 **Human Verification Evidence**，不属于默认 Automated Regression Gate，也不得在文档中描述为自动化 E2E。固定 Checklist 至少包含：
 
-- [ ] Portfolio loaded。
-- [ ] `LONG_TERM` / `SWING` 分别展示。
-- [ ] 修改 User ID 后 Context 立即失效，Question 禁用。
-- [ ] A 的延迟 Portfolio / Answer Response 不会更新 B 的 UI。
-- [ ] `OK` Answer。
-- [ ] `DEGRADED` Answer。
-- [ ] Source `NO_DATA` / `NO_NEWS_FOUND`。
-- [ ] Provider Failure Source。
-- [ ] HTTP 422。
-- [ ] HTTP 503 / controlled Provider Failure。
-- [ ] Answer、Source、Error 与 User Input 中的 XSS Payload 均作为文本展示。
+- [x] Portfolio loaded。
+- [x] `LONG_TERM` / `SWING` 分别展示。
+- [x] 修改 User ID 后 Context 立即失效，Question 禁用。
+- [x] A 的延迟 Portfolio / Answer Response 不会更新 B 的 UI。
+- [x] `OK` Answer。
+- [x] `DEGRADED` Answer。
+- [x] Source `NO_DATA`。
+- [x] Provider Failure Source。
+- [x] HTTP 422。
+- [x] HTTP 503 / controlled Provider Failure。
+- [x] Answer、Source、Error 与 User Input 中的 XSS Payload 均作为文本展示。
 
 不为满足矩阵擅自引入新的前端测试框架。若实际实现显示 Vanilla JS 状态逻辑已复杂到 Human Browser Smoke 无法稳定覆盖，应暂停并提交新增 Playwright / Node Toolchain 的 Decision Proposal。
 
@@ -309,3 +309,18 @@ Human Review 于 2026-08-29 全部批准：
 - [x] 接受 Demo Seed 创建新的隔离 User，不提供 UI 内 User / Transaction 管理或删除能力。
 
 若实现需要突破以上边界，重新进入 Human Review Gate。
+
+## 12. 当前执行证据
+
+- 已在 `codex/m7-minimal-product-interface` Branch 完成只读 Portfolio Snapshot API、同源静态 Web Interface、隔离 Demo Seed、文档与 ADR。
+- `GET /v1/portfolios/{user_id}` 直接复用 `PortfolioService.get_portfolio()`，按 `(ticker, position_type)` 稳定排序并保持 Decimal string；没有新增 Database、Migration、Projection 或金融计算路径。
+- Browser 显式维护 `userIdInput`、`loadedUserId`、Portfolio Generation 与 Question Generation。User ID 输入变化会立即使 Context 失效，旧 User / 旧 Generation Response 被丢弃。
+- 所有动态 Portfolio、Answer、Source、Error 与 User Input 文本均使用安全 DOM Text API；Static Contract Test 禁止 `innerHTML`，Browser Injection Cases 未创建 Image / Script DOM，也未执行 Payload。
+- 2026-08-29 使用 Codex In-app Browser 完成固定 Human Browser Smoke：Portfolio Load、双 Position Type、Input Invalidation、延迟 Portfolio / Answer A → B、`OK`、`DEGRADED`、`NO_DATA`、Provider Failure、404、422、503、Network Failure 与 XSS Cases 均通过；Browser Console 无 Error / Warning。
+- Browser Smoke 期间发现两项按钮状态恢复问题：中止 Portfolio Load 后 Load Button 可能保持禁用，以及中止 Question 后 Ask Button 可能保留 `Analyzing…` 文案。Root Cause 均为旧 Generation 的 `finally` 正确拒绝更新后，显式 Invalidation 未恢复控件状态；已在 Invalidation Path 修复并重验 A → B 场景。
+- Automated Review 继续补充了 Portfolio / Answer Payload Shape Validation 与 Portfolio Response User ID 一致性拒绝；修复后无未解决 Critical / High / Medium Finding。
+- 最终默认 Gate：367 passed、38 skipped；Skip 仍为需要显式真实模型、Alpaca 或 `TEST_DATABASE_URL` 的既有 Online / Integration Tests。
+- Ruff format / lint、mypy strict、`uv lock --check`、Alembic heads / history 与 `git diff main...HEAD --check` 通过；Alembic Head 仍为 `20260825_0004`。
+- 未新增或修改 `.env`、Secret、Provider、Agent Prompt、Tool Contract、Database Schema 或 Hosting 配置。
+- 新增 ADR 0008 记录无构建同源界面、只读 API、Client Identity Invariants、loopback 与 Human Browser Smoke 边界；未新增 Engineering Note 或 Migration。
+- 当前等待 Human Acceptance；通过后按 Repository Workflow 合并到本地 `main`，不自动 Push 或删除 Branch。
