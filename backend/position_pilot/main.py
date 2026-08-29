@@ -23,6 +23,7 @@ from position_pilot.application.investment_agent import (
     InvestmentResponseStatus,
 )
 from position_pilot.application.portfolio_service import (
+    CreateUserCommand,
     PortfolioService,
     RecordCashEventCommand,
 )
@@ -83,6 +84,32 @@ class ApiErrorDetail(BaseModel):
 
     code: str
     message: str
+
+
+class CreatePortfolioRequest(BaseModel):
+    """创建本地 Portfolio Owner 的最小输入。"""
+
+    display_name: str = Field(min_length=1, max_length=200)
+    initial_cash: Decimal = Field(ge=0, max_digits=28, decimal_places=8)
+
+    @field_validator("display_name")
+    @classmethod
+    def normalize_display_name(cls, value: str) -> str:
+        """拒绝只包含空白的名称，并与领域规范化保持一致。"""
+
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("display_name 不能为空")
+        return normalized
+
+
+class PortfolioCreatedResponse(BaseModel):
+    """创建成功后返回的本地 Portfolio 标识。"""
+
+    user_id: UUID
+    display_name: str
+    initial_cash: Decimal
+    created_at: datetime
 
 
 class CashEventRequest(BaseModel):
@@ -169,6 +196,39 @@ def get_portfolio_service_dependency() -> PortfolioService:
     """延迟装配 Portfolio Service，允许 API Contract Test 替换。"""
 
     return get_portfolio_service()
+
+
+@app.post(
+    "/v1/portfolios",
+    response_model=PortfolioCreatedResponse,
+    status_code=status.HTTP_201_CREATED,
+    responses={422: {"description": "Portfolio 创建输入不满足领域约束"}},
+)
+def create_portfolio(
+    request: CreatePortfolioRequest,
+    portfolio_service: Annotated[PortfolioService, Depends(get_portfolio_service_dependency)],
+) -> PortfolioCreatedResponse:
+    """创建现有 User → Portfolio State 模型的本地产品入口。"""
+
+    try:
+        user = portfolio_service.create_user(
+            CreateUserCommand(
+                display_name=request.display_name,
+                initial_cash=request.initial_cash,
+            )
+        )
+    except InvalidPortfolioValue as error:
+        _raise_api_error(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            ApiErrorDetail(code="INVALID_PORTFOLIO", message=str(error)),
+        )
+
+    return PortfolioCreatedResponse(
+        user_id=user.id,
+        display_name=user.display_name,
+        initial_cash=user.initial_cash,
+        created_at=user.created_at,
+    )
 
 
 @app.get(
