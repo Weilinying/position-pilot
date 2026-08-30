@@ -1,4 +1,4 @@
-"""M7 静态产品界面交付与安全边界测试。"""
+"""M8 本地 Portfolio 管理界面与安全边界测试。"""
 
 from fastapi.testclient import TestClient
 
@@ -15,7 +15,11 @@ def test_serves_product_interface_and_static_assets() -> None:
 
     assert page.status_code == 200
     assert "PositionPilot · Decision Desk" in page.text
+    assert 'id="create-form"' in page.text
     assert 'id="portfolio-form"' in page.text
+    assert 'id="forget-pointer-button"' in page.text
+    assert 'id="trade-form"' in page.text
+    assert 'id="cash-form"' in page.text
     assert 'id="question-form"' in page.text
     assert 'id="language-toggle"' in page.text
     assert 'data-i18n="context_sources"' in page.text
@@ -41,6 +45,28 @@ def test_client_script_preserves_identity_and_safe_text_boundary() -> None:
     assert "portfolio_empty_initial" in script
     assert "portfolio_empty_loaded" in script
     assert "toggleLanguage" in script
+
+
+def test_client_script_preserves_m8_write_and_recovery_boundaries() -> None:
+    """M8 静态 Contract 应保留恢复指针、写锁与后端时间语义。"""
+
+    with TestClient(app) as client:
+        script = client.get("/static/app.js").text
+
+    assert 'LOCAL_POINTER_KEY = "positionpilot.local-portfolio.v1"' in script
+    assert "window.localStorage" in script
+    assert 'writeState: "idle"' in script
+    assert "writeGeneration" not in script
+    assert 'clientState.writeState === "submitting"' in script
+    assert "preserveRecoveryPointer" in script
+    assert "response.status === 404 && !preserveRecoveryPointer" in script
+    assert 'fetch("/v1/portfolios"' in script
+    assert "/transactions`" in script
+    assert "/cash-events`" in script
+    assert "payload.occurred_at = occurredAt.value" in script
+    assert "new Date(rawValue)" in script
+    assert "Number(elements.tradePrice" not in script
+    assert "Number(elements.cashAmount" not in script
 
 
 def test_static_mount_does_not_shadow_existing_routes() -> None:

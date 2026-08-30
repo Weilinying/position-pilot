@@ -1,5 +1,6 @@
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const LOCAL_POINTER_KEY = "positionpilot.local-portfolio.v1";
 
 const translations = {
   en: {
@@ -11,6 +12,25 @@ const translations = {
     local_workspace: "Local decision workspace",
     structured_state: "Structured state",
     your_portfolio: "Your portfolio",
+    start_here: "Start here",
+    create_portfolio: "Create a local portfolio",
+    portfolio_name: "Portfolio name",
+    portfolio_name_placeholder: "e.g. Long-term plan",
+    initial_cash: "Initial cash",
+    initial_cash_placeholder: "10000.00",
+    create_hint: "Create a local portfolio without a seed UUID. Cash is recorded by the backend.",
+    create: "Create portfolio",
+    creating: "Creating…",
+    create_success: "Portfolio created and loaded.",
+    create_refresh_failed:
+      "Portfolio created, but refreshing its current state failed. Use Load to try again.",
+    create_response_unknown: "Portfolio creation result unknown. Do not automatically retry.",
+    create_contract_error:
+      "The portfolio creation response was invalid. The result may be unknown; do not automatically retry.",
+    create_service_unreachable:
+      "The portfolio service could not be reached. The creation result is unknown.",
+    forget_pointer: "Forget local pointer",
+    forget_success: "Local pointer forgotten. The server portfolio was not deleted.",
     portfolio_not_loaded: "Not loaded",
     portfolio_stale: "Stale",
     portfolio_loading: "Loading…",
@@ -22,7 +42,7 @@ const translations = {
     portfolio_user_id: "Portfolio User ID",
     load: "Load",
     loading: "Loading…",
-    seed_hint: "Use the ID printed by the local demo seed.",
+    seed_hint: "Use an existing UUID to recover a local portfolio.",
     available_cash: "Available cash",
     ledger_derived: "Ledger-derived · USD",
     open_positions: "Open positions",
@@ -58,6 +78,53 @@ const translations = {
     source_market_time: "Market time",
     source_fetched: "Fetched",
     source_portfolio_state: "Structured portfolio state",
+    maintain_portfolio: "Maintain portfolio",
+    ledger_entries: "Ledger entries",
+    trade_entry: "Trade entry",
+    cash_entry: "Cash entry",
+    immutable_entry: "Appends an immutable record",
+    action: "Action",
+    buy: "BUY",
+    sell: "SELL",
+    ticker: "Ticker",
+    price: "Price",
+    position_type: "Position type",
+    long_term: "LONG_TERM",
+    swing: "SWING",
+    occurred_at_optional: "Occurred at (optional)",
+    occurred_at_hint:
+      "Leave blank to use backend application time. Enter a past local time only for history.",
+    reason_optional: "Reason (optional)",
+    save_trade: "Save trade",
+    cash_event_type: "Cash event",
+    deposit: "DEPOSIT",
+    withdrawal: "WITHDRAWAL",
+    amount: "Amount",
+    save_cash: "Save cash event",
+    write_idle: "Idle",
+    write_submitting: "Saving…",
+    write_refresh_required: "Refresh required",
+    mutation_load_first: "Load a portfolio before adding a ledger entry.",
+    mutation_refresh_required: "Refresh the portfolio before adding a ledger entry.",
+    mutation_in_progress: "Saving a ledger entry. Identity controls are locked.",
+    mutation_invalid_input: "Check the entry fields before submitting.",
+    invalid_occurred_at: "Enter a valid local date and time, or leave it blank.",
+    write_success: "Ledger entry saved.",
+    trade_saved: "Trade saved",
+    cash_saved: "Cash event saved",
+    write_result_unknown:
+      "Write result unknown. Do not automatically retry. Reload the current portfolio to inspect its state.",
+    write_failed_refresh_required:
+      "The write failed. Reload the current portfolio before continuing.",
+    write_succeeded_refresh_failed:
+      "The write succeeded, but refreshing the current portfolio failed. Reload before continuing.",
+    write_contract_error:
+      "The write response did not satisfy the expected contract. Reload before continuing.",
+    trade_service_unreachable:
+      "The trade service could not be reached. The write result is unknown.",
+    cash_service_unreachable:
+      "The cash service could not be reached. The write result is unknown.",
+    portfolio_reload: "Reload",
     portfolio_context_changed: "Portfolio context changed. Reload it before asking a question.",
     portfolio_user_changed: "User ID changed. Load the new portfolio to continue.",
     portfolio_user_changed_loading:
@@ -91,6 +158,22 @@ const translations = {
     local_workspace: "本地决策工作台",
     structured_state: "结构化状态",
     your_portfolio: "你的投资组合",
+    start_here: "从这里开始",
+    create_portfolio: "创建本地投资组合",
+    portfolio_name: "投资组合名称",
+    portfolio_name_placeholder: "例如：长期计划",
+    initial_cash: "初始现金",
+    initial_cash_placeholder: "10000.00",
+    create_hint: "无需 Seed UUID 即可创建本地投资组合。现金由后端记录。",
+    create: "创建投资组合",
+    creating: "创建中…",
+    create_success: "投资组合已创建并加载。",
+    create_refresh_failed: "投资组合已创建，但刷新当前状态失败。请使用“加载”重试。",
+    create_response_unknown: "投资组合创建结果未知，请勿自动重试。",
+    create_contract_error: "投资组合创建响应无效，结果可能未知，请勿自动重试。",
+    create_service_unreachable: "无法连接投资组合服务，创建结果未知。",
+    forget_pointer: "忘记本地引用",
+    forget_success: "已忘记本地引用，服务器上的投资组合未被删除。",
     portfolio_not_loaded: "未加载",
     portfolio_stale: "已失效",
     portfolio_loading: "加载中…",
@@ -102,7 +185,7 @@ const translations = {
     portfolio_user_id: "投资组合用户 ID",
     load: "加载",
     loading: "加载中…",
-    seed_hint: "使用本地 Demo Seed 输出的用户 ID。",
+    seed_hint: "使用已有 UUID 恢复本地投资组合。",
     available_cash: "可用现金",
     ledger_derived: "账本计算 · USD",
     open_positions: "当前持仓",
@@ -138,6 +221,46 @@ const translations = {
     source_market_time: "市场时间",
     source_fetched: "获取时间",
     source_portfolio_state: "结构化投资组合状态",
+    maintain_portfolio: "维护投资组合",
+    ledger_entries: "账本记录",
+    trade_entry: "交易记录",
+    cash_entry: "现金记录",
+    immutable_entry: "追加不可变记录",
+    action: "操作",
+    buy: "BUY",
+    sell: "SELL",
+    ticker: "标的",
+    price: "价格",
+    position_type: "仓位类型",
+    long_term: "LONG_TERM",
+    swing: "SWING",
+    occurred_at_optional: "发生时间（可选）",
+    occurred_at_hint: "留空使用后端应用时间。只有补录历史时才填写过去的本地时间。",
+    reason_optional: "原因（可选）",
+    save_trade: "保存交易",
+    cash_event_type: "现金事件",
+    deposit: "DEPOSIT",
+    withdrawal: "WITHDRAWAL",
+    amount: "金额",
+    save_cash: "保存现金事件",
+    write_idle: "空闲",
+    write_submitting: "保存中…",
+    write_refresh_required: "需要刷新",
+    mutation_load_first: "请先加载投资组合，再添加账本记录。",
+    mutation_refresh_required: "请先刷新投资组合，再添加账本记录。",
+    mutation_in_progress: "正在保存账本记录，身份操作已锁定。",
+    mutation_invalid_input: "请检查记录表单字段后再提交。",
+    invalid_occurred_at: "请输入有效的本地日期时间，或留空。",
+    write_success: "账本记录已保存。",
+    trade_saved: "交易已保存",
+    cash_saved: "现金事件已保存",
+    write_result_unknown: "写入结果未知，请勿自动重试。请重新加载当前投资组合以检查状态。",
+    write_failed_refresh_required: "写入失败，请重新加载当前投资组合后继续。",
+    write_succeeded_refresh_failed: "写入成功，但刷新当前投资组合失败。请重新加载后继续。",
+    write_contract_error: "写入响应不符合预期的数据契约，请重新加载后继续。",
+    trade_service_unreachable: "无法连接交易服务，写入结果未知。",
+    cash_service_unreachable: "无法连接现金服务，写入结果未知。",
+    portfolio_reload: "重新加载",
     portfolio_context_changed: "投资组合上下文已变化，请重新加载后再提问。",
     portfolio_user_changed: "用户 ID 已变化，请加载新的投资组合后继续。",
     portfolio_user_changed_loading: "加载期间用户 ID 发生变化，请重新加载目标投资组合。",
@@ -164,15 +287,42 @@ const translations = {
 let activeLanguage = navigator.language.toLowerCase().startsWith("zh") ? "zh" : "en";
 
 const elements = {
+  createForm: document.querySelector("#create-form"),
+  createFields: document.querySelector("#create-fields"),
+  portfolioName: document.querySelector("#portfolio-name"),
+  initialCash: document.querySelector("#initial-cash"),
+  createButton: document.querySelector("#create-button"),
+  createMessage: document.querySelector("#create-message"),
   portfolioForm: document.querySelector("#portfolio-form"),
-  portfolioLoadButton: document.querySelector("#portfolio-form button"),
+  portfolioLoadButton: document.querySelector("#load-button"),
   userIdInput: document.querySelector("#user-id"),
+  forgetPointerButton: document.querySelector("#forget-pointer-button"),
   portfolioState: document.querySelector("#portfolio-state"),
   availableCash: document.querySelector("#available-cash"),
   positionCount: document.querySelector("#position-count"),
   positionsEmpty: document.querySelector("#positions-empty"),
   positionList: document.querySelector("#position-list"),
   portfolioMessage: document.querySelector("#portfolio-message"),
+  writeState: document.querySelector("#write-state"),
+  tradeForm: document.querySelector("#trade-form"),
+  tradeFields: document.querySelector("#trade-fields"),
+  tradeAction: document.querySelector("#trade-action"),
+  tradeTicker: document.querySelector("#trade-ticker"),
+  tradePrice: document.querySelector("#trade-price"),
+  tradeShares: document.querySelector("#trade-shares"),
+  tradePositionType: document.querySelector("#trade-position-type"),
+  tradeOccurredAt: document.querySelector("#trade-occurred-at"),
+  tradeReason: document.querySelector("#trade-reason"),
+  tradeSubmit: document.querySelector("#trade-submit"),
+  tradeMessage: document.querySelector("#trade-message"),
+  cashForm: document.querySelector("#cash-form"),
+  cashFields: document.querySelector("#cash-fields"),
+  cashEventType: document.querySelector("#cash-event-type"),
+  cashAmount: document.querySelector("#cash-amount"),
+  cashOccurredAt: document.querySelector("#cash-occurred-at"),
+  cashReason: document.querySelector("#cash-reason"),
+  cashSubmit: document.querySelector("#cash-submit"),
+  cashMessage: document.querySelector("#cash-message"),
   questionForm: document.querySelector("#question-form"),
   question: document.querySelector("#question"),
   questionHint: document.querySelector("#question-hint"),
@@ -192,6 +342,8 @@ const clientState = {
   questionGeneration: 0,
   portfolioController: null,
   questionController: null,
+  createController: null,
+  writeState: "idle",
 };
 
 function normalizeUserId(value) {
@@ -237,6 +389,44 @@ function isAnswerPayload(payload) {
         typeof source.type === "string" &&
         typeof source.status === "string",
     )
+  );
+}
+
+function isCreatedPortfolioPayload(payload) {
+  return (
+    payload !== null &&
+    typeof payload === "object" &&
+    typeof payload.user_id === "string" &&
+    typeof payload.display_name === "string" &&
+    typeof payload.initial_cash === "string" &&
+    typeof payload.created_at === "string"
+  );
+}
+
+function isTransactionWritePayload(payload, userId) {
+  const transaction = payload?.transaction;
+  return (
+    transaction !== null &&
+    typeof transaction === "object" &&
+    normalizeUserId(transaction.user_id ?? "") === userId &&
+    typeof transaction.id === "string" &&
+    Number.isInteger(transaction.sequence) &&
+    typeof transaction.amount === "string" &&
+    typeof transaction.commission === "string" &&
+    typeof transaction.fee_schedule === "string"
+  );
+}
+
+function isCashWritePayload(payload, userId) {
+  const cashEvent = payload?.cash_event;
+  return (
+    cashEvent !== null &&
+    typeof cashEvent === "object" &&
+    normalizeUserId(cashEvent.user_id ?? "") === userId &&
+    typeof cashEvent.id === "string" &&
+    Number.isInteger(cashEvent.sequence) &&
+    typeof cashEvent.amount === "string" &&
+    typeof payload.available_cash === "string"
   );
 }
 
@@ -302,10 +492,140 @@ function clearElement(element) {
   element.replaceChildren();
 }
 
-function setQuestionEnabled(enabled) {
+function isLoadedPortfolioCurrent() {
+  return (
+    clientState.loadedUserId !== null &&
+    clientState.loadedUserId === clientState.userIdInput
+  );
+}
+
+function setQuestionEnabled(enabled, hintKey = "question_load_first") {
   elements.question.disabled = !enabled;
   elements.askButton.disabled = !enabled;
-  setLocalizedText(elements.questionHint, enabled ? "question_loaded_id" : "question_load_first");
+  setLocalizedText(elements.questionHint, enabled ? "question_loaded_id" : hintKey);
+}
+
+function setWriteState(state) {
+  clientState.writeState = state;
+  const stateKeys = {
+    idle: "write_idle",
+    submitting: "write_submitting",
+    refresh_required: "write_refresh_required",
+  };
+  const stateTones = {
+    idle: "neutral",
+    submitting: "warning",
+    refresh_required: "danger",
+  };
+  setLocalizedText(elements.writeState, stateKeys[state]);
+  elements.writeState.dataset.tone = stateTones[state];
+}
+
+function markSnapshotRefreshRequired() {
+  setWriteState("refresh_required");
+  setPortfolioState("portfolio_stale", "warning");
+  resetPortfolio("mutation_refresh_required");
+}
+
+function readLocalPointer() {
+  try {
+    const storedValue = window.localStorage.getItem(LOCAL_POINTER_KEY);
+    if (!storedValue) {
+      return null;
+    }
+    const normalized = normalizeUserId(storedValue);
+    if (!isValidUserId(normalized)) {
+      window.localStorage.removeItem(LOCAL_POINTER_KEY);
+      return null;
+    }
+    return normalized;
+  } catch {
+    // 受限浏览器中的 Storage 不可用时，按没有本地恢复指针处理。
+    return null;
+  }
+}
+
+function saveLocalPointer(userId) {
+  try {
+    window.localStorage.setItem(LOCAL_POINTER_KEY, userId);
+  } catch {
+    // Storage 不是数据源；不可写时仍允许当前页面继续使用内存状态。
+  }
+}
+
+function clearLocalPointer(expectedUserId = null) {
+  try {
+    const storedValue = window.localStorage.getItem(LOCAL_POINTER_KEY);
+    if (expectedUserId === null || normalizeUserId(storedValue ?? "") === expectedUserId) {
+      window.localStorage.removeItem(LOCAL_POINTER_KEY);
+    }
+  } catch {
+    // 受限 Storage 无法清理时，不影响服务器上的 Ledger。
+  }
+}
+
+function updateUrlUserId(userId) {
+  const url = new URL(window.location.href);
+  url.searchParams.set("user_id", userId);
+  window.history.replaceState({}, "", url);
+}
+
+function clearUrlUserId() {
+  const url = new URL(window.location.href);
+  url.searchParams.delete("user_id");
+  window.history.replaceState({}, "", url);
+}
+
+function setActionMessageWithValue(element, messageKey, value) {
+  clearElement(element);
+  const message = document.createElement("span");
+  setLocalizedText(message, messageKey);
+  const detail = document.createElement("span");
+  detail.textContent = ` · ${value}`;
+  element.append(message, detail);
+}
+
+function clearLedgerMessages() {
+  setRawText(elements.tradeMessage, "");
+  setRawText(elements.cashMessage, "");
+}
+
+function hasLocalPointer() {
+  return readLocalPointer() !== null;
+}
+
+function updateControls() {
+  const identityLocked =
+    clientState.writeState === "submitting" || clientState.createController !== null;
+  const portfolioLoading = clientState.portfolioController !== null;
+  const questionLoading = clientState.questionController !== null;
+  const portfolioReady =
+    isLoadedPortfolioCurrent() &&
+    clientState.writeState === "idle" &&
+    !portfolioLoading;
+
+  elements.userIdInput.disabled = identityLocked;
+  elements.portfolioLoadButton.disabled = identityLocked || portfolioLoading;
+  elements.forgetPointerButton.disabled =
+    identityLocked || portfolioLoading || !hasLocalPointer();
+  elements.createFields.disabled = identityLocked || portfolioLoading;
+
+  const ledgerEnabled = portfolioReady && !identityLocked;
+  elements.tradeFields.disabled = !ledgerEnabled;
+  elements.cashFields.disabled = !ledgerEnabled;
+
+  const questionEnabled = portfolioReady && !questionLoading;
+  if (questionEnabled) {
+    setQuestionEnabled(true);
+  } else if (clientState.writeState === "submitting") {
+    setQuestionEnabled(false, "mutation_in_progress");
+  } else if (clientState.createController !== null) {
+    setQuestionEnabled(false, "portfolio_loading_context");
+  } else if (clientState.writeState === "refresh_required") {
+    setQuestionEnabled(false, "mutation_refresh_required");
+  } else {
+    setQuestionEnabled(false);
+  }
 }
 
 function resetResult(message = "answer_initial", localized = true) {
@@ -351,27 +671,36 @@ function invalidateLoadedPortfolio(message) {
   clientState.portfolioController?.abort();
   clientState.portfolioController = null;
   clientState.loadedUserId = null;
-  elements.portfolioLoadButton.disabled = false;
   setLocalizedText(elements.portfolioLoadButton, "load");
   setPortfolioState("portfolio_stale", "warning");
   resetPortfolio(message);
+  clearLedgerMessages();
   invalidateQuestionContext("portfolio_context_changed");
+  updateControls();
 }
 
 function handleUserIdInput() {
   clientState.userIdInput = normalizeUserId(elements.userIdInput.value);
+  if (clientState.writeState === "submitting") {
+    // 正常用户无法编辑 disabled 输入框；此保护避免脚本修改破坏 Mutation 绑定。
+    return;
+  }
   if (clientState.loadedUserId !== null) {
     if (clientState.userIdInput !== clientState.loadedUserId) {
       invalidateLoadedPortfolio("portfolio_user_changed");
     }
+    updateControls();
     return;
   }
   if (clientState.portfolioController !== null) {
     invalidateLoadedPortfolio("portfolio_user_changed_loading");
     return;
   }
-  setPortfolioState("portfolio_not_loaded");
+  if (clientState.writeState !== "refresh_required") {
+    setPortfolioState("portfolio_not_loaded");
+  }
   resetPortfolio();
+  updateControls();
 }
 
 function createPositionCard(position) {
@@ -425,7 +754,7 @@ function renderPortfolio(portfolio) {
     }
   }
   setPortfolioState("portfolio_loaded", "success");
-  setQuestionEnabled(true);
+  updateControls();
 }
 
 async function parseApiError(response) {
@@ -437,6 +766,17 @@ async function parseApiError(response) {
         message: payload.detail.message,
       };
     }
+    if (Array.isArray(payload?.detail)) {
+      const messages = payload.detail
+        .map((item) => (typeof item?.msg === "string" ? item.msg : null))
+        .filter(Boolean);
+      if (messages.length > 0) {
+        return {
+          code: `HTTP_${response.status}`,
+          message: messages.join("; "),
+        };
+      }
+    }
   } catch {
     // 非 JSON Failure 使用稳定的 HTTP 回退信息。
   }
@@ -446,15 +786,24 @@ async function parseApiError(response) {
   };
 }
 
-async function loadPortfolio(event) {
-  event.preventDefault();
-  const requestedUserId = normalizeUserId(elements.userIdInput.value);
+function clearUrlUserIdIfMatches(userId) {
+  const current = normalizeUserId(new URL(window.location.href).searchParams.get("user_id") ?? "");
+  if (current === userId) {
+    clearUrlUserId();
+  }
+}
+
+async function loadPortfolioById(
+  requestedUserId,
+  { resolveWriteState = true, preserveRecoveryPointer = false } = {},
+) {
   clientState.userIdInput = requestedUserId;
+  elements.userIdInput.value = requestedUserId;
 
   if (!isValidUserId(requestedUserId)) {
     invalidateLoadedPortfolio("portfolio_enter_valid_id");
     setPortfolioState("portfolio_invalid_id", "danger");
-    return;
+    return false;
   }
 
   clientState.portfolioGeneration += 1;
@@ -466,9 +815,10 @@ async function loadPortfolio(event) {
   invalidateQuestionContext("portfolio_loading_context");
 
   setPortfolioState("portfolio_loading");
-  elements.portfolioLoadButton.disabled = true;
   setLocalizedText(elements.portfolioLoadButton, "loading");
   resetPortfolio("");
+  clearLedgerMessages();
+  updateControls();
 
   try {
     const response = await fetch(`/v1/portfolios/${encodeURIComponent(requestedUserId)}`, {
@@ -479,16 +829,20 @@ async function loadPortfolio(event) {
       generation !== clientState.portfolioGeneration ||
       requestedUserId !== clientState.userIdInput
     ) {
-      return;
+      return false;
     }
     if (!response.ok) {
       const error = await parseApiError(response);
       if (generation !== clientState.portfolioGeneration) {
-        return;
+        return false;
+      }
+      if (response.status === 404 && !preserveRecoveryPointer) {
+        clearLocalPointer(requestedUserId);
+        clearUrlUserIdIfMatches(requestedUserId);
       }
       setPortfolioState(error.code, "danger", false);
       resetPortfolio(error.messageKey ?? error.message, Boolean(error.messageKey));
-      return;
+      return false;
     }
 
     const portfolio = await response.json();
@@ -496,28 +850,32 @@ async function loadPortfolio(event) {
       generation !== clientState.portfolioGeneration ||
       requestedUserId !== clientState.userIdInput
     ) {
-      return;
+      return false;
     }
     if (!isPortfolioPayload(portfolio)) {
       setPortfolioState("portfolio_invalid_response", "danger");
       resetPortfolio("portfolio_contract_error");
-      return;
+      return false;
     }
     const responseUserId = normalizeUserId(portfolio.user_id ?? "");
     if (responseUserId !== requestedUserId) {
       setPortfolioState("portfolio_identity_mismatch", "danger");
       resetPortfolio("portfolio_identity_error");
-      return;
+      return false;
     }
 
     clientState.loadedUserId = responseUserId;
+    saveLocalPointer(responseUserId);
+    updateUrlUserId(responseUserId);
+    if (resolveWriteState) {
+      setWriteState("idle");
+    }
+    resetResult();
     renderPortfolio(portfolio);
-    const url = new URL(window.location.href);
-    url.searchParams.set("user_id", responseUserId);
-    window.history.replaceState({}, "", url);
+    return true;
   } catch (error) {
     if (error.name === "AbortError" || generation !== clientState.portfolioGeneration) {
-      return;
+      return false;
     }
     const isNetworkError = error instanceof TypeError;
     setPortfolioState(
@@ -525,13 +883,20 @@ async function loadPortfolio(event) {
       "danger",
     );
     resetPortfolio(isNetworkError ? "portfolio_service_unreachable" : "portfolio_display_error");
+    return false;
   } finally {
     if (generation === clientState.portfolioGeneration) {
       clientState.portfolioController = null;
-      elements.portfolioLoadButton.disabled = false;
       setLocalizedText(elements.portfolioLoadButton, "load");
+      updateControls();
     }
   }
+}
+
+async function loadPortfolio(event) {
+  event.preventDefault();
+  setRawText(elements.createMessage, "");
+  await loadPortfolioById(normalizeUserId(elements.userIdInput.value));
 }
 
 function sourceTone(status) {
@@ -645,12 +1010,284 @@ function renderQuestionError(error) {
   elements.sourceList.append(placeholder);
 }
 
+function setApiErrorMessage(element, error) {
+  if (error.messageKey) {
+    setLocalizedText(element, error.messageKey);
+    return;
+  }
+  setRawText(element, `${error.code}: ${error.message}`);
+}
+
+function parseOptionalOccurredAt(input) {
+  const rawValue = input.value.trim();
+  if (!rawValue) {
+    return { valid: true, value: null };
+  }
+  const occurredAt = new Date(rawValue);
+  if (Number.isNaN(occurredAt.getTime())) {
+    return { valid: false, value: null };
+  }
+  return { valid: true, value: occurredAt.toISOString() };
+}
+
+async function createPortfolio(event) {
+  event.preventDefault();
+  if (clientState.createController !== null || clientState.writeState === "submitting") {
+    return;
+  }
+
+  const displayName = elements.portfolioName.value.trim();
+  const initialCash = elements.initialCash.value.trim();
+  if (!displayName || !initialCash) {
+    setLocalizedText(elements.createMessage, "mutation_invalid_input");
+    return;
+  }
+
+  const controller = new AbortController();
+  clientState.createController = controller;
+  if (clientState.portfolioController !== null) {
+    clientState.portfolioGeneration += 1;
+    clientState.portfolioController.abort();
+    clientState.portfolioController = null;
+    clientState.loadedUserId = null;
+    setPortfolioState("portfolio_stale", "warning");
+    resetPortfolio("portfolio_context_changed");
+  }
+  invalidateQuestionContext("portfolio_context_changed");
+  setLocalizedText(elements.createButton, "creating");
+  setRawText(elements.createMessage, "");
+  clearLedgerMessages();
+  updateControls();
+
+  try {
+    const response = await fetch("/v1/portfolios", {
+      method: "POST",
+      signal: controller.signal,
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ display_name: displayName, initial_cash: initialCash }),
+    });
+    if (!response.ok) {
+      setApiErrorMessage(elements.createMessage, await parseApiError(response));
+      return;
+    }
+    const payload = await response.json();
+    const createdUserId = normalizeUserId(payload?.user_id ?? "");
+    if (!isCreatedPortfolioPayload(payload) || !isValidUserId(createdUserId)) {
+      setLocalizedText(elements.createMessage, "create_contract_error");
+      return;
+    }
+
+    saveLocalPointer(createdUserId);
+    updateUrlUserId(createdUserId);
+    const loaded = await loadPortfolioById(createdUserId, {
+      preserveRecoveryPointer: true,
+    });
+    setLocalizedText(elements.createMessage, loaded ? "create_success" : "create_refresh_failed");
+  } catch (error) {
+    if (error.name === "AbortError" || error instanceof TypeError) {
+      setLocalizedText(elements.createMessage, "create_response_unknown");
+    } else {
+      setLocalizedText(elements.createMessage, "create_contract_error");
+    }
+  } finally {
+    if (clientState.createController === controller) {
+      clientState.createController = null;
+      setLocalizedText(elements.createButton, "create");
+      updateControls();
+    }
+  }
+}
+
+function forgetLocalPointer() {
+  if (clientState.writeState === "submitting" || clientState.createController !== null) {
+    return;
+  }
+  clearLocalPointer();
+  clearUrlUserId();
+  clientState.portfolioGeneration += 1;
+  clientState.portfolioController?.abort();
+  clientState.portfolioController = null;
+  clientState.loadedUserId = null;
+  clientState.userIdInput = "";
+  elements.userIdInput.value = "";
+  setWriteState("idle");
+  setPortfolioState("portfolio_not_loaded");
+  resetPortfolio("forget_success");
+  invalidateQuestionContext("answer_initial");
+  setRawText(elements.createMessage, "");
+  clearLedgerMessages();
+  updateControls();
+}
+
+async function submitLedgerMutation({
+  endpoint,
+  payload,
+  validateResponse,
+  successDetail,
+  messageElement,
+  successKey,
+}) {
+  const userId = clientState.loadedUserId;
+  if (!isLoadedPortfolioCurrent() || clientState.writeState !== "idle" || userId === null) {
+    setLocalizedText(
+      messageElement,
+      clientState.writeState === "refresh_required"
+        ? "mutation_refresh_required"
+        : "mutation_load_first",
+    );
+    return false;
+  }
+
+  setWriteState("submitting");
+  invalidateQuestionContext("mutation_in_progress");
+  setRawText(messageElement, "");
+  updateControls();
+
+  try {
+    const response = await fetch(endpoint(userId), {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+    if (!response.ok) {
+      const error = await parseApiError(response);
+      markSnapshotRefreshRequired();
+      setApiErrorMessage(messageElement, error);
+      return false;
+    }
+    const responsePayload = await response.json();
+    if (!validateResponse(responsePayload, userId)) {
+      markSnapshotRefreshRequired();
+      setLocalizedText(messageElement, "write_contract_error");
+      return false;
+    }
+
+    const refreshed = await loadPortfolioById(userId, { resolveWriteState: false });
+    if (!refreshed) {
+      markSnapshotRefreshRequired();
+      setLocalizedText(messageElement, "write_succeeded_refresh_failed");
+      return false;
+    }
+    setWriteState("idle");
+    setActionMessageWithValue(messageElement, successKey, successDetail(responsePayload));
+    return true;
+  } catch (error) {
+    markSnapshotRefreshRequired();
+    setLocalizedText(
+      messageElement,
+      error instanceof TypeError ? "write_result_unknown" : "write_contract_error",
+    );
+    return false;
+  } finally {
+    updateControls();
+  }
+}
+
+async function recordTrade(event) {
+  event.preventDefault();
+  const occurredAt = parseOptionalOccurredAt(elements.tradeOccurredAt);
+  const ticker = elements.tradeTicker.value.trim().toUpperCase();
+  const price = elements.tradePrice.value.trim();
+  const shares = elements.tradeShares.value.trim();
+  if (!occurredAt.valid) {
+    setLocalizedText(elements.tradeMessage, "invalid_occurred_at");
+    return;
+  }
+  if (!ticker || !price || !shares) {
+    setLocalizedText(elements.tradeMessage, "mutation_invalid_input");
+    return;
+  }
+
+  const payload = {
+    ticker,
+    action: elements.tradeAction.value,
+    price,
+    shares,
+    position_type: elements.tradePositionType.value,
+  };
+  if (occurredAt.value !== null) {
+    payload.occurred_at = occurredAt.value;
+  }
+  const reason = elements.tradeReason.value.trim();
+  if (reason) {
+    payload.reason = reason;
+  }
+
+  const saved = await submitLedgerMutation({
+    endpoint: (userId) => `/v1/portfolios/${encodeURIComponent(userId)}/transactions`,
+    payload,
+    validateResponse: isTransactionWritePayload,
+    successDetail: (response) =>
+      `#${response.transaction.sequence} · ${response.transaction.id}`,
+    messageElement: elements.tradeMessage,
+    successKey: "trade_saved",
+  });
+  if (saved) {
+    elements.tradeTicker.value = "";
+    elements.tradePrice.value = "";
+    elements.tradeShares.value = "";
+    elements.tradeOccurredAt.value = "";
+    elements.tradeReason.value = "";
+  }
+}
+
+async function recordCashEvent(event) {
+  event.preventDefault();
+  const occurredAt = parseOptionalOccurredAt(elements.cashOccurredAt);
+  const amount = elements.cashAmount.value.trim();
+  if (!occurredAt.valid) {
+    setLocalizedText(elements.cashMessage, "invalid_occurred_at");
+    return;
+  }
+  if (!amount) {
+    setLocalizedText(elements.cashMessage, "mutation_invalid_input");
+    return;
+  }
+
+  const payload = {
+    event_type: elements.cashEventType.value,
+    amount,
+  };
+  if (occurredAt.value !== null) {
+    payload.occurred_at = occurredAt.value;
+  }
+  const reason = elements.cashReason.value.trim();
+  if (reason) {
+    payload.reason = reason;
+  }
+
+  const saved = await submitLedgerMutation({
+    endpoint: (userId) => `/v1/portfolios/${encodeURIComponent(userId)}/cash-events`,
+    payload,
+    validateResponse: isCashWritePayload,
+    successDetail: (response) =>
+      `#${response.cash_event.sequence} · ${response.cash_event.id}`,
+    messageElement: elements.cashMessage,
+    successKey: "cash_saved",
+  });
+  if (saved) {
+    elements.cashAmount.value = "";
+    elements.cashOccurredAt.value = "";
+    elements.cashReason.value = "";
+  }
+}
+
 async function askQuestion(event) {
   event.preventDefault();
   const question = elements.question.value.trim();
   const requestedUserId = clientState.loadedUserId;
 
-  if (requestedUserId === null || requestedUserId !== clientState.userIdInput) {
+  if (
+    clientState.writeState !== "idle" ||
+    requestedUserId === null ||
+    requestedUserId !== clientState.userIdInput
+  ) {
     invalidateLoadedPortfolio("portfolio_context_stale");
     return;
   }
@@ -736,25 +1373,41 @@ async function askQuestion(event) {
       requestedUserId === clientState.userIdInput
     ) {
       clientState.questionController = null;
-      elements.question.disabled = false;
-      elements.askButton.disabled = false;
       setLocalizedText(elements.askButton, "ask");
-      setLocalizedText(elements.questionHint, "question_loaded_id");
+      updateControls();
     }
+  }
+}
+
+async function initializeApp() {
+  resetPortfolio();
+  resetResult();
+  setPortfolioState("portfolio_not_loaded");
+  setWriteState("idle");
+  applyLanguage();
+
+  const urlUserId = normalizeUserId(
+    new URLSearchParams(window.location.search).get("user_id") ?? "",
+  );
+  const pointerUserId = readLocalPointer();
+  const initialUserId = isValidUserId(urlUserId) ? urlUserId : pointerUserId;
+  if (urlUserId && !isValidUserId(urlUserId)) {
+    clearUrlUserId();
+  }
+  if (initialUserId) {
+    await loadPortfolioById(initialUserId);
+  } else {
+    updateControls();
   }
 }
 
 elements.userIdInput.addEventListener("input", handleUserIdInput);
 elements.portfolioForm.addEventListener("submit", loadPortfolio);
+elements.createForm.addEventListener("submit", createPortfolio);
+elements.forgetPointerButton.addEventListener("click", forgetLocalPointer);
+elements.tradeForm.addEventListener("submit", recordTrade);
+elements.cashForm.addEventListener("submit", recordCashEvent);
 elements.questionForm.addEventListener("submit", askQuestion);
 elements.languageToggle.addEventListener("click", toggleLanguage);
 
-const initialUserId = normalizeUserId(new URLSearchParams(window.location.search).get("user_id") ?? "");
-if (initialUserId) {
-  elements.userIdInput.value = initialUserId;
-  clientState.userIdInput = initialUserId;
-}
-resetPortfolio();
-resetResult();
-setPortfolioState("portfolio_not_loaded");
-applyLanguage();
+initializeApp();

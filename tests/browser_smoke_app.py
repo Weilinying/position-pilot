@@ -1,7 +1,8 @@
-"""M7 Human Browser Smoke 使用的确定性本地应用。"""
+"""M8 Human Browser Smoke 使用的确定性本地应用。"""
 
 from datetime import UTC, datetime
 from decimal import Decimal
+from threading import RLock
 from time import sleep
 from uuid import UUID
 
@@ -14,11 +15,25 @@ from position_pilot.application.investment_agent import (
     InvestmentRequestFailure,
     InvestmentResponseStatus,
 )
+from position_pilot.application.portfolio_service import (
+    CashAdjustmentResult,
+    CreateUserCommand,
+    RecordCashEventCommand,
+    RecordTransactionCommand,
+)
+from position_pilot.domain.errors import InvalidPortfolioValue
 from position_pilot.domain.portfolio import (
     CashBalance,
+    CashEvent,
     PortfolioState,
     Position,
     PositionType,
+    Transaction,
+    User,
+    normalize_timestamp,
+    rebuild_portfolio,
+    resequence_cash_events,
+    resequence_transactions,
 )
 from position_pilot.main import (
     app,
@@ -64,9 +79,88 @@ def _portfolio(user_id: UUID, *, ticker: str) -> PortfolioState:
 
 
 class BrowserSmokePortfolioService:
-    """按 User ID 返回稳定 Portfolio，并提供一个可控延迟场景。"""
+    """提供固定读取 Fixture 与可写的进程内 Portfolio。"""
+
+    def __init__(self) -> None:
+        self._users: dict[UUID, User] = {}
+        self._transactions: dict[UUID, list[Transaction]] = {}
+        self._cash_events: dict[UUID, list[CashEvent]] = {}
+        self._lock = RLock()
+
+    def create_user(self, command: CreateUserCommand) -> User:
+        """创建隔离的 Browser Smoke User。"""
+
+        with self._lock:
+            user = User.create(
+                display_name=command.display_name,
+                initial_cash=command.initial_cash,
+            )
+            self._users[user.id] = user
+            self._transactions[user.id] = []
+            self._cash_events[user.id] = []
+            return user
+
+    def record_transaction(self, command: RecordTransactionCommand) -> Transaction:
+        """使用正式 Domain 规则追加 Browser Smoke Transaction。"""
+
+        with self._lock:
+            user = self._require_mutable_user(command.user_id)
+            transactions = self._transactions[user.id]
+            cash_events = self._cash_events[user.id]
+            current_time = datetime.now(UTC)
+            occurred_at = normalize_timestamp(command.occurred_at or current_time)
+            if occurred_at > current_time:
+                raise InvalidPortfolioValue("Transaction occurred_at 不得晚于当前时间")
+            transaction = Transaction.create(
+                user_id=user.id,
+                sequence=len(transactions) + 1,
+                ticker=command.ticker,
+                action=command.action,
+                price=command.price,
+                shares=command.shares,
+                position_type=command.position_type,
+                occurred_at=occurred_at,
+                reason=command.reason,
+            )
+            ordered = resequence_transactions([*transactions, transaction])
+            rebuild_portfolio(user, ordered, cash_events)
+            self._transactions[user.id] = ordered
+            return next(candidate for candidate in ordered if candidate.id == transaction.id)
+
+    def record_cash_event(self, command: RecordCashEventCommand) -> CashAdjustmentResult:
+        """使用正式 Domain 规则追加 Browser Smoke Cash Event。"""
+
+        with self._lock:
+            user = self._require_mutable_user(command.user_id)
+            transactions = self._transactions[user.id]
+            cash_events = self._cash_events[user.id]
+            current_time = datetime.now(UTC)
+            occurred_at = normalize_timestamp(command.occurred_at or current_time)
+            if occurred_at > current_time:
+                raise InvalidPortfolioValue("Cash Event occurred_at 不得晚于当前时间")
+            cash_event = CashEvent.create(
+                user_id=user.id,
+                sequence=len(cash_events) + 1,
+                event_type=command.event_type,
+                amount=command.amount,
+                occurred_at=occurred_at,
+                reason=command.reason,
+            )
+            ordered = resequence_cash_events([*cash_events, cash_event])
+            portfolio = rebuild_portfolio(user, transactions, ordered)
+            self._cash_events[user.id] = ordered
+            persisted = next(candidate for candidate in ordered if candidate.id == cash_event.id)
+            return CashAdjustmentResult(cash_event=persisted, portfolio=portfolio)
 
     def get_portfolio(self, user_id: UUID) -> PortfolioState:
+        with self._lock:
+            user = self._users.get(user_id)
+            if user is not None:
+                return rebuild_portfolio(
+                    user,
+                    self._transactions[user_id],
+                    self._cash_events[user_id],
+                )
         if user_id == EMPTY_USER:
             return PortfolioState(
                 user_id=user_id,
@@ -86,6 +180,12 @@ class BrowserSmokePortfolioService:
         if user_id == USER_B:
             return _portfolio(user_id, ticker="NVDA")
         raise UserNotFound(user_id)
+
+    def _require_mutable_user(self, user_id: UUID) -> User:
+        user = self._users.get(user_id)
+        if user is None:
+            raise UserNotFound(user_id)
+        return user
 
 
 class BrowserSmokeInvestmentAgent:
@@ -171,5 +271,8 @@ class BrowserSmokeInvestmentAgent:
         )
 
 
-app.dependency_overrides[get_portfolio_service_dependency] = BrowserSmokePortfolioService
-app.dependency_overrides[get_investment_agent_dependency] = BrowserSmokeInvestmentAgent
+portfolio_service = BrowserSmokePortfolioService()
+investment_agent = BrowserSmokeInvestmentAgent()
+
+app.dependency_overrides[get_portfolio_service_dependency] = lambda: portfolio_service
+app.dependency_overrides[get_investment_agent_dependency] = lambda: investment_agent
