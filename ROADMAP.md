@@ -11,8 +11,8 @@
 ## 2. Current Status
 
 **Current Milestone:** M8 — Local Portfolio Management
-**Status:** IN PROGRESS
-**Current Release State:** pre-`v1.0.0`；M7 Demo Core 已完成，M8 Local Self-Service 开发中
+**Status:** IN PROGRESS — Implementation Complete, Awaiting Human Acceptance
+**Current Release State:** `v1.0.0` implementation complete；等待 M8 Human Acceptance
 **Next Planned Milestone:** M9 — Portfolio Import（依赖 M8 完成，尚未开始）
 
 Milestone 状态统一使用 `NOT STARTED`、`IN PROGRESS`、`DONE`，不维护百分比进度。
@@ -237,7 +237,7 @@ M6 不从零开始 Evaluation，而是在 M3～M5 已积累的 Behavioral Eval C
 
 ## M8 — Local Portfolio Management
 
-**Status:** IN PROGRESS — Roadmap 与执行计划已获 Human Approval
+**Status:** IN PROGRESS — Implementation Complete, Awaiting Human Acceptance
 
 **Goal**
 

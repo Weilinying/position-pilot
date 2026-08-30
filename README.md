@@ -1,6 +1,6 @@
 # PositionPilot
 
-当前仓库已完成 Portfolio / Transaction Structured State、Current Quote、Price History、Recent News、SPY Market Context、Single Investment Agent 与 M7 Minimal Product Interface。当前 Milestone 为 M8 Local Portfolio Management。
+当前仓库已实现 Portfolio / Transaction Structured State、Current Quote、Price History、Recent News、SPY Market Context、Single Investment Agent，以及 M8 Local Portfolio Management。M8 实现已完成，正在等待 Human Acceptance。
 
 ## 前置条件
 
@@ -50,17 +50,31 @@ curl http://127.0.0.1:8000/health
 
 `/health` 只表示应用进程存活，**不检查数据库或其他外部依赖**。
 
-## Minimal Product Interface
+## Local Portfolio Management
 
-M7 页面由 FastAPI 同源托管，不需要 Node、前端安装或单独构建步骤。页面支持加载只读 Portfolio Snapshot、提交 Investment Question，并展示 Answer、`OK` / `DEGRADED` 和本轮 Context Sources。界面可在中文与英文之间一键切换；切换只改变本地展示文案与时间格式，不翻译或改写 Agent Answer、Provider Metadata 等后端原始值。
+页面由 FastAPI 同源托管，不需要 Node、前端安装或单独构建步骤。首次打开 `/app/` 可直接输入 Portfolio Name 与 Initial Cash 创建本地 Portfolio，无需先运行 Demo Seed 或准备 UUID。创建成功后，页面会保存最近一次成功加载的 User ID 本地指针并读取完整 Ledger-derived Snapshot。
 
-准备好 PostgreSQL 与 Migration 后，可以创建一份新的隔离 Demo Portfolio：
+页面支持：
+
+- 通过既有 UUID 恢复 Portfolio，或只忘记浏览器本地指针；Forget 不删除 Server Ledger；
+- 追加 BUY / SELL，并独立选择 `LONG_TERM` 或 `SWING`；
+- 追加 DEPOSIT / WITHDRAWAL；
+- 提交 Investment Question，并展示 Answer、`OK` / `DEGRADED` 和本轮 Context Sources；
+- 中文与英文一键切换；切换只改变本地展示文案与时间格式，不改写 Agent Answer 或 Provider Metadata。
+
+Ledger 表单中的发生时间默认留空，此时由 Backend Application Clock 产生当前时间。只有补录历史记录时才填写本地时间；Browser 会转换为带时区的 ISO timestamp。Cash、Shares、Average Cost、Cost Basis、Transaction Amount 与 Fee 始终由后端 Decimal 规则和完整 Ledger replay 产生，Browser 不自行计算。
+
+本地指针只保存最近一个成功加载的 UUID，不保存 Snapshot、交易、问题、回答或 Secret。UUID 不是 Credential；清除浏览器 Storage 或换浏览器后，需要使用 URL 或已保存的 UUID 恢复。
+
+开发与测试仍可选择创建一份带固定 Ledger Records 的隔离 Demo Portfolio：
 
 ```bash
 uv run --directory backend python -m position_pilot.demo_seed
 ```
 
-命令会通过正式 Application Service 创建 User 与三条 BUY Ledger Records，并输出 User ID 与可直接访问的本地页面 URL。重复执行会创建新的 Demo User，不覆盖既有 Portfolio。
+命令会通过正式 Application Service 创建 User 与三条 BUY Ledger Records，并输出 User ID 与可直接访问的本地页面 URL。它不是正常使用前置条件；重复执行会创建新的 Demo User，不覆盖既有 Portfolio。
+
+如果 Mutation POST 的连接在响应前中断，页面会将当前 Snapshot 标记为需要刷新且不会自动重试。重新 Load 只取得最新 deterministic State，M8 不保证仅凭 Snapshot 精确判断某一次不确定 POST 是否已经执行。Create Response 丢失时也可能留下当前 UI 无法恢复的本地 Portfolio，这是无 Idempotency、Enumeration 与 Authentication 的已知 localhost 限制。
 
 当前没有 Authentication / Authorization，User ID 不是访问控制。推荐启动命令只绑定 `127.0.0.1`；不得把该 Demo Server 直接暴露到公网或不受控局域网。
 
@@ -110,9 +124,10 @@ docker compose down
 
 ```bash
 uv run pytest
-uv run ruff format --check backend tests
-uv run ruff check backend tests
-uv run mypy
+uv run ruff format --check backend tests alembic
+uv run ruff check backend tests alembic
+uv run mypy backend
+uv lock --check
 ```
 
 默认测试不要求真实数据库；PostgreSQL 集成测试需要显式提供可清理的测试数据库：

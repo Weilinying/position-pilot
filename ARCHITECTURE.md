@@ -2,7 +2,7 @@
 
 ## 1. 当前范围
 
-本文档描述 M7 Minimal Product Interface 当前已实现的系统结构。系统包含 Portfolio Structured State、Transaction / Cash Event Ledgers、Provider-neutral Market / News Data，以及可按问题选择 Current Quote、固定近期 Daily Price History、attributed Recent News 或 SPY Market Context 的 Single Investment Agent；Agent Context 同时包含由同一 Ledger Read 生成的当前 State 与有界历史 BUY Facts。M7 在其上增加同源静态 Web Interface 与只读 Portfolio Snapshot API，不改变 Domain Source of Truth。
+本文档描述 M8 Local Portfolio Management 当前已实现的系统结构。系统包含 Portfolio Structured State、Transaction / Cash Event Ledgers、Provider-neutral Market / News Data，以及可按问题选择 Current Quote、固定近期 Daily Price History、attributed Recent News 或 SPY Market Context 的 Single Investment Agent；Agent Context 同时包含由同一 Ledger Read 生成的当前 State 与有界历史 BUY Facts。M8 在同源静态 Web Interface 中增加本地创建、恢复与不可变 Ledger Entry，不改变 Domain Source of Truth。
 
 ## 2. 依赖方向
 
@@ -10,7 +10,10 @@
 GET /app/ + /static/*
       ↓
 Vanilla HTML / CSS / ES Modules
+  ├── POST /v1/portfolios
   ├── GET /v1/portfolios/{user_id}
+  ├── POST /v1/portfolios/{user_id}/transactions
+  ├── POST /v1/portfolios/{user_id}/cash-events
   └── POST /v1/investment/questions
 
 FastAPI /health
@@ -107,7 +110,7 @@ User 行锁串行化同一用户的写入，避免两个并发请求基于相同
 ## 5. Cash Event 写入流程
 
 ```text
-RecordCashEventCommand（DEPOSIT / WITHDRAWAL + amount + occurred_at）
+RecordCashEventCommand（DEPOSIT / WITHDRAWAL + amount + optional occurred_at）
         ↓
 锁定 User 数据库行
         ↓
@@ -122,7 +125,7 @@ RecordCashEventCommand（DEPOSIT / WITHDRAWAL + amount + occurred_at）
 同一数据库事务追加 Cash Event
 ```
 
-Cash Event amount 必须为正数且最多 8 位小数。Application 使用可注入 Clock 拒绝晚于当前时间的 `occurred_at`，避免尚未发生的资金调整提前进入 Available Cash；预约资金调整不属于当前 Ledger Contract。`initial_cash` 不在该流程中更新；Application 没有 Cash Event 更新或删除接口，领域记录使用 frozen dataclass 保持 immutable ledger semantics。
+Cash Event amount 必须为正数且最多 8 位小数。Transaction 与 Cash Event 省略 `occurred_at` 时均使用同一次 Application Clock 读数；显式时间必须带时区、规范化到 UTC，并拒绝晚于当前时间的值。Browser Clock 不作为默认 Ledger 时间来源；预约资金调整不属于当前 Ledger Contract。`initial_cash` 不在该流程中更新；Application 没有 Cash Event 更新或删除接口，领域记录使用 frozen dataclass 保持 immutable ledger semantics。
 
 ## 6. 主要模块
 
@@ -148,7 +151,7 @@ Cash Event amount 必须为正数且最多 8 位小数。Application 使用可�
 
 ## 7. 当前限制
 
-- Portfolio 与投资问答 API 由调用方提供 `user_id`，当前没有 Authentication / Authorization；M7 推荐服务器只绑定 `127.0.0.1`，仅适合本地或受控开发环境，不应暴露到公网或不受控局域网。
+- Portfolio 与投资问答 API 由调用方提供 `user_id`，当前没有 Authentication / Authorization；M8 推荐服务器只绑定 `127.0.0.1`，仅适合本地或受控开发环境，不应暴露到公网或不受控局域网。
 - 当前没有 Cash / Position Projection；只有实际性能问题出现后才考虑可重建投影或快照。
 - Cash Event 只支持 `DEPOSIT` 与 `WITHDRAWAL`；不支持 Dividend、Fee、Interest、Tax、Margin、多币种、Broker Synchronization 或投资收益率计算。
 - Transaction 与 Cash Event 还没有跨表全局 sequence；相同 `occurred_at` 使用 Cash Event 优先的固定重放顺序。只有后续现金流类型或对账需求证明必要时才重新评估全局 Event Store。
@@ -171,25 +174,37 @@ Cash Event amount 必须为正数且最多 8 位小数。Application 使用可�
 - 超出 Portfolio Snapshot、成功 Current Quote、成功 Price History、attributed Recent News 与成功 SPY Market Context Tool Result 的事实保持 `UNKNOWN`；新闻报道不得自动升级为系统验证事实，Market Context Failure 时不得从其他来源补造 Regime。
 - 当前仍无 Trading / Asset Metadata Context；未来 Capability 扩展点为确定性的 `tradable` 与 `fractionable`。不得由 LLM 假设整股或碎股资格，也不由 LLM 计算具体可购买股数。
 
-## 8. Minimal Product Interface Boundary
+## 8. Local Product Interface Boundary
 
 ```text
 userIdInput ──成功 Load──> loadedUserId
      │                         │
      └──发生变化──> stale/null └──唯一允许用于 Question Request 的身份
 
-Portfolio / Question Request
+Portfolio / Question Read Request
         ↓ capture User ID + Request Generation
 Response only updates DOM when both still match current state
+
+Mutation
+        ↓ capture loadedUserId + lock identity controls
+POST immutable Ledger Record
+        ↓ success
+GET latest deterministic Snapshot
+        ↓ failure or ambiguous result
+stale / refresh_required; never automatic retry
 ```
 
 - `GET /app/` 与 `/static/*` 由同一 FastAPI 进程提供，Browser 调用相对路径 API，不需要 CORS、Reverse Proxy 或独立 Frontend Service。
 - `GET /v1/portfolios/{user_id}` 直接映射 `PortfolioService.get_portfolio()` 的 Ledger Replay Result；Response 只包含 User ID、Available Cash、完整性声明和按 `(ticker, position_type)` 稳定排序的当前 Positions。Decimal 保持字符串，不返回实时价格、收益、Ledger History 或风险结论。
-- Browser 显式区分输入框的 `userIdInput` 与已成功加载的 `loadedUserId`。Question 只能使用后者；输入变化会立即使 Context 失效。Portfolio 与 Question 各自维护 Request Generation，旧 User 或旧 Generation 的 Response 不得更新 DOM。
+- Browser 显式区分输入框的 `userIdInput` 与已成功加载的 `loadedUserId`。Question 与 Ledger Mutation 只能使用后者；输入变化会立即使 Context 失效。Portfolio 与 Question 各自维护 Request Generation，旧 User 或旧 Generation 的 Read Response 不得更新 DOM。
+- `POST /v1/portfolios` 只是 `PortfolioService.create_user()` 的薄 API Adapter。M8 API 中的“Portfolio”仍是现有单一 `User → Portfolio State` 模型的产品呈现，不新增独立 Portfolio Entity；Multiple Portfolios 的 Ownership / Resource Boundary 留到 V2 重新评估。
+- Browser 只在成功 Create 或成功 GET 后，把最近一个 `user_id` 保存为 versioned `localStorage` pointer，并同步到 URL。pointer 不是 Credential，不保存 Snapshot、Ledger、Question、Answer 或 Secret；Forget 只清理本地引用。
+- `POST /transactions` 与既有 `POST /cash-events` 都追加不可变记录。Mutation 期间 Create、Load、Forget、User ID 与重复提交被禁用；成功 Response 不用于前端推算金融状态，而是立即重新 GET Snapshot。
+- Mutation Failure、连接中断或 POST 后 GET Failure 会进入 `refresh_required`。Browser 不自动 Retry；Reload 只能重新取得当前 State，无法在没有 Transaction History、Mutation ID 或 Idempotency 的 M8 中精确识别某一次不确定 POST。
 - 所有 API、LLM、Provider 与用户输入产生的动态文本使用 `textContent`、DOM Property 或等价安全接口。静态 Template 之外不使用动态 HTML 字符串，也不执行 Markdown HTML。
 - Source Cards 只展示后端已经验证绑定的 Source Identity / Status 和失败 Tool Attempt；Ticker、Provider、Feed、Market Time 与 Fetched At 使用显式字段标签，不等价于逐 Claim Citation，也不返回完整 Tool Payload。
 - Browser 提供不持久化的中文 / 英文显示模式。切换只重绘静态标签、状态文案和本地化时间格式，不改变 `userIdInput`、`loadedUserId`、Request Generation、Agent Answer 或 Provider 原始值。
-- M7 使用固定 Checklist 的 Human Browser Smoke 作为界面 Evidence，不把它描述为自动化 E2E，也不将其纳入默认 Regression Gate。
+- M8 使用固定 Checklist 的 Human Browser Smoke 作为界面 Evidence，不把它描述为自动化 E2E，也不将其纳入默认 Regression Gate。Network Ambiguity、POST 后 GET Failure、XSS Payload 与 delayed stale read 属于定向 Engineering Verification / Automated Review。
 
 ## 9. Market Data Boundary
 

@@ -2,7 +2,7 @@
 
 ## 1. 状态与目标
 
-**Status:** IN PROGRESS — Human Approved 2026-08-30
+**Status:** IMPLEMENTED — Awaiting Human Acceptance (2026-08-30)
 
 M8 将当前“需要 Demo Seed 或已知 UUID 才能使用”的 M7 Interface，扩展为本地用户可从零开始并持续维护的 Self-Service MVP。M8 完成并通过 Human Acceptance 后形成 `v1.0.0`。
 
@@ -319,18 +319,18 @@ T6 Automated Review → Fix → Re-check → Human Acceptance
 
 固定 Human Browser Smoke 至少包含：
 
-- [ ] Create Portfolio。
-- [ ] Refresh / local pointer recovery。
-- [ ] Load Existing UUID。
-- [ ] Forget Pointer 只清理本地引用，不删除 Portfolio。
-- [ ] BUY 与 SELL，且写后重新取得 Snapshot。
-- [ ] 同 ticker 的 `LONG_TERM` / `SWING` 独立。
-- [ ] DEPOSIT 与 WITHDRAWAL。
-- [ ] Insufficient Cash 与 Oversell。
-- [ ] Invalid / future input。
-- [ ] Investment QA 与 `OK` / `DEGRADED` / Sources 保持 M7 行为。
-- [ ] 中文 / 英文完整闭环。
-- [ ] Narrow-screen basic usability。
+- [x] Create Portfolio。
+- [x] Refresh / local pointer recovery。
+- [x] Load Existing UUID。
+- [x] Forget Pointer 只清理本地引用，不删除 Portfolio。
+- [x] BUY 与 SELL，且写后重新取得 Snapshot。
+- [x] 同 ticker 的 `LONG_TERM` / `SWING` 独立。
+- [x] DEPOSIT 与 WITHDRAWAL。
+- [x] Insufficient Cash 与 Oversell。
+- [x] Invalid / future input。
+- [x] Investment QA 与 `OK` / `DEGRADED` / Sources 保持 M7 行为。
+- [x] 中文 / 英文完整闭环。
+- [x] Narrow-screen basic usability。
 
 以下场景保留为定向 Engineering Verification / Automated Review，不要求每次 Human Acceptance 全量手工复现：
 
@@ -364,7 +364,18 @@ Browser Smoke 是可重复的 Human Verification Evidence，不计入默认 Auto
 - React / Vue / Node / Playwright、Frontend Framework Migration；
 - 公开部署、Remote Push、GitHub Release 或 Production Security 声明。
 
-## 10. Human Review Gate
+## 10. Implementation Evidence
+
+- `POST /v1/portfolios` 已作为 `PortfolioService.create_user()` 的薄 Adapter 实现；`POST /v1/portfolios/{user_id}/transactions` 复用既有 Transaction Application / Domain Flow；Cash Event Endpoint 只扩展为允许省略时间。
+- Transaction 与 Cash Event 的默认发生时间统一由可注入 Backend Application Clock 产生；显式历史时间要求 offset-aware，统一规范化到 UTC，并拒绝 future timestamp。
+- 页面已实现 Create、URL / versioned local pointer 恢复、Load Existing、Forget Pointer、Trade / Cash 两类 Ledger Form、Mutation Identity Lock、`refresh_required`、写后 GET Snapshot 与中英切换。Browser 不计算金额、手续费、Cash、Shares、Average Cost 或 Cost Basis。
+- 默认 Regression：`390 passed, 39 skipped`。Skip 包含 11 个需要显式 `TEST_DATABASE_URL` 的 PostgreSQL Integration Tests、28 个真实 Provider / Model opt-in Tests；没有把 Skip 声称为已执行。
+- JavaScript syntax、Ruff format / lint、mypy、`uv lock --check`、Alembic heads / history 与 `git diff --check` 已通过。用户未跟踪的根目录 `main.py` 未修改、未纳入检查或提交。
+- 2026-08-30 Human Browser Smoke 已完成全部固定 Checklist；390px 视口没有水平溢出，Browser Console 无 warning / error。Network Ambiguity、POST 后 GET Failure、XSS adversarial payload 与 delayed stale read 仍按计划保留为定向 Engineering Verification / Automated Review，不属于默认自动化 E2E Gate。
+- Automated Review 未发现 Backend API、Ledger Atomicity、Application Clock、future timestamp、Decimal、XSS 或 Generation 的阻断问题。Review 指出的 Create 后首次 GET 404 pointer 丢失、Mutation 成功反馈、Create / Load 并发、malformed Create Response 语义、M8 文档与 stale Snapshot 展示均已修复，并在修复后重新执行相关验证。
+- 未增加 Migration、Dependency、Framework、Node、Playwright、Authentication、Portfolio Enumeration、Idempotency、Transaction History 或独立 Portfolio Entity。
+
+## 11. Human Review Gate
 
 以下情况必须暂停对应实现并提交新 Decision Proposal：
 
