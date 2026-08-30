@@ -23,6 +23,16 @@ def test_serves_product_interface_and_static_assets() -> None:
     assert 'id="question-form"' in page.text
     assert 'id="language-toggle"' in page.text
     assert 'data-i18n="context_sources"' in page.text
+    assert 'id="onboarding-view"' in page.text
+    assert 'id="app-shell"' in page.text
+    assert 'id="chat-view"' in page.text
+    assert 'id="portfolio-view"' in page.text
+    assert 'id="session-list"' in page.text
+    assert 'id="conversation-list"' in page.text
+    assert 'id="assistant-response-template"' in page.text
+    assert 'id="portfolio-tab-overview"' in page.text
+    assert 'id="portfolio-tab-trade"' in page.text
+    assert 'id="portfolio-tab-cash"' in page.text
     assert script.status_code == 200
     assert stylesheet.status_code == 200
 
@@ -38,6 +48,9 @@ def test_client_script_preserves_identity_and_safe_text_boundary() -> None:
     assert "questionGeneration" in script
     assert ".textContent" in script
     assert "innerHTML" not in script
+    assert "outerHTML" not in script
+    assert "insertAdjacentHTML" not in script
+    assert "document.write" not in script
     assert 'source_ticker: "Ticker"' in script
     assert 'source_market_time: "Market time"' in script
     assert 'source_fetched: "Fetched"' in script
@@ -45,6 +58,9 @@ def test_client_script_preserves_identity_and_safe_text_boundary() -> None:
     assert "portfolio_empty_initial" in script
     assert "portfolio_empty_loaded" in script
     assert "toggleLanguage" in script
+    assert "createQuestionExchange" in script
+    assert "sessionEntryCount" in script
+    assert script.count("window.localStorage.setItem(") == 1
 
 
 def test_client_script_preserves_m8_write_and_recovery_boundaries() -> None:

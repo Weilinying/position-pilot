@@ -13,276 +13,250 @@
     <script type="module" src="/static/app.js"></script>
   </head>
   <body>
-    <div class="page-shell">
-      <header class="topbar">
+    <button class="language-toggle global-language-toggle" id="language-toggle" type="button" aria-label="切换到中文">中文</button>
+
+    <section class="onboarding-shell" id="onboarding-view" aria-labelledby="onboarding-title">
+      <header class="onboarding-topbar">
         <a class="brand" href="/app/" aria-label="PositionPilot home" data-i18n-aria-label="brand_home">
-          <span class="brand-mark" aria-hidden="true">PP</span>
-          <span>PositionPilot</span>
+          <span class="brand-mark" aria-hidden="true">PP</span><span>PositionPilot</span>
         </a>
-        <div class="topbar-actions">
-          <div class="environment-pill">
-            <span class="live-dot" aria-hidden="true"></span>
-            <span data-i18n="local_workspace">Local decision workspace</span>
-          </div>
-          <button
-            class="language-toggle"
-            id="language-toggle"
-            type="button"
-            aria-label="切换到中文"
-          >
-            中文
-          </button>
+        <div class="environment-pill">
+          <span class="live-dot" aria-hidden="true"></span>
+          <span data-i18n="local_workspace">Local decision workspace</span>
         </div>
       </header>
 
-      <main class="workspace">
-        <aside class="portfolio-panel" aria-labelledby="portfolio-title">
-          <div class="section-heading">
-            <div>
-              <p class="eyebrow" data-i18n="structured_state">Structured state</p>
-              <h2 id="portfolio-title" data-i18n="your_portfolio">Your portfolio</h2>
-            </div>
-            <span class="context-chip" id="portfolio-state">Not loaded</span>
+      <main class="onboarding-main">
+        <div class="onboarding-copy">
+          <p class="eyebrow" data-i18n="onboarding_eyebrow">Portfolio-grounded AI</p>
+          <h1 id="onboarding-title" data-i18n="onboarding_title">Start with the state that makes every answer yours.</h1>
+          <p class="hero-summary" data-i18n="onboarding_summary">
+            Create a local portfolio or recover an existing one. No account or cloud registration is required.
+          </p>
+          <div class="local-boundary-note">
+            <span class="live-dot" aria-hidden="true"></span>
+            <span data-i18n="local_only_notice">Local-only workspace · UUID is a recovery pointer, not a credential.</span>
           </div>
+        </div>
 
-          <form class="portfolio-create" id="create-form" novalidate>
+        <div class="onboarding-actions">
+          <form class="onboarding-card portfolio-create" id="create-form" novalidate>
             <div class="form-heading">
+              <p class="step-number">01</p>
               <div>
-                <p class="eyebrow" data-i18n="start_here">Start here</p>
-                <h3 data-i18n="create_portfolio">Create a local portfolio</h3>
+                <p class="eyebrow" data-i18n="new_workspace">New workspace</p>
+                <h2 data-i18n="create_portfolio">Create a local portfolio</h2>
               </div>
             </div>
             <fieldset id="create-fields">
               <label for="portfolio-name" data-i18n="portfolio_name">Portfolio name</label>
-              <input
-                id="portfolio-name"
-                name="portfolio-name"
-                type="text"
-                maxlength="200"
-                autocomplete="off"
-                data-i18n-placeholder="portfolio_name_placeholder"
-                placeholder="e.g. Long-term plan"
-              />
+              <input id="portfolio-name" name="portfolio-name" type="text" maxlength="200" autocomplete="off" data-i18n-placeholder="portfolio_name_placeholder" placeholder="e.g. Long-term plan" />
               <label for="initial-cash" data-i18n="initial_cash">Initial cash</label>
-              <input
-                id="initial-cash"
-                name="initial-cash"
-                type="text"
-                inputmode="decimal"
-                autocomplete="off"
-                data-i18n-placeholder="initial_cash_placeholder"
-                placeholder="10000.00"
-              />
-              <p class="field-note" data-i18n="create_hint">
-                Create a local portfolio without a seed UUID. Cash is recorded by the backend.
-              </p>
-              <button class="primary-button compact-button" id="create-button" type="submit" data-i18n="create">
-                Create portfolio
-              </button>
+              <input id="initial-cash" name="initial-cash" type="text" inputmode="decimal" autocomplete="off" data-i18n-placeholder="initial_cash_placeholder" placeholder="10000.00" />
+              <p class="field-note" data-i18n="create_hint">Create a local portfolio without a seed UUID. Cash is recorded by the backend.</p>
+              <button class="primary-button compact-button" id="create-button" type="submit" data-i18n="create">Create portfolio</button>
             </fieldset>
             <p class="panel-message" id="create-message" role="status"></p>
           </form>
 
-          <form class="portfolio-loader" id="portfolio-form" novalidate>
+          <form class="onboarding-card portfolio-loader" id="portfolio-form" novalidate>
+            <div class="form-heading">
+              <p class="step-number">02</p>
+              <div>
+                <p class="eyebrow" data-i18n="existing_workspace">Existing workspace</p>
+                <h2 data-i18n="recover_portfolio">Recover with UUID</h2>
+              </div>
+            </div>
             <label for="user-id" data-i18n="portfolio_user_id">Portfolio User ID</label>
             <div class="input-row">
-              <input
-                id="user-id"
-                name="user-id"
-                type="text"
-                inputmode="text"
-                autocomplete="off"
-                placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-              />
+              <input id="user-id" name="user-id" type="text" inputmode="text" autocomplete="off" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" />
               <button class="secondary-button" id="load-button" type="submit" data-i18n="load">Load</button>
             </div>
-            <div class="loader-actions">
-              <p class="field-note" data-i18n="seed_hint">Use an existing UUID to recover a local portfolio.</p>
-              <button
-                class="text-button"
-                id="forget-pointer-button"
-                type="button"
-                data-i18n="forget_pointer"
-                disabled
-              >
-                Forget local pointer
-              </button>
-            </div>
+            <p class="field-note" data-i18n="seed_hint">Use an existing UUID to recover a local portfolio.</p>
+            <p class="panel-message" id="portfolio-message" role="status"></p>
           </form>
 
-          <section class="cash-card" aria-label="Available cash" data-i18n-aria-label="available_cash">
-            <span data-i18n="available_cash">Available cash</span>
-            <strong id="available-cash">—</strong>
-            <small data-i18n="ledger_derived">Ledger-derived · USD</small>
+          <button class="text-button onboarding-cancel" id="cancel-onboarding-button" type="button" data-i18n="back_to_workspace" hidden>Back to workspace</button>
+        </div>
+      </main>
+
+      <footer class="onboarding-footer">
+        <span data-i18n="footer_disclaimer">Decision support, not automated trading.</span>
+        <span data-i18n="footer_boundary">Facts · Inference · Unknown</span>
+      </footer>
+    </section>
+
+    <section class="product-shell" id="app-shell" hidden>
+      <aside class="app-sidebar" aria-label="Workspace navigation" data-i18n-aria-label="workspace_navigation">
+        <a class="brand sidebar-brand" href="/app/" aria-label="PositionPilot home" data-i18n-aria-label="brand_home">
+          <span class="brand-mark" aria-hidden="true">PP</span><span>PositionPilot</span>
+        </a>
+
+        <button class="new-question-button" id="new-question-button" type="button" aria-label="New question" data-i18n-aria-label="new_question">
+          <span aria-hidden="true">＋</span><span data-i18n="new_question">New question</span>
+        </button>
+
+        <nav class="workspace-nav" aria-label="Primary" data-i18n-aria-label="primary_navigation">
+          <button class="nav-item is-active" id="nav-chat" type="button" aria-controls="chat-view" aria-current="page">
+            <span class="nav-icon" aria-hidden="true">✦</span><span data-i18n="ask_nav">Ask</span>
+          </button>
+          <button class="nav-item" id="nav-portfolio" type="button" aria-controls="portfolio-view">
+            <span class="nav-icon" aria-hidden="true">▦</span><span data-i18n="portfolio_nav">Portfolio</span>
+          </button>
+        </nav>
+
+        <section class="session-history" aria-labelledby="session-title">
+          <div class="sidebar-section-heading">
+            <span id="session-title" data-i18n="this_session">This session</span>
+            <small data-i18n="session_only">Not saved</small>
+          </div>
+          <p class="session-empty" id="session-empty" data-i18n="no_questions">No questions yet.</p>
+          <div class="session-list" id="session-list"></div>
+        </section>
+
+        <div class="sidebar-portfolio-card">
+          <span data-i18n="current_portfolio">Current portfolio</span>
+          <strong id="sidebar-portfolio-id">—</strong>
+          <button class="text-button" id="switch-portfolio-button" type="button" data-i18n="switch_portfolio">Switch or recover</button>
+        </div>
+      </aside>
+
+      <main class="app-stage">
+        <header class="app-topbar">
+          <div>
+            <p class="eyebrow" id="view-eyebrow" data-i18n="context_aware">Context-aware decision support</p>
+            <h1 class="view-title" id="view-title" data-i18n="chat_view_title" tabindex="-1">Decision chat</h1>
+          </div>
+          <span class="context-chip" id="portfolio-state">Not loaded</span>
+        </header>
+
+        <section class="app-view chat-view" id="chat-view" aria-labelledby="view-title">
+          <div class="conversation-scroll" id="conversation-scroll">
+            <section class="chat-intro" id="chat-intro">
+              <span class="intro-mark" aria-hidden="true">PP</span>
+              <p class="eyebrow" data-i18n="chat_intro_eyebrow">Your portfolio is connected</p>
+              <h2 data-i18n="chat_intro_title">What decision are you working through?</h2>
+              <p data-i18n="chat_intro_body">Ask one focused question. PositionPilot will use your loaded portfolio and only the market context the question needs.</p>
+              <small data-i18n="no_memory_notice">Questions remain in this browser tab only and are not model memory.</small>
+            </section>
+            <div class="conversation-list" id="conversation-list" aria-live="polite"></div>
+          </div>
+
+          <form class="question-card chat-composer" id="question-form">
+            <label class="sr-only" for="question" data-i18n="investment_question">Investment question</label>
+            <textarea id="question" name="question" rows="2" maxlength="4000" placeholder="For example: Can I add a little more GOOG today?" data-i18n-placeholder="question_placeholder" disabled></textarea>
+            <div class="question-actions">
+              <span id="question-hint" data-i18n="question_load_first">Load a portfolio before asking.</span>
+              <button class="primary-button" id="ask-button" type="submit" disabled data-i18n="ask">Ask PositionPilot ↗</button>
+            </div>
+          </form>
+        </section>
+
+        <section class="app-view portfolio-view" id="portfolio-view" aria-labelledby="portfolio-page-title" hidden>
+          <div class="portfolio-page-heading">
+            <div>
+              <p class="eyebrow" data-i18n="structured_state">Structured state</p>
+              <h2 id="portfolio-page-title" data-i18n="portfolio_manage_title">Portfolio workspace</h2>
+              <p data-i18n="portfolio_manage_summary">Review deterministic state or append an immutable trade or cash record.</p>
+            </div>
+            <div class="portfolio-heading-actions">
+              <span class="context-chip" id="write-state" data-tone="neutral">Idle</span>
+              <button class="text-button" id="reload-portfolio-button" type="button" data-i18n="portfolio_reload">Reload</button>
+            </div>
+          </div>
+
+          <div class="portfolio-tabs" role="tablist" aria-label="Portfolio sections" data-i18n-aria-label="portfolio_sections">
+            <button class="portfolio-tab is-active" id="portfolio-tab-overview" type="button" role="tab" aria-selected="true" aria-controls="portfolio-overview-panel" data-i18n="overview_tab">Overview</button>
+            <button class="portfolio-tab" id="portfolio-tab-trade" type="button" role="tab" aria-selected="false" aria-controls="portfolio-trade-panel" data-i18n="trade_tab">Transactions</button>
+            <button class="portfolio-tab" id="portfolio-tab-cash" type="button" role="tab" aria-selected="false" aria-controls="portfolio-cash-panel" data-i18n="cash_tab">Cash activity</button>
+          </div>
+
+          <section class="portfolio-tab-panel" id="portfolio-overview-panel" role="tabpanel" aria-labelledby="portfolio-tab-overview">
+            <div class="portfolio-summary-grid">
+              <section class="cash-card" aria-label="Available cash" data-i18n-aria-label="available_cash">
+                <span data-i18n="available_cash">Available cash</span>
+                <strong id="available-cash">—</strong>
+                <small data-i18n="ledger_derived">Ledger-derived · USD</small>
+              </section>
+              <section class="identity-card">
+                <span data-i18n="portfolio_user_id">Portfolio User ID</span>
+                <strong id="loaded-user-id">—</strong>
+                <p data-i18n="uuid_boundary">Local recovery pointer · not a credential</p>
+                <button class="text-button" id="forget-pointer-button" type="button" data-i18n="forget_pointer" disabled>Forget local pointer</button>
+              </section>
+            </div>
+            <section class="positions-section" aria-labelledby="positions-title">
+              <div class="positions-header">
+                <span id="positions-title" data-i18n="open_positions">Open positions</span><span id="position-count">—</span>
+              </div>
+              <div class="empty-state" id="positions-empty">
+                <span class="empty-index">01</span>
+                <p data-i18n="portfolio_empty_initial">Load a portfolio to reveal the complete current position set.</p>
+              </div>
+              <div class="position-list" id="position-list" aria-live="polite"></div>
+            </section>
           </section>
 
-          <div class="positions-header">
-            <span data-i18n="open_positions">Open positions</span>
-            <span id="position-count">—</span>
-          </div>
-          <div class="empty-state" id="positions-empty">
-            <span class="empty-index">01</span>
-            <p data-i18n="portfolio_empty_initial">
-              Load a portfolio to reveal the complete current position set.
-            </p>
-          </div>
-          <div class="position-list" id="position-list" aria-live="polite"></div>
-          <p class="panel-message" id="portfolio-message" role="status"></p>
-
-          <section class="ledger-entry" aria-labelledby="ledger-entry-title">
-            <div class="section-heading ledger-entry-heading">
-              <div>
-                <p class="eyebrow" data-i18n="maintain_portfolio">Maintain portfolio</p>
-                <h3 id="ledger-entry-title" data-i18n="ledger_entries">Ledger entries</h3>
-              </div>
-              <span class="context-chip" id="write-state" data-tone="neutral">Idle</span>
-            </div>
-
-            <form class="entry-card" id="trade-form" novalidate>
+          <section class="portfolio-tab-panel" id="portfolio-trade-panel" role="tabpanel" aria-labelledby="portfolio-tab-trade" hidden>
+            <form class="entry-card focused-entry-card" id="trade-form" novalidate>
               <div class="entry-card-heading">
-                <h4 data-i18n="trade_entry">Trade entry</h4>
+                <div><p class="eyebrow" data-i18n="transaction_entry">Transaction</p><h3 data-i18n="trade_entry">Trade entry</h3></div>
                 <span class="entry-note" data-i18n="immutable_entry">Appends an immutable record</span>
               </div>
               <fieldset id="trade-fields" disabled>
                 <div class="field-grid field-grid-two">
-                  <div>
-                    <label for="trade-action" data-i18n="action">Action</label>
-                    <select id="trade-action" name="action">
-                      <option value="BUY" data-i18n="buy">BUY</option>
-                      <option value="SELL" data-i18n="sell">SELL</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label for="trade-position-type" data-i18n="position_type">Position type</label>
-                    <select id="trade-position-type" name="position-type">
-                      <option value="LONG_TERM" data-i18n="long_term">LONG_TERM</option>
-                      <option value="SWING" data-i18n="swing">SWING</option>
-                    </select>
-                  </div>
+                  <div><label for="trade-action" data-i18n="action">Action</label><select id="trade-action" name="action"><option value="BUY" data-i18n="buy">BUY</option><option value="SELL" data-i18n="sell">SELL</option></select></div>
+                  <div><label for="trade-position-type" data-i18n="position_type">Position type</label><select id="trade-position-type" name="position-type"><option value="LONG_TERM" data-i18n="long_term">LONG_TERM</option><option value="SWING" data-i18n="swing">SWING</option></select></div>
                 </div>
-                <label for="trade-ticker" data-i18n="ticker">Ticker</label>
-                <input id="trade-ticker" name="ticker" type="text" maxlength="10" autocomplete="off" placeholder="GOOG" />
+                <label for="trade-ticker" data-i18n="ticker">Ticker</label><input id="trade-ticker" name="ticker" type="text" maxlength="10" autocomplete="off" placeholder="GOOG" />
                 <div class="field-grid field-grid-two">
-                  <div>
-                    <label for="trade-price" data-i18n="price">Price</label>
-                    <input id="trade-price" name="price" type="text" inputmode="decimal" autocomplete="off" placeholder="180.25" />
-                  </div>
-                  <div>
-                    <label for="trade-shares" data-i18n="shares">Shares</label>
-                    <input id="trade-shares" name="shares" type="text" inputmode="decimal" autocomplete="off" placeholder="2" />
-                  </div>
+                  <div><label for="trade-price" data-i18n="price">Price</label><input id="trade-price" name="price" type="text" inputmode="decimal" autocomplete="off" placeholder="180.25" /></div>
+                  <div><label for="trade-shares" data-i18n="shares">Shares</label><input id="trade-shares" name="shares" type="text" inputmode="decimal" autocomplete="off" placeholder="2" /></div>
                 </div>
-                <label for="trade-occurred-at" data-i18n="occurred_at_optional">Occurred at (optional)</label>
-                <input id="trade-occurred-at" name="occurred-at" type="datetime-local" />
-                <p class="field-note" data-i18n="occurred_at_hint">
-                  Leave blank to use the backend application time. Enter a past local time only for history.
-                </p>
-                <label for="trade-reason" data-i18n="reason_optional">Reason (optional)</label>
-                <textarea id="trade-reason" name="reason" rows="2" maxlength="1000"></textarea>
-                <button class="secondary-button form-submit" id="trade-submit" type="submit" data-i18n="save_trade">
-                  Save trade
-                </button>
+                <label for="trade-occurred-at" data-i18n="occurred_at_optional">Occurred at (optional)</label><input id="trade-occurred-at" name="occurred-at" type="datetime-local" />
+                <p class="field-note" data-i18n="occurred_at_hint">Leave blank to use backend application time. Enter a past local time only for history.</p>
+                <label for="trade-reason" data-i18n="reason_optional">Reason (optional)</label><textarea id="trade-reason" name="reason" rows="2" maxlength="1000"></textarea>
+                <button class="secondary-button form-submit" id="trade-submit" type="submit" data-i18n="save_trade">Save trade</button>
               </fieldset>
               <p class="panel-message" id="trade-message" role="status"></p>
             </form>
+          </section>
 
-            <form class="entry-card" id="cash-form" novalidate>
+          <section class="portfolio-tab-panel" id="portfolio-cash-panel" role="tabpanel" aria-labelledby="portfolio-tab-cash" hidden>
+            <form class="entry-card focused-entry-card" id="cash-form" novalidate>
               <div class="entry-card-heading">
-                <h4 data-i18n="cash_entry">Cash entry</h4>
+                <div><p class="eyebrow" data-i18n="cash_activity">Cash activity</p><h3 data-i18n="cash_entry">Cash entry</h3></div>
                 <span class="entry-note" data-i18n="immutable_entry">Appends an immutable record</span>
               </div>
               <fieldset id="cash-fields" disabled>
-                <label for="cash-event-type" data-i18n="cash_event_type">Cash event</label>
-                <select id="cash-event-type" name="event-type">
-                  <option value="DEPOSIT" data-i18n="deposit">DEPOSIT</option>
-                  <option value="WITHDRAWAL" data-i18n="withdrawal">WITHDRAWAL</option>
-                </select>
-                <label for="cash-amount" data-i18n="amount">Amount</label>
-                <input id="cash-amount" name="amount" type="text" inputmode="decimal" autocomplete="off" placeholder="500" />
-                <label for="cash-occurred-at" data-i18n="occurred_at_optional">Occurred at (optional)</label>
-                <input id="cash-occurred-at" name="occurred-at" type="datetime-local" />
-                <p class="field-note" data-i18n="occurred_at_hint">
-                  Leave blank to use the backend application time. Enter a past local time only for history.
-                </p>
-                <label for="cash-reason" data-i18n="reason_optional">Reason (optional)</label>
-                <textarea id="cash-reason" name="reason" rows="2" maxlength="1000"></textarea>
-                <button class="secondary-button form-submit" id="cash-submit" type="submit" data-i18n="save_cash">
-                  Save cash event
-                </button>
+                <label for="cash-event-type" data-i18n="cash_event_type">Cash event</label><select id="cash-event-type" name="event-type"><option value="DEPOSIT" data-i18n="deposit">DEPOSIT</option><option value="WITHDRAWAL" data-i18n="withdrawal">WITHDRAWAL</option></select>
+                <label for="cash-amount" data-i18n="amount">Amount</label><input id="cash-amount" name="amount" type="text" inputmode="decimal" autocomplete="off" placeholder="500" />
+                <label for="cash-occurred-at" data-i18n="occurred_at_optional">Occurred at (optional)</label><input id="cash-occurred-at" name="occurred-at" type="datetime-local" />
+                <p class="field-note" data-i18n="occurred_at_hint">Leave blank to use backend application time. Enter a past local time only for history.</p>
+                <label for="cash-reason" data-i18n="reason_optional">Reason (optional)</label><textarea id="cash-reason" name="reason" rows="2" maxlength="1000"></textarea>
+                <button class="secondary-button form-submit" id="cash-submit" type="submit" data-i18n="save_cash">Save cash event</button>
               </fieldset>
               <p class="panel-message" id="cash-message" role="status"></p>
             </form>
           </section>
-        </aside>
-
-        <section class="decision-panel" aria-labelledby="decision-title">
-          <div class="hero-copy">
-            <p class="eyebrow" data-i18n="context_aware">Context-aware decision support</p>
-            <h1 id="decision-title" data-i18n="hero_title">Know the position. Read the moment.</h1>
-            <p class="hero-summary" data-i18n="hero_summary">
-              Ask a focused investment question. PositionPilot combines your actual ledger state
-              with only the market context the question needs.
-            </p>
-          </div>
-
-          <form class="question-card" id="question-form">
-            <label for="question" data-i18n="investment_question">Investment question</label>
-            <textarea
-              id="question"
-              name="question"
-              rows="3"
-              maxlength="4000"
-              placeholder="For example: Can I add a little more GOOG today?"
-              data-i18n-placeholder="question_placeholder"
-              disabled
-            ></textarea>
-            <div class="question-actions">
-              <span id="question-hint" data-i18n="question_load_first">
-                Load a portfolio before asking.
-              </span>
-              <button
-                class="primary-button"
-                id="ask-button"
-                type="submit"
-                disabled
-                data-i18n="ask"
-              >Ask PositionPilot ↗</button>
-            </div>
-          </form>
-
-          <section
-            class="result-card"
-            id="result-card"
-            aria-labelledby="result-title"
-            aria-live="polite"
-          >
-            <div class="result-heading">
-              <div>
-                <p class="eyebrow" data-i18n="decision_response">Decision response</p>
-                <h2 id="result-title" data-i18n="result_awaiting">Awaiting a question</h2>
-              </div>
-              <span class="response-badge" id="response-status">Idle</span>
-            </div>
-            <div class="answer-copy" id="answer-copy" data-i18n="answer_initial">
-              Your answer will appear here with the exact context sources used for this request.
-            </div>
-            <div class="source-section">
-              <div class="source-heading">
-                <span data-i18n="context_sources">Context sources</span>
-                <span id="source-count">0</span>
-              </div>
-              <div class="source-list" id="source-list">
-                <div class="source-placeholder" data-i18n="sources_none">No sources yet.</div>
-              </div>
-            </div>
-          </section>
         </section>
-      </main>
 
-      <footer>
-        <span data-i18n="footer_disclaimer">Decision support, not automated trading.</span>
-        <span data-i18n="footer_boundary">Facts · Inference · Unknown</span>
-      </footer>
-    </div>
+        <footer class="app-footer"><span data-i18n="footer_disclaimer">Decision support, not automated trading.</span><span data-i18n="footer_boundary">Facts · Inference · Unknown</span></footer>
+      </main>
+    </section>
+
+    <template id="assistant-response-template">
+      <article class="assistant-message result-card">
+        <div class="result-heading">
+          <div><p class="eyebrow response-eyebrow">PositionPilot</p><h2 class="result-title">Assembling decision context</h2></div>
+          <span class="response-badge response-status">Working</span>
+        </div>
+        <div class="answer-copy">Reading the loaded portfolio and selecting context.</div>
+        <div class="source-section">
+          <div class="source-heading"><span class="source-heading-label" data-i18n="context_sources">Context sources</span><span class="source-count">0</span></div>
+          <div class="source-list"></div>
+        </div>
+      </article>
+    </template>
   </body>
 </html>

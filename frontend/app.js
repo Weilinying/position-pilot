@@ -10,6 +10,42 @@ const translations = {
     language_switch: "Switch to Chinese",
     language_target: "中文",
     local_workspace: "Local decision workspace",
+    onboarding_eyebrow: "Portfolio-grounded AI",
+    onboarding_title: "Start with the state that makes every answer yours.",
+    onboarding_summary:
+      "Create a local portfolio or recover an existing one. No account or cloud registration is required.",
+    local_only_notice: "Local-only workspace · UUID is a recovery pointer, not a credential.",
+    new_workspace: "New workspace",
+    existing_workspace: "Existing workspace",
+    recover_portfolio: "Recover with UUID",
+    back_to_workspace: "Back to workspace",
+    workspace_navigation: "Workspace navigation",
+    primary_navigation: "Primary navigation",
+    new_question: "New question",
+    ask_nav: "Ask",
+    portfolio_nav: "Portfolio",
+    this_session: "This session",
+    session_only: "Not saved",
+    no_questions: "No questions yet.",
+    current_portfolio: "Current portfolio",
+    switch_portfolio: "Switch or recover",
+    chat_view_title: "Decision chat",
+    portfolio_manage_title: "Portfolio workspace",
+    portfolio_manage_summary:
+      "Review deterministic state or append an immutable trade or cash record.",
+    portfolio_sections: "Portfolio sections",
+    overview_tab: "Overview",
+    trade_tab: "Transactions",
+    cash_tab: "Cash activity",
+    uuid_boundary: "Local recovery pointer · not a credential",
+    transaction_entry: "Transaction",
+    cash_activity: "Cash activity",
+    chat_intro_eyebrow: "Your portfolio is connected",
+    chat_intro_title: "What decision are you working through?",
+    chat_intro_body:
+      "Ask one focused question. PositionPilot will use your loaded portfolio and only the market context the question needs.",
+    no_memory_notice: "Questions remain in this browser tab only and are not model memory.",
+    question_jump: "Jump to question",
     structured_state: "Structured state",
     your_portfolio: "Your portfolio",
     start_here: "Start here",
@@ -156,6 +192,39 @@ const translations = {
     language_switch: "切换到英文",
     language_target: "EN",
     local_workspace: "本地决策工作台",
+    onboarding_eyebrow: "以真实持仓为基础的 AI",
+    onboarding_title: "先建立真实状态，让每个回答真正属于你。",
+    onboarding_summary: "创建本地投资组合，或恢复已有组合。无需账号或云端注册。",
+    local_only_notice: "仅限本地工作区 · UUID 是恢复引用，不是访问凭证。",
+    new_workspace: "新工作区",
+    existing_workspace: "已有工作区",
+    recover_portfolio: "使用 UUID 恢复",
+    back_to_workspace: "返回工作区",
+    workspace_navigation: "工作区导航",
+    primary_navigation: "主导航",
+    new_question: "新问题",
+    ask_nav: "提问",
+    portfolio_nav: "投资组合",
+    this_session: "当前会话",
+    session_only: "不会保存",
+    no_questions: "还没有问题。",
+    current_portfolio: "当前投资组合",
+    switch_portfolio: "切换或恢复",
+    chat_view_title: "决策对话",
+    portfolio_manage_title: "投资组合工作区",
+    portfolio_manage_summary: "查看确定性状态，或追加不可变的交易与现金记录。",
+    portfolio_sections: "投资组合分区",
+    overview_tab: "概览",
+    trade_tab: "交易记录",
+    cash_tab: "现金活动",
+    uuid_boundary: "本地恢复引用 · 不是访问凭证",
+    transaction_entry: "交易",
+    cash_activity: "现金活动",
+    chat_intro_eyebrow: "投资组合已连接",
+    chat_intro_title: "你正在思考哪个投资决策？",
+    chat_intro_body: "提出一个聚焦的问题。PositionPilot 会使用已加载的持仓，并只读取问题所需的市场上下文。",
+    no_memory_notice: "问题只保留在当前浏览器标签页，不属于模型记忆。",
+    question_jump: "跳转到问题",
     structured_state: "结构化状态",
     your_portfolio: "你的投资组合",
     start_here: "从这里开始",
@@ -287,6 +356,32 @@ const translations = {
 let activeLanguage = navigator.language.toLowerCase().startsWith("zh") ? "zh" : "en";
 
 const elements = {
+  onboardingView: document.querySelector("#onboarding-view"),
+  appShell: document.querySelector("#app-shell"),
+  cancelOnboardingButton: document.querySelector("#cancel-onboarding-button"),
+  switchPortfolioButton: document.querySelector("#switch-portfolio-button"),
+  newQuestionButton: document.querySelector("#new-question-button"),
+  navChat: document.querySelector("#nav-chat"),
+  navPortfolio: document.querySelector("#nav-portfolio"),
+  chatView: document.querySelector("#chat-view"),
+  portfolioView: document.querySelector("#portfolio-view"),
+  viewEyebrow: document.querySelector("#view-eyebrow"),
+  viewTitle: document.querySelector("#view-title"),
+  sessionEmpty: document.querySelector("#session-empty"),
+  sessionList: document.querySelector("#session-list"),
+  conversationScroll: document.querySelector("#conversation-scroll"),
+  chatIntro: document.querySelector("#chat-intro"),
+  conversationList: document.querySelector("#conversation-list"),
+  responseTemplate: document.querySelector("#assistant-response-template"),
+  portfolioTabOverview: document.querySelector("#portfolio-tab-overview"),
+  portfolioTabTrade: document.querySelector("#portfolio-tab-trade"),
+  portfolioTabCash: document.querySelector("#portfolio-tab-cash"),
+  portfolioOverviewPanel: document.querySelector("#portfolio-overview-panel"),
+  portfolioTradePanel: document.querySelector("#portfolio-trade-panel"),
+  portfolioCashPanel: document.querySelector("#portfolio-cash-panel"),
+  loadedUserId: document.querySelector("#loaded-user-id"),
+  sidebarPortfolioId: document.querySelector("#sidebar-portfolio-id"),
+  reloadPortfolioButton: document.querySelector("#reload-portfolio-button"),
   createForm: document.querySelector("#create-form"),
   createFields: document.querySelector("#create-fields"),
   portfolioName: document.querySelector("#portfolio-name"),
@@ -327,11 +422,6 @@ const elements = {
   question: document.querySelector("#question"),
   questionHint: document.querySelector("#question-hint"),
   askButton: document.querySelector("#ask-button"),
-  resultTitle: document.querySelector("#result-title"),
-  responseStatus: document.querySelector("#response-status"),
-  answerCopy: document.querySelector("#answer-copy"),
-  sourceCount: document.querySelector("#source-count"),
-  sourceList: document.querySelector("#source-list"),
   languageToggle: document.querySelector("#language-toggle"),
 };
 
@@ -344,6 +434,10 @@ const clientState = {
   questionController: null,
   createController: null,
   writeState: "idle",
+  activeView: "chat",
+  portfolioSection: "overview",
+  activeResponse: null,
+  sessionEntryCount: 0,
 };
 
 function normalizeUserId(value) {
@@ -470,6 +564,59 @@ function toggleLanguage() {
   applyLanguage();
 }
 
+function switchAppView(view, { focus = true } = {}) {
+  clientState.activeView = view;
+  const showChat = view === "chat";
+  elements.chatView.hidden = !showChat;
+  elements.portfolioView.hidden = showChat;
+  elements.navChat.classList.toggle("is-active", showChat);
+  elements.navPortfolio.classList.toggle("is-active", !showChat);
+  if (showChat) {
+    elements.navChat.setAttribute("aria-current", "page");
+    elements.navPortfolio.removeAttribute("aria-current");
+  } else {
+    elements.navChat.removeAttribute("aria-current");
+    elements.navPortfolio.setAttribute("aria-current", "page");
+  }
+  setLocalizedText(elements.viewEyebrow, showChat ? "context_aware" : "structured_state");
+  setLocalizedText(elements.viewTitle, showChat ? "chat_view_title" : "portfolio_nav");
+  if (focus) {
+    if (showChat && !elements.question.disabled) {
+      elements.question.focus();
+    } else {
+      elements.viewTitle.focus();
+    }
+  }
+}
+
+function switchPortfolioSection(section) {
+  clientState.portfolioSection = section;
+  const definitions = [
+    ["overview", elements.portfolioTabOverview, elements.portfolioOverviewPanel],
+    ["trade", elements.portfolioTabTrade, elements.portfolioTradePanel],
+    ["cash", elements.portfolioTabCash, elements.portfolioCashPanel],
+  ];
+  for (const [name, tab, panel] of definitions) {
+    const active = name === section;
+    tab.classList.toggle("is-active", active);
+    tab.setAttribute("aria-selected", String(active));
+    panel.hidden = !active;
+  }
+}
+
+function showOnboarding() {
+  elements.onboardingView.hidden = false;
+  elements.appShell.hidden = true;
+  elements.cancelOnboardingButton.hidden = clientState.loadedUserId === null;
+}
+
+function showWorkspace(view = clientState.activeView) {
+  elements.onboardingView.hidden = true;
+  elements.appShell.hidden = false;
+  elements.cancelOnboardingButton.hidden = true;
+  switchAppView(view, { focus: false });
+}
+
 function setPortfolioState(label, tone = "neutral", localized = true) {
   if (localized) {
     setLocalizedText(elements.portfolioState, label);
@@ -479,13 +626,13 @@ function setPortfolioState(label, tone = "neutral", localized = true) {
   elements.portfolioState.dataset.tone = tone;
 }
 
-function setResponseState(label, tone = "neutral", localized = true) {
+function setResponseState(view, label, tone = "neutral", localized = true) {
   if (localized) {
-    setLocalizedText(elements.responseStatus, label);
+    setLocalizedText(view.responseStatus, label);
   } else {
-    setRawText(elements.responseStatus, label);
+    setRawText(view.responseStatus, label);
   }
-  elements.responseStatus.dataset.tone = tone;
+  view.responseStatus.dataset.tone = tone;
 }
 
 function clearElement(element) {
@@ -609,6 +756,10 @@ function updateControls() {
   elements.forgetPointerButton.disabled =
     identityLocked || portfolioLoading || !hasLocalPointer();
   elements.createFields.disabled = identityLocked || portfolioLoading;
+  elements.switchPortfolioButton.disabled = identityLocked;
+  elements.cancelOnboardingButton.disabled = identityLocked;
+  elements.reloadPortfolioButton.disabled =
+    identityLocked || portfolioLoading || clientState.loadedUserId === null;
 
   const ledgerEnabled = portfolioReady && !identityLocked;
   elements.tradeFields.disabled = !ledgerEnabled;
@@ -629,19 +780,19 @@ function updateControls() {
 }
 
 function resetResult(message = "answer_initial", localized = true) {
-  setLocalizedText(elements.resultTitle, "result_awaiting");
-  setResponseState("response_idle");
+  clientState.activeResponse = null;
+  clientState.sessionEntryCount = 0;
+  clearElement(elements.conversationList);
+  clearElement(elements.sessionList);
+  elements.sessionEmpty.hidden = false;
+  elements.chatIntro.hidden = false;
+  const introBody = elements.chatIntro.querySelector("p:not(.eyebrow)");
+  const messageKey = message === "answer_initial" ? "chat_intro_body" : message;
   if (localized) {
-    setLocalizedText(elements.answerCopy, message);
+    setLocalizedText(introBody, messageKey);
   } else {
-    setRawText(elements.answerCopy, message);
+    setRawText(introBody, message);
   }
-  elements.sourceCount.textContent = "0";
-  clearElement(elements.sourceList);
-  const placeholder = document.createElement("div");
-  placeholder.className = "source-placeholder";
-  setLocalizedText(placeholder, "sources_none");
-  elements.sourceList.append(placeholder);
 }
 
 function resetPortfolio(message = "", localized = true) {
@@ -649,6 +800,10 @@ function resetPortfolio(message = "", localized = true) {
   elements.positionCount.textContent = "—";
   clearElement(elements.positionList);
   elements.positionsEmpty.hidden = false;
+  if (clientState.loadedUserId === null) {
+    elements.loadedUserId.textContent = "—";
+    elements.sidebarPortfolioId.textContent = "—";
+  }
   setLocalizedText(elements.positionsEmpty.querySelector("p"), "portfolio_empty_initial");
   if (localized && message) {
     setLocalizedText(elements.portfolioMessage, message);
@@ -657,13 +812,21 @@ function resetPortfolio(message = "", localized = true) {
   }
 }
 
-function invalidateQuestionContext(resultMessage) {
+function invalidateQuestionContext(resultMessage, { clearHistory = true } = {}) {
   clientState.questionGeneration += 1;
   clientState.questionController?.abort();
   clientState.questionController = null;
   setLocalizedText(elements.askButton, "ask");
   setQuestionEnabled(false);
-  resetResult(resultMessage);
+  if (clearHistory) {
+    resetResult(resultMessage);
+  } else if (clientState.activeResponse !== null) {
+    renderQuestionError(
+      { code: "STALE_CONTEXT", messageKey: resultMessage },
+      clientState.activeResponse,
+    );
+    clientState.activeResponse = null;
+  }
 }
 
 function invalidateLoadedPortfolio(message) {
@@ -741,6 +904,8 @@ function createPositionCard(position) {
 function renderPortfolio(portfolio) {
   elements.availableCash.textContent = `$${portfolio.available_cash}`;
   elements.positionCount.textContent = String(portfolio.positions.length);
+  elements.loadedUserId.textContent = portfolio.user_id;
+  elements.sidebarPortfolioId.textContent = portfolio.user_id;
   setRawText(elements.portfolioMessage, "");
   clearElement(elements.positionList);
   elements.positionsEmpty.hidden = portfolio.positions.length > 0;
@@ -795,7 +960,11 @@ function clearUrlUserIdIfMatches(userId) {
 
 async function loadPortfolioById(
   requestedUserId,
-  { resolveWriteState = true, preserveRecoveryPointer = false } = {},
+  {
+    resolveWriteState = true,
+    preserveRecoveryPointer = false,
+    preserveConversation = false,
+  } = {},
 ) {
   clientState.userIdInput = requestedUserId;
   elements.userIdInput.value = requestedUserId;
@@ -811,8 +980,12 @@ async function loadPortfolioById(
   clientState.portfolioController?.abort();
   const controller = new AbortController();
   clientState.portfolioController = controller;
-  clientState.loadedUserId = null;
-  invalidateQuestionContext("portfolio_loading_context");
+  if (!preserveConversation) {
+    clientState.loadedUserId = null;
+  }
+  invalidateQuestionContext("portfolio_loading_context", {
+    clearHistory: !preserveConversation,
+  });
 
   setPortfolioState("portfolio_loading");
   setLocalizedText(elements.portfolioLoadButton, "loading");
@@ -870,8 +1043,12 @@ async function loadPortfolioById(
     if (resolveWriteState) {
       setWriteState("idle");
     }
-    resetResult();
+    if (!preserveConversation) {
+      switchPortfolioSection("overview");
+      resetResult();
+    }
     renderPortfolio(portfolio);
+    showWorkspace(preserveConversation ? clientState.activeView : "chat");
     return true;
   } catch (error) {
     if (error.name === "AbortError" || generation !== clientState.portfolioGeneration) {
@@ -975,39 +1152,87 @@ function createSourceCard(source) {
   return card;
 }
 
-function renderAnswer(payload) {
+function createQuestionExchange(question) {
+  clientState.sessionEntryCount += 1;
+  const exchangeId = `session-question-${clientState.sessionEntryCount}`;
+  const exchange = document.createElement("section");
+  exchange.className = "conversation-exchange";
+  exchange.id = exchangeId;
+
+  const userMessage = document.createElement("div");
+  userMessage.className = "user-message";
+  userMessage.textContent = question;
+
+  const responseFragment = elements.responseTemplate.content.cloneNode(true);
+  const assistantMessage = responseFragment.querySelector(".assistant-message");
+  const responseView = {
+    resultTitle: responseFragment.querySelector(".result-title"),
+    responseStatus: responseFragment.querySelector(".response-status"),
+    answerCopy: responseFragment.querySelector(".answer-copy"),
+    sourceCount: responseFragment.querySelector(".source-count"),
+    sourceList: responseFragment.querySelector(".source-list"),
+  };
+  setLocalizedText(responseView.resultTitle, "answer_assembling");
+  setResponseState(responseView, "response_working");
+  setLocalizedText(responseView.answerCopy, "answer_loading");
+  responseView.sourceCount.textContent = "0";
+  const sourceHeading = responseFragment.querySelector(".source-heading-label");
+  setLocalizedText(sourceHeading, "context_sources");
+
+  exchange.append(userMessage, responseFragment);
+  elements.chatIntro.hidden = true;
+  elements.conversationList.append(exchange);
+  elements.sessionEmpty.hidden = true;
+
+  const sessionButton = document.createElement("button");
+  sessionButton.className = "session-question";
+  sessionButton.type = "button";
+  sessionButton.textContent = question.length > 54 ? `${question.slice(0, 53)}…` : question;
+  sessionButton.setAttribute("aria-label", `${translate("question_jump")}: ${question}`);
+  sessionButton.addEventListener("click", () => {
+    switchAppView("chat", { focus: false });
+    exchange.scrollIntoView({ block: "start" });
+  });
+  elements.sessionList.append(sessionButton);
+  elements.conversationScroll.scrollTop = elements.conversationScroll.scrollHeight;
+  assistantMessage.setAttribute("aria-live", "polite");
+  clientState.activeResponse = responseView;
+  return responseView;
+}
+
+function renderAnswer(payload, view) {
   const isDegraded = payload.status === "DEGRADED";
-  setLocalizedText(elements.resultTitle, isDegraded ? "answer_degraded" : "answer_assembled");
-  setResponseState(payload.status, isDegraded ? "warning" : "success", false);
-  setRawText(elements.answerCopy, payload.answer);
-  elements.sourceCount.textContent = String(payload.sources.length);
-  clearElement(elements.sourceList);
+  setLocalizedText(view.resultTitle, isDegraded ? "answer_degraded" : "answer_assembled");
+  setResponseState(view, payload.status, isDegraded ? "warning" : "success", false);
+  setRawText(view.answerCopy, payload.answer);
+  view.sourceCount.textContent = String(payload.sources.length);
+  clearElement(view.sourceList);
   if (payload.sources.length === 0) {
     const placeholder = document.createElement("div");
     placeholder.className = "source-placeholder";
     setLocalizedText(placeholder, "source_none_declared");
-    elements.sourceList.append(placeholder);
+    view.sourceList.append(placeholder);
     return;
   }
   for (const source of payload.sources) {
-    elements.sourceList.append(createSourceCard(source));
+    view.sourceList.append(createSourceCard(source));
   }
 }
 
-function renderQuestionError(error) {
-  setLocalizedText(elements.resultTitle, "answer_failed");
-  setResponseState(error.code, "danger", false);
+function renderQuestionError(error, view) {
+  setLocalizedText(view.resultTitle, "answer_failed");
+  setResponseState(view, error.code, "danger", false);
   if (error.messageKey) {
-    setLocalizedText(elements.answerCopy, error.messageKey);
+    setLocalizedText(view.answerCopy, error.messageKey);
   } else {
-    setRawText(elements.answerCopy, error.message);
+    setRawText(view.answerCopy, error.message);
   }
-  elements.sourceCount.textContent = "0";
-  clearElement(elements.sourceList);
+  view.sourceCount.textContent = "0";
+  clearElement(view.sourceList);
   const placeholder = document.createElement("div");
   placeholder.className = "source-placeholder";
   setLocalizedText(placeholder, "source_none_accepted");
-  elements.sourceList.append(placeholder);
+  view.sourceList.append(placeholder);
 }
 
 function setApiErrorMessage(element, error) {
@@ -1119,6 +1344,7 @@ function forgetLocalPointer() {
   invalidateQuestionContext("answer_initial");
   setRawText(elements.createMessage, "");
   clearLedgerMessages();
+  showOnboarding();
   updateControls();
 }
 
@@ -1142,7 +1368,7 @@ async function submitLedgerMutation({
   }
 
   setWriteState("submitting");
-  invalidateQuestionContext("mutation_in_progress");
+  invalidateQuestionContext("mutation_in_progress", { clearHistory: false });
   setRawText(messageElement, "");
   updateControls();
 
@@ -1168,7 +1394,10 @@ async function submitLedgerMutation({
       return false;
     }
 
-    const refreshed = await loadPortfolioById(userId, { resolveWriteState: false });
+    const refreshed = await loadPortfolioById(userId, {
+      resolveWriteState: false,
+      preserveConversation: true,
+    });
     if (!refreshed) {
       markSnapshotRefreshRequired();
       setLocalizedText(messageElement, "write_succeeded_refresh_failed");
@@ -1302,15 +1531,12 @@ async function askQuestion(event) {
   clientState.questionController?.abort();
   const controller = new AbortController();
   clientState.questionController = controller;
+  const responseView = createQuestionExchange(question);
+  elements.question.value = "";
 
   elements.askButton.disabled = true;
   setLocalizedText(elements.askButton, "analyzing");
   elements.question.disabled = true;
-  setLocalizedText(elements.resultTitle, "answer_assembling");
-  setResponseState("response_working");
-  setLocalizedText(elements.answerCopy, "answer_loading");
-  elements.sourceCount.textContent = "0";
-  clearElement(elements.sourceList);
 
   try {
     const response = await fetch("/v1/investment/questions", {
@@ -1338,7 +1564,7 @@ async function askQuestion(event) {
       ) {
         return;
       }
-      renderQuestionError(error);
+      renderQuestionError(error, responseView);
       return;
     }
     const payload = await response.json();
@@ -1350,22 +1576,28 @@ async function askQuestion(event) {
       return;
     }
     if (!isAnswerPayload(payload)) {
-      renderQuestionError({
-        code: "INVALID_RESPONSE",
-        messageKey: "answer_contract_error",
-      });
+      renderQuestionError(
+        {
+          code: "INVALID_RESPONSE",
+          messageKey: "answer_contract_error",
+        },
+        responseView,
+      );
       return;
     }
-    renderAnswer(payload);
+    renderAnswer(payload, responseView);
   } catch (error) {
     if (error.name === "AbortError" || generation !== clientState.questionGeneration) {
       return;
     }
     const isNetworkError = error instanceof TypeError;
-    renderQuestionError({
-      code: isNetworkError ? "NETWORK_ERROR" : "INVALID_RESPONSE",
-      messageKey: isNetworkError ? "answer_service_unreachable" : "answer_display_error",
-    });
+    renderQuestionError(
+      {
+        code: isNetworkError ? "NETWORK_ERROR" : "INVALID_RESPONSE",
+        messageKey: isNetworkError ? "answer_service_unreachable" : "answer_display_error",
+      },
+      responseView,
+    );
   } finally {
     if (
       generation === clientState.questionGeneration &&
@@ -1373,6 +1605,7 @@ async function askQuestion(event) {
       requestedUserId === clientState.userIdInput
     ) {
       clientState.questionController = null;
+      clientState.activeResponse = null;
       setLocalizedText(elements.askButton, "ask");
       updateControls();
     }
@@ -1385,6 +1618,8 @@ async function initializeApp() {
   setPortfolioState("portfolio_not_loaded");
   setWriteState("idle");
   applyLanguage();
+  switchPortfolioSection("overview");
+  showOnboarding();
 
   const urlUserId = normalizeUserId(
     new URLSearchParams(window.location.search).get("user_id") ?? "",
@@ -1405,9 +1640,42 @@ elements.userIdInput.addEventListener("input", handleUserIdInput);
 elements.portfolioForm.addEventListener("submit", loadPortfolio);
 elements.createForm.addEventListener("submit", createPortfolio);
 elements.forgetPointerButton.addEventListener("click", forgetLocalPointer);
+elements.switchPortfolioButton.addEventListener("click", () => {
+  showOnboarding();
+  elements.userIdInput.focus();
+});
+elements.cancelOnboardingButton.addEventListener("click", () => {
+  if (clientState.loadedUserId !== null) {
+    showWorkspace();
+  }
+});
+elements.navChat.addEventListener("click", () => switchAppView("chat"));
+elements.navPortfolio.addEventListener("click", () => switchAppView("portfolio"));
+elements.newQuestionButton.addEventListener("click", () => {
+  switchAppView("chat", { focus: false });
+  if (!elements.question.disabled) {
+    elements.question.focus();
+  }
+});
+elements.portfolioTabOverview.addEventListener("click", () =>
+  switchPortfolioSection("overview"),
+);
+elements.portfolioTabTrade.addEventListener("click", () => switchPortfolioSection("trade"));
+elements.portfolioTabCash.addEventListener("click", () => switchPortfolioSection("cash"));
+elements.reloadPortfolioButton.addEventListener("click", async () => {
+  if (clientState.loadedUserId !== null) {
+    await loadPortfolioById(clientState.loadedUserId, { preserveConversation: true });
+  }
+});
 elements.tradeForm.addEventListener("submit", recordTrade);
 elements.cashForm.addEventListener("submit", recordCashEvent);
 elements.questionForm.addEventListener("submit", askQuestion);
+elements.question.addEventListener("keydown", (event) => {
+  if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
+    event.preventDefault();
+    elements.questionForm.requestSubmit();
+  }
+});
 elements.languageToggle.addEventListener("click", toggleLanguage);
 
 initializeApp();

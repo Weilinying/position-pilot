@@ -177,6 +177,14 @@ Cash Event amount 必须为正数且最多 8 位小数。Transaction 与 Cash Ev
 ## 8. Local Product Interface Boundary
 
 ```text
+首次访问 / 无有效 Pointer
+        ↓
+Start / Recover Onboarding
+        ↓ Create 或 Load 成功
+Application Shell
+        ├── Decision Chat：当前标签页内的连续 Question / Answer
+        └── Portfolio Workspace：Overview / Transactions / Cash Activity
+
 userIdInput ──成功 Load──> loadedUserId
      │                         │
      └──发生变化──> stale/null └──唯一允许用于 Question Request 的身份
@@ -195,6 +203,9 @@ stale / refresh_required; never automatic retry
 ```
 
 - `GET /app/` 与 `/static/*` 由同一 FastAPI 进程提供，Browser 调用相对路径 API，不需要 CORS、Reverse Proxy 或独立 Frontend Service。
+- Browser 使用无构建的 Client-side Screen 切换：首次无有效身份时显示 Start / Recover；成功加载后进入带侧栏的 Application Shell。Decision Chat 与 Portfolio Workspace 是同一 Document 内的互斥 View，不新增前端 Router、Framework 或服务端页面。
+- Decision Chat 将当前浏览器标签页内的多个 Question / Answer 作为纯 Presentation State 依次追加，并提供本次 Session 的跳转列表。该列表与 Answer 不写入 `localStorage`，刷新页面或切换 Portfolio Context 即清空；每个 Question 仍是独立的 Agent Request，不携带先前问答，因此不构成 Conversation Memory 或多轮模型上下文。
+- Portfolio Workspace 将 deterministic Snapshot、Trade Entry 与 Cash Entry 分成 Overview / Transactions / Cash Activity 三个 Panel。切换 Panel 只改变展示位置；所有写入、时间和重读语义仍服从同一 M8 API / Ledger Boundary。
 - `GET /v1/portfolios/{user_id}` 直接映射 `PortfolioService.get_portfolio()` 的 Ledger Replay Result；Response 只包含 User ID、Available Cash、完整性声明和按 `(ticker, position_type)` 稳定排序的当前 Positions。Decimal 保持字符串，不返回实时价格、收益、Ledger History 或风险结论。
 - Browser 显式区分输入框的 `userIdInput` 与已成功加载的 `loadedUserId`。Question 与 Ledger Mutation 只能使用后者；输入变化会立即使 Context 失效。Portfolio 与 Question 各自维护 Request Generation，旧 User 或旧 Generation 的 Read Response 不得更新 DOM。
 - `POST /v1/portfolios` 只是 `PortfolioService.create_user()` 的薄 API Adapter。M8 API 中的“Portfolio”仍是现有单一 `User → Portfolio State` 模型的产品呈现，不新增独立 Portfolio Entity；Multiple Portfolios 的 Ownership / Resource Boundary 留到 V2 重新评估。

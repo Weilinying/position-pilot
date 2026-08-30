@@ -52,14 +52,16 @@ curl http://127.0.0.1:8000/health
 
 ## Local Portfolio Management
 
-页面由 FastAPI 同源托管，不需要 Node、前端安装或单独构建步骤。首次打开 `/app/` 可直接输入 Portfolio Name 与 Initial Cash 创建本地 Portfolio，无需先运行 Demo Seed 或准备 UUID。创建成功后，页面会保存最近一次成功加载的 User ID 本地指针并读取完整 Ledger-derived Snapshot。
+页面由 FastAPI 同源托管，不需要 Node、前端安装或单独构建步骤。首次打开 `/app/` 会进入 Start / Recover 引导页，可直接输入 Portfolio Name 与 Initial Cash 创建本地 Portfolio，无需先运行 Demo Seed 或准备 UUID。这是本地 Portfolio 初始化，不是账号注册；M8 没有 Authentication。创建成功后，页面会保存最近一次成功加载的 User ID 本地指针并读取完整 Ledger-derived Snapshot。
+
+加载成功后进入单一应用壳：左侧导航在 Decision Chat 与 Portfolio Workspace 之间切换。Decision Chat 采用连续问答流，当前浏览器标签页内的多个 Question / Answer 会依次保留并可从侧栏跳转；它们不会写入 `localStorage`、不会跨刷新恢复，也不会作为下一次模型请求的 Conversation Memory。Portfolio Workspace 将 Overview、Transactions 与 Cash Activity 分开，避免初始化、账本输入和问答堆在同一页面。
 
 页面支持：
 
 - 通过既有 UUID 恢复 Portfolio，或只忘记浏览器本地指针；Forget 不删除 Server Ledger；
 - 追加 BUY / SELL，并独立选择 `LONG_TERM` 或 `SWING`；
 - 追加 DEPOSIT / WITHDRAWAL；
-- 提交 Investment Question，并展示 Answer、`OK` / `DEGRADED` 和本轮 Context Sources；
+- 在独立 Decision Chat 中连续提交多个 Investment Question，并分别展示 Answer、`OK` / `DEGRADED` 和本轮 Context Sources；
 - 中文与英文一键切换；切换只改变本地展示文案与时间格式，不改写 Agent Answer 或 Provider Metadata。
 
 Ledger 表单中的发生时间默认留空，此时由 Backend Application Clock 产生当前时间。只有补录历史记录时才填写本地时间；Browser 会转换为带时区的 ISO timestamp。Cash、Shares、Average Cost、Cost Basis、Transaction Amount 与 Fee 始终由后端 Decimal 规则和完整 Ledger replay 产生，Browser 不自行计算。

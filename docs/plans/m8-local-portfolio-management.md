@@ -187,6 +187,8 @@ M8 接受这一低概率 localhost 限制，不引入 client-generated UUID、Id
 - Transaction / Cash Event Network Ambiguity 不自动重试，Snapshot 标记为 `refresh_required`；Reload 后只提供当前 State，不保证识别某一次 POST 是否执行。
 - Create Portfolio Response 丢失时明确显示结果未知，不自动重试，并接受当前 UI 可能无法恢复 Server 已创建 Portfolio 的 Known Limitation。
 - 页面在英文和中文下均能完成 Create、Load、BUY、SELL、DEPOSIT、WITHDRAWAL 与 Ask Flow；语言切换不改变身份或请求状态。
+- 首次初始化 / 恢复、连续问答与 Portfolio 维护使用分离的 Client-side View；Portfolio 内的 Overview、Transactions 与 Cash Activity 不堆叠在同一长页。
+- 当前浏览器标签页可连续展示多个 Question / Answer 并从 Session 列表跳转；刷新或更换 Portfolio Context 后清空，且不写入 localStorage、不作为模型 Conversation Memory。
 - 所有动态文本遵守 M7 XSS Boundary；静态模板之外不使用动态 HTML 字符串拼接。
 - README、Architecture、Roadmap、Plan 与实际本地流程一致；默认只绑定 loopback。
 - 默认 Regression Gate、相关 PostgreSQL Integration、Automated Review 与固定 Human Browser Smoke 通过。
@@ -196,14 +198,14 @@ M8 接受这一低概率 localhost 限制，不引入 client-generated UUID、Id
 
 ### 5.1 页面层级
 
-保留 M7 绿色视觉语言与同源 Vanilla UI，不重做成新产品：
+保留 M7 绿色视觉语言与同源 Vanilla UI，并使用轻量 Client-side Screen 形成清晰的信息架构：
 
-1. **Start / Recover**：Create Portfolio 为首次使用主入口；Load Existing UUID 与 Forget Local Pointer 为次级操作。
-2. **Portfolio Snapshot**：保留 Available Cash、Position Count、`LONG_TERM / SWING` Cards 与 Empty State。
-3. **Maintain Portfolio**：分为 Trade Entry（BUY / SELL）和 Cash Entry（DEPOSIT / WITHDRAWAL）两个清晰表单，避免无关隐藏字段混入同一 Payload。
-4. **Investment QA**：保留现有 Question、Answer、Source Grounding 与 Failure State。
+1. **Start / Recover Onboarding**：无有效 Portfolio Context 时单独显示 Create Portfolio 与 Load Existing UUID；这是本地初始化，不称为账号注册。
+2. **Decision Chat**：加载成功后默认进入连续问答流；左侧 Session 列表只索引当前标签页已经提出的问题，底部 Composer 提交新的独立 Question。
+3. **Portfolio Workspace**：通过 Overview / Transactions / Cash Activity 三个 Panel 分别展示 Snapshot、BUY / SELL 与 DEPOSIT / WITHDRAWAL，避免账本表单和问答堆在一页。
+4. **Application Shell**：侧栏只承担 Ask / Portfolio View 切换、当前 Session 跳转和本地 Portfolio 恢复入口，不扩展为账户系统或多 Portfolio 管理器。
 
-不增加账户菜单、导航系统、交易历史编辑器、Dashboard Chart 或复杂 Modal 流程。窄屏保持单列可用。
+不增加账户菜单、持久化聊天历史、多会话管理、模型 Conversation Memory、交易历史编辑器、Dashboard Chart 或复杂 Modal 流程。窄屏保持基本可用。
 
 ### 5.2 Client State
 
@@ -215,6 +217,9 @@ loadedUserId       = 当前成功加载 Snapshot 的 User
 portfolioGeneration / questionGeneration
 createGeneration   = 当前 Create Request 代次
 writeState         = idle | submitting | refresh_required
+activeView         = chat | portfolio
+portfolioSection   = overview | trade | cash
+sessionEntryCount  = 当前标签页内的展示序号
 ```
 
 - local pointer 只在 Create 成功或 GET Snapshot 成功后写入。
@@ -222,6 +227,7 @@ writeState         = idle | submitting | refresh_required
 - Mutation 进入 `submitting` 时捕获 `loadedUserId`，禁用 Create / Load / Forget / User ID 输入及同一 Mutation Form；完成后恢复 Identity 操作。
 - Mutation 失败或结果不确定时进入 `refresh_required`，Snapshot、Ledger Entry 与 Question 保持禁用，直到用户成功 Reload。
 - 新 Portfolio 创建成功但后续 GET 失败时，保留生成的 UUID / local pointer，并提供显式 Reload，不重复 Create。
+- 当前标签页内的 Question / Answer 只存在于 DOM / 内存 Presentation State；Identity Context 变化时清空，普通 View / Panel 切换与成功 Mutation Refresh 不清空已完成记录。每次 Agent Request 仍只发送当前 `question` 与 `loadedUserId`。
 
 ### 5.3 表单与时间
 
@@ -329,6 +335,8 @@ T6 Automated Review → Fix → Re-check → Human Acceptance
 - [x] Insufficient Cash 与 Oversell。
 - [x] Invalid / future input。
 - [x] Investment QA 与 `OK` / `DEGRADED` / Sources 保持 M7 行为。
+- [x] Onboarding、Decision Chat 与 Portfolio Workspace 可清晰切换，Portfolio 三个 Panel 不同时堆叠。
+- [x] 当前标签页连续提出至少两个 Question 后，两个独立 Answer / Sources 均保留且可从 Session 列表跳转；刷新后不恢复，也不形成模型 Memory。
 - [x] 中文 / 英文完整闭环。
 - [x] Narrow-screen basic usability。
 
@@ -368,10 +376,12 @@ Browser Smoke 是可重复的 Human Verification Evidence，不计入默认 Auto
 
 - `POST /v1/portfolios` 已作为 `PortfolioService.create_user()` 的薄 Adapter 实现；`POST /v1/portfolios/{user_id}/transactions` 复用既有 Transaction Application / Domain Flow；Cash Event Endpoint 只扩展为允许省略时间。
 - Transaction 与 Cash Event 的默认发生时间统一由可注入 Backend Application Clock 产生；显式历史时间要求 offset-aware，统一规范化到 UTC，并拒绝 future timestamp。
-- 页面已实现 Create、URL / versioned local pointer 恢复、Load Existing、Forget Pointer、Trade / Cash 两类 Ledger Form、Mutation Identity Lock、`refresh_required`、写后 GET Snapshot 与中英切换。Browser 不计算金额、手续费、Cash、Shares、Average Cost 或 Cost Basis。
+- 页面已实现 Create、URL / versioned local pointer 恢复、Load Existing、Forget Pointer、Trade / Cash 两类 Ledger Form、Mutation Identity Lock、`refresh_required`、写后 GET Snapshot 与中英切换。M8 Acceptance refinement 将首次 Onboarding、Decision Chat 与 Portfolio Workspace 拆成独立 Client-side View，并把 Portfolio 维护分为 Overview / Transactions / Cash Activity；Browser 不计算金额、手续费、Cash、Shares、Average Cost 或 Cost Basis。
+- Decision Chat 可在当前标签页追加多个独立 Question / Answer 并从 Session 列表跳转；这些内容不进入 localStorage，刷新或 Identity Context 变化即清空，也不随下一次请求发送，因此不属于 Conversation Memory。该调整未改变 API、Domain、Authentication 或 Multiple Portfolio Scope。
 - 默认 Regression：`390 passed, 39 skipped`。Skip 包含 11 个需要显式 `TEST_DATABASE_URL` 的 PostgreSQL Integration Tests、28 个真实 Provider / Model opt-in Tests；没有把 Skip 声称为已执行。
 - JavaScript syntax、Ruff format / lint、mypy、`uv lock --check`、Alembic heads / history 与 `git diff --check` 已通过。用户未跟踪的根目录 `main.py` 未修改、未纳入检查或提交。
 - 2026-08-30 Human Browser Smoke 已完成全部固定 Checklist；390px 视口没有水平溢出，Browser Console 无 warning / error。Network Ambiguity、POST 后 GET Failure、XSS adversarial payload 与 delayed stale read 仍按计划保留为定向 Engineering Verification / Automated Review，不属于默认自动化 E2E Gate。
+- 2026-08-30 Acceptance refinement Browser Smoke 再次验证：Start / Recover 后进入独立 Decision Chat；同一标签页连续 `OK` / `DEGRADED` 两个 Question 时保留两个 Answer、五张 Source Card 与两个 Session 索引；成功 Trade / Cash Mutation Refresh 不清除已完成问答；Overview / Transactions / Cash Activity 互斥显示；刷新后 local pointer 恢复 Portfolio，但 Session Question / Answer 归零；中英切换保持身份、Snapshot 与动态 Answer；桌面侧栏与 390px 窄屏均可用，390px `scrollWidth` 无溢出，Browser Console 无 warning / error。
 - Automated Review 未发现 Backend API、Ledger Atomicity、Application Clock、future timestamp、Decimal、XSS 或 Generation 的阻断问题。Review 指出的 Create 后首次 GET 404 pointer 丢失、Mutation 成功反馈、Create / Load 并发、malformed Create Response 语义、M8 文档与 stale Snapshot 展示均已修复，并在修复后重新执行相关验证。
 - 未增加 Migration、Dependency、Framework、Node、Playwright、Authentication、Portfolio Enumeration、Idempotency、Transaction History 或独立 Portfolio Entity。
 
