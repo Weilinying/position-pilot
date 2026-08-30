@@ -28,7 +28,7 @@ V1 只支持美股及必要的美国上市 ETF。
 
 用户已经明确提供并持久化的信息不应被重复询问，除非该信息可能过期、发生冲突或需要确认更新。
 
-M0～M7 只构成以上核心能力与 Demo Interface 的内部 Engineering Milestones。正式 `v1.0.0` 还要求本地用户无需预先知道 UUID 或运行 Demo Seed，即可创建 Portfolio，并通过 BUY / SELL / DEPOSIT / WITHDRAWAL 持续维护 Structured State；Version / Release 与 Milestone 的对应关系由 `ROADMAP.md` 管理。
+M0～M7 只构成以上核心能力与 Demo Interface 的内部 Engineering Milestones。正式 `v1.0.0` 还要求本地用户无需预先知道 UUID、运行 Demo Seed 或执行其他开发者操作，即可从产品主页注册 / 登录本地账户，初始化 Portfolio，通过 BUY / SELL / DEPOSIT / WITHDRAWAL 持续维护 Structured State，并取得真实 Investment Agent Response；Version / Release 与 Milestone 的对应关系由 `ROADMAP.md` 管理。
 
 ## 3. Decision Context
 
@@ -55,6 +55,8 @@ V1 优先实现 Structured Memory。总可投资资金、剩余现金、Portfoli
 `initial_cash` 只表示 Portfolio 创建时的初始资金。创建后的追加资金投入与资金取出使用独立、不可变的 Cash Event Ledger，当前只支持 `DEPOSIT` 与 `WITHDRAWAL`；不得通过修改历史 `initial_cash` 或伪造 BUY / SELL Transaction 改变资金历史。Available Cash 由 Initial Cash、Cash Events、Transactions 与现有交易成本规则确定性重建，Withdrawal 不得产生负现金。
 
 系统开始跟踪前已经存在的持仓使用独立、不可变的 Opening State 表达，只记录 ticker、shares、average cost、可选 Position Type 与后端记录时间。Opening Position 不是经济 Ledger Event，不伪造成 BUY、不扣减现金、没有交易 sequence 或手续费；当前 State 由 Opening State 与 Cash / Transaction Ledger 共同确定性重建。
+
+V1 的 Email / Password 账户只为本地产品闭环提供稳定身份与 Portfolio Ownership。Account 与现有单一 `User → Portfolio State` 之间保持一对一关系；Browser 不再把 UUID 当作正常用户身份或恢复方式。密码明文不得持久化，认证后由 HttpOnly Session Cookie 识别当前 Account，Portfolio 与 Investment API 的 User Identity 必须由 Session 在 Server 端确定。
 
 同一 Ticker 可以同时存在 `UNSPECIFIED`、`LONG_TERM` 和 `SWING` 三类独立仓位。`UNSPECIFIED` 只表示用户尚未提供策略分类，系统与 LLM 都不得自动把它推断为长期仓或波段仓；已明确的长期与波段仓仍必须在数据结构和分析逻辑中保持区别，因为两者的 Thesis、Plan、风险管理方式和退出条件不同。
 
@@ -151,7 +153,7 @@ V1 不实现自动交易、券商账户控制、自动调仓、期权策略、�
 
 V1 也暂不实现自动投资复盘、行为偏差分析、复杂 Semantic Memory、Vector Database、大型 RAG Pipeline 和 Multi-Agent；不为了增加技术复杂度主动加入 Redis、Kafka、Microservices、Kubernetes、MCP Server 或多个未实际使用的 LLM Provider。
 
-V1.x 保持本地、受控环境与单 Portfolio Context，不实现 Authentication、Cloud Account、Broker Sync、Multiple Portfolio Management、完整 Portfolio Performance History、Dividend 或 Corporate Action；这些 connected product 与 accounting 边界留到 V2。
+V1.x 保持本地、受控环境与单 Account / 单 Portfolio Context。V1 只实现基础 Email / Password 注册、登录、退出和持久 Session，不实现 Email Verification、Password Reset、OAuth、MFA、Organization、Role / Permission、Cloud Account、Broker Sync、Multiple Portfolio Management、完整 Portfolio Performance History、Dividend 或 Corporate Action；这些 Account Platform、connected product 与 accounting 边界留到 V2。
 
 复杂度必须由真实需求证明。
 
@@ -175,4 +177,4 @@ Evaluation 不只判断“Agent 能不能回答”，还应逐步覆盖 Intent U
 
 最终回答应明显体现：这是基于“当前这个用户 + 当前这个市场 + 当前这只股票”的分析。
 
-当本地用户还能在不预先取得 UUID 或运行 Demo Seed 的情况下创建并维护上述 Structured State，这一闭环即达到 `v1.0.0` Local Self-Service MVP 的主要产品目标。
+当本地用户还能在不预先取得 UUID、运行 Demo Seed 或理解开发 Fixture 的情况下，从公开产品主页完成注册 / 登录、初始化并维护上述 Structured State，并通过正式 Single Investment Agent 获得基于当前持仓和市场 Context 的真实 Response，这一闭环即达到 `v1.0.0` Local Self-Service MVP 的主要产品目标。

@@ -11,8 +11,8 @@
 ## 2. Current Status
 
 **Current Milestone:** M8 — Local Portfolio Management
-**Status:** IN PROGRESS — Implementation Complete, Human Acceptance Pending
-**Current Release State:** 原 M8 Slice 已实现；Opening State Revision 待批准与实现，尚未形成 `v1.0.0`
+**Status:** IN PROGRESS — Authentication Revision Approved, Implementation Pending
+**Current Release State:** Portfolio / Ledger 自助 Slice 已实现；基础本地账户与真实 Agent 产品闭环尚未完成，未形成 `v1.0.0`
 **Next Planned Milestone:** M9 — Portfolio Import（依赖 M8 完成，尚未开始）
 
 Milestone 状态统一使用 `NOT STARTED`、`IN PROGRESS`、`DONE`，不维护百分比进度。
@@ -24,11 +24,11 @@ Milestone 表示内部开发阶段；Version / Release 表示用户可感知的�
 | Release | Engineering Milestone | 用户可感知边界 |
 |---|---|---|
 | Demo Core（pre-`v1.0.0`） | M0～M7 | 核心 Ledger、Market / News Context、Single Agent、Evaluation 与需预置 User ID 的 Demo Interface |
-| `v1.0.0` | M8 | 本地用户无需 UUID 或 Demo Seed 即可创建并持续维护 Portfolio，完成 Self-Service MVP |
+| `v1.0.0` | M8 | 本地用户从产品主页注册 / 登录、初始化并持续维护 Portfolio，完成真实 Agent Self-Service MVP |
 | `v1.1.0` | M9 | 通过 Text / Screenshot Draft 与人工确认降低 Portfolio 初始化成本 |
 | `v1.2.0` | M10 | Broker-neutral Fee Policy 基础与语义明确的第一阶段 Accounting / P&L |
 | `v1.3.0` | M11 | 按需路由的确定性 Technical Context |
-| V2 | 后续另行规划 | Connected Product：账户、Broker Sync、多 Portfolio 与完整绩效历史 |
+| V2 | 后续另行规划 | Connected Product：完整 Account Platform、Broker Sync、多 Portfolio 与完整绩效历史 |
 
 ## 4. V1 Engineering Milestones
 
@@ -237,36 +237,39 @@ M6 不从零开始 Evaluation，而是在 M3～M5 已积累的 Behavioral Eval C
 
 ## M8 — Local Portfolio Management
 
-**Status:** IN PROGRESS — Opening State Revision Awaiting Human Approval
+**Status:** IN PROGRESS — Authentication Revision Approved
 
 **Goal**
 
-让本地用户无需预先知道 UUID、无需 Demo Seed，即可从零创建并持续维护 Portfolio；M8 完成后发布 Local Self-Service MVP `v1.0.0`。
+让本地用户无需预先知道 UUID、无需 Demo Seed 或其他开发者操作，即可从产品主页注册 / 登录本地账户、初始化并持续维护 Portfolio，并通过真实 Investment Agent 完成个性化问答；M8 完成后发布 Local Self-Service MVP `v1.0.0`。
 
 **Scope**
 
-在现有同源 Web Interface 中增加本地 Portfolio 创建、Current Available Cash 输入（默认 `0`）与创建后自动加载。创建后优先提供一次性 Existing Positions Setup：手工输入 ticker、shares、average cost 与可选 Position Type；该状态是独立 immutable Opening State，不是经济 Ledger Event，不伪造成 BUY，也不改变 Cash。Opening State 只能在第一笔 Transaction / Cash Event 前提交。提供最小 Ledger Entry UI：BUY / SELL 输入 ticker、quantity、price、可选 Position Type、可选实际发生时间与 reason / note；未分类统一保存为 `UNSPECIFIED`，并与 `LONG_TERM / SWING` 独立。DEPOSIT / WITHDRAWAL 复用 M4 已实现的 Cash Event Domain、Service 与 Public API。当前 State 统一为 `Opening State + Replay(Cash Events + Transactions)`。
+在现有同源 Web Interface 中增加产品主页与最小 Email / Password 注册、登录、退出和持久 Session。注册后的 Account 与当前 `User → Portfolio State` 一对一；用户可立即初始化 Portfolio，也可下次登录后继续。Portfolio Setup 接收 Current Available Cash（默认 `0`）和可选 Existing Positions：ticker、shares、average cost 与可选 Position Type。Opening Position 是独立 immutable Starting Fact，不是经济 Ledger Event，不伪造成 BUY，也不改变 Cash。Opening State 只能在第一笔 Transaction / Cash Event 前提交。提供最小 Ledger Entry UI：BUY / SELL 输入 ticker、quantity、price、可选 Position Type、可选实际发生时间与 reason / note；未分类统一保存为 `UNSPECIFIED`，并与 `LONG_TERM / SWING` 独立。DEPOSIT / WITHDRAWAL 复用 M4 已实现的 Cash Event Domain、Service 与 Public API。当前 State 统一为 `Opening State + Replay(Cash Events + Transactions)`。
 
 Public API 只作为 `PortfolioService.create_user()`、`initialize_opening_positions()` 与 `record_transaction()` 的薄 Adapter，不复制 Domain Validation、金额、手续费、Average Cost、Cash 或 Position 计算。M8 的“修改 Portfolio”只表示初始化 immutable Opening State 或追加新的不可变 Ledger Record，不允许原地编辑或删除历史 Transaction。
 
-Positions、Transactions 与 Cash Activity 分别展示当前仓位、只读交易记录和只读现金记录；不增加历史编辑能力。Decision Questions 可以在当前标签页保留 Question History，但每个问题独立分析，历史不进入模型上下文。保留 M7 的 Portfolio View、Investment QA、Source Grounding、Failure State、身份一致性与安全文本渲染。
+Positions、Transactions 与 Cash Activity 分别展示当前仓位、只读交易记录和只读现金记录；不增加历史编辑能力。Decision Questions 可以在当前标签页保留 Question History，但每个问题独立分析，历史不进入模型上下文。正式产品页面调用真实 Investment Agent；确定性 Fake Agent 只用于隐藏的工程 Smoke。Answer 是默认视觉主体，Sources 作为可展开的分析依据。保留 M7 的 Source Grounding、Failure State、身份一致性与安全文本渲染。
 
 **Non-goals**
 
-- Authentication、Cloud Account、Broker Sync 或 Multiple Portfolio Management；
+- Email Verification、Password Reset、OAuth、MFA、Organization、Role / Permission 或完整 Account Platform；
+- Cloud Account、Broker Sync 或 Multiple Portfolio Management；
 - Chart、Portfolio Performance History 或 Full Transaction History Editor；
 - 修改 / 删除既有 immutable Transaction 或 Cash Event；
 - React / Frontend Framework Migration 或公开部署。
 
 **Done**
 
-* 本地用户可从页面创建 Portfolio、输入 Initial Cash，并自动加载新 Portfolio；
+* 首次用户可从产品主页注册本地账户、登录 / 退出，并在重新打开 Browser 后通过有效 Session 恢复；
+* 用户可在注册后的引导中立即初始化 Portfolio，也可下次登录后继续；正常 UI 不要求输入或理解 UUID；
+* 用户可输入 Initial Cash 与可选 Existing Positions，并自动加载新 Portfolio；
 * 页面可一次性录入 Existing Positions，Opening Position 不伪造交易或现金影响；
 * 页面可追加 BUY、SELL、DEPOSIT 与 WITHDRAWAL，仓位类型可选，`UNSPECIFIED / LONG_TERM / SWING` 保持独立；
 * Transaction 与 Cash Event 具有只读记录视图，不提供 Edit / Delete / Undo；
 * 非法 Ticker / Decimal、Insufficient Cash、Oversell、Unknown User 与非法时间具有明确失败状态，失败不产生部分写入；
 * 每次写入后 Portfolio Snapshot 反映最新 deterministic Ledger replay，不在前端计算金融事实；
-* `Create Portfolio → Optional Opening State → Economic Mutations → Deterministic Portfolio State + Read-only Records → Independent Question → Grounded Answer` 可稳定完成；
+* `Landing → Register / Login → Portfolio Setup → Economic Mutations → Deterministic State + Read-only Records → Independent Question → Real Agent Grounded Answer` 可稳定完成；
 * Automated Review、相关 Regression Gate 与 Human Browser Smoke 通过；
 * Human Acceptance 通过，并形成 `v1.0.0` Release。
 
@@ -364,7 +367,7 @@ M9 复用 M8 已批准的 immutable Opening State 与一次性初始化 Command�
 
 V2 只保留高层范围，等 V1.x 的真实使用、Evaluation 与 Failure Mode 提供证据后再制定详细 Milestone：
 
-- Authentication、User Account 与 Credential Security；
+- Email Verification、Password Reset、OAuth、MFA、Organization、Role / Permission 与远程 Account Lifecycle；
 - Multiple Portfolios 与明确 Ownership / Authorization；
 - Broker Sync、External Transaction Identity、Idempotency、Partial Fill、Reconciliation 与 Broker / Local Conflict；
 - Complete Portfolio Performance History，包括 Daily Valuation、TWR、MWR / XIRR 与 Return Curve；
