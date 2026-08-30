@@ -1,6 +1,7 @@
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const LOCAL_POINTER_KEY = "positionpilot.local-portfolio.v1";
+const DECIMAL_INPUT_PATTERN = /^\d+(?:\.\d{1,8})?$/;
 
 const translations = {
   en: {
@@ -34,7 +35,7 @@ const translations = {
     portfolio_manage_summary:
       "Review deterministic state or append an immutable trade or cash record.",
     portfolio_sections: "Portfolio sections",
-    overview_tab: "Overview",
+    overview_tab: "Positions",
     trade_tab: "Transactions",
     cash_tab: "Cash activity",
     uuid_boundary: "Local recovery pointer · not a credential",
@@ -53,8 +54,9 @@ const translations = {
     portfolio_name: "Portfolio name",
     portfolio_name_placeholder: "e.g. Long-term plan",
     initial_cash: "Initial cash",
-    initial_cash_placeholder: "10000.00",
-    create_hint: "Create a local portfolio without a seed UUID. Cash is recorded by the backend.",
+    initial_cash_placeholder: "0.00",
+    create_hint:
+      "Defaults to 0. Enter the cash available when PositionPilot starts tracking this portfolio.",
     create: "Create portfolio",
     creating: "Creating…",
     create_success: "Portfolio created and loaded.",
@@ -83,7 +85,8 @@ const translations = {
     ledger_derived: "Ledger-derived · USD",
     open_positions: "Open positions",
     portfolio_empty_initial: "Load a portfolio to reveal the complete current position set.",
-    portfolio_empty_loaded: "This portfolio has no open positions.",
+    portfolio_empty_loaded:
+      "This portfolio has no open positions. M8 records actual trades; importing pre-existing holdings is planned for v1.1.",
     context_aware: "Context-aware decision support",
     hero_title: "Know the position. Read the moment.",
     hero_summary:
@@ -123,7 +126,10 @@ const translations = {
     buy: "BUY",
     sell: "SELL",
     ticker: "Ticker",
+    ticker_placeholder: "e.g. GOOG",
     price: "Price",
+    price_placeholder: "e.g. 180.25",
+    shares_placeholder: "e.g. 2",
     position_type: "Position type",
     long_term: "LONG_TERM",
     swing: "SWING",
@@ -136,6 +142,7 @@ const translations = {
     deposit: "DEPOSIT",
     withdrawal: "WITHDRAWAL",
     amount: "Amount",
+    amount_placeholder: "e.g. 500",
     save_cash: "Save cash event",
     write_idle: "Idle",
     write_submitting: "Saving…",
@@ -144,6 +151,22 @@ const translations = {
     mutation_refresh_required: "Refresh the portfolio before adding a ledger entry.",
     mutation_in_progress: "Saving a ledger entry. Identity controls are locked.",
     mutation_invalid_input: "Check the entry fields before submitting.",
+    portfolio_name_required: "Enter a portfolio name.",
+    initial_cash_invalid: "Initial cash must be 0 or a positive number with at most 8 decimal places.",
+    ticker_required: "Enter a ticker. The gray example is not an entered value.",
+    price_required: "Enter a price. The gray example is not an entered value.",
+    shares_required: "Enter shares. The gray “e.g. 2” is an example, not an entered value.",
+    price_invalid: "Price must be a positive number with at most 8 decimal places.",
+    shares_invalid: "Shares must be a positive number with at most 8 decimal places.",
+    amount_required: "Enter an amount. The gray example is not an entered value.",
+    amount_invalid: "Amount must be a positive number with at most 8 decimal places.",
+    api_insufficient_cash:
+      "Insufficient cash. Review available cash, trade amount, and commission.",
+    api_insufficient_shares:
+      "Insufficient shares for this position type. Review ticker, shares, and LONG_TERM / SWING.",
+    api_invalid_transaction: "The trade did not satisfy the ledger rules.",
+    api_invalid_cash_event: "The cash entry did not satisfy the ledger rules.",
+    api_user_not_found: "The loaded portfolio no longer exists.",
     invalid_occurred_at: "Enter a valid local date and time, or leave it blank.",
     write_success: "Ledger entry saved.",
     trade_saved: "Trade saved",
@@ -214,7 +237,7 @@ const translations = {
     portfolio_manage_title: "投资组合工作区",
     portfolio_manage_summary: "查看确定性状态，或追加不可变的交易与现金记录。",
     portfolio_sections: "投资组合分区",
-    overview_tab: "概览",
+    overview_tab: "现有仓位",
     trade_tab: "交易记录",
     cash_tab: "现金活动",
     uuid_boundary: "本地恢复引用 · 不是访问凭证",
@@ -232,8 +255,8 @@ const translations = {
     portfolio_name: "投资组合名称",
     portfolio_name_placeholder: "例如：长期计划",
     initial_cash: "初始现金",
-    initial_cash_placeholder: "10000.00",
-    create_hint: "无需 Seed UUID 即可创建本地投资组合。现金由后端记录。",
+    initial_cash_placeholder: "0.00",
+    create_hint: "默认是 0。请填写 PositionPilot 开始跟踪该组合时实际可用的现金。",
     create: "创建投资组合",
     creating: "创建中…",
     create_success: "投资组合已创建并加载。",
@@ -259,7 +282,7 @@ const translations = {
     ledger_derived: "账本计算 · USD",
     open_positions: "当前持仓",
     portfolio_empty_initial: "加载投资组合后，将显示完整的当前持仓。",
-    portfolio_empty_loaded: "该投资组合当前没有持仓。",
+    portfolio_empty_loaded: "该投资组合当前没有持仓。M8 只记录真实交易；已有仓位导入计划在 v1.1 实现。",
     context_aware: "上下文感知的决策支持",
     hero_title: "看清仓位，把握当下。",
     hero_summary:
@@ -299,7 +322,10 @@ const translations = {
     buy: "BUY",
     sell: "SELL",
     ticker: "标的",
+    ticker_placeholder: "例如：GOOG",
     price: "价格",
+    price_placeholder: "例如：180.25",
+    shares_placeholder: "例如：2",
     position_type: "仓位类型",
     long_term: "LONG_TERM",
     swing: "SWING",
@@ -311,6 +337,7 @@ const translations = {
     deposit: "DEPOSIT",
     withdrawal: "WITHDRAWAL",
     amount: "金额",
+    amount_placeholder: "例如：500",
     save_cash: "保存现金事件",
     write_idle: "空闲",
     write_submitting: "保存中…",
@@ -319,6 +346,20 @@ const translations = {
     mutation_refresh_required: "请先刷新投资组合，再添加账本记录。",
     mutation_in_progress: "正在保存账本记录，身份操作已锁定。",
     mutation_invalid_input: "请检查记录表单字段后再提交。",
+    portfolio_name_required: "请填写投资组合名称。",
+    initial_cash_invalid: "初始现金必须是 0 或正数，且最多包含 8 位小数。",
+    ticker_required: "请填写标的。灰色示例不是已经输入的值。",
+    price_required: "请填写价格。灰色示例不是已经输入的值。",
+    shares_required: "请填写股数。灰色的“例如：2”只是示例，不是已经输入的值。",
+    price_invalid: "价格必须是正数，且最多包含 8 位小数。",
+    shares_invalid: "股数必须是正数，且最多包含 8 位小数。",
+    amount_required: "请填写金额。灰色示例不是已经输入的值。",
+    amount_invalid: "金额必须是正数，且最多包含 8 位小数。",
+    api_insufficient_cash: "可用现金不足。请检查可用现金、交易金额和手续费。",
+    api_insufficient_shares: "该仓位类型的股数不足。请检查标的、股数以及 LONG_TERM / SWING。",
+    api_invalid_transaction: "该交易不符合账本规则。",
+    api_invalid_cash_event: "该现金记录不符合账本规则。",
+    api_user_not_found: "当前加载的投资组合已不存在。",
     invalid_occurred_at: "请输入有效的本地日期时间，或留空。",
     write_success: "账本记录已保存。",
     trade_saved: "交易已保存",
@@ -725,6 +766,7 @@ function clearUrlUserId() {
 
 function setActionMessageWithValue(element, messageKey, value) {
   clearElement(element);
+  element.dataset.tone = "success";
   const message = document.createElement("span");
   setLocalizedText(message, messageKey);
   const detail = document.createElement("span");
@@ -735,6 +777,8 @@ function setActionMessageWithValue(element, messageKey, value) {
 function clearLedgerMessages() {
   setRawText(elements.tradeMessage, "");
   setRawText(elements.cashMessage, "");
+  delete elements.tradeMessage.dataset.tone;
+  delete elements.cashMessage.dataset.tone;
 }
 
 function hasLocalPointer() {
@@ -933,7 +977,15 @@ async function parseApiError(response) {
     }
     if (Array.isArray(payload?.detail)) {
       const messages = payload.detail
-        .map((item) => (typeof item?.msg === "string" ? item.msg : null))
+        .map((item) => {
+          if (typeof item?.msg !== "string") {
+            return null;
+          }
+          const fieldPath = Array.isArray(item.loc)
+            ? item.loc.filter((part) => part !== "body").join(".")
+            : "";
+          return fieldPath ? `${fieldPath}: ${item.msg}` : item.msg;
+        })
         .filter(Boolean);
       if (messages.length > 0) {
         return {
@@ -1236,11 +1288,55 @@ function renderQuestionError(error, view) {
 }
 
 function setApiErrorMessage(element, error) {
+  element.dataset.tone = "danger";
   if (error.messageKey) {
     setLocalizedText(element, error.messageKey);
     return;
   }
-  setRawText(element, `${error.code}: ${error.message}`);
+  const summaryKeys = {
+    INSUFFICIENT_CASH: "api_insufficient_cash",
+    INSUFFICIENT_SHARES: "api_insufficient_shares",
+    INVALID_TRANSACTION: "api_invalid_transaction",
+    INVALID_CASH_EVENT: "api_invalid_cash_event",
+    USER_NOT_FOUND: "api_user_not_found",
+  };
+  const summaryKey = summaryKeys[error.code];
+  if (!summaryKey) {
+    setRawText(element, `${error.code}: ${error.message}`);
+    return;
+  }
+
+  clearElement(element);
+  const summary = document.createElement("span");
+  setLocalizedText(summary, summaryKey);
+  const detail = document.createElement("span");
+  detail.className = "error-detail";
+  detail.textContent = `${error.code}: ${error.message}`;
+  element.append(summary, detail);
+}
+
+function isValidDecimalInput(value, { allowZero = false } = {}) {
+  if (!DECIMAL_INPUT_PATTERN.test(value)) {
+    return false;
+  }
+  return allowZero || /[1-9]/.test(value);
+}
+
+function showFieldError(input, messageElement, messageKey) {
+  input.setAttribute("aria-invalid", "true");
+  messageElement.dataset.tone = "danger";
+  messageElement.dataset.validationFor = input.id;
+  setLocalizedText(messageElement, messageKey);
+  input.focus();
+}
+
+function clearFieldError(input, messageElement) {
+  input.removeAttribute("aria-invalid");
+  if (messageElement.dataset.validationFor === input.id) {
+    delete messageElement.dataset.validationFor;
+    delete messageElement.dataset.tone;
+    setRawText(messageElement, "");
+  }
 }
 
 function parseOptionalOccurredAt(input) {
@@ -1263,8 +1359,12 @@ async function createPortfolio(event) {
 
   const displayName = elements.portfolioName.value.trim();
   const initialCash = elements.initialCash.value.trim();
-  if (!displayName || !initialCash) {
-    setLocalizedText(elements.createMessage, "mutation_invalid_input");
+  if (!displayName) {
+    showFieldError(elements.portfolioName, elements.createMessage, "portfolio_name_required");
+    return;
+  }
+  if (!isValidDecimalInput(initialCash, { allowZero: true })) {
+    showFieldError(elements.initialCash, elements.createMessage, "initial_cash_invalid");
     return;
   }
 
@@ -1425,11 +1525,27 @@ async function recordTrade(event) {
   const price = elements.tradePrice.value.trim();
   const shares = elements.tradeShares.value.trim();
   if (!occurredAt.valid) {
-    setLocalizedText(elements.tradeMessage, "invalid_occurred_at");
+    showFieldError(elements.tradeOccurredAt, elements.tradeMessage, "invalid_occurred_at");
     return;
   }
-  if (!ticker || !price || !shares) {
-    setLocalizedText(elements.tradeMessage, "mutation_invalid_input");
+  if (!ticker) {
+    showFieldError(elements.tradeTicker, elements.tradeMessage, "ticker_required");
+    return;
+  }
+  if (!price) {
+    showFieldError(elements.tradePrice, elements.tradeMessage, "price_required");
+    return;
+  }
+  if (!isValidDecimalInput(price)) {
+    showFieldError(elements.tradePrice, elements.tradeMessage, "price_invalid");
+    return;
+  }
+  if (!shares) {
+    showFieldError(elements.tradeShares, elements.tradeMessage, "shares_required");
+    return;
+  }
+  if (!isValidDecimalInput(shares)) {
+    showFieldError(elements.tradeShares, elements.tradeMessage, "shares_invalid");
     return;
   }
 
@@ -1471,11 +1587,15 @@ async function recordCashEvent(event) {
   const occurredAt = parseOptionalOccurredAt(elements.cashOccurredAt);
   const amount = elements.cashAmount.value.trim();
   if (!occurredAt.valid) {
-    setLocalizedText(elements.cashMessage, "invalid_occurred_at");
+    showFieldError(elements.cashOccurredAt, elements.cashMessage, "invalid_occurred_at");
     return;
   }
   if (!amount) {
-    setLocalizedText(elements.cashMessage, "mutation_invalid_input");
+    showFieldError(elements.cashAmount, elements.cashMessage, "amount_required");
+    return;
+  }
+  if (!isValidDecimalInput(amount)) {
+    showFieldError(elements.cashAmount, elements.cashMessage, "amount_invalid");
     return;
   }
 
@@ -1677,5 +1797,19 @@ elements.question.addEventListener("keydown", (event) => {
   }
 });
 elements.languageToggle.addEventListener("click", toggleLanguage);
+
+const validatedFields = [
+  [elements.portfolioName, elements.createMessage],
+  [elements.initialCash, elements.createMessage],
+  [elements.tradeTicker, elements.tradeMessage],
+  [elements.tradePrice, elements.tradeMessage],
+  [elements.tradeShares, elements.tradeMessage],
+  [elements.tradeOccurredAt, elements.tradeMessage],
+  [elements.cashAmount, elements.cashMessage],
+  [elements.cashOccurredAt, elements.cashMessage],
+];
+for (const [input, messageElement] of validatedFields) {
+  input.addEventListener("input", () => clearFieldError(input, messageElement));
+}
 
 initializeApp();

@@ -52,9 +52,11 @@ curl http://127.0.0.1:8000/health
 
 ## Local Portfolio Management
 
-页面由 FastAPI 同源托管，不需要 Node、前端安装或单独构建步骤。首次打开 `/app/` 会进入 Start / Recover 引导页，可直接输入 Portfolio Name 与 Initial Cash 创建本地 Portfolio，无需先运行 Demo Seed 或准备 UUID。这是本地 Portfolio 初始化，不是账号注册；M8 没有 Authentication。创建成功后，页面会保存最近一次成功加载的 User ID 本地指针并读取完整 Ledger-derived Snapshot。
+页面由 FastAPI 同源托管，不需要 Node、前端安装或单独构建步骤。首次打开 `/app/` 会进入 Start / Recover 引导页，可直接输入 Portfolio Name 与 Initial Cash 创建本地 Portfolio，无需先运行 Demo Seed 或准备 UUID。这是本地 Portfolio 初始化，不是账号注册；M8 没有 Authentication。Initial Cash 在界面中实际默认为 `0`，用户可改为 PositionPilot 开始跟踪时的可用现金。创建成功后，页面会保存最近一次成功加载的 User ID 本地指针并读取完整 Ledger-derived Snapshot。
 
-加载成功后进入单一应用壳：左侧导航在 Decision Chat 与 Portfolio Workspace 之间切换。Decision Chat 采用连续问答流，当前浏览器标签页内的多个 Question / Answer 会依次保留并可从侧栏跳转；它们不会写入 `localStorage`、不会跨刷新恢复，也不会作为下一次模型请求的 Conversation Memory。Portfolio Workspace 将 Overview、Transactions 与 Cash Activity 分开，避免初始化、账本输入和问答堆在同一页面。
+加载成功后进入单一应用壳：左侧导航在 Decision Chat 与 Portfolio Workspace 之间切换。Decision Chat 采用连续问答流，当前浏览器标签页内的多个 Question / Answer 会依次保留并可从侧栏跳转；它们不会写入 `localStorage`、不会跨刷新恢复，也不会作为下一次模型请求的 Conversation Memory。Portfolio Workspace 将 Positions、Transactions 与 Cash Activity 分开，避免初始化、账本输入和问答堆在同一页面。表单中的灰色内容统一带 `e.g.` / “例如”前缀，只是示例；缺少或非法字段会标记具体输入框并给出对应说明，后端领域失败同时展示稳定 Error Code 与安全 Detail。
+
+M8 的 Positions 只显示由真实 Transaction / Cash Ledger 重放得到的当前状态，尚不能把系统开始跟踪前已经存在的仓位直接导入。已有仓位不能伪造成历史 BUY；Text / Screenshot Import 与 Opening Position 语义属于 M9 `v1.1.0` 的 Human Review 范围。
 
 页面支持：
 

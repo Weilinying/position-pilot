@@ -363,6 +363,13 @@ textarea:focus {
   box-shadow: 0 0 0 4px rgba(27, 107, 84, 0.08);
 }
 
+input[aria-invalid="true"],
+select[aria-invalid="true"],
+textarea[aria-invalid="true"] {
+  border-color: var(--danger);
+  box-shadow: 0 0 0 4px rgba(176, 55, 42, 0.1);
+}
+
 input:disabled,
 select:disabled,
 textarea:disabled {
@@ -607,6 +614,18 @@ button:disabled {
   margin: 12px 0 0;
   color: var(--danger);
   font-size: 13px;
+}
+
+.panel-message[data-tone="success"] {
+  color: var(--teal);
+}
+
+.panel-message .error-detail {
+  display: block;
+  margin-top: 5px;
+  color: #7e3b32;
+  font-size: 12px;
+  overflow-wrap: anywhere;
 }
 
 .question-card,
@@ -1387,6 +1406,21 @@ footer {
 
   .app-topbar {
     padding-left: 30px;
+  }
+
+  #portfolio-state {
+    display: none;
+  }
+}
+
+@media (max-width: 780px) {
+  .field-grid-two,
+  .portfolio-summary-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .focused-entry-card {
+    max-width: none;
   }
 }
 

@@ -376,8 +376,11 @@ Browser Smoke 是可重复的 Human Verification Evidence，不计入默认 Auto
 
 - `POST /v1/portfolios` 已作为 `PortfolioService.create_user()` 的薄 Adapter 实现；`POST /v1/portfolios/{user_id}/transactions` 复用既有 Transaction Application / Domain Flow；Cash Event Endpoint 只扩展为允许省略时间。
 - Transaction 与 Cash Event 的默认发生时间统一由可注入 Backend Application Clock 产生；显式历史时间要求 offset-aware，统一规范化到 UTC，并拒绝 future timestamp。
-- 页面已实现 Create、URL / versioned local pointer 恢复、Load Existing、Forget Pointer、Trade / Cash 两类 Ledger Form、Mutation Identity Lock、`refresh_required`、写后 GET Snapshot 与中英切换。M8 Acceptance refinement 将首次 Onboarding、Decision Chat 与 Portfolio Workspace 拆成独立 Client-side View，并把 Portfolio 维护分为 Overview / Transactions / Cash Activity；Browser 不计算金额、手续费、Cash、Shares、Average Cost 或 Cost Basis。
+- 页面已实现 Create、URL / versioned local pointer 恢复、Load Existing、Forget Pointer、Trade / Cash 两类 Ledger Form、Mutation Identity Lock、`refresh_required`、写后 GET Snapshot 与中英切换。M8 Acceptance refinement 将首次 Onboarding、Decision Chat 与 Portfolio Workspace 拆成独立 Client-side View，并把 Portfolio 维护分为 Positions / Transactions / Cash Activity；Browser 不计算金额、手续费、Cash、Shares、Average Cost 或 Cost Basis。
 - Decision Chat 可在当前标签页追加多个独立 Question / Answer 并从 Session 列表跳转；这些内容不进入 localStorage，刷新或 Identity Context 变化即清空，也不随下一次请求发送，因此不属于 Conversation Memory。该调整未改变 API、Domain、Authentication 或 Multiple Portfolio Scope。
+- Human Acceptance feedback 将 Portfolio 第一分区从泛化的 Overview 明确为 Positions，并使三分区在不同页面尺寸下自适应。新 Portfolio 的 Initial Cash UI 实际默认值改为 `0`，但仍由用户决定开始跟踪时的真实可用现金；该调整不改变 Public API 或 Ledger replay。
+- 交易与现金表单的示例值统一增加 `e.g.` / “例如”前缀，避免 placeholder 被误认成已输入值。客户端对 Portfolio Name、Initial Cash、Ticker、Price、Shares、Amount 与历史时间给出逐字段错误、`aria-invalid` 与焦点定位；已知后端 Ledger Failure 同时展示本地化说明、稳定 Error Code 与安全 Detail。
+- “系统开始跟踪时已经存在的仓位”仍不属于 M8。它不能用 BUY 伪造，继续进入 M9 `Text / Screenshot → Draft → Human Confirmation → Opening Position` 的领域语义与 Human Review；M8 未新增 Opening Position、Ledger History Read API 或 Import UI。
 - 默认 Regression：`390 passed, 39 skipped`。Skip 包含 11 个需要显式 `TEST_DATABASE_URL` 的 PostgreSQL Integration Tests、28 个真实 Provider / Model opt-in Tests；没有把 Skip 声称为已执行。
 - JavaScript syntax、Ruff format / lint、mypy、`uv lock --check`、Alembic heads / history 与 `git diff --check` 已通过。用户未跟踪的根目录 `main.py` 未修改、未纳入检查或提交。
 - 2026-08-30 Human Browser Smoke 已完成全部固定 Checklist；390px 视口没有水平溢出，Browser Console 无 warning / error。Network Ambiguity、POST 后 GET Failure、XSS adversarial payload 与 delayed stale read 仍按计划保留为定向 Engineering Verification / Automated Review，不属于默认自动化 E2E Gate。

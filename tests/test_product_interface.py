@@ -33,6 +33,9 @@ def test_serves_product_interface_and_static_assets() -> None:
     assert 'id="portfolio-tab-overview"' in page.text
     assert 'id="portfolio-tab-trade"' in page.text
     assert 'id="portfolio-tab-cash"' in page.text
+    assert 'id="initial-cash"' in page.text
+    assert 'value="0"' in page.text
+    assert 'data-i18n-placeholder="shares_placeholder"' in page.text
     assert script.status_code == 200
     assert stylesheet.status_code == 200
 
@@ -61,6 +64,11 @@ def test_client_script_preserves_identity_and_safe_text_boundary() -> None:
     assert "createQuestionExchange" in script
     assert "sessionEntryCount" in script
     assert script.count("window.localStorage.setItem(") == 1
+    assert "DECIMAL_INPUT_PATTERN" in script
+    assert "showFieldError" in script
+    assert 'shares_required: "Enter shares.' in script
+    assert 'shares_required: "请填写股数。' in script
+    assert 'INSUFFICIENT_CASH: "api_insufficient_cash"' in script
 
 
 def test_client_script_preserves_m8_write_and_recovery_boundaries() -> None:

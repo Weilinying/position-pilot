@@ -52,7 +52,7 @@
               <label for="portfolio-name" data-i18n="portfolio_name">Portfolio name</label>
               <input id="portfolio-name" name="portfolio-name" type="text" maxlength="200" autocomplete="off" data-i18n-placeholder="portfolio_name_placeholder" placeholder="e.g. Long-term plan" />
               <label for="initial-cash" data-i18n="initial_cash">Initial cash</label>
-              <input id="initial-cash" name="initial-cash" type="text" inputmode="decimal" autocomplete="off" data-i18n-placeholder="initial_cash_placeholder" placeholder="10000.00" />
+              <input id="initial-cash" name="initial-cash" type="text" inputmode="decimal" autocomplete="off" value="0" data-i18n-placeholder="initial_cash_placeholder" placeholder="0.00" />
               <p class="field-note" data-i18n="create_hint">Create a local portfolio without a seed UUID. Cash is recorded by the backend.</p>
               <button class="primary-button compact-button" id="create-button" type="submit" data-i18n="create">Create portfolio</button>
             </fieldset>
@@ -166,7 +166,7 @@
           </div>
 
           <div class="portfolio-tabs" role="tablist" aria-label="Portfolio sections" data-i18n-aria-label="portfolio_sections">
-            <button class="portfolio-tab is-active" id="portfolio-tab-overview" type="button" role="tab" aria-selected="true" aria-controls="portfolio-overview-panel" data-i18n="overview_tab">Overview</button>
+            <button class="portfolio-tab is-active" id="portfolio-tab-overview" type="button" role="tab" aria-selected="true" aria-controls="portfolio-overview-panel" data-i18n="overview_tab">Positions</button>
             <button class="portfolio-tab" id="portfolio-tab-trade" type="button" role="tab" aria-selected="false" aria-controls="portfolio-trade-panel" data-i18n="trade_tab">Transactions</button>
             <button class="portfolio-tab" id="portfolio-tab-cash" type="button" role="tab" aria-selected="false" aria-controls="portfolio-cash-panel" data-i18n="cash_tab">Cash activity</button>
           </div>
@@ -208,10 +208,10 @@
                   <div><label for="trade-action" data-i18n="action">Action</label><select id="trade-action" name="action"><option value="BUY" data-i18n="buy">BUY</option><option value="SELL" data-i18n="sell">SELL</option></select></div>
                   <div><label for="trade-position-type" data-i18n="position_type">Position type</label><select id="trade-position-type" name="position-type"><option value="LONG_TERM" data-i18n="long_term">LONG_TERM</option><option value="SWING" data-i18n="swing">SWING</option></select></div>
                 </div>
-                <label for="trade-ticker" data-i18n="ticker">Ticker</label><input id="trade-ticker" name="ticker" type="text" maxlength="10" autocomplete="off" placeholder="GOOG" />
+                <label for="trade-ticker" data-i18n="ticker">Ticker</label><input id="trade-ticker" name="ticker" type="text" maxlength="10" autocomplete="off" placeholder="e.g. GOOG" data-i18n-placeholder="ticker_placeholder" />
                 <div class="field-grid field-grid-two">
-                  <div><label for="trade-price" data-i18n="price">Price</label><input id="trade-price" name="price" type="text" inputmode="decimal" autocomplete="off" placeholder="180.25" /></div>
-                  <div><label for="trade-shares" data-i18n="shares">Shares</label><input id="trade-shares" name="shares" type="text" inputmode="decimal" autocomplete="off" placeholder="2" /></div>
+                  <div><label for="trade-price" data-i18n="price">Price</label><input id="trade-price" name="price" type="text" inputmode="decimal" autocomplete="off" placeholder="e.g. 180.25" data-i18n-placeholder="price_placeholder" /></div>
+                  <div><label for="trade-shares" data-i18n="shares">Shares</label><input id="trade-shares" name="shares" type="text" inputmode="decimal" autocomplete="off" placeholder="e.g. 2" data-i18n-placeholder="shares_placeholder" /></div>
                 </div>
                 <label for="trade-occurred-at" data-i18n="occurred_at_optional">Occurred at (optional)</label><input id="trade-occurred-at" name="occurred-at" type="datetime-local" />
                 <p class="field-note" data-i18n="occurred_at_hint">Leave blank to use backend application time. Enter a past local time only for history.</p>
@@ -230,7 +230,7 @@
               </div>
               <fieldset id="cash-fields" disabled>
                 <label for="cash-event-type" data-i18n="cash_event_type">Cash event</label><select id="cash-event-type" name="event-type"><option value="DEPOSIT" data-i18n="deposit">DEPOSIT</option><option value="WITHDRAWAL" data-i18n="withdrawal">WITHDRAWAL</option></select>
-                <label for="cash-amount" data-i18n="amount">Amount</label><input id="cash-amount" name="amount" type="text" inputmode="decimal" autocomplete="off" placeholder="500" />
+                <label for="cash-amount" data-i18n="amount">Amount</label><input id="cash-amount" name="amount" type="text" inputmode="decimal" autocomplete="off" placeholder="e.g. 500" data-i18n-placeholder="amount_placeholder" />
                 <label for="cash-occurred-at" data-i18n="occurred_at_optional">Occurred at (optional)</label><input id="cash-occurred-at" name="occurred-at" type="datetime-local" />
                 <p class="field-note" data-i18n="occurred_at_hint">Leave blank to use backend application time. Enter a past local time only for history.</p>
                 <label for="cash-reason" data-i18n="reason_optional">Reason (optional)</label><textarea id="cash-reason" name="reason" rows="2" maxlength="1000"></textarea>
