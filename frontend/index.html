@@ -9,8 +9,8 @@
       data-i18n-content="meta_description"
     />
     <title>PositionPilot · Decision Desk</title>
-    <link rel="stylesheet" href="/static/styles.css?v=20260830-m8" />
-    <script type="module" src="/static/app.js?v=20260830-m8"></script>
+    <link rel="stylesheet" href="/static/styles.css?v=20260830-m8-1" />
+    <script type="module" src="/static/app.js?v=20260830-m8-1"></script>
   </head>
   <body>
     <button class="language-toggle global-language-toggle" id="language-toggle" type="button" aria-label="切换到中文">中文</button>
@@ -294,9 +294,13 @@
           <div><p class="eyebrow response-eyebrow">PositionPilot</p><h2 class="result-title">Assembling decision context</h2></div>
           <span class="response-badge response-status">Working</span>
         </div>
-        <div class="answer-copy">Reading the loaded portfolio and selecting context.</div>
+        <section class="answer-section">
+          <p class="answer-label" data-i18n="answer_label">Answer</p>
+          <div class="answer-copy">Reading the loaded portfolio and selecting context.</div>
+        </section>
         <div class="source-section">
           <div class="source-heading"><span class="source-heading-label" data-i18n="context_sources">Context sources</span><span class="source-count">0</span></div>
+          <p class="source-explainer" data-i18n="source_explainer">These are the data sources used to form the analysis, not the answer itself.</p>
           <div class="source-list"></div>
         </div>
       </article>

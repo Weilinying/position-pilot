@@ -503,8 +503,10 @@ button:disabled {
 .cash-card strong {
   margin: 9px 0 7px;
   font-family: Georgia, "Times New Roman", serif;
-  font-size: clamp(32px, 4vw, 48px);
+  font-size: clamp(28px, 3.5vw, 42px);
   font-weight: 500;
+  line-height: 1;
+  overflow-wrap: anywhere;
 }
 
 .positions-header,
@@ -655,13 +657,41 @@ button:disabled {
   background: #efeee8;
 }
 
+.answer-section {
+  margin-top: 22px;
+  padding: 20px;
+  border: 1px solid rgba(27, 107, 84, 0.13);
+  border-radius: 14px;
+  background: rgba(27, 107, 84, 0.045);
+}
+
+.answer-label {
+  margin: 0 0 10px;
+  color: var(--teal);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
 .answer-copy {
   min-height: 84px;
-  padding: 24px 0;
-  color: var(--ink-soft);
-  font-size: 15px;
+  padding: 0;
+  color: var(--ink);
+  font-size: 16px;
   line-height: 1.75;
   white-space: pre-wrap;
+}
+
+.source-section {
+  margin-top: 24px;
+}
+
+.source-explainer {
+  margin: 10px 0 14px;
+  color: #78847f;
+  font-size: 12px;
+  line-height: 1.55;
 }
 
 .source-placeholder {

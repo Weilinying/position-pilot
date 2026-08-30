@@ -23,6 +23,8 @@ def test_serves_product_interface_and_static_assets() -> None:
     assert 'id="question-form"' in page.text
     assert 'id="language-toggle"' in page.text
     assert 'data-i18n="context_sources"' in page.text
+    assert 'data-i18n="answer_label"' in page.text
+    assert 'data-i18n="source_explainer"' in page.text
     assert 'id="onboarding-view"' in page.text
     assert 'id="app-shell"' in page.text
     assert 'id="chat-view"' in page.text
@@ -64,6 +66,10 @@ def test_client_script_preserves_identity_and_safe_text_boundary() -> None:
     assert 'source_market_time: "Market time"' in script
     assert 'source_fetched: "Fetched"' in script
     assert 'source_ticker: "标的"' in script
+    assert 'source_type_portfolio_snapshot: "Portfolio holdings and cash"' in script
+    assert 'source_type_current_quote: "当前市场报价"' in script
+    assert "formatDecimalForDisplay" in script
+    assert "DECIMAL_DISPLAY_FIELDS" in script
     assert "portfolio_empty_initial" in script
     assert "portfolio_empty_loaded" in script
     assert "toggleLanguage" in script

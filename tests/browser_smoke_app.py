@@ -347,7 +347,11 @@ class BrowserSmokeInvestmentAgent:
             )
         return InvestmentAnswer(
             InvestmentResponseStatus.OK,
-            "基于当前长期仓与波段仓的回答。",
+            (
+                "这是本地 Smoke 环境的示例回答：系统已读取当前投资组合，并成功取得 GOOG "
+                "的模拟报价来源。该环境只验证问答与来源展示，不提供真实行情或模型分析，"
+                "因此不能据此判断是否应该加仓。"
+            ),
             (
                 ContextSource(ContextSourceType.PORTFOLIO_SNAPSHOT, "OK"),
                 ContextSource(

@@ -2,6 +2,22 @@ const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const LOCAL_POINTER_KEY = "positionpilot.local-portfolio.v1";
 const DECIMAL_INPUT_PATTERN = /^\d+(?:\.\d{1,8})?$/;
+const DECIMAL_DISPLAY_FIELDS = new Set([
+  "shares",
+  "average_cost",
+  "cost_basis",
+  "price",
+  "trade_amount",
+  "commission",
+  "amount",
+]);
+const SOURCE_TYPE_LABEL_KEYS = {
+  PORTFOLIO_SNAPSHOT: "source_type_portfolio_snapshot",
+  CURRENT_QUOTE: "source_type_current_quote",
+  PRICE_HISTORY: "source_type_price_history",
+  RECENT_NEWS: "source_type_recent_news",
+  MARKET_CONTEXT: "source_type_market_context",
+};
 
 const translations = {
   en: {
@@ -102,7 +118,10 @@ const translations = {
     result_awaiting: "Awaiting a question",
     response_idle: "Idle",
     answer_initial: "Your answer will appear here with the exact context sources used.",
+    answer_label: "Answer",
     context_sources: "Context sources",
+    source_explainer:
+      "These are the data sources used to form the analysis, not the answer itself.",
     sources_none: "No sources yet.",
     source_none_declared: "This answer declared no external context sources.",
     source_none_accepted: "No answer or sources were accepted for this request.",
@@ -117,6 +136,11 @@ const translations = {
     source_market_time: "Market time",
     source_fetched: "Fetched",
     source_portfolio_state: "Structured portfolio state",
+    source_type_portfolio_snapshot: "Portfolio holdings and cash",
+    source_type_current_quote: "Current market quote",
+    source_type_price_history: "Recent price history",
+    source_type_recent_news: "Recent news",
+    source_type_market_context: "Market context",
     maintain_portfolio: "Maintain portfolio",
     ledger_entries: "Ledger entries",
     trade_entry: "Trade entry",
@@ -236,10 +260,10 @@ const translations = {
     portfolio_display_error: "The portfolio response could not be safely displayed.",
     portfolio_context_stale: "Portfolio context is stale. Load it again before asking.",
     request_failed: "The request could not be completed.",
-    answer_degraded: "Answer with data gaps",
-    answer_assembled: "Decision context assembled",
+    answer_degraded: "Investment analysis · Data gaps",
+    answer_assembled: "Investment analysis",
     answer_failed: "Request could not form an answer",
-    answer_assembling: "Assembling decision context",
+    answer_assembling: "Preparing investment analysis",
     response_working: "Working",
     answer_loading:
       "Reading the loaded portfolio and selecting only the context this question needs.",
@@ -337,7 +361,9 @@ const translations = {
     result_awaiting: "等待提问",
     response_idle: "空闲",
     answer_initial: "回答将在这里显示，并附上本次请求实际使用的上下文来源。",
+    answer_label: "回答正文",
     context_sources: "上下文来源",
+    source_explainer: "以下是形成本次分析时实际使用的数据来源，不是回答正文。",
     sources_none: "暂无来源。",
     source_none_declared: "该回答声明未使用外部上下文来源。",
     source_none_accepted: "本次请求没有可接受的回答或来源。",
@@ -352,6 +378,11 @@ const translations = {
     source_market_time: "市场时间",
     source_fetched: "获取时间",
     source_portfolio_state: "结构化投资组合状态",
+    source_type_portfolio_snapshot: "投资组合持仓与现金",
+    source_type_current_quote: "当前市场报价",
+    source_type_price_history: "近期价格历史",
+    source_type_recent_news: "近期新闻",
+    source_type_market_context: "市场环境",
     maintain_portfolio: "维护投资组合",
     ledger_entries: "账本记录",
     trade_entry: "交易记录",
@@ -457,10 +488,10 @@ const translations = {
     portfolio_display_error: "无法安全显示投资组合响应。",
     portfolio_context_stale: "投资组合上下文已失效，请重新加载后再提问。",
     request_failed: "请求无法完成。",
-    answer_degraded: "回答存在数据缺口",
-    answer_assembled: "决策上下文已完成",
+    answer_degraded: "投资分析 · 数据不完整",
+    answer_assembled: "投资分析",
     answer_failed: "请求未能形成回答",
-    answer_assembling: "正在组装决策上下文",
+    answer_assembling: "正在准备投资分析",
     response_working: "处理中",
     answer_loading: "正在读取已加载的投资组合，并仅选择本次问题所需的上下文。",
     answer_contract_error: "投资回答不符合预期的数据契约。",
@@ -585,7 +616,14 @@ function normalizeUserId(value) {
 }
 
 function formatDecimalForDisplay(value) {
-  return /^-?0(?:\.0+)?(?:e[+-]?\d+)?$/i.test(value) ? "0.00000000" : value;
+  const text = String(value);
+  if (/^-?0(?:\.0+)?(?:e[+-]?\d+)?$/i.test(text)) {
+    return "0";
+  }
+  if (/^-?\d+\.\d+$/.test(text)) {
+    return text.replace(/0+$/, "").replace(/\.$/, "");
+  }
+  return text;
 }
 
 function isValidUserId(value) {
@@ -1149,7 +1187,7 @@ function createPositionCard(position) {
     const term = document.createElement("dt");
     setLocalizedText(term, label);
     const description = document.createElement("dd");
-    description.textContent = value;
+    description.textContent = formatDecimalForDisplay(value);
     group.append(term, description);
     facts.append(group);
   }
@@ -1168,6 +1206,8 @@ function appendRecordFact(list, labelKey, value, { timestamp = false } = {}) {
     description.textContent = formatTimestamp(value);
   } else if (value === null || value === undefined || value === "") {
     setLocalizedText(description, "not_provided");
+  } else if (DECIMAL_DISPLAY_FIELDS.has(labelKey)) {
+    description.textContent = formatDecimalForDisplay(value);
   } else {
     description.textContent = value;
   }
@@ -1544,7 +1584,12 @@ function createSourceCard(source) {
   const top = document.createElement("div");
   top.className = "source-card-top";
   const title = document.createElement("strong");
-  title.textContent = source.type;
+  const sourceTypeLabelKey = SOURCE_TYPE_LABEL_KEYS[source.type];
+  if (sourceTypeLabelKey) {
+    setLocalizedText(title, sourceTypeLabelKey);
+  } else {
+    setRawText(title, source.type);
+  }
   const status = document.createElement("span");
   status.className = "source-status";
   status.textContent = source.status;
@@ -1612,8 +1657,12 @@ function createQuestionExchange(question) {
   setResponseState(responseView, "response_working");
   setLocalizedText(responseView.answerCopy, "answer_loading");
   responseView.sourceCount.textContent = "0";
+  const answerLabel = responseFragment.querySelector(".answer-label");
+  setLocalizedText(answerLabel, "answer_label");
   const sourceHeading = responseFragment.querySelector(".source-heading-label");
   setLocalizedText(sourceHeading, "context_sources");
+  const sourceExplainer = responseFragment.querySelector(".source-explainer");
+  setLocalizedText(sourceExplainer, "source_explainer");
 
   exchange.append(userMessage, responseFragment);
   elements.chatIntro.hidden = true;

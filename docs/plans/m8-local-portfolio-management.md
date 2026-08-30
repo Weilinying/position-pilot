@@ -537,6 +537,7 @@ Browser Smoke 是可重复的 Human Verification Evidence，不计入默认 Auto
 - Public API 已提供 Opening Position 批量 POST，以及 Opening Position、Transaction、Cash Event 三个完整只读 List GET。Opening Position 按 `(ticker, position_type)`，经济记录按 sequence 升序；Response 保留 `items_are_complete`、后端 id / timestamp、Decimal string 与派生字段。
 - Portfolio Workspace 已提供一次性 Existing Positions Draft、Skip / Reopen、三个只读 Record List、可选 Position Type 与详细领域错误；创建空组合后优先进入 Positions Setup。Browser 仍不计算 Cash、Average Cost、Cost Basis、Amount 或 Fee，所有动态文本继续只通过安全 DOM Property 渲染。
 - 问答产品文案统一为 Decision Questions / Question History。当前标签页可保留多个独立 Question / Answer 与 Source Cards，但每次 Request 仍只发送当前 Question + `loadedUserId`；刷新或身份变化会清空展示历史，不构成 Conversation Memory。
+- Human UI Feedback 后，问答卡明确分隔“回答正文”和“上下文来源”，来源类型使用产品化名称并说明其证据性质；Decimal 仍保留后端原始精度，但浏览器展示会移除无意义的末尾零并限制大额现金文本溢出。
 - 2026-08-30 Browser Smoke 已验证：Create、默认现金 0、批量 Existing Positions、`UNSPECIFIED / LONG_TERM` 独立、DEPOSIT、WITHDRAWAL、BUY、SELL、Insufficient Cash、Oversell、future timestamp、写后 Snapshot / Record List refresh、local pointer recovery、OK / DEGRADED / Sources、中英文与 390px 窄屏。390px 的 `document.scrollWidth` 与 viewport 相同，Browser Console 无 warning / error。
 - 默认 Regression：`410 passed, 45 skipped`。Skip 包含 13 个需要显式 `TEST_DATABASE_URL` 的 PostgreSQL Integration Tests、28 个真实模型 Behavioral Eval，以及 4 个真实 Provider / Agent opt-in Tests；没有把 Skip 声称为已执行。
 - JavaScript syntax、Ruff lint、mypy、`uv lock --check`、Alembic heads / history 与 `git diff --check` 已通过；Ruff format 只检查受控的 `backend / alembic / tests`，用户未跟踪的根目录 `main.py` 未修改、未格式化或提交。
