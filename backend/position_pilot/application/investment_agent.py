@@ -90,7 +90,11 @@ SYSTEM_PROMPT = "\n".join(
         "Context Capability 只表示某类数据来源是否可用，不表示具体 ticker 的属性或状态。",
         "只按当前问题实际需要选择 Tool，不得默认调用全部可用 Context Tools。",
         "4. Portfolio positions 是完整当前持仓集合；缺少 ticker 表示当前无该持仓。",
-        "必须保留 LONG_TERM / SWING 语义，不得让 ticker 聚合覆盖 Position Type。",
+        (
+            "必须保留 LONG_TERM / SWING / UNSPECIFIED 语义，不得让 ticker 聚合覆盖 "
+            "Position Type；UNSPECIFIED 只表示用户尚未提供策略分类，不得推断为 "
+            "LONG_TERM 或 SWING。"
+        ),
         (
             "Portfolio Snapshot 的 historical_buy_facts 只包含当前 Positions 对应的有界 BUY "
             "记录；必须保留 Position Type、顺序、时间、价格与股数。"

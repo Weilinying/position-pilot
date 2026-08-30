@@ -10,12 +10,18 @@ from sqlalchemy.orm import Session, sessionmaker
 from position_pilot.domain.portfolio import (
     CashEvent,
     CashEventType,
+    OpeningPosition,
     PositionType,
     Transaction,
     TransactionAction,
     User,
 )
-from position_pilot.infrastructure.models import CashEventModel, TransactionModel, UserModel
+from position_pilot.infrastructure.models import (
+    CashEventModel,
+    OpeningPositionModel,
+    TransactionModel,
+    UserModel,
+)
 
 
 def _to_user(model: UserModel) -> User:
@@ -46,6 +52,20 @@ def _to_transaction(model: TransactionModel) -> Transaction:
         position_type=PositionType(model.position_type),
         occurred_at=model.occurred_at,
         reason=model.reason,
+    )
+
+
+def _to_opening_position(model: OpeningPositionModel) -> OpeningPosition:
+    """将 ORM Starting Fact 转换为经过领域校验的 Opening Position。"""
+
+    return OpeningPosition(
+        id=model.id,
+        user_id=model.user_id,
+        ticker=model.ticker,
+        shares=model.shares,
+        average_cost=model.average_cost,
+        position_type=PositionType(model.position_type),
+        recorded_at=model.recorded_at,
     )
 
 
@@ -113,6 +133,34 @@ class SqlAlchemyPortfolioUnitOfWork:
                 initial_cash=user.initial_cash,
                 created_at=user.created_at,
             )
+        )
+
+    def list_opening_positions(self, user_id: UUID) -> list[OpeningPosition]:
+        """按稳定 Position Key 读取完整 Opening State。"""
+
+        statement = (
+            select(OpeningPositionModel)
+            .where(OpeningPositionModel.user_id == user_id)
+            .order_by(OpeningPositionModel.ticker, OpeningPositionModel.position_type)
+        )
+        return [_to_opening_position(model) for model in self.session.scalars(statement)]
+
+    def add_opening_positions(self, opening_positions: list[OpeningPosition]) -> None:
+        """在同一事务中添加完整的 immutable Opening State。"""
+
+        self.session.add_all(
+            [
+                OpeningPositionModel(
+                    id=position.id,
+                    user_id=position.user_id,
+                    ticker=position.ticker,
+                    shares=position.shares,
+                    average_cost=position.average_cost,
+                    position_type=position.position_type.value,
+                    recorded_at=position.recorded_at,
+                )
+                for position in opening_positions
+            ]
         )
 
     def list_transactions(self, user_id: UUID) -> list[Transaction]:

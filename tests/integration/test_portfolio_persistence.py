@@ -14,8 +14,11 @@ from sqlalchemy import delete, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
+from position_pilot.application.errors import OpeningStateSealed
 from position_pilot.application.portfolio_service import (
     CreateUserCommand,
+    InitializeOpeningPositionsCommand,
+    OpeningPositionInput,
     PortfolioService,
     RecordCashEventCommand,
     RecordTransactionCommand,
@@ -29,7 +32,12 @@ from position_pilot.domain.portfolio import (
     TransactionAction,
     User,
 )
-from position_pilot.infrastructure.models import CashEventModel, TransactionModel, UserModel
+from position_pilot.infrastructure.models import (
+    CashEventModel,
+    OpeningPositionModel,
+    TransactionModel,
+    UserModel,
+)
 from position_pilot.infrastructure.unit_of_work import (
     SqlAlchemyPortfolioUnitOfWork,
     SqlAlchemyPortfolioUnitOfWorkFactory,
@@ -60,7 +68,7 @@ class BlockingCommitUnitOfWork(SqlAlchemyPortfolioUnitOfWork):
 
     def commit(self) -> None:
         if not self._release_commit.wait(timeout=10):
-            raise TimeoutError("测试未及时释放第一笔 Transaction")
+            raise TimeoutError("测试未及时释放第一笔 Portfolio Mutation")
         super().commit()
 
 
@@ -244,6 +252,96 @@ def test_persists_and_recovers_combined_cash_and_transaction_ledgers() -> None:
         with engine.begin() as connection:
             connection.execute(delete(CashEventModel).where(CashEventModel.user_id == user.id))
             connection.execute(delete(TransactionModel).where(TransactionModel.user_id == user.id))
+            connection.execute(delete(UserModel).where(UserModel.id == user.id))
+        engine.dispose()
+
+
+def test_persists_opening_state_and_seals_after_first_economic_mutation() -> None:
+    """Opening State 应独立持久化、参与 Replay，并在经济写入后保持封闭。"""
+
+    engine = create_database_engine(get_test_database_url())
+    session_factory = create_session_factory(engine)
+    application_now = datetime(2026, 8, 26, 9, 30, tzinfo=UTC)
+    service = PortfolioService(
+        SqlAlchemyPortfolioUnitOfWorkFactory(session_factory),
+        clock=lambda: application_now,
+    )
+    user = service.create_user(
+        CreateUserCommand(display_name="Opening State User", initial_cash=Decimal("500"))
+    )
+
+    try:
+        service.initialize_opening_positions(
+            InitializeOpeningPositionsCommand(
+                user_id=user.id,
+                positions=(
+                    OpeningPositionInput(
+                        ticker="GOOG",
+                        shares=Decimal("2"),
+                        average_cost=Decimal("100"),
+                    ),
+                    OpeningPositionInput(
+                        ticker="GOOG",
+                        shares=Decimal("1"),
+                        average_cost=Decimal("120"),
+                        position_type=PositionType.SWING,
+                    ),
+                ),
+            )
+        )
+        service.record_transaction(
+            RecordTransactionCommand(
+                user_id=user.id,
+                ticker="GOOG",
+                action=TransactionAction.SELL,
+                price=Decimal("110"),
+                shares=Decimal("0.5"),
+            )
+        )
+        service.record_cash_event(
+            RecordCashEventCommand(
+                user_id=user.id,
+                event_type=CashEventType.DEPOSIT,
+                amount=Decimal("100"),
+            )
+        )
+
+        recovered_service = PortfolioService(
+            SqlAlchemyPortfolioUnitOfWorkFactory(create_session_factory(engine))
+        )
+        opening_positions = recovered_service.list_opening_positions(user.id)
+        state = recovered_service.get_portfolio(user.id)
+
+        assert [(item.ticker, item.position_type) for item in opening_positions] == [
+            ("GOOG", PositionType.SWING),
+            ("GOOG", PositionType.UNSPECIFIED),
+        ]
+        assert all(item.recorded_at == application_now for item in opening_positions)
+        assert state.cash.available_cash == Decimal("654.65000000")
+        unspecified = state.get_position("GOOG", PositionType.UNSPECIFIED)
+        assert unspecified is not None
+        assert unspecified.shares == Decimal("1.50000000")
+        assert state.get_position("GOOG", PositionType.SWING) is not None
+        with pytest.raises(OpeningStateSealed):
+            recovered_service.initialize_opening_positions(
+                InitializeOpeningPositionsCommand(
+                    user_id=user.id,
+                    positions=(
+                        OpeningPositionInput(
+                            ticker="MSFT",
+                            shares=Decimal("1"),
+                            average_cost=Decimal("400"),
+                        ),
+                    ),
+                )
+            )
+    finally:
+        with engine.begin() as connection:
+            connection.execute(delete(CashEventModel).where(CashEventModel.user_id == user.id))
+            connection.execute(delete(TransactionModel).where(TransactionModel.user_id == user.id))
+            connection.execute(
+                delete(OpeningPositionModel).where(OpeningPositionModel.user_id == user.id)
+            )
             connection.execute(delete(UserModel).where(UserModel.id == user.id))
         engine.dispose()
 
@@ -568,5 +666,85 @@ def test_concurrent_buys_wait_for_lock_and_revalidate_cash() -> None:
         release_commit.set()
         with engine.begin() as connection:
             connection.execute(delete(TransactionModel).where(TransactionModel.user_id == user.id))
+            connection.execute(delete(UserModel).where(UserModel.id == user.id))
+        engine.dispose()
+
+
+def test_concurrent_opening_state_initialization_allows_only_first_writer() -> None:
+    """并发 Opening State 必须由 User 行锁串行化，第二个写入明确封闭。"""
+
+    engine = create_database_engine(get_test_database_url())
+    session_factory = create_session_factory(engine)
+    setup_service = PortfolioService(SqlAlchemyPortfolioUnitOfWorkFactory(session_factory))
+    user = setup_service.create_user(
+        CreateUserCommand(display_name="Concurrent Opening", initial_cash=Decimal("0"))
+    )
+    lock_acquired = Event()
+    release_commit = Event()
+    backend_ready = Event()
+    backend_pid: list[int] = []
+    command = InitializeOpeningPositionsCommand(
+        user_id=user.id,
+        positions=(
+            OpeningPositionInput(
+                ticker="GOOG",
+                shares=Decimal("1"),
+                average_cost=Decimal("100"),
+            ),
+        ),
+    )
+    first_service = PortfolioService(
+        lambda: BlockingCommitUnitOfWork(
+            session_factory,
+            lock_acquired=lock_acquired,
+            release_commit=release_commit,
+        )
+    )
+    second_service = PortfolioService(
+        lambda: ObservableUnitOfWork(
+            session_factory,
+            backend_ready=backend_ready,
+            backend_pid=backend_pid,
+        )
+    )
+
+    try:
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            first_future = executor.submit(first_service.initialize_opening_positions, command)
+            assert lock_acquired.wait(timeout=5), "第一批 Opening State 未获取 User 行锁"
+            second_future = executor.submit(second_service.initialize_opening_positions, command)
+            try:
+                assert backend_ready.wait(timeout=5), "第二批 Opening State 未建立数据库连接"
+                deadline = time.monotonic() + 5
+                waiting_for_lock = False
+                while time.monotonic() < deadline:
+                    with engine.connect() as connection:
+                        wait_event_type = connection.scalar(
+                            text(
+                                "SELECT wait_event_type FROM pg_stat_activity "
+                                "WHERE pid = :backend_pid"
+                            ),
+                            {"backend_pid": backend_pid[0]},
+                        )
+                    if wait_event_type == "Lock":
+                        waiting_for_lock = True
+                        break
+                    time.sleep(0.05)
+                assert waiting_for_lock, "第二批 Opening State 未等待 User 行锁"
+            finally:
+                release_commit.set()
+
+            first = first_future.result(timeout=5)
+            with pytest.raises(OpeningStateSealed):
+                second_future.result(timeout=5)
+
+        assert len(first) == 1
+        assert len(setup_service.list_opening_positions(user.id)) == 1
+    finally:
+        release_commit.set()
+        with engine.begin() as connection:
+            connection.execute(
+                delete(OpeningPositionModel).where(OpeningPositionModel.user_id == user.id)
+            )
             connection.execute(delete(UserModel).where(UserModel.id == user.id))
         engine.dispose()

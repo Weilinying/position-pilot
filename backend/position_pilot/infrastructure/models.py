@@ -74,7 +74,7 @@ class TransactionModel(Base):
         CheckConstraint("commission >= 0", name="ck_transactions_commission_non_negative"),
         CheckConstraint("action IN ('BUY', 'SELL')", name="transaction_action"),
         CheckConstraint(
-            "position_type IN ('LONG_TERM', 'SWING')",
+            "position_type IN ('LONG_TERM', 'SWING', 'UNSPECIFIED')",
             name="position_type",
         ),
         CheckConstraint(
@@ -110,9 +110,49 @@ class TransactionModel(Base):
     amount: Mapped[Decimal] = mapped_column(Numeric(28, 8))
     commission: Mapped[Decimal] = mapped_column(Numeric(28, 8))
     fee_schedule: Mapped[str] = mapped_column(String(40))
-    position_type: Mapped[str] = mapped_column(String(9))
+    position_type: Mapped[str] = mapped_column(String(11))
     occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     reason: Mapped[str | None] = mapped_column(Text)
+
+
+class OpeningPositionModel(Base):
+    """系统开始跟踪时接收的不可变持仓起始事实。"""
+
+    __tablename__ = "opening_positions"
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id",
+            "ticker",
+            "position_type",
+            name="uq_opening_positions_user_position",
+        ),
+        CheckConstraint("shares > 0", name="ck_opening_positions_shares_positive"),
+        CheckConstraint(
+            "average_cost > 0",
+            name="ck_opening_positions_average_cost_positive",
+        ),
+        CheckConstraint(
+            "position_type IN ('LONG_TERM', 'SWING', 'UNSPECIFIED')",
+            name="opening_position_type",
+        ),
+        Index(
+            "ix_opening_positions_user_position",
+            "user_id",
+            "ticker",
+            "position_type",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    user_id: Mapped[UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    ticker: Mapped[str] = mapped_column(String(10))
+    shares: Mapped[Decimal] = mapped_column(Numeric(28, 8))
+    average_cost: Mapped[Decimal] = mapped_column(Numeric(28, 8))
+    position_type: Mapped[str] = mapped_column(String(11))
+    recorded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 
 class CashEventModel(Base):

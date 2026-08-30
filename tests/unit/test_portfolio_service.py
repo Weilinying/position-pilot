@@ -10,9 +10,11 @@ from uuid import UUID, uuid4
 
 import pytest
 
-from position_pilot.application.errors import UserNotFound
+from position_pilot.application.errors import OpeningStateSealed, UserNotFound
 from position_pilot.application.portfolio_service import (
     CreateUserCommand,
+    InitializeOpeningPositionsCommand,
+    OpeningPositionInput,
     PortfolioService,
     RecordCashEventCommand,
     RecordTransactionCommand,
@@ -21,6 +23,7 @@ from position_pilot.domain.errors import InsufficientCash, InvalidPortfolioValue
 from position_pilot.domain.portfolio import (
     CashEvent,
     CashEventType,
+    OpeningPosition,
     PositionType,
     Transaction,
     TransactionAction,
@@ -36,6 +39,7 @@ class FakeStore:
     """跨 Unit of Work 保存已提交测试状态。"""
 
     users: dict[UUID, User] = field(default_factory=dict)
+    opening_positions: dict[UUID, list[OpeningPosition]] = field(default_factory=dict)
     transactions: dict[UUID, list[Transaction]] = field(default_factory=dict)
     cash_events: dict[UUID, list[CashEvent]] = field(default_factory=dict)
     lock_requests: list[UUID] = field(default_factory=list)
@@ -66,8 +70,19 @@ class FakeUnitOfWork:
 
     def add_user(self, user: User) -> None:
         self._store.users[user.id] = user
+        self._store.opening_positions[user.id] = []
         self._store.transactions[user.id] = []
         self._store.cash_events[user.id] = []
+
+    def list_opening_positions(self, user_id: UUID) -> list[OpeningPosition]:
+        return sorted(
+            self._store.opening_positions[user_id],
+            key=lambda position: (position.ticker, position.position_type.value),
+        )
+
+    def add_opening_positions(self, opening_positions: list[OpeningPosition]) -> None:
+        if opening_positions:
+            self._store.opening_positions[opening_positions[0].user_id].extend(opening_positions)
 
     def list_transactions(self, user_id: UUID) -> list[Transaction]:
         return sorted(
@@ -571,3 +586,145 @@ def test_record_cash_event_rejects_unknown_user() -> None:
 
     assert store.cash_events == {}
     assert store.commit_count == 0
+
+
+def test_initializes_opening_state_once_with_stable_order_and_no_cash_impact() -> None:
+    """Opening State 应在 User Lock 内原子写入，并按 Position Key 返回。"""
+
+    service, store = make_service()
+    user = service.create_user(CreateUserCommand(display_name="Alice", initial_cash=Decimal("500")))
+
+    positions = service.initialize_opening_positions(
+        InitializeOpeningPositionsCommand(
+            user_id=user.id,
+            positions=(
+                OpeningPositionInput(
+                    ticker="MSFT",
+                    shares=Decimal("1"),
+                    average_cost=Decimal("400"),
+                    position_type=PositionType.LONG_TERM,
+                ),
+                OpeningPositionInput(
+                    ticker="goog",
+                    shares=Decimal("2"),
+                    average_cost=Decimal("100"),
+                ),
+            ),
+        )
+    )
+
+    assert [(position.ticker, position.position_type) for position in positions] == [
+        ("GOOG", PositionType.UNSPECIFIED),
+        ("MSFT", PositionType.LONG_TERM),
+    ]
+    assert all(position.recorded_at == NOW for position in positions)
+    assert store.lock_requests[-1] == user.id
+    assert store.commit_count == 2
+    assert service.list_opening_positions(user.id) == positions
+    assert service.get_portfolio(user.id).cash.available_cash == Decimal("500.00000000")
+
+
+def test_opening_state_rejects_duplicate_normalized_position_key_atomically() -> None:
+    """重复 Key 必须在持久化前失败，不能产生部分 Opening State。"""
+
+    service, store = make_service()
+    user = service.create_user(CreateUserCommand(display_name="Alice", initial_cash=Decimal("0")))
+
+    with pytest.raises(InvalidPortfolioValue, match="不能包含重复"):
+        service.initialize_opening_positions(
+            InitializeOpeningPositionsCommand(
+                user_id=user.id,
+                positions=(
+                    OpeningPositionInput(
+                        ticker="GOOG",
+                        shares=Decimal("1"),
+                        average_cost=Decimal("100"),
+                    ),
+                    OpeningPositionInput(
+                        ticker=" goog ",
+                        shares=Decimal("2"),
+                        average_cost=Decimal("110"),
+                        position_type=PositionType.UNSPECIFIED,
+                    ),
+                ),
+            )
+        )
+
+    assert store.opening_positions[user.id] == []
+    assert store.commit_count == 1
+
+
+@pytest.mark.parametrize("existing_fact", ["opening", "transaction", "cash_event"])
+def test_opening_state_is_sealed_by_any_existing_portfolio_fact(existing_fact: str) -> None:
+    """Opening Position、Transaction 或 Cash Event 任一存在时都必须封闭初始化。"""
+
+    service, _ = make_service()
+    user = service.create_user(
+        CreateUserCommand(display_name="Alice", initial_cash=Decimal("1000"))
+    )
+    opening_command = InitializeOpeningPositionsCommand(
+        user_id=user.id,
+        positions=(
+            OpeningPositionInput(
+                ticker="GOOG",
+                shares=Decimal("1"),
+                average_cost=Decimal("100"),
+            ),
+        ),
+    )
+    if existing_fact == "opening":
+        service.initialize_opening_positions(opening_command)
+    elif existing_fact == "transaction":
+        service.record_transaction(
+            RecordTransactionCommand(
+                user_id=user.id,
+                ticker="GOOG",
+                action=TransactionAction.BUY,
+                price=Decimal("100"),
+                shares=Decimal("1"),
+            )
+        )
+    else:
+        service.record_cash_event(
+            RecordCashEventCommand(
+                user_id=user.id,
+                event_type=CashEventType.DEPOSIT,
+                amount=Decimal("100"),
+            )
+        )
+
+    with pytest.raises(OpeningStateSealed):
+        service.initialize_opening_positions(opening_command)
+
+
+def test_unspecified_transaction_replays_against_unspecified_opening_position() -> None:
+    """缺省 SELL 只能减少缺省归一后的 UNSPECIFIED 起始仓位。"""
+
+    service, _ = make_service()
+    user = service.create_user(CreateUserCommand(display_name="Alice", initial_cash=Decimal("0")))
+    service.initialize_opening_positions(
+        InitializeOpeningPositionsCommand(
+            user_id=user.id,
+            positions=(
+                OpeningPositionInput(
+                    ticker="GOOG",
+                    shares=Decimal("2"),
+                    average_cost=Decimal("100"),
+                ),
+            ),
+        )
+    )
+
+    transaction = service.record_transaction(
+        RecordTransactionCommand(
+            user_id=user.id,
+            ticker="GOOG",
+            action=TransactionAction.SELL,
+            price=Decimal("120"),
+            shares=Decimal("1"),
+        )
+    )
+
+    position = service.get_portfolio(user.id).get_position("GOOG", PositionType.UNSPECIFIED)
+    assert transaction.position_type is PositionType.UNSPECIFIED
+    assert position is not None and position.shares == Decimal("1.00000000")

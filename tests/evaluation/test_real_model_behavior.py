@@ -868,6 +868,7 @@ def fixed_market_context(final_close: str) -> MarketDataResult[MarketRegimeConte
 
 GOOG_LONG = position("GOOG", PositionType.LONG_TERM, "2", "200")
 GOOG_SWING = position("GOOG", PositionType.SWING, "1", "220")
+GOOG_UNSPECIFIED = position("GOOG", PositionType.UNSPECIFIED, "3", "180")
 GOOG_LONG_WITH_BUY_HISTORY = position("GOOG", PositionType.LONG_TERM, "2", "200.35")
 GOOG_SWING_WITH_BUY_HISTORY = position("GOOG", PositionType.SWING, "1", "220.35")
 GOOG_LONG_PAIRED = position("GOOG", PositionType.LONG_TERM, "1", "210")
@@ -966,6 +967,63 @@ CASES = (
         (),
         InvestmentResponseStatus.OK,
         ("LONG_TERM 为 2 股/200", "SWING 为 1 股/220"),
+    ),
+    BehavioralCase(
+        "three_position_types_distinct",
+        "分别列出我的 GOOG 长期仓、波段仓和未分类仓的股数与平均成本。",
+        Decimal("300"),
+        (GOOG_LONG, GOOG_SWING, GOOG_UNSPECIFIED),
+        {},
+        (),
+        InvestmentResponseStatus.OK,
+        (
+            "LONG_TERM 为 2 股/200",
+            "SWING 为 1 股/220",
+            "UNSPECIFIED 为 3 股/180",
+            "不把 UNSPECIFIED 自动归类",
+        ),
+    ),
+    BehavioralCase(
+        "swing_specific_excludes_unspecified",
+        "我的 GOOG 波段仓现在有多少股、平均成本多少？",
+        Decimal("300"),
+        (GOOG_LONG, GOOG_SWING, GOOG_UNSPECIFIED),
+        {},
+        (),
+        InvestmentResponseStatus.OK,
+        (
+            "只回答 SWING 的 1 股/220",
+            "不把 UNSPECIFIED 合并进 SWING",
+            "不调用行情 Tool",
+        ),
+    ),
+    BehavioralCase(
+        "total_position_includes_unspecified",
+        "我的 GOOG 总共持有多少股？",
+        Decimal("300"),
+        (GOOG_LONG, GOOG_SWING, GOOG_UNSPECIFIED),
+        {},
+        (),
+        InvestmentResponseStatus.OK,
+        (
+            "使用 total_shares_by_ticker=6",
+            "说明其中包含 3 股 UNSPECIFIED 未分类仓位",
+            "不推断未分类仓位的策略属性",
+        ),
+    ),
+    BehavioralCase(
+        "unspecified_means_unknown_classification",
+        "GOOG 的 UNSPECIFIED 仓位是什么意思？",
+        Decimal("300"),
+        (GOOG_LONG, GOOG_SWING, GOOG_UNSPECIFIED),
+        {},
+        (),
+        InvestmentResponseStatus.OK,
+        (
+            "解释为用户尚未提供策略分类",
+            "不推断为 LONG_TERM 或 SWING",
+            "不调用行情 Tool",
+        ),
     ),
     BehavioralCase(
         "missing_position_is_absence",
@@ -1335,6 +1393,10 @@ COVERAGE_MATRIX: dict[V1Requirement, tuple[str, ...]] = {
     ),
     V1Requirement.POSITION_TYPE: (
         "position_type_distinction",
+        "three_position_types_distinct",
+        "swing_specific_excludes_unspecified",
+        "total_position_includes_unspecified",
+        "unspecified_means_unknown_classification",
         "long_term_position_personalization",
         "swing_position_personalization",
         "position_reduction_discretionary",

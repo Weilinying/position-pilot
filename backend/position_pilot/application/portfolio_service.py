@@ -8,12 +8,13 @@ from types import TracebackType
 from typing import Protocol, Self
 from uuid import UUID
 
-from position_pilot.application.errors import UserNotFound
+from position_pilot.application.errors import OpeningStateSealed, UserNotFound
 from position_pilot.application.investment_context import InvestmentPortfolioContext
 from position_pilot.domain.errors import InvalidPortfolioValue
 from position_pilot.domain.portfolio import (
     CashEvent,
     CashEventType,
+    OpeningPosition,
     PortfolioState,
     PositionType,
     Transaction,
@@ -41,6 +42,10 @@ class PortfolioUnitOfWork(Protocol):
     def get_user(self, user_id: UUID, *, for_update: bool = False) -> User | None: ...
 
     def add_user(self, user: User) -> None: ...
+
+    def list_opening_positions(self, user_id: UUID) -> list[OpeningPosition]: ...
+
+    def add_opening_positions(self, opening_positions: list[OpeningPosition]) -> None: ...
 
     def list_transactions(self, user_id: UUID) -> list[Transaction]: ...
 
@@ -77,7 +82,7 @@ class RecordTransactionCommand:
     action: TransactionAction
     price: Decimal
     shares: Decimal
-    position_type: PositionType
+    position_type: PositionType | None = None
     occurred_at: datetime | None = None
     reason: str | None = None
 
@@ -91,6 +96,24 @@ class RecordCashEventCommand:
     amount: Decimal
     occurred_at: datetime | None = None
     reason: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class OpeningPositionInput:
+    """一次 Opening State 初始化中的单行持仓输入。"""
+
+    ticker: str
+    shares: Decimal
+    average_cost: Decimal
+    position_type: PositionType | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class InitializeOpeningPositionsCommand:
+    """原子初始化 Existing Positions 的输入。"""
+
+    user_id: UUID
+    positions: tuple[OpeningPositionInput, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -140,8 +163,9 @@ class PortfolioService:
 
             transactions = unit_of_work.list_transactions(user.id)
             cash_events = unit_of_work.list_cash_events(user.id)
+            opening_positions = unit_of_work.list_opening_positions(user.id)
             # 重新派生顺序前先验证已持久化 Ledger，避免意外掩盖 sequence 损坏。
-            rebuild_portfolio(user, transactions, cash_events)
+            rebuild_portfolio(user, transactions, cash_events, opening_positions)
             transaction = Transaction.create(
                 user_id=user.id,
                 sequence=len(transactions) + 1,
@@ -156,7 +180,7 @@ class PortfolioService:
 
             # sequence 是经济顺序的只读投影；历史补录会移动其后的派生序号。
             ordered_transactions = resequence_transactions([*transactions, transaction])
-            rebuild_portfolio(user, ordered_transactions, cash_events)
+            rebuild_portfolio(user, ordered_transactions, cash_events, opening_positions)
             persisted_transaction = next(
                 candidate for candidate in ordered_transactions if candidate.id == transaction.id
             )
@@ -188,7 +212,8 @@ class PortfolioService:
 
             transactions = unit_of_work.list_transactions(user.id)
             cash_events = unit_of_work.list_cash_events(user.id)
-            rebuild_portfolio(user, transactions, cash_events)
+            opening_positions = unit_of_work.list_opening_positions(user.id)
+            rebuild_portfolio(user, transactions, cash_events, opening_positions)
             cash_event = CashEvent.create(
                 user_id=user.id,
                 sequence=len(cash_events) + 1,
@@ -198,7 +223,12 @@ class PortfolioService:
                 reason=command.reason,
             )
             ordered_cash_events = resequence_cash_events([*cash_events, cash_event])
-            portfolio = rebuild_portfolio(user, transactions, ordered_cash_events)
+            portfolio = rebuild_portfolio(
+                user,
+                transactions,
+                ordered_cash_events,
+                opening_positions,
+            )
             persisted_cash_event = next(
                 candidate for candidate in ordered_cash_events if candidate.id == cash_event.id
             )
@@ -227,7 +257,8 @@ class PortfolioService:
                 raise UserNotFound(user_id)
             transactions = unit_of_work.list_transactions(user.id)
             cash_events = unit_of_work.list_cash_events(user.id)
-            return rebuild_portfolio(user, transactions, cash_events)
+            opening_positions = unit_of_work.list_opening_positions(user.id)
+            return rebuild_portfolio(user, transactions, cash_events, opening_positions)
 
     def get_investment_context(self, user_id: UUID) -> InvestmentPortfolioContext:
         """用同一批 Ledger Facts 构造 Agent 所需 Portfolio Context。"""
@@ -238,8 +269,63 @@ class PortfolioService:
                 raise UserNotFound(user_id)
             transactions = unit_of_work.list_transactions(user.id)
             cash_events = unit_of_work.list_cash_events(user.id)
-            portfolio = rebuild_portfolio(user, transactions, cash_events)
+            opening_positions = unit_of_work.list_opening_positions(user.id)
+            portfolio = rebuild_portfolio(user, transactions, cash_events, opening_positions)
             return InvestmentPortfolioContext.from_ledger(portfolio, tuple(transactions))
+
+    def initialize_opening_positions(
+        self,
+        command: InitializeOpeningPositionsCommand,
+    ) -> tuple[OpeningPosition, ...]:
+        """在首个经济 Mutation 前原子写入一次 Opening State。"""
+
+        if not 1 <= len(command.positions) <= 100:
+            raise InvalidPortfolioValue("positions 数量必须在 1 到 100 之间")
+
+        with self._unit_of_work_factory() as unit_of_work:
+            user = unit_of_work.get_user(command.user_id, for_update=True)
+            if user is None:
+                raise UserNotFound(command.user_id)
+
+            existing_opening_positions = unit_of_work.list_opening_positions(user.id)
+            transactions = unit_of_work.list_transactions(user.id)
+            cash_events = unit_of_work.list_cash_events(user.id)
+            if existing_opening_positions or transactions or cash_events:
+                raise OpeningStateSealed()
+
+            recorded_at = normalize_timestamp(self._clock())
+            opening_positions = [
+                OpeningPosition.create(
+                    user_id=user.id,
+                    ticker=item.ticker,
+                    shares=item.shares,
+                    average_cost=item.average_cost,
+                    position_type=item.position_type,
+                    recorded_at=recorded_at,
+                )
+                for item in command.positions
+            ]
+            keys = {(position.ticker, position.position_type) for position in opening_positions}
+            if len(keys) != len(opening_positions):
+                raise InvalidPortfolioValue("positions 不能包含重复的 ticker 与 position_type")
+
+            rebuild_portfolio(user, [], [], opening_positions)
+            ordered = sorted(
+                opening_positions,
+                key=lambda position: (position.ticker, position.position_type.value),
+            )
+            unit_of_work.add_opening_positions(ordered)
+            unit_of_work.commit()
+            return tuple(ordered)
+
+    def list_opening_positions(self, user_id: UUID) -> tuple[OpeningPosition, ...]:
+        """按稳定 Position Key 返回完整 Opening State。"""
+
+        with self._unit_of_work_factory() as unit_of_work:
+            user = unit_of_work.get_user(user_id)
+            if user is None:
+                raise UserNotFound(user_id)
+            return tuple(unit_of_work.list_opening_positions(user.id))
 
     def list_transactions(self, user_id: UUID) -> tuple[Transaction, ...]:
         """按 Ledger sequence 返回可追溯 Transaction。"""

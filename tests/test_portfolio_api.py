@@ -9,10 +9,11 @@ from uuid import UUID
 import pytest
 from fastapi.testclient import TestClient
 
-from position_pilot.application.errors import UserNotFound
+from position_pilot.application.errors import OpeningStateSealed, UserNotFound
 from position_pilot.application.portfolio_service import (
     CashAdjustmentResult,
     CreateUserCommand,
+    InitializeOpeningPositionsCommand,
     RecordCashEventCommand,
     RecordTransactionCommand,
 )
@@ -25,6 +26,7 @@ from position_pilot.domain.portfolio import (
     CashBalance,
     CashEvent,
     CashEventType,
+    OpeningPosition,
     PortfolioState,
     Position,
     PositionType,
@@ -38,6 +40,7 @@ from position_pilot.main import app, get_portfolio_service_dependency
 USER_ID = UUID("00000000-0000-0000-0000-000000000001")
 EVENT_ID = UUID("00000000-0000-0000-0000-000000000002")
 TRANSACTION_ID = UUID("00000000-0000-0000-0000-000000000003")
+OPENING_ID = UUID("00000000-0000-0000-0000-000000000004")
 OCCURRED_AT = datetime(2026, 8, 25, 8, 30, tzinfo=UTC)
 
 
@@ -97,6 +100,54 @@ class FakePortfolioReader:
         return self.result
 
 
+@dataclass(slots=True)
+class FakeOpeningPositionService:
+    """返回固定 Opening Positions，并记录初始化 Command 或查询。"""
+
+    result: tuple[OpeningPosition, ...] | Exception
+    commands: list[InitializeOpeningPositionsCommand] = field(default_factory=list)
+    user_ids: list[UUID] = field(default_factory=list)
+
+    def initialize_opening_positions(
+        self,
+        command: InitializeOpeningPositionsCommand,
+    ) -> tuple[OpeningPosition, ...]:
+        self.commands.append(command)
+        if isinstance(self.result, Exception):
+            raise self.result
+        return self.result
+
+    def list_opening_positions(self, user_id: UUID) -> tuple[OpeningPosition, ...]:
+        self.user_ids.append(user_id)
+        if isinstance(self.result, Exception):
+            raise self.result
+        return self.result
+
+
+@dataclass(slots=True)
+class FakeTransactionListReader:
+    """返回固定 Transaction List。"""
+
+    result: tuple[Transaction, ...] | Exception
+
+    def list_transactions(self, user_id: UUID) -> tuple[Transaction, ...]:
+        if isinstance(self.result, Exception):
+            raise self.result
+        return self.result
+
+
+@dataclass(slots=True)
+class FakeCashEventListReader:
+    """返回固定 Cash Event List。"""
+
+    result: tuple[CashEvent, ...] | Exception
+
+    def list_cash_events(self, user_id: UUID) -> tuple[CashEvent, ...]:
+        if isinstance(self.result, Exception):
+            raise self.result
+        return self.result
+
+
 @pytest.fixture
 def client() -> Iterator[TestClient]:
     """每个测试后恢复 Cash Adjustment Dependency Override。"""
@@ -147,11 +198,25 @@ def make_transaction() -> Transaction:
     )
 
 
-def override_service(
-    service: (
-        FakePortfolioService | FakePortfolioCreator | FakeTransactionWriter | FakePortfolioReader
-    ),
-) -> None:
+def make_opening_position(
+    *,
+    ticker: str = "GOOG",
+    position_type: PositionType = PositionType.UNSPECIFIED,
+) -> OpeningPosition:
+    """创建 API Response 使用的固定 Opening Position。"""
+
+    return OpeningPosition.create(
+        opening_position_id=OPENING_ID,
+        user_id=USER_ID,
+        ticker=ticker,
+        shares=Decimal("2"),
+        average_cost=Decimal("100"),
+        position_type=position_type,
+        recorded_at=OCCURRED_AT,
+    )
+
+
+def override_service(service: object) -> None:
     """避免 API Contract Test 读取真实数据库。"""
 
     app.dependency_overrides[get_portfolio_service_dependency] = lambda: service
@@ -332,6 +397,165 @@ def test_maps_missing_portfolio_snapshot_user_to_404(client: TestClient) -> None
         "detail": {"code": "USER_NOT_FOUND", "message": "Portfolio User 不存在"}
     }
     assert service.user_ids == [USER_ID]
+
+
+def test_initializes_opening_positions_without_sequence_or_cash_effect(client: TestClient) -> None:
+    """Opening API 应返回派生 Cost Basis，并让缺省类型保持 UNSPECIFIED。"""
+
+    opening_position = make_opening_position()
+    service = FakeOpeningPositionService((opening_position,))
+    override_service(service)
+
+    response = client.post(
+        f"/v1/portfolios/{USER_ID}/opening-positions",
+        json={
+            "positions": [
+                {
+                    "ticker": "goog",
+                    "shares": "2",
+                    "average_cost": "100",
+                }
+            ]
+        },
+    )
+
+    assert response.status_code == 201
+    assert response.json() == {
+        "opening_positions": [
+            {
+                "id": str(OPENING_ID),
+                "user_id": str(USER_ID),
+                "ticker": "GOOG",
+                "shares": "2.00000000",
+                "average_cost": "100.00000000",
+                "cost_basis": "200.00000000",
+                "position_type": "UNSPECIFIED",
+                "recorded_at": "2026-08-25T08:30:00Z",
+            }
+        ],
+        "items_are_complete": True,
+    }
+    assert "sequence" not in response.json()["opening_positions"][0]
+    assert len(service.commands) == 1
+    assert service.commands[0].positions[0].position_type is None
+
+
+@pytest.mark.parametrize(
+    ("error", "expected_status", "expected_code"),
+    [
+        (UserNotFound(USER_ID), 404, "USER_NOT_FOUND"),
+        (OpeningStateSealed(), 409, "OPENING_STATE_SEALED"),
+        (InvalidPortfolioValue("重复仓位"), 422, "INVALID_OPENING_STATE"),
+    ],
+)
+def test_maps_opening_state_errors(
+    client: TestClient,
+    error: Exception,
+    expected_status: int,
+    expected_code: str,
+) -> None:
+    """Opening State 的未知 User、封闭与非法 Batch 必须保持可区分。"""
+
+    override_service(FakeOpeningPositionService(error))
+
+    response = client.post(
+        f"/v1/portfolios/{USER_ID}/opening-positions",
+        json={"positions": [{"ticker": "GOOG", "shares": "1", "average_cost": "100"}]},
+    )
+
+    assert response.status_code == expected_status
+    assert response.json()["detail"]["code"] == expected_code
+
+
+def test_rejects_client_derived_opening_fields_before_service_call(client: TestClient) -> None:
+    """Opening Position 不接受 Cost Basis、ID、时间或 sequence 等派生字段。"""
+
+    service = FakeOpeningPositionService((make_opening_position(),))
+    override_service(service)
+
+    response = client.post(
+        f"/v1/portfolios/{USER_ID}/opening-positions",
+        json={
+            "positions": [
+                {
+                    "ticker": "GOOG",
+                    "shares": "1",
+                    "average_cost": "100",
+                    "cost_basis": "100",
+                    "sequence": 1,
+                }
+            ]
+        },
+    )
+
+    assert response.status_code == 422
+    assert service.commands == []
+
+
+def test_returns_complete_read_only_record_lists(client: TestClient) -> None:
+    """三个 Record Endpoint 应返回完整性声明与稳定后端事实。"""
+
+    opening_service = FakeOpeningPositionService((make_opening_position(),))
+    override_service(opening_service)
+    opening_response = client.get(f"/v1/portfolios/{USER_ID}/opening-positions")
+
+    override_service(FakeTransactionListReader((make_transaction(),)))
+    transaction_response = client.get(f"/v1/portfolios/{USER_ID}/transactions")
+
+    override_service(FakeCashEventListReader((make_result().cash_event,)))
+    cash_response = client.get(f"/v1/portfolios/{USER_ID}/cash-events")
+
+    assert opening_response.status_code == 200
+    assert opening_response.json()["items_are_complete"] is True
+    assert opening_response.json()["items"][0]["position_type"] == "UNSPECIFIED"
+    assert "sequence" not in opening_response.json()["items"][0]
+    assert transaction_response.status_code == 200
+    assert transaction_response.json()["items"][0]["sequence"] == 1
+    assert cash_response.status_code == 200
+    assert cash_response.json()["items"][0]["event_type"] == "DEPOSIT"
+
+
+def test_record_list_endpoints_map_unknown_user_to_404(client: TestClient) -> None:
+    """三个完整记录列表必须对未知 User 返回统一 404 Contract。"""
+
+    cases = (
+        ("opening-positions", FakeOpeningPositionService(UserNotFound(USER_ID))),
+        ("transactions", FakeTransactionListReader(UserNotFound(USER_ID))),
+        ("cash-events", FakeCashEventListReader(UserNotFound(USER_ID))),
+    )
+    for path, service in cases:
+        override_service(service)
+        response = client.get(f"/v1/portfolios/{USER_ID}/{path}")
+        assert response.status_code == 404
+        assert response.json()["detail"]["code"] == "USER_NOT_FOUND"
+
+
+def test_transaction_position_type_is_optional_and_canonical_in_response(
+    client: TestClient,
+) -> None:
+    """省略 Position Type 时 Command 保留缺省，Response 返回 UNSPECIFIED。"""
+
+    transaction = Transaction.create(
+        transaction_id=TRANSACTION_ID,
+        user_id=USER_ID,
+        sequence=1,
+        ticker="GOOG",
+        action=TransactionAction.BUY,
+        price=Decimal("10"),
+        shares=Decimal("1"),
+        occurred_at=OCCURRED_AT,
+    )
+    service = FakeTransactionWriter(transaction)
+    override_service(service)
+
+    response = client.post(
+        f"/v1/portfolios/{USER_ID}/transactions",
+        json={"ticker": "GOOG", "action": "BUY", "price": "10", "shares": "1"},
+    )
+
+    assert response.status_code == 201
+    assert response.json()["transaction"]["position_type"] == "UNSPECIFIED"
+    assert service.commands[0].position_type is None
 
 
 def test_records_transaction_and_returns_backend_derived_fields(client: TestClient) -> None:

@@ -17,6 +17,7 @@ from position_pilot.domain.errors import (
 from position_pilot.domain.portfolio import (
     CashEvent,
     CashEventType,
+    OpeningPosition,
     PositionType,
     Transaction,
     TransactionAction,
@@ -83,6 +84,26 @@ def make_cash_event(
     )
 
 
+def make_opening_position(
+    *,
+    ticker: str = "GOOG",
+    shares: str = "2",
+    average_cost: str = "100",
+    position_type: PositionType | None = None,
+    user_id: UUID = USER_ID,
+) -> OpeningPosition:
+    """创建不带经济顺序的固定 Opening Position。"""
+
+    return OpeningPosition.create(
+        user_id=user_id,
+        ticker=ticker,
+        shares=Decimal(shares),
+        average_cost=Decimal(average_cost),
+        position_type=position_type,
+        recorded_at=OCCURRED_AT,
+    )
+
+
 def test_transaction_amount_is_derived_and_not_a_create_input() -> None:
     """amount 与 commission 应只读派生，不能出现在 Transaction 写入参数中。"""
 
@@ -98,6 +119,120 @@ def test_transaction_amount_is_derived_and_not_a_create_input() -> None:
     assert "amount" not in signature(Transaction.create).parameters
     assert "commission" not in signature(Transaction.create).parameters
     assert calculate_amount(Decimal("220.5"), Decimal("0.45")) == Decimal("99.22500000")
+
+
+def test_missing_position_type_is_explicitly_unspecified() -> None:
+    """缺省仓位类型必须保存为明确事实，不得猜测投资意图。"""
+
+    transaction = Transaction.create(
+        user_id=USER_ID,
+        sequence=1,
+        ticker="GOOG",
+        action=TransactionAction.BUY,
+        price=Decimal("10"),
+        shares=Decimal("1"),
+        occurred_at=OCCURRED_AT,
+    )
+    opening_position = make_opening_position()
+
+    assert transaction.position_type is PositionType.UNSPECIFIED
+    assert opening_position.position_type is PositionType.UNSPECIFIED
+
+
+def test_falsey_invalid_position_type_is_not_treated_as_missing() -> None:
+    """只有 None 表示缺省；空字符串等非法运行时值不得静默归一。"""
+
+    with pytest.raises(InvalidPortfolioValue, match="position_type"):
+        Transaction.create(
+            user_id=USER_ID,
+            sequence=1,
+            ticker="GOOG",
+            action=TransactionAction.BUY,
+            price=Decimal("10"),
+            shares=Decimal("1"),
+            position_type="",
+            occurred_at=OCCURRED_AT,
+        )
+    with pytest.raises(InvalidPortfolioValue, match="position_type"):
+        OpeningPosition.create(
+            user_id=USER_ID,
+            ticker="GOOG",
+            shares=Decimal("1"),
+            average_cost=Decimal("10"),
+            position_type="",
+            recorded_at=OCCURRED_AT,
+        )
+
+
+def test_opening_position_derives_cost_basis_without_economic_sequence() -> None:
+    """Opening Position 只保存起始事实，Cost Basis 由后端派生。"""
+
+    opening_position = make_opening_position(shares="2.5", average_cost="123.45")
+
+    assert opening_position.cost_basis == Decimal("308.62500000")
+    assert "sequence" not in signature(OpeningPosition).parameters
+    assert "cost_basis" not in signature(OpeningPosition.create).parameters
+
+
+def test_replay_starts_from_opening_state_without_cash_impact() -> None:
+    """Opening Position 建立起始成本与 Shares，但不得改变可用现金。"""
+
+    opening_position = make_opening_position(shares="2", average_cost="100")
+    state = rebuild_portfolio(make_user("500"), [], [], [opening_position])
+
+    position = state.get_position("GOOG", PositionType.UNSPECIFIED)
+    assert position is not None
+    assert position.shares == Decimal("2.00000000")
+    assert position.cost_basis == Decimal("200.00000000")
+    assert position.average_cost == Decimal("100.00000000")
+    assert state.cash.available_cash == Decimal("500.00000000")
+
+
+def test_three_position_types_remain_independent_during_replay() -> None:
+    """同一 Ticker 的三类 Position Key 不得相互合并或提供 Shares。"""
+
+    opening_positions = [
+        make_opening_position(position_type=PositionType.LONG_TERM, shares="3"),
+        make_opening_position(position_type=PositionType.SWING, shares="2"),
+        make_opening_position(position_type=PositionType.UNSPECIFIED, shares="1"),
+    ]
+    state = rebuild_portfolio(
+        make_user(),
+        [
+            make_transaction(
+                sequence=1,
+                action=TransactionAction.SELL,
+                price="120",
+                shares="1",
+                position_type=PositionType.SWING,
+            )
+        ],
+        [],
+        opening_positions,
+    )
+
+    long_term = state.get_position("GOOG", PositionType.LONG_TERM)
+    swing = state.get_position("GOOG", PositionType.SWING)
+    unspecified = state.get_position("GOOG", PositionType.UNSPECIFIED)
+    assert long_term is not None and long_term.shares == Decimal("3.00000000")
+    assert swing is not None and swing.shares == Decimal("1.00000000")
+    assert unspecified is not None and unspecified.shares == Decimal("1.00000000")
+
+
+def test_rejects_invalid_opening_state_owner_and_duplicate_key() -> None:
+    """Opening State 必须属于同一 User，且 Position Key 唯一。"""
+
+    wrong_owner = make_opening_position(user_id=UUID("00000000-0000-0000-0000-000000000002"))
+    with pytest.raises(InvalidLedger, match="其他 User"):
+        rebuild_portfolio(make_user(), [], [], [wrong_owner])
+
+    with pytest.raises(InvalidLedger, match="必须唯一"):
+        rebuild_portfolio(
+            make_user(),
+            [],
+            [],
+            [make_opening_position(), make_opening_position(ticker=" goog ")],
+        )
 
 
 @pytest.mark.parametrize(

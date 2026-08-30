@@ -46,6 +46,7 @@ class PositionType(StrEnum):
 
     LONG_TERM = "LONG_TERM"
     SWING = "SWING"
+    UNSPECIFIED = "UNSPECIFIED"
 
 
 def normalize_decimal(value: Decimal, *, field_name: str, allow_zero: bool = False) -> Decimal:
@@ -208,7 +209,7 @@ class Transaction:
         if not isinstance(self.action, TransactionAction):
             raise InvalidPortfolioValue("action 必须是 BUY 或 SELL")
         if not isinstance(self.position_type, PositionType):
-            raise InvalidPortfolioValue("position_type 必须是 LONG_TERM 或 SWING")
+            raise InvalidPortfolioValue("position_type 必须是 LONG_TERM、SWING 或 UNSPECIFIED")
         object.__setattr__(self, "ticker", normalize_ticker(self.ticker))
         object.__setattr__(self, "price", normalize_decimal(self.price, field_name="price"))
         object.__setattr__(self, "shares", normalize_decimal(self.shares, field_name="shares"))
@@ -236,7 +237,7 @@ class Transaction:
         action: TransactionAction,
         price: Decimal,
         shares: Decimal,
-        position_type: PositionType,
+        position_type: PositionType | None = None,
         occurred_at: datetime | None = None,
         reason: str | None = None,
         transaction_id: UUID | None = None,
@@ -256,9 +257,70 @@ class Transaction:
             amount=amount,
             commission=calculate_commission(amount, shares),
             fee_schedule=COMMISSION_SCHEDULE,
-            position_type=position_type,
+            position_type=(
+                position_type if position_type is not None else PositionType.UNSPECIFIED
+            ),
             occurred_at=occurred_at or datetime.now(UTC),
             reason=reason,
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class OpeningPosition:
+    """系统开始跟踪时接收的不可变持仓起始事实。"""
+
+    id: UUID
+    user_id: UUID
+    ticker: str
+    shares: Decimal
+    average_cost: Decimal
+    position_type: PositionType
+    recorded_at: datetime
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.position_type, PositionType):
+            raise InvalidPortfolioValue("position_type 必须是 LONG_TERM、SWING 或 UNSPECIFIED")
+        object.__setattr__(self, "ticker", normalize_ticker(self.ticker))
+        object.__setattr__(self, "shares", normalize_decimal(self.shares, field_name="shares"))
+        object.__setattr__(
+            self,
+            "average_cost",
+            normalize_decimal(self.average_cost, field_name="average_cost"),
+        )
+        object.__setattr__(self, "recorded_at", normalize_timestamp(self.recorded_at))
+        # 起始成本由用户申报的平均成本与股数确定，验证其能安全进入 NUMERIC 边界。
+        calculate_amount(self.average_cost, self.shares)
+
+    @property
+    def cost_basis(self) -> Decimal:
+        """由起始 Shares 与 Average Cost 确定性计算 Cost Basis。"""
+
+        return calculate_amount(self.average_cost, self.shares)
+
+    @classmethod
+    def create(
+        cls,
+        *,
+        user_id: UUID,
+        ticker: str,
+        shares: Decimal,
+        average_cost: Decimal,
+        position_type: PositionType | None = None,
+        recorded_at: datetime | None = None,
+        opening_position_id: UUID | None = None,
+    ) -> Self:
+        """创建不带经济事件顺序的 Opening Position。"""
+
+        return cls(
+            id=opening_position_id or uuid4(),
+            user_id=user_id,
+            ticker=ticker,
+            shares=shares,
+            average_cost=average_cost,
+            position_type=(
+                position_type if position_type is not None else PositionType.UNSPECIFIED
+            ),
+            recorded_at=recorded_at or datetime.now(UTC),
         )
 
 
@@ -356,7 +418,7 @@ class Position:
 
 @dataclass(frozen=True, slots=True)
 class PortfolioState:
-    """Transaction 与 Cash Event Ledger 重放后的完整 Structured State。"""
+    """Opening State 与经济 Ledger 重放后的完整 Structured State。"""
 
     user_id: UUID
     cash: CashBalance
@@ -388,13 +450,15 @@ def rebuild_portfolio(
     user: User,
     transactions: list[Transaction],
     cash_events: list[CashEvent] | None = None,
+    opening_positions: list[OpeningPosition] | None = None,
 ) -> PortfolioState:
-    """按实际发生时间重建 Cash、Position 与 Average Cost。
+    """从 Opening State 开始，按实际发生时间重建当前 Portfolio。
 
     参数:
         user: Ledger 所有者及 Initial Cash。
         transactions: 该用户的完整 Transaction Ledger。
         cash_events: 该用户的完整 Cash Event Ledger。
+        opening_positions: 系统开始跟踪时接收的完整持仓起始事实。
 
     异常:
         InvalidLedger: Ledger 所有者或 sequence 不一致。
@@ -404,6 +468,18 @@ def rebuild_portfolio(
 
     ordered_transactions = sorted(transactions, key=lambda transaction: transaction.sequence)
     ordered_cash_events = sorted(cash_events or [], key=lambda event: event.sequence)
+    ordered_opening_positions = sorted(
+        opening_positions or [],
+        key=lambda position: (position.ticker, position.position_type.value),
+    )
+    opening_keys: set[tuple[str, PositionType]] = set()
+    for opening_position in ordered_opening_positions:
+        if opening_position.user_id != user.id:
+            raise InvalidLedger("Opening State 包含其他 User 的 Position")
+        key = (opening_position.ticker, opening_position.position_type)
+        if key in opening_keys:
+            raise InvalidLedger("Opening State 的 ticker 与 position_type 必须唯一")
+        opening_keys.add(key)
     for expected_sequence, transaction in enumerate(ordered_transactions, start=1):
         if transaction.user_id != user.id:
             raise InvalidLedger("Ledger 包含其他 User 的 Transaction")
@@ -427,7 +503,13 @@ def rebuild_portfolio(
     available_cash = user.initial_cash
     total_deposits = Decimal("0")
     total_withdrawals = Decimal("0")
-    positions: dict[tuple[str, PositionType], _PositionAccumulator] = {}
+    positions: dict[tuple[str, PositionType], _PositionAccumulator] = {
+        (position.ticker, position.position_type): _PositionAccumulator(
+            shares=position.shares,
+            cost_basis=position.cost_basis,
+        )
+        for position in ordered_opening_positions
+    }
 
     for record in ledger_records:
         if isinstance(record, CashEvent):

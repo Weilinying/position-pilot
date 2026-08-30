@@ -11,7 +11,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from position_pilot.application.errors import UserNotFound
+from position_pilot.application.errors import OpeningStateSealed, UserNotFound
 from position_pilot.application.investment_agent import (
     MAX_QUESTION_LENGTH,
     ContextSource,
@@ -24,13 +24,22 @@ from position_pilot.application.investment_agent import (
 )
 from position_pilot.application.portfolio_service import (
     CreateUserCommand,
+    InitializeOpeningPositionsCommand,
+    OpeningPositionInput,
     PortfolioService,
     RecordCashEventCommand,
     RecordTransactionCommand,
 )
 from position_pilot.bootstrap import get_investment_agent, get_portfolio_service
 from position_pilot.domain.errors import InsufficientCash, InsufficientShares, InvalidPortfolioValue
-from position_pilot.domain.portfolio import CashEventType, PositionType, TransactionAction
+from position_pilot.domain.portfolio import (
+    CashEvent,
+    CashEventType,
+    OpeningPosition,
+    PositionType,
+    Transaction,
+    TransactionAction,
+)
 
 FRONTEND_DIR = Path(__file__).resolve().parents[2] / "frontend"
 
@@ -163,7 +172,7 @@ class TransactionRequest(BaseModel):
     action: TransactionAction
     price: Decimal = Field(gt=0, max_digits=28, decimal_places=8)
     shares: Decimal = Field(gt=0, max_digits=28, decimal_places=8)
-    position_type: PositionType
+    position_type: PositionType | None = None
     occurred_at: datetime | None = None
     reason: str | None = Field(default=None, max_length=1000)
 
@@ -201,6 +210,66 @@ class TransactionWriteResponse(BaseModel):
     """成功追加后返回由后端完整派生的 Transaction。"""
 
     transaction: LedgerTransactionResponse
+
+
+class OpeningPositionRequest(BaseModel):
+    """Opening State 中单个 Existing Position 的输入。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    ticker: str = Field(min_length=1, max_length=100)
+    shares: Decimal = Field(gt=0, max_digits=28, decimal_places=8)
+    average_cost: Decimal = Field(gt=0, max_digits=28, decimal_places=8)
+    position_type: PositionType | None = None
+
+
+class OpeningPositionsRequest(BaseModel):
+    """一次性原子提交的完整 Existing Positions Draft。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    positions: tuple[OpeningPositionRequest, ...] = Field(min_length=1, max_length=100)
+
+
+class OpeningPositionResponse(BaseModel):
+    """API 暴露的 immutable Opening Position Starting Fact。"""
+
+    id: UUID
+    user_id: UUID
+    ticker: str
+    shares: Decimal
+    average_cost: Decimal
+    cost_basis: Decimal
+    position_type: PositionType
+    recorded_at: datetime
+
+
+class OpeningPositionsWriteResponse(BaseModel):
+    """Opening State 初始化后的完整稳定结果。"""
+
+    opening_positions: tuple[OpeningPositionResponse, ...]
+    items_are_complete: bool = True
+
+
+class OpeningPositionListResponse(BaseModel):
+    """完整只读 Opening Position List。"""
+
+    items: tuple[OpeningPositionResponse, ...]
+    items_are_complete: bool = True
+
+
+class TransactionListResponse(BaseModel):
+    """完整只读 Transaction List。"""
+
+    items: tuple[LedgerTransactionResponse, ...]
+    items_are_complete: bool = True
+
+
+class CashEventListResponse(BaseModel):
+    """完整只读 Cash Event List。"""
+
+    items: tuple[CashEventResponse, ...]
+    items_are_complete: bool = True
 
 
 class PositionResponse(BaseModel):
@@ -326,6 +395,90 @@ def get_portfolio_snapshot(
 
 
 @app.post(
+    "/v1/portfolios/{user_id}/opening-positions",
+    response_model=OpeningPositionsWriteResponse,
+    status_code=status.HTTP_201_CREATED,
+    responses={
+        404: {"description": "Portfolio User 不存在"},
+        409: {"description": "Opening State 已封闭"},
+        422: {"description": "Opening Position 输入不满足领域约束"},
+    },
+)
+def initialize_opening_positions(
+    user_id: UUID,
+    request: OpeningPositionsRequest,
+    portfolio_service: Annotated[PortfolioService, Depends(get_portfolio_service_dependency)],
+) -> OpeningPositionsWriteResponse:
+    """在首个经济 Mutation 前原子初始化 Existing Positions。"""
+
+    try:
+        opening_positions = portfolio_service.initialize_opening_positions(
+            InitializeOpeningPositionsCommand(
+                user_id=user_id,
+                positions=tuple(
+                    OpeningPositionInput(
+                        ticker=position.ticker,
+                        shares=position.shares,
+                        average_cost=position.average_cost,
+                        position_type=position.position_type,
+                    )
+                    for position in request.positions
+                ),
+            )
+        )
+    except UserNotFound:
+        _raise_api_error(
+            status.HTTP_404_NOT_FOUND,
+            ApiErrorDetail(code="USER_NOT_FOUND", message="Portfolio User 不存在"),
+        )
+    except OpeningStateSealed as error:
+        _raise_api_error(
+            status.HTTP_409_CONFLICT,
+            ApiErrorDetail(code="OPENING_STATE_SEALED", message=str(error)),
+        )
+    except InvalidPortfolioValue as error:
+        _raise_api_error(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            ApiErrorDetail(code="INVALID_OPENING_STATE", message=str(error)),
+        )
+
+    return OpeningPositionsWriteResponse(
+        opening_positions=tuple(
+            _opening_position_response(position) for position in opening_positions
+        )
+    )
+
+
+@app.get(
+    "/v1/portfolios/{user_id}/opening-positions",
+    response_model=OpeningPositionListResponse,
+    responses={404: {"description": "Portfolio User 不存在"}},
+)
+def list_opening_positions(
+    user_id: UUID,
+    portfolio_service: Annotated[PortfolioService, Depends(get_portfolio_service_dependency)],
+) -> OpeningPositionListResponse:
+    """返回不带经济 sequence 的完整 Opening Position List。"""
+
+    try:
+        opening_positions = portfolio_service.list_opening_positions(user_id)
+    except UserNotFound:
+        _raise_api_error(
+            status.HTTP_404_NOT_FOUND,
+            ApiErrorDetail(code="USER_NOT_FOUND", message="Portfolio User 不存在"),
+        )
+    return OpeningPositionListResponse(
+        items=tuple(
+            _opening_position_response(position)
+            for position in sorted(
+                opening_positions,
+                key=lambda item: (item.ticker, item.position_type.value),
+            )
+        )
+    )
+
+
+@app.post(
     "/v1/portfolios/{user_id}/transactions",
     response_model=TransactionWriteResponse,
     status_code=status.HTTP_201_CREATED,
@@ -376,21 +529,31 @@ def record_transaction(
             ApiErrorDetail(code="INVALID_TRANSACTION", message=str(error)),
         )
 
-    return TransactionWriteResponse(
-        transaction=LedgerTransactionResponse(
-            id=transaction.id,
-            user_id=transaction.user_id,
-            sequence=transaction.sequence,
-            ticker=transaction.ticker,
-            action=transaction.action,
-            price=transaction.price,
-            shares=transaction.shares,
-            amount=transaction.amount,
-            commission=transaction.commission,
-            fee_schedule=transaction.fee_schedule,
-            position_type=transaction.position_type,
-            occurred_at=transaction.occurred_at,
-            reason=transaction.reason,
+    return TransactionWriteResponse(transaction=_transaction_response(transaction))
+
+
+@app.get(
+    "/v1/portfolios/{user_id}/transactions",
+    response_model=TransactionListResponse,
+    responses={404: {"description": "Portfolio User 不存在"}},
+)
+def list_transactions(
+    user_id: UUID,
+    portfolio_service: Annotated[PortfolioService, Depends(get_portfolio_service_dependency)],
+) -> TransactionListResponse:
+    """按经济 sequence 返回完整只读 Transaction List。"""
+
+    try:
+        transactions = portfolio_service.list_transactions(user_id)
+    except UserNotFound:
+        _raise_api_error(
+            status.HTTP_404_NOT_FOUND,
+            ApiErrorDetail(code="USER_NOT_FOUND", message="Portfolio User 不存在"),
+        )
+    return TransactionListResponse(
+        items=tuple(
+            _transaction_response(transaction)
+            for transaction in sorted(transactions, key=lambda item: item.sequence)
         )
     )
 
@@ -439,16 +602,34 @@ def record_cash_event(
         )
 
     return CashAdjustmentResponse(
-        cash_event=CashEventResponse(
-            id=result.cash_event.id,
-            user_id=result.cash_event.user_id,
-            sequence=result.cash_event.sequence,
-            event_type=result.cash_event.event_type,
-            amount=result.cash_event.amount,
-            occurred_at=result.cash_event.occurred_at,
-            reason=result.cash_event.reason,
-        ),
+        cash_event=_cash_event_response(result.cash_event),
         available_cash=result.portfolio.cash.available_cash,
+    )
+
+
+@app.get(
+    "/v1/portfolios/{user_id}/cash-events",
+    response_model=CashEventListResponse,
+    responses={404: {"description": "Portfolio User 不存在"}},
+)
+def list_cash_events(
+    user_id: UUID,
+    portfolio_service: Annotated[PortfolioService, Depends(get_portfolio_service_dependency)],
+) -> CashEventListResponse:
+    """按经济 sequence 返回完整只读 Cash Event List。"""
+
+    try:
+        cash_events = portfolio_service.list_cash_events(user_id)
+    except UserNotFound:
+        _raise_api_error(
+            status.HTTP_404_NOT_FOUND,
+            ApiErrorDetail(code="USER_NOT_FOUND", message="Portfolio User 不存在"),
+        )
+    return CashEventListResponse(
+        items=tuple(
+            _cash_event_response(cash_event)
+            for cash_event in sorted(cash_events, key=lambda item: item.sequence)
+        )
     )
 
 
@@ -481,6 +662,49 @@ def answer_investment_question(
         status=result.status,
         answer=result.answer,
         sources=tuple(_source_response(source) for source in result.sources),
+    )
+
+
+def _opening_position_response(position: OpeningPosition) -> OpeningPositionResponse:
+    return OpeningPositionResponse(
+        id=position.id,
+        user_id=position.user_id,
+        ticker=position.ticker,
+        shares=position.shares,
+        average_cost=position.average_cost,
+        cost_basis=position.cost_basis,
+        position_type=position.position_type,
+        recorded_at=position.recorded_at,
+    )
+
+
+def _transaction_response(transaction: Transaction) -> LedgerTransactionResponse:
+    return LedgerTransactionResponse(
+        id=transaction.id,
+        user_id=transaction.user_id,
+        sequence=transaction.sequence,
+        ticker=transaction.ticker,
+        action=transaction.action,
+        price=transaction.price,
+        shares=transaction.shares,
+        amount=transaction.amount,
+        commission=transaction.commission,
+        fee_schedule=transaction.fee_schedule,
+        position_type=transaction.position_type,
+        occurred_at=transaction.occurred_at,
+        reason=transaction.reason,
+    )
+
+
+def _cash_event_response(cash_event: CashEvent) -> CashEventResponse:
+    return CashEventResponse(
+        id=cash_event.id,
+        user_id=cash_event.user_id,
+        sequence=cash_event.sequence,
+        event_type=cash_event.event_type,
+        amount=cash_event.amount,
+        occurred_at=cash_event.occurred_at,
+        reason=cash_event.reason,
     )
 
 
