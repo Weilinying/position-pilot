@@ -26,11 +26,12 @@ const translations = {
     ask_nav: "Ask",
     portfolio_nav: "Portfolio",
     this_session: "This session",
+    question_history: "Question history",
     session_only: "Not saved",
     no_questions: "No questions yet.",
     current_portfolio: "Current portfolio",
     switch_portfolio: "Switch or recover",
-    chat_view_title: "Decision chat",
+    chat_view_title: "Decision questions",
     portfolio_manage_title: "Portfolio workspace",
     portfolio_manage_summary:
       "Review deterministic state or append an immutable trade or cash record.",
@@ -85,8 +86,7 @@ const translations = {
     ledger_derived: "Ledger-derived · USD",
     open_positions: "Open positions",
     portfolio_empty_initial: "Load a portfolio to reveal the complete current position set.",
-    portfolio_empty_loaded:
-      "This portfolio has no open positions. M8 records actual trades; importing pre-existing holdings is planned for v1.1.",
+    portfolio_empty_loaded: "This portfolio currently has no open positions.",
     context_aware: "Context-aware decision support",
     hero_title: "Know the position. Read the moment.",
     hero_summary:
@@ -131,8 +131,46 @@ const translations = {
     price_placeholder: "e.g. 180.25",
     shares_placeholder: "e.g. 2",
     position_type: "Position type",
+    position_type_optional: "Position type (optional)",
+    unspecified: "Unspecified",
     long_term: "LONG_TERM",
     swing: "SWING",
+    opening_state: "Opening state",
+    existing_positions_setup: "Add existing positions",
+    add_existing_positions: "Add existing positions",
+    starting_facts: "One-time starting facts",
+    opening_explainer:
+      "Record holdings you already owned when tracking begins. This does not change cash or create a trade.",
+    add_position: "Add another position",
+    remove_position: "Remove",
+    skip_for_now: "Skip for now",
+    save_opening_positions: "Save existing positions",
+    opening_position_saved: "Existing positions saved",
+    opening_records: "Opening position records",
+    transaction_history: "Transaction history",
+    cash_history: "Cash history",
+    records_loading: "Load a portfolio to view records.",
+    records_empty: "No records yet.",
+    records_unavailable: "Record history could not be loaded. Reload the portfolio to try again.",
+    opening_ticker: "Ticker",
+    opening_shares: "Shares",
+    opening_average_cost: "Average cost",
+    opening_position_type: "Position type (optional)",
+    opening_invalid_input: "Complete every existing-position row before saving.",
+    opening_duplicate: "Each ticker and position type may appear only once.",
+    opening_setup_skipped: "Existing-position setup skipped for now.",
+    api_opening_state_sealed:
+      "Existing positions can only be initialized before the first position, trade, or cash record.",
+    api_invalid_opening_state: "The existing positions did not satisfy the opening-state rules.",
+    sequence: "Sequence",
+    recorded_at: "Recorded",
+    occurred_at: "Occurred",
+    trade_amount: "Trade amount",
+    commission: "Commission",
+    fee_schedule: "Fee schedule",
+    event_type: "Event",
+    reason: "Reason",
+    not_provided: "Not provided",
     occurred_at_optional: "Occurred at (optional)",
     occurred_at_hint:
       "Leave blank to use backend application time. Enter a past local time only for history.",
@@ -163,7 +201,7 @@ const translations = {
     api_insufficient_cash:
       "Insufficient cash. Review available cash, trade amount, and commission.",
     api_insufficient_shares:
-      "Insufficient shares for this position type. Review ticker, shares, and LONG_TERM / SWING.",
+      "Insufficient shares for this position type. Review ticker, shares, and the selected or unclassified position type.",
     api_invalid_transaction: "The trade did not satisfy the ledger rules.",
     api_invalid_cash_event: "The cash entry did not satisfy the ledger rules.",
     api_user_not_found: "The loaded portfolio no longer exists.",
@@ -229,11 +267,12 @@ const translations = {
     ask_nav: "提问",
     portfolio_nav: "投资组合",
     this_session: "当前会话",
+    question_history: "问题历史",
     session_only: "不会保存",
     no_questions: "还没有问题。",
     current_portfolio: "当前投资组合",
     switch_portfolio: "切换或恢复",
-    chat_view_title: "决策对话",
+    chat_view_title: "投资问题",
     portfolio_manage_title: "投资组合工作区",
     portfolio_manage_summary: "查看确定性状态，或追加不可变的交易与现金记录。",
     portfolio_sections: "投资组合分区",
@@ -282,7 +321,7 @@ const translations = {
     ledger_derived: "账本计算 · USD",
     open_positions: "当前持仓",
     portfolio_empty_initial: "加载投资组合后，将显示完整的当前持仓。",
-    portfolio_empty_loaded: "该投资组合当前没有持仓。M8 只记录真实交易；已有仓位导入计划在 v1.1 实现。",
+    portfolio_empty_loaded: "该投资组合当前没有持仓。",
     context_aware: "上下文感知的决策支持",
     hero_title: "看清仓位，把握当下。",
     hero_summary:
@@ -327,8 +366,44 @@ const translations = {
     price_placeholder: "例如：180.25",
     shares_placeholder: "例如：2",
     position_type: "仓位类型",
+    position_type_optional: "仓位类型（可选）",
+    unspecified: "未分类",
     long_term: "LONG_TERM",
     swing: "SWING",
+    opening_state: "期初状态",
+    existing_positions_setup: "录入现有仓位",
+    add_existing_positions: "录入现有仓位",
+    starting_facts: "一次性期初事实",
+    opening_explainer: "录入开始跟踪前已经持有的仓位。此操作不扣减现金，也不会生成交易记录。",
+    add_position: "继续添加仓位",
+    remove_position: "移除",
+    skip_for_now: "暂时跳过",
+    save_opening_positions: "保存现有仓位",
+    opening_position_saved: "现有仓位已保存",
+    opening_records: "期初仓位记录",
+    transaction_history: "交易历史",
+    cash_history: "现金历史",
+    records_loading: "加载投资组合后可查看记录。",
+    records_empty: "暂无记录。",
+    records_unavailable: "无法加载记录历史，请重新加载投资组合后重试。",
+    opening_ticker: "标的",
+    opening_shares: "股数",
+    opening_average_cost: "平均成本",
+    opening_position_type: "仓位类型（可选）",
+    opening_invalid_input: "请完整填写每一行现有仓位后再保存。",
+    opening_duplicate: "同一标的与仓位类型只能出现一次。",
+    opening_setup_skipped: "已暂时跳过现有仓位录入。",
+    api_opening_state_sealed: "现有仓位只能在首条仓位、交易或现金记录之前初始化。",
+    api_invalid_opening_state: "现有仓位不符合期初状态规则。",
+    sequence: "序号",
+    recorded_at: "记录时间",
+    occurred_at: "发生时间",
+    trade_amount: "交易金额",
+    commission: "手续费",
+    fee_schedule: "费率方案",
+    event_type: "事件",
+    reason: "原因",
+    not_provided: "未填写",
     occurred_at_optional: "发生时间（可选）",
     occurred_at_hint: "留空使用后端应用时间。只有补录历史时才填写过去的本地时间。",
     reason_optional: "原因（可选）",
@@ -356,7 +431,7 @@ const translations = {
     amount_required: "请填写金额。灰色示例不是已经输入的值。",
     amount_invalid: "金额必须是正数，且最多包含 8 位小数。",
     api_insufficient_cash: "可用现金不足。请检查可用现金、交易金额和手续费。",
-    api_insufficient_shares: "该仓位类型的股数不足。请检查标的、股数以及 LONG_TERM / SWING。",
+    api_insufficient_shares: "该仓位类型的股数不足。请检查标的、股数以及所选或未分类的仓位类型。",
     api_invalid_transaction: "该交易不符合账本规则。",
     api_invalid_cash_event: "该现金记录不符合账本规则。",
     api_user_not_found: "当前加载的投资组合已不存在。",
@@ -395,6 +470,7 @@ const translations = {
 };
 
 let activeLanguage = navigator.language.toLowerCase().startsWith("zh") ? "zh" : "en";
+let openingDraftCounter = 0;
 
 const elements = {
   onboardingView: document.querySelector("#onboarding-view"),
@@ -438,6 +514,18 @@ const elements = {
   positionCount: document.querySelector("#position-count"),
   positionsEmpty: document.querySelector("#positions-empty"),
   positionList: document.querySelector("#position-list"),
+  openingSetup: document.querySelector("#opening-setup"),
+  openingForm: document.querySelector("#opening-form"),
+  openingFields: document.querySelector("#opening-fields"),
+  openingDraftRows: document.querySelector("#opening-draft-rows"),
+  addOpeningRowButton: document.querySelector("#add-opening-row"),
+  skipOpeningSetupButton: document.querySelector("#skip-opening-setup"),
+  reopenOpeningSetupButton: document.querySelector("#reopen-opening-setup"),
+  openingSubmit: document.querySelector("#save-opening-positions"),
+  openingMessage: document.querySelector("#opening-message"),
+  openingRecordCount: document.querySelector("#opening-record-count"),
+  openingRecordsEmpty: document.querySelector("#opening-records-empty"),
+  openingRecordList: document.querySelector("#opening-record-list"),
   portfolioMessage: document.querySelector("#portfolio-message"),
   writeState: document.querySelector("#write-state"),
   tradeForm: document.querySelector("#trade-form"),
@@ -451,6 +539,9 @@ const elements = {
   tradeReason: document.querySelector("#trade-reason"),
   tradeSubmit: document.querySelector("#trade-submit"),
   tradeMessage: document.querySelector("#trade-message"),
+  transactionCount: document.querySelector("#transaction-count"),
+  transactionsEmpty: document.querySelector("#transactions-empty"),
+  transactionList: document.querySelector("#transaction-list"),
   cashForm: document.querySelector("#cash-form"),
   cashFields: document.querySelector("#cash-fields"),
   cashEventType: document.querySelector("#cash-event-type"),
@@ -459,6 +550,9 @@ const elements = {
   cashReason: document.querySelector("#cash-reason"),
   cashSubmit: document.querySelector("#cash-submit"),
   cashMessage: document.querySelector("#cash-message"),
+  cashEventCount: document.querySelector("#cash-event-count"),
+  cashEventsEmpty: document.querySelector("#cash-events-empty"),
+  cashEventList: document.querySelector("#cash-event-list"),
   questionForm: document.querySelector("#question-form"),
   question: document.querySelector("#question"),
   questionHint: document.querySelector("#question-hint"),
@@ -478,11 +572,20 @@ const clientState = {
   activeView: "chat",
   portfolioSection: "overview",
   activeResponse: null,
-  sessionEntryCount: 0,
+  questionHistoryCount: 0,
+  openingPositions: [],
+  transactions: [],
+  cashEvents: [],
+  recordsLoaded: false,
+  openingSetupSkipped: false,
 };
 
 function normalizeUserId(value) {
   return value.trim().toLowerCase();
+}
+
+function formatDecimalForDisplay(value) {
+  return /^-?0(?:\.0+)?(?:e[+-]?\d+)?$/i.test(value) ? "0.00000000" : value;
 }
 
 function isValidUserId(value) {
@@ -538,29 +641,83 @@ function isCreatedPortfolioPayload(payload) {
   );
 }
 
+function isOpeningPositionRecord(record, userId) {
+  return (
+    record !== null &&
+    typeof record === "object" &&
+    normalizeUserId(record.user_id ?? "") === userId &&
+    typeof record.id === "string" &&
+    typeof record.ticker === "string" &&
+    typeof record.shares === "string" &&
+    typeof record.average_cost === "string" &&
+    typeof record.cost_basis === "string" &&
+    typeof record.position_type === "string" &&
+    typeof record.recorded_at === "string" &&
+    !("sequence" in record)
+  );
+}
+
+function isTransactionRecord(record, userId) {
+  return (
+    record !== null &&
+    typeof record === "object" &&
+    normalizeUserId(record.user_id ?? "") === userId &&
+    typeof record.id === "string" &&
+    Number.isInteger(record.sequence) &&
+    typeof record.ticker === "string" &&
+    typeof record.action === "string" &&
+    typeof record.price === "string" &&
+    typeof record.shares === "string" &&
+    typeof record.amount === "string" &&
+    typeof record.commission === "string" &&
+    typeof record.fee_schedule === "string" &&
+    typeof record.position_type === "string" &&
+    typeof record.occurred_at === "string"
+  );
+}
+
+function isCashEventRecord(record, userId) {
+  return (
+    record !== null &&
+    typeof record === "object" &&
+    normalizeUserId(record.user_id ?? "") === userId &&
+    typeof record.id === "string" &&
+    Number.isInteger(record.sequence) &&
+    typeof record.event_type === "string" &&
+    typeof record.amount === "string" &&
+    typeof record.occurred_at === "string"
+  );
+}
+
+function isRecordListPayload(payload, userId, validator) {
+  return (
+    payload !== null &&
+    typeof payload === "object" &&
+    payload.items_are_complete === true &&
+    Array.isArray(payload.items) &&
+    payload.items.every((record) => validator(record, userId))
+  );
+}
+
+function isOpeningPositionsWritePayload(payload, userId) {
+  return (
+    payload !== null &&
+    typeof payload === "object" &&
+    payload.items_are_complete === true &&
+    Array.isArray(payload.opening_positions) &&
+    payload.opening_positions.every((record) => isOpeningPositionRecord(record, userId))
+  );
+}
+
 function isTransactionWritePayload(payload, userId) {
   const transaction = payload?.transaction;
-  return (
-    transaction !== null &&
-    typeof transaction === "object" &&
-    normalizeUserId(transaction.user_id ?? "") === userId &&
-    typeof transaction.id === "string" &&
-    Number.isInteger(transaction.sequence) &&
-    typeof transaction.amount === "string" &&
-    typeof transaction.commission === "string" &&
-    typeof transaction.fee_schedule === "string"
-  );
+  return isTransactionRecord(transaction, userId);
 }
 
 function isCashWritePayload(payload, userId) {
   const cashEvent = payload?.cash_event;
   return (
-    cashEvent !== null &&
-    typeof cashEvent === "object" &&
-    normalizeUserId(cashEvent.user_id ?? "") === userId &&
-    typeof cashEvent.id === "string" &&
-    Number.isInteger(cashEvent.sequence) &&
-    typeof cashEvent.amount === "string" &&
+    isCashEventRecord(cashEvent, userId) &&
     typeof payload.available_cash === "string"
   );
 }
@@ -595,6 +752,12 @@ function applyLanguage() {
   }
   for (const element of document.querySelectorAll("[data-timestamp]")) {
     element.textContent = formatTimestamp(element.dataset.timestamp);
+  }
+  for (const element of document.querySelectorAll(".session-question[data-question]")) {
+    element.setAttribute(
+      "aria-label",
+      `${translate("question_jump")}: ${element.dataset.question}`,
+    );
   }
   elements.languageToggle.textContent = translate("language_target");
   elements.languageToggle.setAttribute("aria-label", translate("language_switch"));
@@ -775,8 +938,10 @@ function setActionMessageWithValue(element, messageKey, value) {
 }
 
 function clearLedgerMessages() {
+  setRawText(elements.openingMessage, "");
   setRawText(elements.tradeMessage, "");
   setRawText(elements.cashMessage, "");
+  delete elements.openingMessage.dataset.tone;
   delete elements.tradeMessage.dataset.tone;
   delete elements.cashMessage.dataset.tone;
 }
@@ -808,6 +973,16 @@ function updateControls() {
   const ledgerEnabled = portfolioReady && !identityLocked;
   elements.tradeFields.disabled = !ledgerEnabled;
   elements.cashFields.disabled = !ledgerEnabled;
+  const openingEligible =
+    portfolioReady &&
+    clientState.recordsLoaded &&
+    clientState.openingPositions.length === 0 &&
+    clientState.transactions.length === 0 &&
+    clientState.cashEvents.length === 0;
+  elements.openingFields.disabled = !openingEligible || identityLocked;
+  elements.openingSetup.hidden = !openingEligible || clientState.openingSetupSkipped;
+  elements.reopenOpeningSetupButton.hidden =
+    !openingEligible || !clientState.openingSetupSkipped;
 
   const questionEnabled = portfolioReady && !questionLoading;
   if (questionEnabled) {
@@ -825,7 +1000,7 @@ function updateControls() {
 
 function resetResult(message = "answer_initial", localized = true) {
   clientState.activeResponse = null;
-  clientState.sessionEntryCount = 0;
+  clientState.questionHistoryCount = 0;
   clearElement(elements.conversationList);
   clearElement(elements.sessionList);
   elements.sessionEmpty.hidden = false;
@@ -839,6 +1014,37 @@ function resetResult(message = "answer_initial", localized = true) {
   }
 }
 
+function resetRecordLists(messageKey = "records_loading") {
+  clientState.openingPositions = [];
+  clientState.transactions = [];
+  clientState.cashEvents = [];
+  clientState.recordsLoaded = false;
+  for (const list of [
+    elements.openingRecordList,
+    elements.transactionList,
+    elements.cashEventList,
+  ]) {
+    clearElement(list);
+  }
+  for (const count of [
+    elements.openingRecordCount,
+    elements.transactionCount,
+    elements.cashEventCount,
+  ]) {
+    count.textContent = "—";
+  }
+  for (const empty of [
+    elements.openingRecordsEmpty,
+    elements.transactionsEmpty,
+    elements.cashEventsEmpty,
+  ]) {
+    empty.hidden = false;
+    setLocalizedText(empty, messageKey);
+  }
+  elements.openingSetup.hidden = true;
+  elements.reopenOpeningSetupButton.hidden = true;
+}
+
 function resetPortfolio(message = "", localized = true) {
   elements.availableCash.textContent = "—";
   elements.positionCount.textContent = "—";
@@ -849,6 +1055,7 @@ function resetPortfolio(message = "", localized = true) {
     elements.sidebarPortfolioId.textContent = "—";
   }
   setLocalizedText(elements.positionsEmpty.querySelector("p"), "portfolio_empty_initial");
+  resetRecordLists();
   if (localized && message) {
     setLocalizedText(elements.portfolioMessage, message);
   } else {
@@ -878,6 +1085,8 @@ function invalidateLoadedPortfolio(message) {
   clientState.portfolioController?.abort();
   clientState.portfolioController = null;
   clientState.loadedUserId = null;
+  clientState.openingSetupSkipped = false;
+  clearElement(elements.openingDraftRows);
   setLocalizedText(elements.portfolioLoadButton, "load");
   setPortfolioState("portfolio_stale", "warning");
   resetPortfolio(message);
@@ -920,8 +1129,12 @@ function createPositionCard(position) {
   ticker.textContent = position.ticker;
   const positionType = document.createElement("span");
   positionType.className = "position-type";
-  positionType.dataset.type = position.position_type === "SWING" ? "swing" : "long-term";
-  positionType.textContent = position.position_type;
+  positionType.dataset.type = position.position_type.toLowerCase().replace("_", "-");
+  if (position.position_type === "UNSPECIFIED") {
+    setLocalizedText(positionType, "unspecified");
+  } else {
+    positionType.textContent = position.position_type;
+  }
   heading.append(ticker, positionType);
 
   const facts = document.createElement("dl");
@@ -945,8 +1158,145 @@ function createPositionCard(position) {
   return card;
 }
 
+function appendRecordFact(list, labelKey, value, { timestamp = false } = {}) {
+  const group = document.createElement("div");
+  const term = document.createElement("dt");
+  setLocalizedText(term, labelKey);
+  const description = document.createElement("dd");
+  if (timestamp) {
+    description.dataset.timestamp = value;
+    description.textContent = formatTimestamp(value);
+  } else if (value === null || value === undefined || value === "") {
+    setLocalizedText(description, "not_provided");
+  } else {
+    description.textContent = value;
+  }
+  group.append(term, description);
+  list.append(group);
+}
+
+function createRecordCard(title, positionType, facts) {
+  const card = document.createElement("article");
+  card.className = "record-card";
+  const heading = document.createElement("div");
+  heading.className = "position-card-heading";
+  const strong = document.createElement("strong");
+  strong.textContent = title;
+  heading.append(strong);
+  if (positionType) {
+    const badge = document.createElement("span");
+    badge.className = "position-type";
+    badge.dataset.type = positionType.toLowerCase().replace("_", "-");
+    if (positionType === "UNSPECIFIED") {
+      setLocalizedText(badge, "unspecified");
+    } else {
+      badge.textContent = positionType;
+    }
+    heading.append(badge);
+  }
+  const factList = document.createElement("dl");
+  factList.className = "record-facts";
+  for (const fact of facts) {
+    appendRecordFact(factList, fact[0], fact[1], fact[2]);
+  }
+  card.append(heading, factList);
+  return card;
+}
+
+function renderRecordLists() {
+  const definitions = [
+    [
+      clientState.openingPositions,
+      elements.openingRecordList,
+      elements.openingRecordsEmpty,
+      elements.openingRecordCount,
+      (record) =>
+        createRecordCard(record.ticker, record.position_type, [
+          ["shares", record.shares],
+          ["average_cost", record.average_cost],
+          ["cost_basis", record.cost_basis],
+          ["recorded_at", record.recorded_at, { timestamp: true }],
+        ]),
+    ],
+    [
+      clientState.transactions,
+      elements.transactionList,
+      elements.transactionsEmpty,
+      elements.transactionCount,
+      (record) =>
+        createRecordCard(`${record.action} · ${record.ticker}`, record.position_type, [
+          ["sequence", `#${record.sequence}`],
+          ["price", record.price],
+          ["shares", record.shares],
+          ["trade_amount", record.amount],
+          ["commission", record.commission],
+          ["fee_schedule", record.fee_schedule],
+          ["occurred_at", record.occurred_at, { timestamp: true }],
+          ["reason", record.reason],
+        ]),
+    ],
+    [
+      clientState.cashEvents,
+      elements.cashEventList,
+      elements.cashEventsEmpty,
+      elements.cashEventCount,
+      (record) =>
+        createRecordCard(record.event_type, null, [
+          ["sequence", `#${record.sequence}`],
+          ["amount", record.amount],
+          ["occurred_at", record.occurred_at, { timestamp: true }],
+          ["reason", record.reason],
+        ]),
+    ],
+  ];
+
+  for (const [records, list, empty, count, createCard] of definitions) {
+    clearElement(list);
+    count.textContent = String(records.length);
+    empty.hidden = records.length > 0;
+    setLocalizedText(empty, "records_empty");
+    for (const record of records) {
+      list.append(createCard(record));
+    }
+  }
+  if (elements.openingDraftRows.childElementCount === 0) {
+    addOpeningDraftRow();
+  }
+  updateControls();
+}
+
+async function loadPortfolioRecords(userId, signal) {
+  const resources = [
+    ["openingPositions", "opening-positions", isOpeningPositionRecord],
+    ["transactions", "transactions", isTransactionRecord],
+    ["cashEvents", "cash-events", isCashEventRecord],
+  ];
+  const responses = await Promise.all(
+    resources.map(([, path]) =>
+      fetch(`/v1/portfolios/${encodeURIComponent(userId)}/${path}`, {
+        signal,
+        headers: { Accept: "application/json" },
+      }),
+    ),
+  );
+  if (responses.some((response) => !response.ok)) {
+    throw new Error("RECORD_LIST_REQUEST_FAILED");
+  }
+  const payloads = await Promise.all(responses.map((response) => response.json()));
+  const records = {};
+  for (let index = 0; index < resources.length; index += 1) {
+    const [stateKey, , validator] = resources[index];
+    const payload = payloads[index];
+    if (!isRecordListPayload(payload, userId, validator)) {
+      throw new Error("RECORD_LIST_CONTRACT_FAILED");
+    }
+    records[stateKey] = payload.items;
+  }
+  return records;
+}
+
 function renderPortfolio(portfolio) {
-  elements.availableCash.textContent = `$${portfolio.available_cash}`;
+  elements.availableCash.textContent = `$${formatDecimalForDisplay(portfolio.available_cash)}`;
   elements.positionCount.textContent = String(portfolio.positions.length);
   elements.loadedUserId.textContent = portfolio.user_id;
   elements.sidebarPortfolioId.textContent = portfolio.user_id;
@@ -1018,6 +1368,10 @@ async function loadPortfolioById(
     preserveConversation = false,
   } = {},
 ) {
+  if (requestedUserId !== clientState.loadedUserId) {
+    clientState.openingSetupSkipped = false;
+    clearElement(elements.openingDraftRows);
+  }
   clientState.userIdInput = requestedUserId;
   elements.userIdInput.value = requestedUserId;
 
@@ -1100,7 +1454,37 @@ async function loadPortfolioById(
       resetResult();
     }
     renderPortfolio(portfolio);
-    showWorkspace(preserveConversation ? clientState.activeView : "chat");
+    try {
+      const records = await loadPortfolioRecords(responseUserId, controller.signal);
+      if (
+        generation !== clientState.portfolioGeneration ||
+        responseUserId !== clientState.userIdInput
+      ) {
+        return false;
+      }
+      clientState.openingPositions = records.openingPositions;
+      clientState.transactions = records.transactions;
+      clientState.cashEvents = records.cashEvents;
+      clientState.recordsLoaded = true;
+      renderRecordLists();
+    } catch (error) {
+      if (error.name === "AbortError") {
+        throw error;
+      }
+      resetRecordLists("records_unavailable");
+    }
+    const shouldOfferOpeningSetup =
+      clientState.recordsLoaded &&
+      clientState.openingPositions.length === 0 &&
+      clientState.transactions.length === 0 &&
+      clientState.cashEvents.length === 0;
+    showWorkspace(
+      preserveConversation
+        ? clientState.activeView
+        : shouldOfferOpeningSetup
+          ? "portfolio"
+          : "chat",
+    );
     return true;
   } catch (error) {
     if (error.name === "AbortError" || generation !== clientState.portfolioGeneration) {
@@ -1205,8 +1589,8 @@ function createSourceCard(source) {
 }
 
 function createQuestionExchange(question) {
-  clientState.sessionEntryCount += 1;
-  const exchangeId = `session-question-${clientState.sessionEntryCount}`;
+  clientState.questionHistoryCount += 1;
+  const exchangeId = `question-history-${clientState.questionHistoryCount}`;
   const exchange = document.createElement("section");
   exchange.className = "conversation-exchange";
   exchange.id = exchangeId;
@@ -1239,6 +1623,7 @@ function createQuestionExchange(question) {
   const sessionButton = document.createElement("button");
   sessionButton.className = "session-question";
   sessionButton.type = "button";
+  sessionButton.dataset.question = question;
   sessionButton.textContent = question.length > 54 ? `${question.slice(0, 53)}…` : question;
   sessionButton.setAttribute("aria-label", `${translate("question_jump")}: ${question}`);
   sessionButton.addEventListener("click", () => {
@@ -1298,6 +1683,8 @@ function setApiErrorMessage(element, error) {
     INSUFFICIENT_SHARES: "api_insufficient_shares",
     INVALID_TRANSACTION: "api_invalid_transaction",
     INVALID_CASH_EVENT: "api_invalid_cash_event",
+    INVALID_OPENING_STATE: "api_invalid_opening_state",
+    OPENING_STATE_SEALED: "api_opening_state_sealed",
     USER_NOT_FOUND: "api_user_not_found",
   };
   const summaryKey = summaryKeys[error.code];
@@ -1351,6 +1738,135 @@ function parseOptionalOccurredAt(input) {
   return { valid: true, value: occurredAt.toISOString() };
 }
 
+function createOpeningField(labelKey, input) {
+  const group = document.createElement("div");
+  const label = document.createElement("label");
+  label.htmlFor = input.id;
+  setLocalizedText(label, labelKey);
+  group.append(label, input);
+  return group;
+}
+
+function createOpeningInput(id, name, placeholderKey) {
+  const input = document.createElement("input");
+  input.id = id;
+  input.name = name;
+  input.type = "text";
+  input.autocomplete = "off";
+  input.dataset.i18nPlaceholder = placeholderKey;
+  input.placeholder = translate(placeholderKey);
+  return input;
+}
+
+function addOpeningDraftRow() {
+  openingDraftCounter += 1;
+  const suffix = String(openingDraftCounter);
+  const row = document.createElement("div");
+  row.className = "opening-draft-row";
+
+  const ticker = createOpeningInput(`opening-ticker-${suffix}`, "ticker", "ticker_placeholder");
+  ticker.maxLength = 10;
+  const shares = createOpeningInput(`opening-shares-${suffix}`, "shares", "shares_placeholder");
+  shares.inputMode = "decimal";
+  const averageCost = createOpeningInput(
+    `opening-average-cost-${suffix}`,
+    "average-cost",
+    "price_placeholder",
+  );
+  averageCost.inputMode = "decimal";
+
+  const positionType = document.createElement("select");
+  positionType.id = `opening-position-type-${suffix}`;
+  positionType.name = "position-type";
+  for (const [value, labelKey] of [
+    ["", "unspecified"],
+    ["LONG_TERM", "long_term"],
+    ["SWING", "swing"],
+  ]) {
+    const option = document.createElement("option");
+    option.value = value;
+    setLocalizedText(option, labelKey);
+    positionType.append(option);
+  }
+
+  const remove = document.createElement("button");
+  remove.className = "text-button opening-remove";
+  remove.type = "button";
+  setLocalizedText(remove, "remove_position");
+  remove.addEventListener("click", () => {
+    row.remove();
+    if (elements.openingDraftRows.childElementCount === 0) {
+      addOpeningDraftRow();
+    }
+  });
+
+  row.append(
+    createOpeningField("opening_ticker", ticker),
+    createOpeningField("opening_shares", shares),
+    createOpeningField("opening_average_cost", averageCost),
+    createOpeningField("opening_position_type", positionType),
+    remove,
+  );
+  elements.openingDraftRows.append(row);
+}
+
+function readOpeningPositionsDraft() {
+  const positions = [];
+  const uniqueKeys = new Set();
+  for (const row of elements.openingDraftRows.querySelectorAll(".opening-draft-row")) {
+    const tickerInput = row.querySelector('[name="ticker"]');
+    const sharesInput = row.querySelector('[name="shares"]');
+    const averageCostInput = row.querySelector('[name="average-cost"]');
+    const positionTypeInput = row.querySelector('[name="position-type"]');
+    const ticker = tickerInput.value.trim().toUpperCase();
+    const shares = sharesInput.value.trim();
+    const averageCost = averageCostInput.value.trim();
+    if (!ticker || !isValidDecimalInput(shares) || !isValidDecimalInput(averageCost)) {
+      return { valid: false, messageKey: "opening_invalid_input", positions: [] };
+    }
+    const normalizedType = positionTypeInput.value || "UNSPECIFIED";
+    const uniqueKey = `${ticker}:${normalizedType}`;
+    if (uniqueKeys.has(uniqueKey)) {
+      return { valid: false, messageKey: "opening_duplicate", positions: [] };
+    }
+    uniqueKeys.add(uniqueKey);
+    const position = { ticker, shares, average_cost: averageCost };
+    if (positionTypeInput.value) {
+      position.position_type = positionTypeInput.value;
+    }
+    positions.push(position);
+  }
+  return { valid: positions.length > 0, messageKey: "opening_invalid_input", positions };
+}
+
+async function saveOpeningPositions(event) {
+  event.preventDefault();
+  const draft = readOpeningPositionsDraft();
+  if (!draft.valid) {
+    elements.openingMessage.dataset.tone = "danger";
+    setLocalizedText(elements.openingMessage, draft.messageKey);
+    return;
+  }
+  const saved = await submitLedgerMutation({
+    endpoint: (userId) =>
+      `/v1/portfolios/${encodeURIComponent(userId)}/opening-positions`,
+    payload: { positions: draft.positions },
+    validateResponse: isOpeningPositionsWritePayload,
+    successDetail: (response) => {
+      const [firstPosition] = response.opening_positions;
+      const remaining = response.opening_positions.length > 1 ? " · …" : "";
+      return `${response.opening_positions.length} · ${firstPosition.id}${remaining}`;
+    },
+    messageElement: elements.openingMessage,
+    successKey: "opening_position_saved",
+  });
+  if (saved) {
+    clearElement(elements.openingDraftRows);
+    clientState.openingSetupSkipped = false;
+    updateControls();
+  }
+}
+
 async function createPortfolio(event) {
   event.preventDefault();
   if (clientState.createController !== null || clientState.writeState === "submitting") {
@@ -1370,6 +1886,13 @@ async function createPortfolio(event) {
 
   const controller = new AbortController();
   clientState.createController = controller;
+  if (clientState.loadedUserId !== null) {
+    clientState.loadedUserId = null;
+    clientState.openingSetupSkipped = false;
+    clearElement(elements.openingDraftRows);
+    setPortfolioState("portfolio_stale", "warning");
+    resetPortfolio("portfolio_context_changed");
+  }
   if (clientState.portfolioController !== null) {
     clientState.portfolioGeneration += 1;
     clientState.portfolioController.abort();
@@ -1437,6 +1960,8 @@ function forgetLocalPointer() {
   clientState.portfolioController = null;
   clientState.loadedUserId = null;
   clientState.userIdInput = "";
+  clientState.openingSetupSkipped = false;
+  clearElement(elements.openingDraftRows);
   elements.userIdInput.value = "";
   setWriteState("idle");
   setPortfolioState("portfolio_not_loaded");
@@ -1554,8 +2079,10 @@ async function recordTrade(event) {
     action: elements.tradeAction.value,
     price,
     shares,
-    position_type: elements.tradePositionType.value,
   };
+  if (elements.tradePositionType.value) {
+    payload.position_type = elements.tradePositionType.value;
+  }
   if (occurredAt.value !== null) {
     payload.occurred_at = occurredAt.value;
   }
@@ -1786,6 +2313,18 @@ elements.reloadPortfolioButton.addEventListener("click", async () => {
   if (clientState.loadedUserId !== null) {
     await loadPortfolioById(clientState.loadedUserId, { preserveConversation: true });
   }
+});
+elements.openingForm.addEventListener("submit", saveOpeningPositions);
+elements.addOpeningRowButton.addEventListener("click", addOpeningDraftRow);
+elements.skipOpeningSetupButton.addEventListener("click", () => {
+  clientState.openingSetupSkipped = true;
+  setLocalizedText(elements.openingMessage, "opening_setup_skipped");
+  updateControls();
+});
+elements.reopenOpeningSetupButton.addEventListener("click", () => {
+  clientState.openingSetupSkipped = false;
+  setRawText(elements.openingMessage, "");
+  updateControls();
 });
 elements.tradeForm.addEventListener("submit", recordTrade);
 elements.cashForm.addEventListener("submit", recordCashEvent);

@@ -581,6 +581,11 @@ button:disabled {
   background: rgba(243, 185, 95, 0.18);
 }
 
+.position-type[data-type="unspecified"] {
+  color: #5d6964;
+  background: rgba(93, 105, 100, 0.12);
+}
+
 .position-facts {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -1356,6 +1361,127 @@ footer {
   margin-top: 28px;
 }
 
+.opening-setup-card,
+.record-list-section {
+  margin-top: 28px;
+  padding: clamp(20px, 3vw, 28px);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.opening-setup-card h3 {
+  font-size: 25px;
+}
+
+.opening-explainer {
+  max-width: 720px;
+  margin: -3px 0 20px;
+  color: var(--ink-soft);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.opening-draft-rows {
+  display: grid;
+  gap: 13px;
+}
+
+.opening-draft-row {
+  display: grid;
+  grid-template-columns: minmax(120px, 1.1fr) minmax(100px, 0.8fr) minmax(120px, 1fr) minmax(145px, 1fr) auto;
+  gap: 10px;
+  align-items: end;
+  padding: 15px;
+  border: 1px solid rgba(20, 37, 31, 0.1);
+  border-radius: 14px;
+  background: rgba(249, 249, 244, 0.82);
+}
+
+.opening-draft-row label {
+  display: block;
+  margin-bottom: 6px;
+}
+
+.opening-draft-row input,
+.opening-draft-row select {
+  width: 100%;
+}
+
+.opening-remove {
+  margin: 0 0 11px;
+}
+
+.opening-actions {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-top: 16px;
+}
+
+.opening-actions .secondary-button {
+  margin-left: auto;
+}
+
+.reopen-opening {
+  margin-top: 22px;
+}
+
+.record-list-section {
+  background: rgba(255, 255, 255, 0.48);
+}
+
+.record-empty {
+  margin: 18px 0 0;
+  color: var(--ink-soft);
+  font-size: 13px;
+}
+
+.record-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.record-card {
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.78);
+}
+
+.record-card .position-card-heading strong {
+  overflow-wrap: anywhere;
+}
+
+.record-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(128px, 1fr));
+  gap: 14px;
+  margin: 18px 0 0;
+}
+
+.record-facts div {
+  min-width: 0;
+}
+
+.record-facts dt {
+  margin-bottom: 5px;
+  color: #7b8782;
+  font-size: 9px;
+  font-weight: 720;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.record-facts dd {
+  overflow-wrap: anywhere;
+  margin: 0;
+  font-size: 12px;
+  font-weight: 650;
+}
+
 .focused-entry-card {
   max-width: 720px;
   margin: 0;
@@ -1410,6 +1536,15 @@ footer {
 
   #portfolio-state {
     display: none;
+  }
+
+  .opening-draft-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .opening-remove {
+    width: fit-content;
+    margin: 0;
   }
 }
 
@@ -1580,5 +1715,20 @@ footer {
 
   .position-facts {
     grid-template-columns: 1fr;
+  }
+
+  .opening-draft-row,
+  .record-facts {
+    grid-template-columns: 1fr;
+  }
+
+  .opening-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .opening-actions .secondary-button {
+    width: 100%;
+    margin-left: 0;
   }
 }

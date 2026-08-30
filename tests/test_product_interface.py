@@ -35,6 +35,12 @@ def test_serves_product_interface_and_static_assets() -> None:
     assert 'id="portfolio-tab-cash"' in page.text
     assert 'id="initial-cash"' in page.text
     assert 'value="0"' in page.text
+    assert 'id="opening-form"' in page.text
+    assert 'id="opening-draft-rows"' in page.text
+    assert 'id="opening-record-list"' in page.text
+    assert 'id="transaction-list"' in page.text
+    assert 'id="cash-event-list"' in page.text
+    assert '<option value="" data-i18n="unspecified">' in page.text
     assert 'data-i18n-placeholder="shares_placeholder"' in page.text
     assert script.status_code == 200
     assert stylesheet.status_code == 200
@@ -62,7 +68,7 @@ def test_client_script_preserves_identity_and_safe_text_boundary() -> None:
     assert "portfolio_empty_loaded" in script
     assert "toggleLanguage" in script
     assert "createQuestionExchange" in script
-    assert "sessionEntryCount" in script
+    assert "questionHistoryCount" in script
     assert script.count("window.localStorage.setItem(") == 1
     assert "DECIMAL_INPUT_PATTERN" in script
     assert "showFieldError" in script
@@ -87,6 +93,10 @@ def test_client_script_preserves_m8_write_and_recovery_boundaries() -> None:
     assert 'fetch("/v1/portfolios"' in script
     assert "/transactions`" in script
     assert "/cash-events`" in script
+    assert '"openingPositions", "opening-positions"' in script
+    assert "isOpeningPositionsWritePayload" in script
+    assert "firstPosition.id" in script
+    assert "payload.position_type = elements.tradePositionType.value" in script
     assert "payload.occurred_at = occurredAt.value" in script
     assert "new Date(rawValue)" in script
     assert "Number(elements.tradePrice" not in script

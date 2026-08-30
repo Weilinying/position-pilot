@@ -9,8 +9,8 @@
       data-i18n-content="meta_description"
     />
     <title>PositionPilot · Decision Desk</title>
-    <link rel="stylesheet" href="/static/styles.css" />
-    <script type="module" src="/static/app.js"></script>
+    <link rel="stylesheet" href="/static/styles.css?v=20260830-m8" />
+    <script type="module" src="/static/app.js?v=20260830-m8"></script>
   </head>
   <body>
     <button class="language-toggle global-language-toggle" id="language-toggle" type="button" aria-label="切换到中文">中文</button>
@@ -107,7 +107,7 @@
 
         <section class="session-history" aria-labelledby="session-title">
           <div class="sidebar-section-heading">
-            <span id="session-title" data-i18n="this_session">This session</span>
+            <span id="session-title" data-i18n="question_history">Question history</span>
             <small data-i18n="session_only">Not saved</small>
           </div>
           <p class="session-empty" id="session-empty" data-i18n="no_questions">No questions yet.</p>
@@ -125,7 +125,7 @@
         <header class="app-topbar">
           <div>
             <p class="eyebrow" id="view-eyebrow" data-i18n="context_aware">Context-aware decision support</p>
-            <h1 class="view-title" id="view-title" data-i18n="chat_view_title" tabindex="-1">Decision chat</h1>
+            <h1 class="view-title" id="view-title" data-i18n="chat_view_title" tabindex="-1">Decision questions</h1>
           </div>
           <span class="context-chip" id="portfolio-state">Not loaded</span>
         </header>
@@ -185,6 +185,28 @@
                 <button class="text-button" id="forget-pointer-button" type="button" data-i18n="forget_pointer" disabled>Forget local pointer</button>
               </section>
             </div>
+            <section class="opening-setup-card" id="opening-setup" aria-labelledby="opening-setup-title" hidden>
+              <div class="entry-card-heading">
+                <div>
+                  <p class="eyebrow" data-i18n="opening_state">Opening state</p>
+                  <h3 id="opening-setup-title" data-i18n="existing_positions_setup">Add existing positions</h3>
+                </div>
+                <span class="entry-note" data-i18n="starting_facts">One-time starting facts</span>
+              </div>
+              <p class="opening-explainer" data-i18n="opening_explainer">Record holdings you already owned when tracking begins. This does not change cash or create a trade.</p>
+              <form id="opening-form" novalidate>
+                <fieldset id="opening-fields">
+                  <div class="opening-draft-rows" id="opening-draft-rows"></div>
+                  <div class="opening-actions">
+                    <button class="text-button" id="add-opening-row" type="button" data-i18n="add_position">Add another position</button>
+                    <button class="text-button" id="skip-opening-setup" type="button" data-i18n="skip_for_now">Skip for now</button>
+                    <button class="secondary-button" id="save-opening-positions" type="submit" data-i18n="save_opening_positions">Save existing positions</button>
+                  </div>
+                </fieldset>
+                <p class="panel-message" id="opening-message" role="status"></p>
+              </form>
+            </section>
+            <button class="text-button reopen-opening" id="reopen-opening-setup" type="button" data-i18n="add_existing_positions" hidden>Add existing positions</button>
             <section class="positions-section" aria-labelledby="positions-title">
               <div class="positions-header">
                 <span id="positions-title" data-i18n="open_positions">Open positions</span><span id="position-count">—</span>
@@ -194,6 +216,13 @@
                 <p data-i18n="portfolio_empty_initial">Load a portfolio to reveal the complete current position set.</p>
               </div>
               <div class="position-list" id="position-list" aria-live="polite"></div>
+            </section>
+            <section class="record-list-section" aria-labelledby="opening-records-title">
+              <div class="positions-header">
+                <span id="opening-records-title" data-i18n="opening_records">Opening position records</span><span id="opening-record-count">—</span>
+              </div>
+              <p class="record-empty" id="opening-records-empty" data-i18n="records_loading">Load a portfolio to view records.</p>
+              <div class="record-list" id="opening-record-list" aria-live="polite"></div>
             </section>
           </section>
 
@@ -206,7 +235,7 @@
               <fieldset id="trade-fields" disabled>
                 <div class="field-grid field-grid-two">
                   <div><label for="trade-action" data-i18n="action">Action</label><select id="trade-action" name="action"><option value="BUY" data-i18n="buy">BUY</option><option value="SELL" data-i18n="sell">SELL</option></select></div>
-                  <div><label for="trade-position-type" data-i18n="position_type">Position type</label><select id="trade-position-type" name="position-type"><option value="LONG_TERM" data-i18n="long_term">LONG_TERM</option><option value="SWING" data-i18n="swing">SWING</option></select></div>
+                  <div><label for="trade-position-type" data-i18n="position_type_optional">Position type (optional)</label><select id="trade-position-type" name="position-type"><option value="" data-i18n="unspecified">Unspecified</option><option value="LONG_TERM" data-i18n="long_term">LONG_TERM</option><option value="SWING" data-i18n="swing">SWING</option></select></div>
                 </div>
                 <label for="trade-ticker" data-i18n="ticker">Ticker</label><input id="trade-ticker" name="ticker" type="text" maxlength="10" autocomplete="off" placeholder="e.g. GOOG" data-i18n-placeholder="ticker_placeholder" />
                 <div class="field-grid field-grid-two">
@@ -220,6 +249,13 @@
               </fieldset>
               <p class="panel-message" id="trade-message" role="status"></p>
             </form>
+            <section class="record-list-section" aria-labelledby="transaction-history-title">
+              <div class="positions-header">
+                <span id="transaction-history-title" data-i18n="transaction_history">Transaction history</span><span id="transaction-count">—</span>
+              </div>
+              <p class="record-empty" id="transactions-empty" data-i18n="records_loading">Load a portfolio to view records.</p>
+              <div class="record-list" id="transaction-list" aria-live="polite"></div>
+            </section>
           </section>
 
           <section class="portfolio-tab-panel" id="portfolio-cash-panel" role="tabpanel" aria-labelledby="portfolio-tab-cash" hidden>
@@ -238,6 +274,13 @@
               </fieldset>
               <p class="panel-message" id="cash-message" role="status"></p>
             </form>
+            <section class="record-list-section" aria-labelledby="cash-history-title">
+              <div class="positions-header">
+                <span id="cash-history-title" data-i18n="cash_history">Cash history</span><span id="cash-event-count">—</span>
+              </div>
+              <p class="record-empty" id="cash-events-empty" data-i18n="records_loading">Load a portfolio to view records.</p>
+              <div class="record-list" id="cash-event-list" aria-live="polite"></div>
+            </section>
           </section>
         </section>
 

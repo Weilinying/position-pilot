@@ -6,7 +6,7 @@ from threading import RLock
 from time import sleep
 from uuid import UUID
 
-from position_pilot.application.errors import UserNotFound
+from position_pilot.application.errors import OpeningStateSealed, UserNotFound
 from position_pilot.application.investment_agent import (
     ContextSource,
     ContextSourceType,
@@ -18,6 +18,7 @@ from position_pilot.application.investment_agent import (
 from position_pilot.application.portfolio_service import (
     CashAdjustmentResult,
     CreateUserCommand,
+    InitializeOpeningPositionsCommand,
     RecordCashEventCommand,
     RecordTransactionCommand,
 )
@@ -25,6 +26,7 @@ from position_pilot.domain.errors import InvalidPortfolioValue
 from position_pilot.domain.portfolio import (
     CashBalance,
     CashEvent,
+    OpeningPosition,
     PortfolioState,
     Position,
     PositionType,
@@ -85,6 +87,7 @@ class BrowserSmokePortfolioService:
         self._users: dict[UUID, User] = {}
         self._transactions: dict[UUID, list[Transaction]] = {}
         self._cash_events: dict[UUID, list[CashEvent]] = {}
+        self._opening_positions: dict[UUID, list[OpeningPosition]] = {}
         self._lock = RLock()
 
     def create_user(self, command: CreateUserCommand) -> User:
@@ -98,7 +101,40 @@ class BrowserSmokePortfolioService:
             self._users[user.id] = user
             self._transactions[user.id] = []
             self._cash_events[user.id] = []
+            self._opening_positions[user.id] = []
             return user
+
+    def initialize_opening_positions(
+        self,
+        command: InitializeOpeningPositionsCommand,
+    ) -> tuple[OpeningPosition, ...]:
+        """在首个经济记录前原子保存 Browser Smoke 期初仓位。"""
+
+        with self._lock:
+            user = self._require_mutable_user(command.user_id)
+            if (
+                self._opening_positions[user.id]
+                or self._transactions[user.id]
+                or self._cash_events[user.id]
+            ):
+                raise OpeningStateSealed()
+            recorded_at = datetime.now(UTC)
+            positions = [
+                OpeningPosition.create(
+                    user_id=user.id,
+                    ticker=item.ticker,
+                    shares=item.shares,
+                    average_cost=item.average_cost,
+                    position_type=item.position_type,
+                    recorded_at=recorded_at,
+                )
+                for item in command.positions
+            ]
+            rebuild_portfolio(user, [], [], positions)
+            self._opening_positions[user.id] = positions
+            return tuple(
+                sorted(positions, key=lambda item: (item.ticker, item.position_type.value))
+            )
 
     def record_transaction(self, command: RecordTransactionCommand) -> Transaction:
         """使用正式 Domain 规则追加 Browser Smoke Transaction。"""
@@ -123,7 +159,7 @@ class BrowserSmokePortfolioService:
                 reason=command.reason,
             )
             ordered = resequence_transactions([*transactions, transaction])
-            rebuild_portfolio(user, ordered, cash_events)
+            rebuild_portfolio(user, ordered, cash_events, self._opening_positions[user.id])
             self._transactions[user.id] = ordered
             return next(candidate for candidate in ordered if candidate.id == transaction.id)
 
@@ -147,7 +183,12 @@ class BrowserSmokePortfolioService:
                 reason=command.reason,
             )
             ordered = resequence_cash_events([*cash_events, cash_event])
-            portfolio = rebuild_portfolio(user, transactions, ordered)
+            portfolio = rebuild_portfolio(
+                user,
+                transactions,
+                ordered,
+                self._opening_positions[user.id],
+            )
             self._cash_events[user.id] = ordered
             persisted = next(candidate for candidate in ordered if candidate.id == cash_event.id)
             return CashAdjustmentResult(cash_event=persisted, portfolio=portfolio)
@@ -160,6 +201,7 @@ class BrowserSmokePortfolioService:
                     user,
                     self._transactions[user_id],
                     self._cash_events[user_id],
+                    self._opening_positions[user_id],
                 )
         if user_id == EMPTY_USER:
             return PortfolioState(
@@ -179,6 +221,56 @@ class BrowserSmokePortfolioService:
             return _portfolio(user_id, ticker="GOOG")
         if user_id == USER_B:
             return _portfolio(user_id, ticker="NVDA")
+        raise UserNotFound(user_id)
+
+    def list_opening_positions(self, user_id: UUID) -> tuple[OpeningPosition, ...]:
+        """返回 Browser Smoke 的完整期初仓位列表。"""
+
+        with self._lock:
+            if user_id in self._users:
+                return tuple(self._opening_positions[user_id])
+        if user_id in {USER_A, USER_B, SLOW_USER}:
+            ticker = {USER_A: "GOOG", USER_B: "NVDA", SLOW_USER: "SLOW"}[user_id]
+            return (
+                OpeningPosition.create(
+                    user_id=user_id,
+                    ticker=ticker,
+                    shares=Decimal("10"),
+                    average_cost=Decimal("180.035"),
+                    position_type=PositionType.LONG_TERM,
+                    recorded_at=NOW,
+                ),
+                OpeningPosition.create(
+                    user_id=user_id,
+                    ticker=ticker,
+                    shares=Decimal("4"),
+                    average_cost=Decimal("210.0875"),
+                    position_type=PositionType.SWING,
+                    recorded_at=NOW,
+                ),
+            )
+        if user_id == EMPTY_USER:
+            return ()
+        raise UserNotFound(user_id)
+
+    def list_transactions(self, user_id: UUID) -> tuple[Transaction, ...]:
+        """返回 Browser Smoke 的完整交易列表。"""
+
+        with self._lock:
+            if user_id in self._users:
+                return tuple(self._transactions[user_id])
+        if user_id in {USER_A, USER_B, SLOW_USER, EMPTY_USER}:
+            return ()
+        raise UserNotFound(user_id)
+
+    def list_cash_events(self, user_id: UUID) -> tuple[CashEvent, ...]:
+        """返回 Browser Smoke 的完整现金事件列表。"""
+
+        with self._lock:
+            if user_id in self._users:
+                return tuple(self._cash_events[user_id])
+        if user_id in {USER_A, USER_B, SLOW_USER, EMPTY_USER}:
+            return ()
         raise UserNotFound(user_id)
 
     def _require_mutable_user(self, user_id: UUID) -> User:
