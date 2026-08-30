@@ -2,7 +2,7 @@
 
 ## 1. 当前范围
 
-本文档描述 M8 Local Portfolio Management 当前已实现的系统结构。系统包含 Portfolio Structured State、Transaction / Cash Event Ledgers、Provider-neutral Market / News Data，以及可按问题选择 Current Quote、固定近期 Daily Price History、attributed Recent News 或 SPY Market Context 的 Single Investment Agent；Agent Context 同时包含由同一 Ledger Read 生成的当前 State 与有界历史 BUY Facts。M8 在同源静态 Web Interface 中增加本地创建、恢复与不可变 Ledger Entry，不改变 Domain Source of Truth。
+本文档描述 M8 Local Portfolio Management 当前已实现的系统结构。系统包含 immutable Opening State、Transaction / Cash Event Ledgers、Provider-neutral Market / News Data，以及可按问题选择 Current Quote、固定近期 Daily Price History、attributed Recent News 或 SPY Market Context 的 Single Investment Agent；Agent Context 同时包含由同一 State Read 生成的当前 Portfolio 与有界历史 BUY Facts。M8 在同源静态 Web Interface 中增加本地创建、恢复、起始仓位和不可变 Ledger Entry，并保持确定性 Source of Truth。
 
 ## 2. 依赖方向
 
@@ -12,8 +12,11 @@ GET /app/ + /static/*
 Vanilla HTML / CSS / ES Modules
   ├── POST /v1/portfolios
   ├── GET /v1/portfolios/{user_id}
+  ├── POST + GET /v1/portfolios/{user_id}/opening-positions
   ├── POST /v1/portfolios/{user_id}/transactions
+  ├── GET /v1/portfolios/{user_id}/transactions
   ├── POST /v1/portfolios/{user_id}/cash-events
+  ├── GET /v1/portfolios/{user_id}/cash-events
   └── POST /v1/investment/questions
 
 FastAPI /health
@@ -39,7 +42,7 @@ Domain / deterministic Portfolio replay
       ↑
 Infrastructure / SQLAlchemy Unit of Work
       ↓
-PostgreSQL User + Transaction Ledger + Cash Event Ledger
+PostgreSQL User + Opening State + Transaction Ledger + Cash Event Ledger
 
 POST /v1/portfolios/{user_id}/cash-events
       ↓
@@ -69,7 +72,7 @@ Alpaca `/v1beta1/news` → attributed Benzinga reporting
 - `infrastructure/` 实现 SQLAlchemy Model、映射与 Unit of Work，依赖 Application Contract 所需的 Domain 类型。
 - `integrations/` 实现外部 Provider Adapter，只向 Application 返回稳定 Market Data 或 LLM Schema。
 - `alembic/` 是唯一正常 Database Schema 变更路径。
-- `main.py` 暴露独立的 `GET /health` 与开发用投资问答 API；外部依赖只在投资请求发生时延迟装配。
+- `main.py` 暴露独立的 `GET /health`、本地 Portfolio 管理 API 与投资问答 API；外部 Provider 只在投资请求发生时延迟装配。
 
 ## 3. Portfolio Source of Truth
 
@@ -77,15 +80,16 @@ M4 在 M1 Transaction Ledger 基础上使用以下持久化事实：
 
 ```text
 User.initial_cash
+        + Opening Position Starting Facts
         + ordered Transaction Ledger
         + ordered Cash Event Ledger
         ↓ combined deterministic replay
 CashBalance + Position[]
 ```
 
-PostgreSQL 保存 `users`、`transactions` 与 `cash_events`。Cash、Position、Shares、Cost Basis 和 Average Cost 不保存冗余投影，而是在读取时合并重建。Transaction 与 Cash Event 各自维护由 `occurred_at` 派生的连续 sequence；历史补录会在同一事务内重新编号同类后续记录。跨表按 `occurred_at` 排序，同一时间固定先处理 Cash Event，再处理 Transaction。
+PostgreSQL 保存 `users`、`opening_positions`、`transactions` 与 `cash_events`。Opening Position 是系统开始跟踪时的 immutable Starting Fact，只有 `(ticker, shares, average_cost, position_type, recorded_at)`，没有经济 sequence、手续费或现金影响。Cash、当前 Position、Shares、Cost Basis 和 Average Cost 不保存冗余投影，而是在读取时合并重建。Transaction 与 Cash Event 各自维护由 `occurred_at` 派生的连续 sequence；历史补录会在同一事务内重新编号同类后续记录。跨表按 `occurred_at` 排序，同一时间固定先处理 Cash Event，再处理 Transaction。
 
-同一 Ticker 的 `LONG_TERM` 与 `SWING` 使用独立 Position Key。BUY / SELL、DEPOSIT / WITHDRAWAL、Available Cash、Oversell 与 Average Cost 都由普通 Python / Decimal 代码计算，不依赖 LLM。Cash Event 只改变 CashBalance，不改变 Position。
+同一 Ticker 的 `UNSPECIFIED`、`LONG_TERM` 与 `SWING` 使用独立 Position Key；`UNSPECIFIED` 只表示用户尚未提供策略分类，Agent 不得把它推断成长期仓或波段仓。BUY / SELL、DEPOSIT / WITHDRAWAL、Available Cash、Oversell 与 Average Cost 都由普通 Python / Decimal 代码计算，不依赖 LLM。Cash Event 只改变 CashBalance，不改变 Position。
 
 ## 4. Transaction 写入流程
 
@@ -133,21 +137,21 @@ Cash Event amount 必须为正数且最多 8 位小数。Transaction 与 Cash Ev
 - `backend/position_pilot/domain/market_context.py`：SPY Daily Price Stress 指标、确定性 Market Regime 与 V1 Heuristic 元数据。
 - `backend/position_pilot/domain/news.py`：Provider-neutral News Article、归因、时间、稳定排序与 Failure Status。
 - `backend/position_pilot/domain/errors.py`：明确的领域失败状态。
-- `backend/position_pilot/application/portfolio_service.py`：Transaction / Cash Event Use Case、写入 Command、Unit of Work Contract，以及同一 Ledger Read 的 Agent Portfolio Context。
+- `backend/position_pilot/application/portfolio_service.py`：Opening State、Transaction / Cash Event Use Case、写入 Command、Unit of Work Contract，以及同一 State Read 的 Agent Portfolio Context。
 - `backend/position_pilot/application/llm.py`：Provider-neutral Message、Tool、Completion 与 Failure Contract。
 - `backend/position_pilot/application/investment_agent.py`：Portfolio Snapshot、单轮 Native Function Calling、Structured Source Validation、Source Tracking 与 Request Failure。
 - `backend/position_pilot/application/investment_answer.py`：自由文本 Answer 外层 JSON、统一 Source Reference Schema 与真实性校验。
 - `backend/position_pilot/application/investment_context.py`：Portfolio、Quote 与 Recent Price History 的确定性事实和响应边界。
 - `backend/position_pilot/application/market_context_service.py`：固定 SPY Daily 查询、completed-bar 过滤、Provider 语义校验与 Regime 计算入口。
 - `backend/position_pilot/application/news_service.py`：Recent News Query 校验与 NewsProvider Contract。
-- `backend/position_pilot/infrastructure/models.py`：User / Transaction / Cash Event SQLAlchemy Model 与数据库约束。
+- `backend/position_pilot/infrastructure/models.py`：User / Opening Position / Transaction / Cash Event SQLAlchemy Model 与数据库约束。
 - `backend/position_pilot/infrastructure/unit_of_work.py`：同步 SQLAlchemy 持久化实现和领域映射。
 - `backend/position_pilot/integrations/aliyun_llm.py`：阿里云 Model Studio OpenAI-compatible Adapter。
 - `backend/position_pilot/integrations/alpaca_news.py`：Alpaca News beta JSON、attribution 与 Failure Mapping Adapter。
 - `backend/position_pilot/bootstrap.py`：Portfolio、Market Data 与 LLM Provider 的依赖装配。
 - `backend/position_pilot/demo_seed.py`：通过正式 Application Service 创建隔离本地 Demo Portfolio 的显式命令。
 - `frontend/`：由 FastAPI 同源托管的无构建静态产品界面，只负责输入、状态协调和安全展示。
-- `alembic/versions/`：M1 Schema、金额舍入、手续费约束与 M4 Cash Event Migration。
+- `alembic/versions/`：M1 Schema、金额舍入、手续费约束、M4 Cash Event 与 M8 Opening State Migration。
 
 ## 7. 当前限制
 
@@ -182,7 +186,7 @@ Cash Event amount 必须为正数且最多 8 位小数。Transaction 与 Cash Ev
 Start / Recover Onboarding
         ↓ Create 或 Load 成功
 Application Shell
-        ├── Decision Chat：当前标签页内的连续 Question / Answer
+        ├── Decision Questions：当前标签页内的独立 Question / Answer
         └── Portfolio Workspace：Positions / Transactions / Cash Activity
 
 userIdInput ──成功 Load──> loadedUserId
@@ -203,10 +207,11 @@ stale / refresh_required; never automatic retry
 ```
 
 - `GET /app/` 与 `/static/*` 由同一 FastAPI 进程提供，Browser 调用相对路径 API，不需要 CORS、Reverse Proxy 或独立 Frontend Service。
-- Browser 使用无构建的 Client-side Screen 切换：首次无有效身份时显示 Start / Recover；成功加载后进入带侧栏的 Application Shell。Decision Chat 与 Portfolio Workspace 是同一 Document 内的互斥 View，不新增前端 Router、Framework 或服务端页面。
-- Decision Chat 将当前浏览器标签页内的多个 Question / Answer 作为纯 Presentation State 依次追加，并提供本次 Session 的跳转列表。该列表与 Answer 不写入 `localStorage`，刷新页面或切换 Portfolio Context 即清空；每个 Question 仍是独立的 Agent Request，不携带先前问答，因此不构成 Conversation Memory 或多轮模型上下文。
-- Portfolio Workspace 将 deterministic Snapshot、Trade Entry 与 Cash Entry 分成 Positions / Transactions / Cash Activity 三个 Panel。切换 Panel 只改变展示位置；所有写入、时间和重读语义仍服从同一 M8 API / Ledger Boundary。Initial Cash 的 UI 默认值为 `0`，表单示例带 `e.g.` / “例如”前缀；逐字段错误只负责输入可用性，最终 Ledger Validation 仍以后端为准。
+- Browser 使用无构建的 Client-side Screen 切换：首次无有效身份时显示 Start / Recover；成功加载后进入带侧栏的 Application Shell。Decision Questions 与 Portfolio Workspace 是同一 Document 内的互斥 View，不新增前端 Router、Framework 或服务端页面。
+- Decision Questions 将当前浏览器标签页内的多个 Question / Answer 作为纯 Presentation State 依次追加，并提供 Question History 跳转列表。该列表与 Answer 不写入 `localStorage`，刷新页面或切换 Portfolio Context 即清空；每个 Question 仍是独立的 Agent Request，不携带先前问答，因此不构成 Conversation Memory 或多轮模型上下文。
+- Portfolio Workspace 将 deterministic Snapshot、Opening State Setup、Trade Entry 与 Cash Entry 分成 Positions / Transactions / Cash Activity 三个 Panel。Positions 在三个 Record List 都为空时提供一次性 Existing Positions Draft；Skip 只隐藏当前 UI，不持久化或封闭 Opening State。三个 Panel 同时展示完整只读记录。Initial Cash 的 UI 默认值为 `0`，表单示例带 `e.g.` / “例如”前缀；逐字段错误只负责输入可用性，最终 Ledger Validation 仍以后端为准。
 - `GET /v1/portfolios/{user_id}` 直接映射 `PortfolioService.get_portfolio()` 的 Ledger Replay Result；Response 只包含 User ID、Available Cash、完整性声明和按 `(ticker, position_type)` 稳定排序的当前 Positions。Decimal 保持字符串，不返回实时价格、收益、Ledger History 或风险结论。
+- `POST /v1/portfolios/{user_id}/opening-positions` 在 User Row Lock 下执行一次性 1～100 行批量写入；只有 Opening Position、Transaction 与 Cash Event 都为空时才允许，并在一个事务中全部成功或全部失败。三个对应 GET List API 返回完整只读记录；Opening Position 按 `(ticker, position_type)`，经济记录按 sequence 升序。
 - Browser 显式区分输入框的 `userIdInput` 与已成功加载的 `loadedUserId`。Question 与 Ledger Mutation 只能使用后者；输入变化会立即使 Context 失效。Portfolio 与 Question 各自维护 Request Generation，旧 User 或旧 Generation 的 Read Response 不得更新 DOM。
 - `POST /v1/portfolios` 只是 `PortfolioService.create_user()` 的薄 API Adapter。M8 API 中的“Portfolio”仍是现有单一 `User → Portfolio State` 模型的产品呈现，不新增独立 Portfolio Entity；Multiple Portfolios 的 Ownership / Resource Boundary 留到 V2 重新评估。
 - Browser 只在成功 Create 或成功 GET 后，把最近一个 `user_id` 保存为 versioned `localStorage` pointer，并同步到 URL。pointer 不是 Credential，不保存 Snapshot、Ledger、Question、Answer 或 Secret；Forget 只清理本地引用。

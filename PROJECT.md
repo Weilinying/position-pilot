@@ -54,7 +54,9 @@ V1 优先实现 Structured Memory。总可投资资金、剩余现金、Portfoli
 
 `initial_cash` 只表示 Portfolio 创建时的初始资金。创建后的追加资金投入与资金取出使用独立、不可变的 Cash Event Ledger，当前只支持 `DEPOSIT` 与 `WITHDRAWAL`；不得通过修改历史 `initial_cash` 或伪造 BUY / SELL Transaction 改变资金历史。Available Cash 由 Initial Cash、Cash Events、Transactions 与现有交易成本规则确定性重建，Withdrawal 不得产生负现金。
 
-同一 Ticker 可以同时存在 `LONG_TERM` 和 `SWING` 两类仓位。两者必须在数据结构和分析逻辑中保持区别，因为长期投资 Thesis 与波段交易 Plan 的目标、风险管理方式和退出条件不同。
+系统开始跟踪前已经存在的持仓使用独立、不可变的 Opening State 表达，只记录 ticker、shares、average cost、可选 Position Type 与后端记录时间。Opening Position 不是经济 Ledger Event，不伪造成 BUY、不扣减现金、没有交易 sequence 或手续费；当前 State 由 Opening State 与 Cash / Transaction Ledger 共同确定性重建。
+
+同一 Ticker 可以同时存在 `UNSPECIFIED`、`LONG_TERM` 和 `SWING` 三类独立仓位。`UNSPECIFIED` 只表示用户尚未提供策略分类，系统与 LLM 都不得自动把它推断为长期仓或波段仓；已明确的长期与波段仓仍必须在数据结构和分析逻辑中保持区别，因为两者的 Thesis、Plan、风险管理方式和退出条件不同。
 
 示例 Transaction：
 

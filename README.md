@@ -54,16 +54,17 @@ curl http://127.0.0.1:8000/health
 
 页面由 FastAPI 同源托管，不需要 Node、前端安装或单独构建步骤。首次打开 `/app/` 会进入 Start / Recover 引导页，可直接输入 Portfolio Name 与 Initial Cash 创建本地 Portfolio，无需先运行 Demo Seed 或准备 UUID。这是本地 Portfolio 初始化，不是账号注册；M8 没有 Authentication。Initial Cash 在界面中实际默认为 `0`，用户可改为 PositionPilot 开始跟踪时的可用现金。创建成功后，页面会保存最近一次成功加载的 User ID 本地指针并读取完整 Ledger-derived Snapshot。
 
-加载成功后进入单一应用壳：左侧导航在 Decision Chat 与 Portfolio Workspace 之间切换。Decision Chat 采用连续问答流，当前浏览器标签页内的多个 Question / Answer 会依次保留并可从侧栏跳转；它们不会写入 `localStorage`、不会跨刷新恢复，也不会作为下一次模型请求的 Conversation Memory。Portfolio Workspace 将 Positions、Transactions 与 Cash Activity 分开，避免初始化、账本输入和问答堆在同一页面。表单中的灰色内容统一带 `e.g.` / “例如”前缀，只是示例；缺少或非法字段会标记具体输入框并给出对应说明，后端领域失败同时展示稳定 Error Code 与安全 Detail。
+加载成功后进入单一应用壳：左侧导航在 Decision Questions 与 Portfolio Workspace 之间切换。Question History 会保留当前浏览器标签页内的多个 Question / Answer 并支持跳转；它们不会写入 `localStorage`、不会跨刷新恢复，也不会作为下一次模型请求的 Conversation Memory。Portfolio Workspace 将 Positions、Transactions 与 Cash Activity 分开，避免初始化、账本输入和问答堆在同一页面。表单中的灰色内容统一带 `e.g.` / “例如”前缀，只是示例；缺少或非法字段会标记具体输入框并给出对应说明，后端领域失败同时展示稳定 Error Code 与安全 Detail。
 
-M8 的 Positions 只显示由真实 Transaction / Cash Ledger 重放得到的当前状态，尚不能把系统开始跟踪前已经存在的仓位直接导入。已有仓位不能伪造成历史 BUY；Text / Screenshot Import 与 Opening Position 语义属于 M9 `v1.1.0` 的 Human Review 范围。
+新 Portfolio 创建后会优先显示一次性的 Existing Positions Setup。用户可以手工录入开始跟踪前已经持有的 ticker、shares、average cost 与可选 Position Type；这些记录属于 immutable Opening State，不扣减现金、不产生交易 sequence，也不会伪造成历史 BUY。该入口只在尚无 Opening Position、Transaction 或 Cash Event 时可用；Text / Screenshot Recognition 仍属于 M9 `v1.1.0`。
 
 页面支持：
 
 - 通过既有 UUID 恢复 Portfolio，或只忘记浏览器本地指针；Forget 不删除 Server Ledger；
-- 追加 BUY / SELL，并独立选择 `LONG_TERM` 或 `SWING`；
+- 追加 BUY / SELL；Position Type 可留空并归一为 `UNSPECIFIED`，与 `LONG_TERM`、`SWING` 独立维护；
 - 追加 DEPOSIT / WITHDRAWAL；
-- 在独立 Decision Chat 中连续提交多个 Investment Question，并分别展示 Answer、`OK` / `DEGRADED` 和本轮 Context Sources；
+- 分别查看完整的 Opening Position、Transaction 与 Cash Event 只读记录；
+- 在独立 Decision Questions 页面连续提交多个 Investment Question，并分别展示 Answer、`OK` / `DEGRADED` 和本轮 Context Sources；
 - 中文与英文一键切换；切换只改变本地展示文案与时间格式，不改写 Agent Answer 或 Provider Metadata。
 
 Ledger 表单中的发生时间默认留空，此时由 Backend Application Clock 产生当前时间。只有补录历史记录时才填写本地时间；Browser 会转换为带时区的 ISO timestamp。Cash、Shares、Average Cost、Cost Basis、Transaction Amount 与 Fee 始终由后端 Decimal 规则和完整 Ledger replay 产生，Browser 不自行计算。
@@ -140,4 +141,4 @@ uv lock --check
 TEST_DATABASE_URL=postgresql+psycopg://position_pilot:position_pilot_dev_password@localhost:5432/position_pilot uv run pytest -m integration
 ```
 
-数据库集成测试只删除自身创建的 User 与 Transaction。当前模块边界、Structured State 恢复和 Market Data Provider 边界见 [`ARCHITECTURE.md`](ARCHITECTURE.md)。
+数据库集成测试只清理自身创建的 User、Opening Position、Transaction 与 Cash Event。当前模块边界、Structured State 恢复和 Market Data Provider 边界见 [`ARCHITECTURE.md`](ARCHITECTURE.md)。

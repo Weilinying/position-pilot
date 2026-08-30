@@ -531,21 +531,15 @@ Browser Smoke 是可重复的 Human Verification Evidence，不计入默认 Auto
 
 ## 10. Implementation Evidence
 
-> 本节只记录修订前已经实现的 M8 Evidence。D5～D6 尚未实现；通过 Human Review、完成实现与复验后再补充对应 Evidence。
-
-- `POST /v1/portfolios` 已作为 `PortfolioService.create_user()` 的薄 Adapter 实现；`POST /v1/portfolios/{user_id}/transactions` 复用既有 Transaction Application / Domain Flow；Cash Event Endpoint 只扩展为允许省略时间。
-- Transaction 与 Cash Event 的默认发生时间统一由可注入 Backend Application Clock 产生；显式历史时间要求 offset-aware，统一规范化到 UTC，并拒绝 future timestamp。
-- 页面已实现 Create、URL / versioned local pointer 恢复、Load Existing、Forget Pointer、Trade / Cash 两类 Ledger Form、Mutation Identity Lock、`refresh_required`、写后 GET Snapshot 与中英切换。修订前问答页与 Portfolio Workspace 已是独立 Client-side View，Portfolio 维护分为 Positions / Transactions / Cash Activity；D6 实现时只调整问答页产品文案与独立问题提示。Browser 不计算金额、手续费、Cash、Shares、Average Cost 或 Cost Basis。
-- 修订前问答页已可在当前标签页追加多个独立 Question / Answer 并从展示索引跳转；这些内容不进入 localStorage，刷新或 Identity Context 变化即清空，也不随下一次请求发送，因此不属于 Conversation Memory。D6 将索引统一命名为 Question History；该调整不改变 API、Domain、Authentication 或 Multiple Portfolio Scope。
-- Human Acceptance feedback 将 Portfolio 第一分区从泛化的 Overview 明确为 Positions，并使三分区在不同页面尺寸下自适应。新 Portfolio 的 Initial Cash UI 实际默认值改为 `0`，但仍由用户决定开始跟踪时的真实可用现金；该调整不改变 Public API 或 Ledger replay。
-- 交易与现金表单的示例值统一增加 `e.g.` / “例如”前缀，避免 placeholder 被误认成已输入值。客户端对 Portfolio Name、Initial Cash、Ticker、Price、Shares、Amount 与历史时间给出逐字段错误、`aria-invalid` 与焦点定位；已知后端 Ledger Failure 同时展示本地化说明、稳定 Error Code 与安全 Detail。
-- 修订前 Production 基线尚未包含“系统开始跟踪时已经存在的仓位”、Opening Position 或 Record List API；D5～D6 正在申请把手工 Opening Position 与只读记录前移到 M8，Text / Screenshot Recognition 仍留在 M9。
-- 默认 Regression：`390 passed, 39 skipped`。Skip 包含 11 个需要显式 `TEST_DATABASE_URL` 的 PostgreSQL Integration Tests、28 个真实 Provider / Model opt-in Tests；没有把 Skip 声称为已执行。
-- JavaScript syntax、Ruff format / lint、mypy、`uv lock --check`、Alembic heads / history 与 `git diff --check` 已通过。用户未跟踪的根目录 `main.py` 未修改、未纳入检查或提交。
-- 2026-08-30 Human Browser Smoke 已完成全部固定 Checklist；390px 视口没有水平溢出，Browser Console 无 warning / error。Network Ambiguity、POST 后 GET Failure、XSS adversarial payload 与 delayed stale read 仍按计划保留为定向 Engineering Verification / Automated Review，不属于默认自动化 E2E Gate。
-- 2026-08-30 Acceptance refinement Browser Smoke 再次验证：Start / Recover 后进入独立问题页；同一标签页连续 `OK` / `DEGRADED` 两个 Question 时保留两个 Answer、五张 Source Card 与两个展示索引；成功 Trade / Cash Mutation Refresh 不清除已完成问答；Positions / Transactions / Cash Activity 互斥显示；刷新后 local pointer 恢复 Portfolio，但 Question / Answer 展示历史归零；中英切换保持身份、Snapshot 与动态 Answer；桌面侧栏与 390px 窄屏均可用，390px `scrollWidth` 无溢出，Browser Console 无 warning / error。
-- Automated Review 未发现 Backend API、Ledger Atomicity、Application Clock、future timestamp、Decimal、XSS 或 Generation 的阻断问题。Review 指出的 Create 后首次 GET 404 pointer 丢失、Mutation 成功反馈、Create / Load 并发、malformed Create Response 语义、M8 文档与 stale Snapshot 展示均已修复，并在修复后重新执行相关验证。
-- 修订前 Production 基线未增加 Migration、Dependency、Framework、Node、Playwright、Authentication、Portfolio Enumeration、Idempotency、Transaction History 或独立 Portfolio Entity；D5～D6 获批后只增加计划内的非破坏性 Opening Position / Position Type Migration 与只读 Record API。
+- `OpeningPosition` 已作为无 sequence、无现金影响的 immutable Starting Fact 实现；当前 State 由 `Opening State + Replay(Cash Events + Transactions)` 确定性重建。初始化在 User Row Lock 下检查三类记录均为空，1～100 行一次提交，规范化重复 key 或任一非法行不会产生部分写入。
+- `PositionType.UNSPECIFIED` 已贯穿 Domain、Database、API、Agent Prompt 与 UI。省略或 `null` 的 Public API 输入统一归一为 `UNSPECIFIED`；同一 Ticker 的 `UNSPECIFIED / LONG_TERM / SWING` 独立 replay，Agent 不得把未分类仓位推断为长期或波段策略。
+- Alembic `20260830_0005` 新增 `opening_positions`、扩展 Transaction Position Type Constraint，并在存在 Opening Position 或 `UNSPECIFIED` Transaction 时拒绝有损 downgrade。没有增加 Database、Framework、Node、Playwright、Authentication、Idempotency 或独立 Portfolio Entity。
+- Public API 已提供 Opening Position 批量 POST，以及 Opening Position、Transaction、Cash Event 三个完整只读 List GET。Opening Position 按 `(ticker, position_type)`，经济记录按 sequence 升序；Response 保留 `items_are_complete`、后端 id / timestamp、Decimal string 与派生字段。
+- Portfolio Workspace 已提供一次性 Existing Positions Draft、Skip / Reopen、三个只读 Record List、可选 Position Type 与详细领域错误；创建空组合后优先进入 Positions Setup。Browser 仍不计算 Cash、Average Cost、Cost Basis、Amount 或 Fee，所有动态文本继续只通过安全 DOM Property 渲染。
+- 问答产品文案统一为 Decision Questions / Question History。当前标签页可保留多个独立 Question / Answer 与 Source Cards，但每次 Request 仍只发送当前 Question + `loadedUserId`；刷新或身份变化会清空展示历史，不构成 Conversation Memory。
+- 2026-08-30 Browser Smoke 已验证：Create、默认现金 0、批量 Existing Positions、`UNSPECIFIED / LONG_TERM` 独立、DEPOSIT、WITHDRAWAL、BUY、SELL、Insufficient Cash、Oversell、future timestamp、写后 Snapshot / Record List refresh、local pointer recovery、OK / DEGRADED / Sources、中英文与 390px 窄屏。390px 的 `document.scrollWidth` 与 viewport 相同，Browser Console 无 warning / error。
+- 默认 Regression：`410 passed, 45 skipped`。Skip 包含 13 个需要显式 `TEST_DATABASE_URL` 的 PostgreSQL Integration Tests、28 个真实模型 Behavioral Eval，以及 4 个真实 Provider / Agent opt-in Tests；没有把 Skip 声称为已执行。
+- JavaScript syntax、Ruff lint、mypy、`uv lock --check`、Alembic heads / history 与 `git diff --check` 已通过；Ruff format 只检查受控的 `backend / alembic / tests`，用户未跟踪的根目录 `main.py` 未修改、未格式化或提交。
 
 ## 11. Human Review Gate
 

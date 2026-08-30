@@ -11,7 +11,7 @@
 ## 2. Current Status
 
 **Current Milestone:** M8 — Local Portfolio Management
-**Status:** IN PROGRESS — Opening State Revision Awaiting Human Approval
+**Status:** IN PROGRESS — Implementation Complete, Human Acceptance Pending
 **Current Release State:** 原 M8 Slice 已实现；Opening State Revision 待批准与实现，尚未形成 `v1.0.0`
 **Next Planned Milestone:** M9 — Portfolio Import（依赖 M8 完成，尚未开始）
 
@@ -247,7 +247,7 @@ M6 不从零开始 Evaluation，而是在 M3～M5 已积累的 Behavioral Eval C
 
 在现有同源 Web Interface 中增加本地 Portfolio 创建、Current Available Cash 输入（默认 `0`）与创建后自动加载。创建后优先提供一次性 Existing Positions Setup：手工输入 ticker、shares、average cost 与可选 Position Type；该状态是独立 immutable Opening State，不是经济 Ledger Event，不伪造成 BUY，也不改变 Cash。Opening State 只能在第一笔 Transaction / Cash Event 前提交。提供最小 Ledger Entry UI：BUY / SELL 输入 ticker、quantity、price、可选 Position Type、可选实际发生时间与 reason / note；未分类统一保存为 `UNSPECIFIED`，并与 `LONG_TERM / SWING` 独立。DEPOSIT / WITHDRAWAL 复用 M4 已实现的 Cash Event Domain、Service 与 Public API。当前 State 统一为 `Opening State + Replay(Cash Events + Transactions)`。
 
-现有后端尚无 User 创建和 Transaction 写入 Public API；M8 只补齐调用 `PortfolioService.create_user()` / `record_transaction()` 的最薄 API Adapter，不复制 Domain Validation、金额、手续费、Average Cost、Cash 或 Position 计算，具体 Public API Contract 在 M8 执行计划中进入 Human Review。M8 的“修改 Portfolio”只表示追加新的不可变 Ledger Record，不允许原地编辑或删除历史 Transaction。
+Public API 只作为 `PortfolioService.create_user()`、`initialize_opening_positions()` 与 `record_transaction()` 的薄 Adapter，不复制 Domain Validation、金额、手续费、Average Cost、Cash 或 Position 计算。M8 的“修改 Portfolio”只表示初始化 immutable Opening State 或追加新的不可变 Ledger Record，不允许原地编辑或删除历史 Transaction。
 
 Positions、Transactions 与 Cash Activity 分别展示当前仓位、只读交易记录和只读现金记录；不增加历史编辑能力。Decision Questions 可以在当前标签页保留 Question History，但每个问题独立分析，历史不进入模型上下文。保留 M7 的 Portfolio View、Investment QA、Source Grounding、Failure State、身份一致性与安全文本渲染。
 
