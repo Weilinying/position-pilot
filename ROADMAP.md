@@ -11,8 +11,8 @@
 ## 2. Current Status
 
 **Current Milestone:** M8 — Local Portfolio Management
-**Status:** IN PROGRESS — Implementation Complete, Awaiting Human Acceptance
-**Current Release State:** `v1.0.0` implementation complete；等待 M8 Human Acceptance
+**Status:** IN PROGRESS — Opening State Revision Awaiting Human Approval
+**Current Release State:** 原 M8 Slice 已实现；Opening State Revision 待批准与实现，尚未形成 `v1.0.0`
 **Next Planned Milestone:** M9 — Portfolio Import（依赖 M8 完成，尚未开始）
 
 Milestone 状态统一使用 `NOT STARTED`、`IN PROGRESS`、`DONE`，不维护百分比进度。
@@ -237,7 +237,7 @@ M6 不从零开始 Evaluation，而是在 M3～M5 已积累的 Behavioral Eval C
 
 ## M8 — Local Portfolio Management
 
-**Status:** IN PROGRESS — Implementation Complete, Awaiting Human Acceptance
+**Status:** IN PROGRESS — Opening State Revision Awaiting Human Approval
 
 **Goal**
 
@@ -245,11 +245,11 @@ M6 不从零开始 Evaluation，而是在 M3～M5 已积累的 Behavioral Eval C
 
 **Scope**
 
-在现有同源 Web Interface 中增加本地 Portfolio 创建、Initial Cash 输入与创建后自动加载。提供最小 Ledger Entry UI：BUY / SELL 输入 ticker、quantity、price、`LONG_TERM / SWING`、可选实际发生时间与 reason / note；DEPOSIT / WITHDRAWAL 复用 M4 已实现的 Cash Event Domain、Service 与 Public API。任何成功写入后重新读取 Portfolio Snapshot，State 继续完全由现有 immutable Transaction / Cash Event Ledger 与 deterministic replay 产生。
+在现有同源 Web Interface 中增加本地 Portfolio 创建、Current Available Cash 输入（默认 `0`）与创建后自动加载。创建后优先提供一次性 Existing Positions Setup：手工输入 ticker、shares、average cost 与可选 Position Type；该状态是独立 immutable Opening State，不是经济 Ledger Event，不伪造成 BUY，也不改变 Cash。Opening State 只能在第一笔 Transaction / Cash Event 前提交。提供最小 Ledger Entry UI：BUY / SELL 输入 ticker、quantity、price、可选 Position Type、可选实际发生时间与 reason / note；未分类统一保存为 `UNSPECIFIED`，并与 `LONG_TERM / SWING` 独立。DEPOSIT / WITHDRAWAL 复用 M4 已实现的 Cash Event Domain、Service 与 Public API。当前 State 统一为 `Opening State + Replay(Cash Events + Transactions)`。
 
 现有后端尚无 User 创建和 Transaction 写入 Public API；M8 只补齐调用 `PortfolioService.create_user()` / `record_transaction()` 的最薄 API Adapter，不复制 Domain Validation、金额、手续费、Average Cost、Cash 或 Position 计算，具体 Public API Contract 在 M8 执行计划中进入 Human Review。M8 的“修改 Portfolio”只表示追加新的不可变 Ledger Record，不允许原地编辑或删除历史 Transaction。
 
-保留 M7 的 Portfolio View、Investment QA、Source Grounding、Failure State、身份一致性与安全文本渲染。
+Positions、Transactions 与 Cash Activity 分别展示当前仓位、只读交易记录和只读现金记录；不增加历史编辑能力。Decision Questions 可以在当前标签页保留 Question History，但每个问题独立分析，历史不进入模型上下文。保留 M7 的 Portfolio View、Investment QA、Source Grounding、Failure State、身份一致性与安全文本渲染。
 
 **Non-goals**
 
@@ -261,10 +261,12 @@ M6 不从零开始 Evaluation，而是在 M3～M5 已积累的 Behavioral Eval C
 **Done**
 
 * 本地用户可从页面创建 Portfolio、输入 Initial Cash，并自动加载新 Portfolio；
-* 页面可追加 BUY、SELL、DEPOSIT 与 WITHDRAWAL，且支持既有 `LONG_TERM / SWING` 语义；
+* 页面可一次性录入 Existing Positions，Opening Position 不伪造交易或现金影响；
+* 页面可追加 BUY、SELL、DEPOSIT 与 WITHDRAWAL，仓位类型可选，`UNSPECIFIED / LONG_TERM / SWING` 保持独立；
+* Transaction 与 Cash Event 具有只读记录视图，不提供 Edit / Delete / Undo；
 * 非法 Ticker / Decimal、Insufficient Cash、Oversell、Unknown User 与非法时间具有明确失败状态，失败不产生部分写入；
 * 每次写入后 Portfolio Snapshot 反映最新 deterministic Ledger replay，不在前端计算金融事实；
-* `Create Portfolio → Initial Funding → BUY / SELL / DEPOSIT / WITHDRAWAL → Deterministic Portfolio State → Ask Question → Grounded Answer` 可稳定完成；
+* `Create Portfolio → Optional Opening State → Economic Mutations → Deterministic Portfolio State + Read-only Records → Independent Question → Grounded Answer` 可稳定完成；
 * Automated Review、相关 Regression Gate 与 Human Browser Smoke 通过；
 * Human Acceptance 通过，并形成 `v1.0.0` Release。
 
@@ -280,7 +282,7 @@ M6 不从零开始 Evaluation，而是在 M3～M5 已积累的 Behavioral Eval C
 
 建立 `Text / Screenshot → Structured Import Draft → Uncertain / Missing Field Highlight → Human Confirmation → Deterministic Validation → Portfolio Write` 流程。识别结果不得直接写 Ledger；原始图片默认不持久化，错误与低置信度 / `UNKNOWN` 字段必须可解释。
 
-M9 重点评估“系统开始跟踪时已经存在的持仓状态”这一领域语义。截图中的 ticker、shares 与 average cost 不能伪造成真实历史 BUY；实现前应比较 `OPENING_POSITION`、`POSITION_IMPORT` 或等价概念。若该选择改变 Ledger invariants、replay semantics 或 Cost Basis 来源，必须先提交候选 ADR 并进入 Human Review Gate。Vision / OCR Provider 与图片安全边界同样必须在 M9 实现前评估，不默认假设当前 LLM Adapter 支持图片。
+M9 复用 M8 已批准的 immutable Opening State 与一次性初始化 Command，只新增识别 Draft、字段置信度 / 缺失状态、Human Confirmation 与图片安全边界。截图中的 ticker、shares 与 average cost 不能伪造成真实历史 BUY；Vision / OCR Provider 仍必须在 M9 实现前评估，不默认假设当前 LLM Adapter 支持图片。
 
 **Non-goals**
 
@@ -294,7 +296,7 @@ M9 重点评估“系统开始跟踪时已经存在的持仓状态”这一领�
 * Text 与受支持 Screenshot 均只能生成可审查的 Structured Import Draft；
 * 不确定、缺失与非法字段在写入前明确展示并阻止未确认导入；
 * Human Confirmation 后复用 deterministic Domain Validation，失败不产生部分 Portfolio State；
-* Imported Opening Position 语义不冒充已知历史交易，并保留 `LONG_TERM / SWING`；
+* Imported Opening Position 语义不冒充已知历史交易；Position Type 可缺省为 `UNSPECIFIED`，并保留 `LONG_TERM / SWING` 的独立语义；
 * 图片隐私、大小 / 类型限制、Provider Failure 与 Injection Boundary 有明确测试和文档；
 * Human Acceptance 通过，并形成 `v1.1.0` Release。
 
