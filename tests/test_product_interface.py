@@ -1,12 +1,12 @@
-"""M8 本地 Portfolio 管理界面与安全边界测试。"""
+"""M8 Authentication、首次使用与单一 Portfolio 界面 Contract 测试。"""
 
 from fastapi.testclient import TestClient
 
 from position_pilot.main import app
 
 
-def test_serves_product_interface_and_static_assets() -> None:
-    """同源页面与资源应可访问且不影响 API 进程。"""
+def _product_assets() -> tuple[str, str, str]:
+    """读取同源页面与静态资源，供静态 Contract 测试复用。"""
 
     with TestClient(app) as client:
         page = client.get("/app/")
@@ -14,103 +14,122 @@ def test_serves_product_interface_and_static_assets() -> None:
         stylesheet = client.get("/static/styles.css")
 
     assert page.status_code == 200
-    assert "PositionPilot · Decision Desk" in page.text
-    assert 'id="create-form"' in page.text
-    assert 'id="portfolio-form"' in page.text
-    assert 'id="forget-pointer-button"' in page.text
-    assert 'id="trade-form"' in page.text
-    assert 'id="cash-form"' in page.text
-    assert 'id="question-form"' in page.text
-    assert 'id="language-toggle"' in page.text
-    assert 'data-i18n="context_sources"' in page.text
-    assert 'data-i18n="answer_label"' in page.text
-    assert 'data-i18n="source_explainer"' in page.text
-    assert 'id="onboarding-view"' in page.text
-    assert 'id="app-shell"' in page.text
-    assert 'id="chat-view"' in page.text
-    assert 'id="portfolio-view"' in page.text
-    assert 'id="session-list"' in page.text
-    assert 'id="conversation-list"' in page.text
-    assert 'id="assistant-response-template"' in page.text
-    assert 'id="portfolio-tab-overview"' in page.text
-    assert 'id="portfolio-tab-trade"' in page.text
-    assert 'id="portfolio-tab-cash"' in page.text
-    assert 'id="initial-cash"' in page.text
-    assert 'value="0"' in page.text
-    assert 'id="opening-form"' in page.text
-    assert 'id="opening-draft-rows"' in page.text
-    assert 'id="opening-record-list"' in page.text
-    assert 'id="transaction-list"' in page.text
-    assert 'id="cash-event-list"' in page.text
-    assert '<option value="" data-i18n="unspecified">' in page.text
-    assert 'data-i18n-placeholder="shares_placeholder"' in page.text
     assert script.status_code == 200
     assert stylesheet.status_code == 200
+    return page.text, script.text, stylesheet.text
 
 
-def test_client_script_preserves_identity_and_safe_text_boundary() -> None:
-    """静态 Contract 应保留 User 身份代次并禁止动态 HTML 注入入口。"""
+def test_serves_public_auth_setup_and_authenticated_app_shell() -> None:
+    """页面应把主页、认证、Portfolio Setup 与登录后工作区分成独立 View。"""
 
-    with TestClient(app) as client:
-        script = client.get("/static/app.js").text
+    page, script, stylesheet = _product_assets()
 
-    assert "loadedUserId" in script
-    assert "portfolioGeneration" in script
-    assert "questionGeneration" in script
-    assert ".textContent" in script
+    assert "PositionPilot · Decision Desk" in page
+    for element_id in (
+        "home-view",
+        "engineering-smoke-banner",
+        "auth-view",
+        "setup-view",
+        "app-shell",
+        "home-register-button",
+        "home-login-button",
+        "hero-register-button",
+        "hero-login-button",
+        "register-form",
+        "login-form",
+        "setup-form",
+        "setup-initial-cash",
+        "setup-draft-rows",
+        "setup-zero-button",
+        "setup-submit",
+        "nav-chat",
+        "nav-portfolio",
+        "session-list",
+        "conversation-list",
+        "account-display-name",
+        "account-email",
+        "logout-button",
+        "question-form",
+        "portfolio-view",
+        "portfolio-tab-overview",
+        "portfolio-tab-trade",
+        "portfolio-tab-cash",
+        "opening-record-list",
+        "transaction-list",
+        "cash-event-list",
+    ):
+        assert f'id="{element_id}"' in page
+
+    assert 'autocomplete="new-password"' in page
+    assert 'autocomplete="current-password"' in page
+    assert 'id="setup-initial-cash"' in page
+    assert 'value="0"' in page
+    assert 'id="create-form"' not in page
+    assert 'id="portfolio-form"' not in page
+    assert 'id="user-id"' not in page
+    assert "localStorage" not in script
+    assert "source-disclosure" in page
+    assert "source-disclosure" in stylesheet
+    assert 'get("engineering_smoke")' in script
+
+
+def test_client_script_preserves_session_identity_safe_text_and_question_boundary() -> None:
+    """前端应使用 Session-derived identity、安全 DOM 和独立 question 请求。"""
+
+    _, script, _ = _product_assets()
+
+    for marker in (
+        "account: null",
+        "authGeneration",
+        "loadedUserId",
+        "portfolioGeneration",
+        "questionGeneration",
+        'requestJson("/v1/auth/session")',
+        'requestJson("/v1/auth/register"',
+        'requestJson("/v1/auth/login"',
+        'requestJson("/v1/auth/logout"',
+        'requestJson("/v1/investment/questions"',
+        "body: JSON.stringify({ question })",
+        "questionPending",
+        'state.writeState !== "refresh_required"',
+        "capturedUserId",
+        ".textContent",
+        "createOpeningRow",
+        "position_type",
+    ):
+        assert marker in script
+
     assert "innerHTML" not in script
     assert "outerHTML" not in script
     assert "insertAdjacentHTML" not in script
     assert "document.write" not in script
-    assert 'source_ticker: "Ticker"' in script
-    assert 'source_market_time: "Market time"' in script
-    assert 'source_fetched: "Fetched"' in script
-    assert 'source_ticker: "标的"' in script
-    assert 'source_type_portfolio_snapshot: "Portfolio holdings and cash"' in script
-    assert 'source_type_current_quote: "当前市场报价"' in script
-    assert "formatDecimalForDisplay" in script
-    assert "DECIMAL_DISPLAY_FIELDS" in script
-    assert "portfolio_empty_initial" in script
-    assert "portfolio_empty_loaded" in script
-    assert "toggleLanguage" in script
-    assert "createQuestionExchange" in script
-    assert "questionHistoryCount" in script
-    assert script.count("window.localStorage.setItem(") == 1
-    assert "DECIMAL_INPUT_PATTERN" in script
-    assert "showFieldError" in script
-    assert 'shares_required: "Enter shares.' in script
-    assert 'shares_required: "请填写股数。' in script
-    assert 'INSUFFICIENT_CASH: "api_insufficient_cash"' in script
+    assert "LOCAL_POINTER" not in script
+    assert "localStorage" not in script
+    assert "JSON.stringify({ user_id" not in script
+    assert "/v1/portfolios/" not in script
+    assert "/v1/portfolio/opening-positions" in script
+    assert "/v1/portfolio/transactions" in script
+    assert "/v1/portfolio/cash-events" in script
 
 
-def test_client_script_preserves_m8_write_and_recovery_boundaries() -> None:
-    """M8 静态 Contract 应保留恢复指针、写锁与后端时间语义。"""
+def test_sources_are_details_closed_by_default() -> None:
+    """Source disclosure 应默认关闭，并由现有回答 View 独立控制。"""
 
-    with TestClient(app) as client:
-        script = client.get("/static/app.js").text
+    page, script, stylesheet = _product_assets()
+    start = page.index('<details class="source-disclosure">')
+    end = page.index("</details>", start)
+    details_template = page[start:end]
 
-    assert 'LOCAL_POINTER_KEY = "positionpilot.local-portfolio.v1"' in script
-    assert "window.localStorage" in script
-    assert 'writeState: "idle"' in script
-    assert "writeGeneration" not in script
-    assert 'clientState.writeState === "submitting"' in script
-    assert "preserveRecoveryPointer" in script
-    assert "response.status === 404 && !preserveRecoveryPointer" in script
-    assert 'fetch("/v1/portfolios"' in script
-    assert "/transactions`" in script
-    assert "/cash-events`" in script
-    assert '"openingPositions", "opening-positions"' in script
-    assert "isOpeningPositionsWritePayload" in script
-    assert "firstPosition.id" in script
-    assert "payload.position_type = elements.tradePositionType.value" in script
-    assert "payload.occurred_at = occurredAt.value" in script
-    assert "new Date(rawValue)" in script
-    assert "Number(elements.tradePrice" not in script
-    assert "Number(elements.cashAmount" not in script
+    assert "<summary>" in details_template
+    assert 'class="source-count"' in details_template
+    assert 'class="source-list"' in details_template
+    assert 'class="source-disclosure" open' not in details_template
+    assert "view.details.open = false" in script
+    assert ".source-disclosure:not([open])" in stylesheet
 
 
-def test_static_mount_does_not_shadow_existing_routes() -> None:
-    """静态资源 Mount 不得遮蔽 Health 与 V1 API。"""
+def test_static_mount_and_v1_authenticated_route_contract() -> None:
+    """同源静态 Mount 不得遮蔽 Health、Auth、单一 Portfolio 与 Agent 路由。"""
 
     with TestClient(app) as client:
         health = client.get("/health")
@@ -118,5 +137,20 @@ def test_static_mount_does_not_shadow_existing_routes() -> None:
 
     assert health.status_code == 200
     assert openapi.status_code == 200
-    assert "/v1/portfolios/{user_id}" in openapi.json()["paths"]
-    assert "/v1/investment/questions" in openapi.json()["paths"]
+    paths = openapi.json()["paths"]
+
+    for path in (
+        "/v1/auth/register",
+        "/v1/auth/login",
+        "/v1/auth/logout",
+        "/v1/auth/session",
+        "/v1/portfolio",
+        "/v1/portfolio/opening-positions",
+        "/v1/portfolio/transactions",
+        "/v1/portfolio/cash-events",
+        "/v1/investment/questions",
+    ):
+        assert path in paths
+
+    assert "/v1/portfolios/{user_id}" in paths
+    assert "user_id" not in paths["/v1/investment/questions"]["post"]["requestBody"]

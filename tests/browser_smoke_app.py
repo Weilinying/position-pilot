@@ -1,11 +1,23 @@
-"""M8 Human Browser Smoke 使用的确定性本地应用。"""
+"""M8 Engineering Browser Smoke 使用的确定性本地应用替身。
 
+该模块只用于人工检查和定向 Engineering Smoke。它替换真实数据库与真实
+Investment Agent，不是生产入口、不是自动化 E2E，也不构成真实模型验收证据。
+"""
+
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from decimal import Decimal
 from threading import RLock
 from time import sleep
+from types import TracebackType
+from typing import Self
 from uuid import UUID
 
+from fastapi import Request
+from starlette.responses import RedirectResponse, Response
+
+from position_pilot.application.auth_service import Account, AuthService, AuthSession
 from position_pilot.application.errors import OpeningStateSealed, UserNotFound
 from position_pilot.application.investment_agent import (
     ContextSource,
@@ -39,6 +51,7 @@ from position_pilot.domain.portfolio import (
 )
 from position_pilot.main import (
     app,
+    get_auth_service_dependency,
     get_investment_agent_dependency,
     get_portfolio_service_dependency,
 )
@@ -48,6 +61,23 @@ USER_B = UUID("20000000-0000-4000-8000-000000000002")
 SLOW_USER = UUID("30000000-0000-4000-8000-000000000003")
 EMPTY_USER = UUID("40000000-0000-4000-8000-000000000004")
 NOW = datetime(2026, 8, 29, 8, 0, tzinfo=UTC)
+BROWSER_SMOKE_IS_ENGINEERING_FIXTURE = True
+BROWSER_SMOKE_AGENT_NOTICE = (
+    "Engineering smoke only: BrowserSmokeInvestmentAgent is deterministic and fake; "
+    "it is not the real Investment Agent or real market data."
+)
+
+
+@app.middleware("http")
+async def show_engineering_smoke_notice(
+    request: Request,
+    call_next: Callable[[Request], Awaitable[Response]],
+) -> Response:
+    """强制工程替身页面显示 Fake Agent 与固定数据警告。"""
+
+    if request.url.path.rstrip("/") == "/app" and "engineering_smoke" not in request.query_params:
+        return RedirectResponse("/app/?engineering_smoke=1", status_code=307)
+    return await call_next(request)
 
 
 def _portfolio(user_id: UUID, *, ticker: str) -> PortfolioState:
@@ -91,7 +121,7 @@ class BrowserSmokePortfolioService:
         self._lock = RLock()
 
     def create_user(self, command: CreateUserCommand) -> User:
-        """创建隔离的 Browser Smoke User。"""
+        """创建隔离的 Engineering Smoke User。"""
 
         with self._lock:
             user = User.create(
@@ -104,11 +134,29 @@ class BrowserSmokePortfolioService:
             self._opening_positions[user.id] = []
             return user
 
+    def add_auth_user(self, user: User) -> None:
+        """把 Auth Service 创建的 User 接入同一个 Engineering Smoke Portfolio Store。"""
+
+        with self._lock:
+            self._users[user.id] = user
+            self._transactions[user.id] = []
+            self._cash_events[user.id] = []
+            self._opening_positions[user.id] = []
+
+    def add_auth_opening_positions(self, opening_positions: list[OpeningPosition]) -> None:
+        """保存 Auth Portfolio Setup 已验证的 Opening Positions。"""
+
+        with self._lock:
+            for position in opening_positions:
+                if position.user_id not in self._users:
+                    raise UserNotFound(position.user_id)
+                self._opening_positions[position.user_id].append(position)
+
     def initialize_opening_positions(
         self,
         command: InitializeOpeningPositionsCommand,
     ) -> tuple[OpeningPosition, ...]:
-        """在首个经济记录前原子保存 Browser Smoke 期初仓位。"""
+        """在首个经济记录前原子保存 Engineering Smoke 期初仓位。"""
 
         with self._lock:
             user = self._require_mutable_user(command.user_id)
@@ -137,7 +185,7 @@ class BrowserSmokePortfolioService:
             )
 
     def record_transaction(self, command: RecordTransactionCommand) -> Transaction:
-        """使用正式 Domain 规则追加 Browser Smoke Transaction。"""
+        """使用正式 Domain 规则追加 Engineering Smoke Transaction。"""
 
         with self._lock:
             user = self._require_mutable_user(command.user_id)
@@ -164,7 +212,7 @@ class BrowserSmokePortfolioService:
             return next(candidate for candidate in ordered if candidate.id == transaction.id)
 
     def record_cash_event(self, command: RecordCashEventCommand) -> CashAdjustmentResult:
-        """使用正式 Domain 规则追加 Browser Smoke Cash Event。"""
+        """使用正式 Domain 规则追加 Engineering Smoke Cash Event。"""
 
         with self._lock:
             user = self._require_mutable_user(command.user_id)
@@ -224,7 +272,7 @@ class BrowserSmokePortfolioService:
         raise UserNotFound(user_id)
 
     def list_opening_positions(self, user_id: UUID) -> tuple[OpeningPosition, ...]:
-        """返回 Browser Smoke 的完整期初仓位列表。"""
+        """返回 Engineering Smoke 的完整期初仓位列表。"""
 
         with self._lock:
             if user_id in self._users:
@@ -254,7 +302,7 @@ class BrowserSmokePortfolioService:
         raise UserNotFound(user_id)
 
     def list_transactions(self, user_id: UUID) -> tuple[Transaction, ...]:
-        """返回 Browser Smoke 的完整交易列表。"""
+        """返回 Engineering Smoke 的完整交易列表。"""
 
         with self._lock:
             if user_id in self._users:
@@ -264,7 +312,7 @@ class BrowserSmokePortfolioService:
         raise UserNotFound(user_id)
 
     def list_cash_events(self, user_id: UUID) -> tuple[CashEvent, ...]:
-        """返回 Browser Smoke 的完整现金事件列表。"""
+        """返回 Engineering Smoke 的完整现金事件列表。"""
 
         with self._lock:
             if user_id in self._users:
@@ -280,8 +328,85 @@ class BrowserSmokePortfolioService:
         return user
 
 
+@dataclass(slots=True)
+class BrowserSmokeAuthStore:
+    """Engineering Smoke 所需的进程内 Account 与 Session 状态。"""
+
+    accounts_by_id: dict[UUID, Account] = field(default_factory=dict)
+    account_ids_by_email: dict[str, UUID] = field(default_factory=dict)
+    sessions: dict[str, AuthSession] = field(default_factory=dict)
+
+
+class BrowserSmokeAuthUnitOfWork:
+    """把 Auth Service 的最小事务接口映射到进程内 Smoke Store。"""
+
+    def __init__(
+        self,
+        store: BrowserSmokeAuthStore,
+        portfolio_service: BrowserSmokePortfolioService,
+    ) -> None:
+        self.store = store
+        self.portfolio_service = portfolio_service
+
+    def __enter__(self) -> Self:
+        return self
+
+    def __exit__(
+        self,
+        exception_type: type[BaseException] | None,
+        exception: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
+        del exception_type, exception, traceback
+
+    def get_account_by_email(
+        self,
+        email: str,
+        *,
+        for_update: bool = False,
+    ) -> Account | None:
+        del for_update
+        account_id = self.store.account_ids_by_email.get(email)
+        return self.store.accounts_by_id.get(account_id) if account_id is not None else None
+
+    def get_account_by_id(
+        self,
+        account_id: UUID,
+        *,
+        for_update: bool = False,
+    ) -> Account | None:
+        del for_update
+        return self.store.accounts_by_id.get(account_id)
+
+    def add_account(self, account: Account) -> None:
+        self.store.accounts_by_id[account.id] = account
+        self.store.account_ids_by_email[account.email] = account.id
+
+    def set_account_portfolio(self, account_id: UUID, user_id: UUID) -> None:
+        account = self.store.accounts_by_id[account_id]
+        self.store.accounts_by_id[account_id] = replace(account, portfolio_user_id=user_id)
+
+    def get_auth_session(self, token_digest: str) -> AuthSession | None:
+        return self.store.sessions.get(token_digest)
+
+    def add_auth_session(self, auth_session: AuthSession) -> None:
+        self.store.sessions[auth_session.token_digest] = auth_session
+
+    def delete_auth_session(self, token_digest: str) -> None:
+        self.store.sessions.pop(token_digest, None)
+
+    def add_user(self, user: User) -> None:
+        self.portfolio_service.add_auth_user(user)
+
+    def add_opening_positions(self, opening_positions: list[OpeningPosition]) -> None:
+        self.portfolio_service.add_auth_opening_positions(opening_positions)
+
+    def commit(self) -> None:
+        """Smoke Store 没有外部事务，提交由调用完成即视为成功。"""
+
+
 class BrowserSmokeInvestmentAgent:
-    """按问题文本返回 OK、降级、失败、延迟与注入场景。"""
+    """按问题文本返回固定结果的 Fake Agent，不代表真实模型行为。"""
 
     def answer(
         self,
@@ -369,6 +494,12 @@ class BrowserSmokeInvestmentAgent:
 
 portfolio_service = BrowserSmokePortfolioService()
 investment_agent = BrowserSmokeInvestmentAgent()
+auth_store = BrowserSmokeAuthStore()
+auth_service = AuthService(
+    lambda: BrowserSmokeAuthUnitOfWork(auth_store, portfolio_service),
+    clock=lambda: datetime.now(UTC),
+)
 
 app.dependency_overrides[get_portfolio_service_dependency] = lambda: portfolio_service
 app.dependency_overrides[get_investment_agent_dependency] = lambda: investment_agent
+app.dependency_overrides[get_auth_service_dependency] = lambda: auth_service
