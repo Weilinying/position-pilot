@@ -2,6 +2,9 @@
 
 from functools import lru_cache
 
+from sqlalchemy.orm import Session, sessionmaker
+
+from position_pilot.application.auth_service import AuthService
 from position_pilot.application.investment_agent import InvestmentAgent
 from position_pilot.application.market_context_service import MarketContextService
 from position_pilot.application.market_data_service import MarketDataService
@@ -16,13 +19,26 @@ from position_pilot.integrations.alpaca_news import create_alpaca_news_provider
 
 
 @lru_cache
-def get_portfolio_service() -> PortfolioService:
-    """装配进程内共享的 Portfolio Application Service。"""
+def get_session_factory() -> sessionmaker[Session]:
+    """让 Portfolio 与 Auth Service 共享同一数据库连接池。"""
 
     settings = get_settings()
     engine = create_database_engine(str(settings.database_url))
-    session_factory = create_session_factory(engine)
-    return PortfolioService(SqlAlchemyPortfolioUnitOfWorkFactory(session_factory))
+    return create_session_factory(engine)
+
+
+@lru_cache
+def get_portfolio_service() -> PortfolioService:
+    """装配进程内共享的 Portfolio Application Service。"""
+
+    return PortfolioService(SqlAlchemyPortfolioUnitOfWorkFactory(get_session_factory()))
+
+
+@lru_cache
+def get_auth_service() -> AuthService:
+    """装配进程内共享的本地 Auth Application Service。"""
+
+    return AuthService(SqlAlchemyPortfolioUnitOfWorkFactory(get_session_factory()))
 
 
 @lru_cache

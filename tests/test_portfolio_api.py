@@ -9,10 +9,10 @@ from uuid import UUID
 import pytest
 from fastapi.testclient import TestClient
 
+from position_pilot.application.auth_service import Account, SetupPortfolioCommand
 from position_pilot.application.errors import OpeningStateSealed, UserNotFound
 from position_pilot.application.portfolio_service import (
     CashAdjustmentResult,
-    CreateUserCommand,
     InitializeOpeningPositionsCommand,
     RecordCashEventCommand,
     RecordTransactionCommand,
@@ -35,13 +35,32 @@ from position_pilot.domain.portfolio import (
     User,
     rebuild_portfolio,
 )
-from position_pilot.main import app, get_portfolio_service_dependency
+from position_pilot.main import (
+    app,
+    get_auth_service_dependency,
+    get_current_account_dependency,
+    get_portfolio_service_dependency,
+)
 
 USER_ID = UUID("00000000-0000-0000-0000-000000000001")
 EVENT_ID = UUID("00000000-0000-0000-0000-000000000002")
 TRANSACTION_ID = UUID("00000000-0000-0000-0000-000000000003")
 OPENING_ID = UUID("00000000-0000-0000-0000-000000000004")
 OCCURRED_AT = datetime(2026, 8, 25, 8, 30, tzinfo=UTC)
+ACCOUNT_ID = UUID("00000000-0000-0000-0000-000000000010")
+
+
+def make_account(*, portfolio_user_id: UUID | None = USER_ID) -> Account:
+    """创建不经过真实 Session / Database 的已认证 Account。"""
+
+    return Account(
+        id=ACCOUNT_ID,
+        email="api@example.com",
+        display_name="My Portfolio",
+        password_hash="not-returned",
+        portfolio_user_id=portfolio_user_id,
+        created_at=OCCURRED_AT,
+    )
 
 
 @dataclass(slots=True)
@@ -59,13 +78,13 @@ class FakePortfolioService:
 
 
 @dataclass(slots=True)
-class FakePortfolioCreator:
-    """返回固定 User，并记录 Portfolio 创建 Command。"""
+class FakePortfolioSetup:
+    """返回固定 User，并记录 Account Portfolio Setup Command。"""
 
     result: User | Exception
-    commands: list[CreateUserCommand] = field(default_factory=list)
+    commands: list[SetupPortfolioCommand] = field(default_factory=list)
 
-    def create_user(self, command: CreateUserCommand) -> User:
+    def setup_portfolio(self, command: SetupPortfolioCommand) -> User:
         self.commands.append(command)
         if isinstance(self.result, Exception):
             raise self.result
@@ -152,6 +171,7 @@ class FakeCashEventListReader:
 def client() -> Iterator[TestClient]:
     """每个测试后恢复 Cash Adjustment Dependency Override。"""
 
+    app.dependency_overrides[get_current_account_dependency] = make_account
     with TestClient(app) as test_client:
         yield test_client
     app.dependency_overrides.clear()
@@ -222,6 +242,12 @@ def override_service(service: object) -> None:
     app.dependency_overrides[get_portfolio_service_dependency] = lambda: service
 
 
+def override_auth_service(service: object) -> None:
+    """避免兼容 Portfolio Create Contract 读取真实 Auth Database。"""
+
+    app.dependency_overrides[get_auth_service_dependency] = lambda: service
+
+
 def make_portfolio_state(*, positions: tuple[Position, ...] | None = None) -> PortfolioState:
     """创建包含稳定 Decimal 与可控持仓顺序的只读 Snapshot。"""
 
@@ -265,8 +291,11 @@ def test_creates_local_portfolio_and_returns_server_identity(client: TestClient)
         initial_cash=Decimal("10000"),
         created_at=OCCURRED_AT,
     )
-    service = FakePortfolioCreator(user)
-    override_service(service)
+    service = FakePortfolioSetup(user)
+    override_auth_service(service)
+    app.dependency_overrides[get_current_account_dependency] = lambda: make_account(
+        portfolio_user_id=None
+    )
 
     response = client.post(
         "/v1/portfolios",
@@ -281,15 +310,18 @@ def test_creates_local_portfolio_and_returns_server_identity(client: TestClient)
         "created_at": "2026-08-25T08:30:00Z",
     }
     assert service.commands == [
-        CreateUserCommand(display_name="My Portfolio", initial_cash=Decimal("10000"))
+        SetupPortfolioCommand(account_id=ACCOUNT_ID, initial_cash=Decimal("10000"))
     ]
 
 
 def test_maps_invalid_portfolio_creation_to_stable_422(client: TestClient) -> None:
     """领域创建失败应保持稳定错误 Code。"""
 
-    service = FakePortfolioCreator(InvalidPortfolioValue("initial_cash 无效"))
-    override_service(service)
+    service = FakePortfolioSetup(InvalidPortfolioValue("initial_cash 无效"))
+    override_auth_service(service)
+    app.dependency_overrides[get_current_account_dependency] = lambda: make_account(
+        portfolio_user_id=None
+    )
 
     response = client.post(
         "/v1/portfolios",
@@ -328,8 +360,11 @@ def test_rejects_invalid_portfolio_creation_before_service_call(
         initial_cash=Decimal("10"),
         created_at=OCCURRED_AT,
     )
-    service = FakePortfolioCreator(user)
-    override_service(service)
+    service = FakePortfolioSetup(user)
+    override_auth_service(service)
+    app.dependency_overrides[get_current_account_dependency] = lambda: make_account(
+        portfolio_user_id=None
+    )
 
     response = client.post("/v1/portfolios", json=payload)
 

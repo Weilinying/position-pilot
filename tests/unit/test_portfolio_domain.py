@@ -150,7 +150,7 @@ def test_falsey_invalid_position_type_is_not_treated_as_missing() -> None:
             action=TransactionAction.BUY,
             price=Decimal("10"),
             shares=Decimal("1"),
-            position_type="",
+            position_type="",  # type: ignore[arg-type]
             occurred_at=OCCURRED_AT,
         )
     with pytest.raises(InvalidPortfolioValue, match="position_type"):
@@ -159,7 +159,7 @@ def test_falsey_invalid_position_type_is_not_treated_as_missing() -> None:
             ticker="GOOG",
             shares=Decimal("1"),
             average_cost=Decimal("10"),
-            position_type="",
+            position_type="",  # type: ignore[arg-type]
             recorded_at=OCCURRED_AT,
         )
 

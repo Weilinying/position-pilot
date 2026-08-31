@@ -61,6 +61,45 @@ class UserModel(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 
+class AccountModel(Base):
+    """最小本地登录身份及其可选单一 Portfolio Ownership。"""
+
+    __tablename__ = "accounts"
+    __table_args__ = (
+        UniqueConstraint("email", name="uq_accounts_email"),
+        UniqueConstraint("portfolio_user_id", name="uq_accounts_portfolio_user"),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    email: Mapped[str] = mapped_column(String(320))
+    display_name: Mapped[str] = mapped_column(String(200))
+    password_hash: Mapped[str] = mapped_column(Text)
+    portfolio_user_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class AuthSessionModel(Base):
+    """可撤销且只保存 Token Digest 的本地 Session。"""
+
+    __tablename__ = "auth_sessions"
+    __table_args__ = (
+        UniqueConstraint("token_digest", name="uq_auth_sessions_token_digest"),
+        Index("ix_auth_sessions_account_expires", "account_id", "expires_at"),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    account_id: Mapped[UUID] = mapped_column(
+        ForeignKey("accounts.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    token_digest: Mapped[str] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
 class TransactionModel(Base):
     """不可变 Transaction Ledger 的持久化记录。"""
 

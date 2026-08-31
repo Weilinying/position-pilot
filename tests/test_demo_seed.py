@@ -12,7 +12,7 @@ from position_pilot.application.portfolio_service import (
     CreateUserCommand,
     RecordTransactionCommand,
 )
-from position_pilot.domain.portfolio import Transaction, User
+from position_pilot.domain.portfolio import PositionType, Transaction, User
 
 USER_ID = UUID("40000000-0000-4000-8000-000000000004")
 
@@ -62,11 +62,11 @@ def test_seed_uses_application_commands_and_preserves_position_types() -> None:
         CreateUserCommand(display_name="PositionPilot Demo", initial_cash=Decimal("15000"))
     ]
     assert [
-        (command.ticker, command.position_type.value) for command in service.transaction_commands
+        (command.ticker, command.position_type) for command in service.transaction_commands
     ] == [
-        ("GOOG", "LONG_TERM"),
-        ("GOOG", "SWING"),
-        ("NVDA", "LONG_TERM"),
+        ("GOOG", PositionType.LONG_TERM),
+        ("GOOG", PositionType.SWING),
+        ("NVDA", PositionType.LONG_TERM),
     ]
     assert all(command.user_id == USER_ID for command in service.transaction_commands)
 

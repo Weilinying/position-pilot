@@ -7,6 +7,7 @@ from uuid import UUID
 import pytest
 from fastapi.testclient import TestClient
 
+from position_pilot.application.auth_service import Account
 from position_pilot.application.errors import UserNotFound
 from position_pilot.application.investment_agent import (
     ContextSource,
@@ -16,10 +17,28 @@ from position_pilot.application.investment_agent import (
     InvestmentRequestFailure,
     InvestmentResponseStatus,
 )
-from position_pilot.main import app, get_investment_agent_dependency
+from position_pilot.main import (
+    app,
+    get_current_account_dependency,
+    get_investment_agent_dependency,
+)
 
 USER_ID = UUID("00000000-0000-0000-0000-000000000001")
 NOW = datetime(2026, 8, 24, 8, 0, tzinfo=UTC)
+ACCOUNT_ID = UUID("00000000-0000-0000-0000-000000000010")
+
+
+def make_account() -> Account:
+    """创建与固定 Portfolio 绑定的已认证 Account。"""
+
+    return Account(
+        id=ACCOUNT_ID,
+        email="agent@example.com",
+        display_name="Agent User",
+        password_hash="not-returned",
+        portfolio_user_id=USER_ID,
+        created_at=NOW,
+    )
 
 
 class FakeInvestmentAgent:
@@ -47,6 +66,7 @@ class FakeInvestmentAgent:
 def client() -> Iterator[TestClient]:
     """每个测试后恢复 FastAPI Dependency Override。"""
 
+    app.dependency_overrides[get_current_account_dependency] = make_account
     with TestClient(app) as test_client:
         yield test_client
     app.dependency_overrides.clear()
@@ -112,7 +132,7 @@ def test_returns_answer_with_deterministic_status_and_source_tracking(
 
     response = client.post(
         "/v1/investment/questions",
-        json={"user_id": str(USER_ID), "question": "  GOOG 现在能买吗？  "},
+        json={"question": "  GOOG 现在能买吗？  "},
     )
 
     assert response.status_code == 200
@@ -191,7 +211,7 @@ def test_returns_degraded_as_successful_safe_answer(client: TestClient) -> None:
 
     response = client.post(
         "/v1/investment/questions",
-        json={"user_id": str(USER_ID), "question": "GOOG 现在能买吗？"},
+        json={"question": "GOOG 现在能买吗？"},
     )
 
     assert response.status_code == 200
@@ -222,7 +242,7 @@ def test_maps_request_failure_to_stable_http_error(
 
     response = client.post(
         "/v1/investment/questions",
-        json={"user_id": str(USER_ID), "question": "question"},
+        json={"question": "question"},
     )
 
     assert response.status_code == expected_status
@@ -236,7 +256,7 @@ def test_maps_missing_portfolio_user_to_404(client: TestClient) -> None:
 
     response = client.post(
         "/v1/investment/questions",
-        json={"user_id": str(USER_ID), "question": "question"},
+        json={"question": "question"},
     )
 
     assert response.status_code == 404
@@ -248,9 +268,9 @@ def test_maps_missing_portfolio_user_to_404(client: TestClient) -> None:
 @pytest.mark.parametrize(
     "payload",
     [
-        {"user_id": str(USER_ID), "question": "   "},
-        {"user_id": "not-a-uuid", "question": "question"},
-        {"user_id": str(USER_ID)},
+        {"question": "   "},
+        {"user_id": str(USER_ID), "question": "question"},
+        {},
     ],
 )
 def test_rejects_invalid_request_before_agent_call(

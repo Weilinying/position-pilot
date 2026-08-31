@@ -3,15 +3,29 @@
 from datetime import datetime
 from decimal import Decimal
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, NoReturn
 from uuid import UUID
 
-from fastapi import Depends, FastAPI, HTTPException, status
+from fastapi import Cookie, Depends, FastAPI, HTTPException, Response, status
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from position_pilot.application.errors import OpeningStateSealed, UserNotFound
+from position_pilot.application.auth_service import (
+    Account,
+    AuthService,
+    LoginCommand,
+    RegisterAccountCommand,
+    SetupPortfolioCommand,
+)
+from position_pilot.application.errors import (
+    AuthenticationRequired,
+    EmailAlreadyRegistered,
+    InvalidCredentials,
+    OpeningStateSealed,
+    PortfolioAlreadyExists,
+    UserNotFound,
+)
 from position_pilot.application.investment_agent import (
     MAX_QUESTION_LENGTH,
     ContextSource,
@@ -23,25 +37,27 @@ from position_pilot.application.investment_agent import (
     InvestmentResponseStatus,
 )
 from position_pilot.application.portfolio_service import (
-    CreateUserCommand,
     InitializeOpeningPositionsCommand,
     OpeningPositionInput,
     PortfolioService,
     RecordCashEventCommand,
     RecordTransactionCommand,
 )
-from position_pilot.bootstrap import get_investment_agent, get_portfolio_service
+from position_pilot.bootstrap import get_auth_service, get_investment_agent, get_portfolio_service
 from position_pilot.domain.errors import InsufficientCash, InsufficientShares, InvalidPortfolioValue
 from position_pilot.domain.portfolio import (
     CashEvent,
     CashEventType,
     OpeningPosition,
+    PortfolioState,
     PositionType,
     Transaction,
     TransactionAction,
 )
 
 FRONTEND_DIR = Path(__file__).resolve().parents[2] / "frontend"
+SESSION_COOKIE_NAME = "positionpilot_session"
+SESSION_MAX_AGE_SECONDS = 7 * 24 * 60 * 60
 
 
 class HealthResponse(BaseModel):
@@ -53,7 +69,8 @@ class HealthResponse(BaseModel):
 class InvestmentQuestionRequest(BaseModel):
     """M3 投资问答 Vertical Slice 的稳定输入。"""
 
-    user_id: UUID
+    model_config = ConfigDict(extra="forbid")
+
     question: str = Field(min_length=1, max_length=MAX_QUESTION_LENGTH)
 
     @field_validator("question")
@@ -94,6 +111,39 @@ class ApiErrorDetail(BaseModel):
 
     code: str
     message: str
+
+
+class RegisterRequest(BaseModel):
+    """创建本地 Account 的公开输入。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    email: str = Field(min_length=3, max_length=320)
+    password: str = Field(min_length=8, max_length=128)
+    display_name: str = Field(min_length=1, max_length=200)
+
+
+class LoginRequest(BaseModel):
+    """登录本地 Account 的公开输入。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    email: str = Field(min_length=3, max_length=320)
+    password: str = Field(min_length=1, max_length=128)
+
+
+class AccountResponse(BaseModel):
+    """不包含 Password、Token 或内部 User ID 的 Account View。"""
+
+    email: str
+    display_name: str
+    portfolio_ready: bool
+
+
+class AuthSessionResponse(BaseModel):
+    """注册、登录与 Session Recovery 的稳定响应。"""
+
+    account: AccountResponse
 
 
 class CreatePortfolioRequest(BaseModel):
@@ -231,6 +281,18 @@ class OpeningPositionsRequest(BaseModel):
     positions: tuple[OpeningPositionRequest, ...] = Field(min_length=1, max_length=100)
 
 
+class PortfolioSetupRequest(BaseModel):
+    """已认证 Account 的一次性 Portfolio Setup。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    initial_cash: Decimal = Field(default=Decimal("0"), ge=0, max_digits=28, decimal_places=8)
+    opening_positions: tuple[OpeningPositionRequest, ...] = Field(
+        default=(),
+        max_length=100,
+    )
+
+
 class OpeningPositionResponse(BaseModel):
     """API 暴露的 immutable Opening Position Starting Fact。"""
 
@@ -321,6 +383,199 @@ def get_portfolio_service_dependency() -> PortfolioService:
     return get_portfolio_service()
 
 
+def get_auth_service_dependency() -> AuthService:
+    """延迟装配 Auth Service，允许 API 与 Browser Test 安全替换。"""
+
+    return get_auth_service()
+
+
+def get_current_account_dependency(
+    auth_service: Annotated[AuthService, Depends(get_auth_service_dependency)],
+    session_token: Annotated[
+        str | None,
+        Cookie(alias=SESSION_COOKIE_NAME),
+    ] = None,
+) -> Account:
+    """只从 HttpOnly Cookie Session 解析当前 Account。"""
+
+    try:
+        return auth_service.authenticate(session_token)
+    except AuthenticationRequired as error:
+        _raise_api_error(
+            status.HTTP_401_UNAUTHORIZED,
+            ApiErrorDetail(code="AUTHENTICATION_REQUIRED", message=str(error)),
+        )
+
+
+def _set_session_cookie(response: Response, token: str) -> None:
+    """设置只适用于 loopback HTTP 的最小持久 Session Cookie。"""
+
+    response.set_cookie(
+        key=SESSION_COOKIE_NAME,
+        value=token,
+        max_age=SESSION_MAX_AGE_SECONDS,
+        httponly=True,
+        samesite="lax",
+        secure=False,
+        path="/",
+    )
+
+
+def _account_response(account: Account) -> AccountResponse:
+    return AccountResponse(
+        email=account.email,
+        display_name=account.display_name,
+        portfolio_ready=account.portfolio_user_id is not None,
+    )
+
+
+def _require_portfolio_user(account: Account) -> UUID:
+    if account.portfolio_user_id is None:
+        _raise_api_error(
+            status.HTTP_409_CONFLICT,
+            ApiErrorDetail(
+                code="PORTFOLIO_SETUP_REQUIRED",
+                message="请先完成 Portfolio Setup",
+            ),
+        )
+    return account.portfolio_user_id
+
+
+def _require_portfolio_owner(account: Account, user_id: UUID) -> None:
+    if account.portfolio_user_id != user_id:
+        _raise_api_error(
+            status.HTTP_404_NOT_FOUND,
+            ApiErrorDetail(code="PORTFOLIO_NOT_FOUND", message="Portfolio 不存在"),
+        )
+
+
+@app.post(
+    "/v1/auth/register",
+    response_model=AuthSessionResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def register_account(
+    request: RegisterRequest,
+    response: Response,
+    auth_service: Annotated[AuthService, Depends(get_auth_service_dependency)],
+) -> AuthSessionResponse:
+    """创建本地 Account 并立即建立持久 Session。"""
+
+    try:
+        result = auth_service.register(
+            RegisterAccountCommand(
+                email=request.email,
+                password=request.password,
+                display_name=request.display_name,
+            )
+        )
+    except EmailAlreadyRegistered as error:
+        _raise_api_error(
+            status.HTTP_409_CONFLICT,
+            ApiErrorDetail(code="EMAIL_ALREADY_REGISTERED", message=str(error)),
+        )
+    except InvalidPortfolioValue as error:
+        _raise_api_error(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            ApiErrorDetail(code="INVALID_ACCOUNT", message=str(error)),
+        )
+    _set_session_cookie(response, result.token)
+    return AuthSessionResponse(account=_account_response(result.account))
+
+
+@app.post("/v1/auth/login", response_model=AuthSessionResponse)
+def login_account(
+    request: LoginRequest,
+    response: Response,
+    auth_service: Annotated[AuthService, Depends(get_auth_service_dependency)],
+    session_token: Annotated[
+        str | None,
+        Cookie(alias=SESSION_COOKIE_NAME),
+    ] = None,
+) -> AuthSessionResponse:
+    """校验 Email / Password，并使用新 Token 替代当前 Browser Session。"""
+
+    try:
+        result = auth_service.login(
+            LoginCommand(email=request.email, password=request.password),
+            current_session_token=session_token,
+        )
+    except (InvalidCredentials, InvalidPortfolioValue) as error:
+        _raise_api_error(
+            status.HTTP_401_UNAUTHORIZED,
+            ApiErrorDetail(code="INVALID_CREDENTIALS", message=str(error)),
+        )
+    _set_session_cookie(response, result.token)
+    return AuthSessionResponse(account=_account_response(result.account))
+
+
+@app.post("/v1/auth/logout", status_code=status.HTTP_204_NO_CONTENT)
+def logout_account(
+    response: Response,
+    auth_service: Annotated[AuthService, Depends(get_auth_service_dependency)],
+    session_token: Annotated[
+        str | None,
+        Cookie(alias=SESSION_COOKIE_NAME),
+    ] = None,
+) -> None:
+    """幂等撤销当前 Session 并清除 Browser Cookie。"""
+
+    auth_service.logout(session_token)
+    response.delete_cookie(SESSION_COOKIE_NAME, path="/")
+
+
+@app.get("/v1/auth/session", response_model=AuthSessionResponse)
+def get_auth_session(
+    account: Annotated[Account, Depends(get_current_account_dependency)],
+) -> AuthSessionResponse:
+    """恢复当前非敏感 Account View。"""
+
+    return AuthSessionResponse(account=_account_response(account))
+
+
+@app.post(
+    "/v1/portfolio",
+    response_model=PortfolioSnapshotResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def setup_account_portfolio(
+    request: PortfolioSetupRequest,
+    account: Annotated[Account, Depends(get_current_account_dependency)],
+    auth_service: Annotated[AuthService, Depends(get_auth_service_dependency)],
+    portfolio_service: Annotated[PortfolioService, Depends(get_portfolio_service_dependency)],
+) -> PortfolioSnapshotResponse:
+    """为当前 Account 原子创建唯一 Portfolio 与可选 Opening State。"""
+
+    try:
+        user = auth_service.setup_portfolio(
+            SetupPortfolioCommand(
+                account_id=account.id,
+                initial_cash=request.initial_cash,
+                opening_positions=tuple(
+                    OpeningPositionInput(
+                        ticker=position.ticker,
+                        shares=position.shares,
+                        average_cost=position.average_cost,
+                        position_type=position.position_type,
+                    )
+                    for position in request.opening_positions
+                ),
+            )
+        )
+        portfolio = portfolio_service.get_portfolio(user.id)
+    except PortfolioAlreadyExists as error:
+        _raise_api_error(
+            status.HTTP_409_CONFLICT,
+            ApiErrorDetail(code="PORTFOLIO_ALREADY_EXISTS", message=str(error)),
+        )
+    except InvalidPortfolioValue as error:
+        _raise_api_error(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            ApiErrorDetail(code="INVALID_PORTFOLIO", message=str(error)),
+        )
+    return _portfolio_snapshot_response(portfolio)
+
+
 @app.post(
     "/v1/portfolios",
     response_model=PortfolioCreatedResponse,
@@ -329,16 +584,22 @@ def get_portfolio_service_dependency() -> PortfolioService:
 )
 def create_portfolio(
     request: CreatePortfolioRequest,
-    portfolio_service: Annotated[PortfolioService, Depends(get_portfolio_service_dependency)],
+    account: Annotated[Account, Depends(get_current_account_dependency)],
+    auth_service: Annotated[AuthService, Depends(get_auth_service_dependency)],
 ) -> PortfolioCreatedResponse:
-    """创建现有 User → Portfolio State 模型的本地产品入口。"""
+    """兼容旧 Contract，但只允许当前 Account 创建其唯一 Portfolio。"""
 
     try:
-        user = portfolio_service.create_user(
-            CreateUserCommand(
-                display_name=request.display_name,
+        user = auth_service.setup_portfolio(
+            SetupPortfolioCommand(
+                account_id=account.id,
                 initial_cash=request.initial_cash,
             )
+        )
+    except PortfolioAlreadyExists as error:
+        _raise_api_error(
+            status.HTTP_409_CONFLICT,
+            ApiErrorDetail(code="PORTFOLIO_ALREADY_EXISTS", message=str(error)),
         )
     except InvalidPortfolioValue as error:
         _raise_api_error(
@@ -361,10 +622,12 @@ def create_portfolio(
 )
 def get_portfolio_snapshot(
     user_id: UUID,
+    account: Annotated[Account, Depends(get_current_account_dependency)],
     portfolio_service: Annotated[PortfolioService, Depends(get_portfolio_service_dependency)],
 ) -> PortfolioSnapshotResponse:
     """返回 Ledger 重放产生的完整当前持仓集合。"""
 
+    _require_portfolio_owner(account, user_id)
     try:
         portfolio = portfolio_service.get_portfolio(user_id)
     except UserNotFound:
@@ -373,25 +636,7 @@ def get_portfolio_snapshot(
             ApiErrorDetail(code="USER_NOT_FOUND", message="Portfolio User 不存在"),
         )
 
-    positions = tuple(
-        PositionResponse(
-            ticker=position.ticker,
-            position_type=position.position_type,
-            shares=position.shares,
-            average_cost=position.average_cost,
-            cost_basis=position.cost_basis,
-        )
-        for position in sorted(
-            portfolio.positions,
-            key=lambda item: (item.ticker, item.position_type.value),
-        )
-    )
-    return PortfolioSnapshotResponse(
-        user_id=portfolio.user_id,
-        available_cash=portfolio.cash.available_cash,
-        positions_are_complete=True,
-        positions=positions,
-    )
+    return _portfolio_snapshot_response(portfolio)
 
 
 @app.post(
@@ -407,10 +652,12 @@ def get_portfolio_snapshot(
 def initialize_opening_positions(
     user_id: UUID,
     request: OpeningPositionsRequest,
+    account: Annotated[Account, Depends(get_current_account_dependency)],
     portfolio_service: Annotated[PortfolioService, Depends(get_portfolio_service_dependency)],
 ) -> OpeningPositionsWriteResponse:
     """在首个经济 Mutation 前原子初始化 Existing Positions。"""
 
+    _require_portfolio_owner(account, user_id)
     try:
         opening_positions = portfolio_service.initialize_opening_positions(
             InitializeOpeningPositionsCommand(
@@ -456,10 +703,12 @@ def initialize_opening_positions(
 )
 def list_opening_positions(
     user_id: UUID,
+    account: Annotated[Account, Depends(get_current_account_dependency)],
     portfolio_service: Annotated[PortfolioService, Depends(get_portfolio_service_dependency)],
 ) -> OpeningPositionListResponse:
     """返回不带经济 sequence 的完整 Opening Position List。"""
 
+    _require_portfolio_owner(account, user_id)
     try:
         opening_positions = portfolio_service.list_opening_positions(user_id)
     except UserNotFound:
@@ -491,10 +740,12 @@ def list_opening_positions(
 def record_transaction(
     user_id: UUID,
     request: TransactionRequest,
+    account: Annotated[Account, Depends(get_current_account_dependency)],
     portfolio_service: Annotated[PortfolioService, Depends(get_portfolio_service_dependency)],
 ) -> TransactionWriteResponse:
     """追加 BUY / SELL，并返回后端派生的不可变 Ledger Record。"""
 
+    _require_portfolio_owner(account, user_id)
     try:
         transaction = portfolio_service.record_transaction(
             RecordTransactionCommand(
@@ -539,10 +790,12 @@ def record_transaction(
 )
 def list_transactions(
     user_id: UUID,
+    account: Annotated[Account, Depends(get_current_account_dependency)],
     portfolio_service: Annotated[PortfolioService, Depends(get_portfolio_service_dependency)],
 ) -> TransactionListResponse:
     """按经济 sequence 返回完整只读 Transaction List。"""
 
+    _require_portfolio_owner(account, user_id)
     try:
         transactions = portfolio_service.list_transactions(user_id)
     except UserNotFound:
@@ -571,10 +824,12 @@ def list_transactions(
 def record_cash_event(
     user_id: UUID,
     request: CashEventRequest,
+    account: Annotated[Account, Depends(get_current_account_dependency)],
     portfolio_service: Annotated[PortfolioService, Depends(get_portfolio_service_dependency)],
 ) -> CashAdjustmentResponse:
     """追加 DEPOSIT / WITHDRAWAL 并返回确定性 Cash Snapshot。"""
 
+    _require_portfolio_owner(account, user_id)
     try:
         result = portfolio_service.record_cash_event(
             RecordCashEventCommand(
@@ -614,10 +869,12 @@ def record_cash_event(
 )
 def list_cash_events(
     user_id: UUID,
+    account: Annotated[Account, Depends(get_current_account_dependency)],
     portfolio_service: Annotated[PortfolioService, Depends(get_portfolio_service_dependency)],
 ) -> CashEventListResponse:
     """按经济 sequence 返回完整只读 Cash Event List。"""
 
+    _require_portfolio_owner(account, user_id)
     try:
         cash_events = portfolio_service.list_cash_events(user_id)
     except UserNotFound:
@@ -633,6 +890,122 @@ def list_cash_events(
     )
 
 
+@app.get("/v1/portfolio", response_model=PortfolioSnapshotResponse)
+def get_current_portfolio_snapshot(
+    account: Annotated[Account, Depends(get_current_account_dependency)],
+    portfolio_service: Annotated[PortfolioService, Depends(get_portfolio_service_dependency)],
+) -> PortfolioSnapshotResponse:
+    """返回当前 Session Account 的唯一 Portfolio Snapshot。"""
+
+    return get_portfolio_snapshot(
+        _require_portfolio_user(account),
+        account,
+        portfolio_service,
+    )
+
+
+@app.post(
+    "/v1/portfolio/opening-positions",
+    response_model=OpeningPositionsWriteResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def initialize_current_opening_positions(
+    request: OpeningPositionsRequest,
+    account: Annotated[Account, Depends(get_current_account_dependency)],
+    portfolio_service: Annotated[PortfolioService, Depends(get_portfolio_service_dependency)],
+) -> OpeningPositionsWriteResponse:
+    """为当前 Session Portfolio 初始化一次性 Existing Positions。"""
+
+    return initialize_opening_positions(
+        _require_portfolio_user(account),
+        request,
+        account,
+        portfolio_service,
+    )
+
+
+@app.get("/v1/portfolio/opening-positions", response_model=OpeningPositionListResponse)
+def list_current_opening_positions(
+    account: Annotated[Account, Depends(get_current_account_dependency)],
+    portfolio_service: Annotated[PortfolioService, Depends(get_portfolio_service_dependency)],
+) -> OpeningPositionListResponse:
+    """返回当前 Session Portfolio 的完整 Opening State。"""
+
+    return list_opening_positions(
+        _require_portfolio_user(account),
+        account,
+        portfolio_service,
+    )
+
+
+@app.post(
+    "/v1/portfolio/transactions",
+    response_model=TransactionWriteResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def record_current_transaction(
+    request: TransactionRequest,
+    account: Annotated[Account, Depends(get_current_account_dependency)],
+    portfolio_service: Annotated[PortfolioService, Depends(get_portfolio_service_dependency)],
+) -> TransactionWriteResponse:
+    """为当前 Session Portfolio 追加 BUY / SELL。"""
+
+    return record_transaction(
+        _require_portfolio_user(account),
+        request,
+        account,
+        portfolio_service,
+    )
+
+
+@app.get("/v1/portfolio/transactions", response_model=TransactionListResponse)
+def list_current_transactions(
+    account: Annotated[Account, Depends(get_current_account_dependency)],
+    portfolio_service: Annotated[PortfolioService, Depends(get_portfolio_service_dependency)],
+) -> TransactionListResponse:
+    """返回当前 Session Portfolio 的完整 Transaction List。"""
+
+    return list_transactions(
+        _require_portfolio_user(account),
+        account,
+        portfolio_service,
+    )
+
+
+@app.post(
+    "/v1/portfolio/cash-events",
+    response_model=CashAdjustmentResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def record_current_cash_event(
+    request: CashEventRequest,
+    account: Annotated[Account, Depends(get_current_account_dependency)],
+    portfolio_service: Annotated[PortfolioService, Depends(get_portfolio_service_dependency)],
+) -> CashAdjustmentResponse:
+    """为当前 Session Portfolio 追加 DEPOSIT / WITHDRAWAL。"""
+
+    return record_cash_event(
+        _require_portfolio_user(account),
+        request,
+        account,
+        portfolio_service,
+    )
+
+
+@app.get("/v1/portfolio/cash-events", response_model=CashEventListResponse)
+def list_current_cash_events(
+    account: Annotated[Account, Depends(get_current_account_dependency)],
+    portfolio_service: Annotated[PortfolioService, Depends(get_portfolio_service_dependency)],
+) -> CashEventListResponse:
+    """返回当前 Session Portfolio 的完整 Cash Event List。"""
+
+    return list_cash_events(
+        _require_portfolio_user(account),
+        account,
+        portfolio_service,
+    )
+
+
 @app.post(
     "/v1/investment/questions",
     response_model=InvestmentQuestionResponse,
@@ -644,12 +1017,14 @@ def list_cash_events(
 )
 def answer_investment_question(
     request: InvestmentQuestionRequest,
+    account: Annotated[Account, Depends(get_current_account_dependency)],
     agent: Annotated[InvestmentAgent, Depends(get_investment_agent_dependency)],
 ) -> InvestmentQuestionResponse:
     """读取 Structured State 并执行最小 Investment Agent Vertical Slice。"""
 
+    user_id = _require_portfolio_user(account)
     try:
-        result = agent.answer(request.user_id, request.question)
+        result = agent.answer(user_id, request.question)
     except UserNotFound:
         _raise_api_error(
             status.HTTP_404_NOT_FOUND,
@@ -675,6 +1050,30 @@ def _opening_position_response(position: OpeningPosition) -> OpeningPositionResp
         cost_basis=position.cost_basis,
         position_type=position.position_type,
         recorded_at=position.recorded_at,
+    )
+
+
+def _portfolio_snapshot_response(portfolio: PortfolioState) -> PortfolioSnapshotResponse:
+    """把确定性 Portfolio State 映射为稳定 Public Response。"""
+
+    positions = tuple(
+        PositionResponse(
+            ticker=position.ticker,
+            position_type=position.position_type,
+            shares=position.shares,
+            average_cost=position.average_cost,
+            cost_basis=position.cost_basis,
+        )
+        for position in sorted(
+            portfolio.positions,
+            key=lambda item: (item.ticker, item.position_type.value),
+        )
+    )
+    return PortfolioSnapshotResponse(
+        user_id=portfolio.user_id,
+        available_cash=portfolio.cash.available_cash,
+        positions_are_complete=True,
+        positions=positions,
     )
 
 
@@ -734,5 +1133,5 @@ def _raise_request_failure(failure: InvestmentRequestFailure) -> None:
     )
 
 
-def _raise_api_error(status_code: int, detail: ApiErrorDetail) -> None:
+def _raise_api_error(status_code: int, detail: ApiErrorDetail) -> NoReturn:
     raise HTTPException(status_code=status_code, detail=detail.model_dump())

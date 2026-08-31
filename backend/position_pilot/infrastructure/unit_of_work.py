@@ -4,9 +4,12 @@ from types import TracebackType
 from typing import Self
 from uuid import UUID
 
-from sqlalchemy import Select, select, update
+from sqlalchemy import Select, delete, select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
+from position_pilot.application.auth_service import Account, AuthSession
+from position_pilot.application.errors import EmailAlreadyRegistered
 from position_pilot.domain.portfolio import (
     CashEvent,
     CashEventType,
@@ -17,11 +20,38 @@ from position_pilot.domain.portfolio import (
     User,
 )
 from position_pilot.infrastructure.models import (
+    AccountModel,
+    AuthSessionModel,
     CashEventModel,
     OpeningPositionModel,
     TransactionModel,
     UserModel,
 )
+
+
+def _to_account(model: AccountModel) -> Account:
+    """将 ORM Account 转换为 Application Auth Entity。"""
+
+    return Account(
+        id=model.id,
+        email=model.email,
+        display_name=model.display_name,
+        password_hash=model.password_hash,
+        portfolio_user_id=model.portfolio_user_id,
+        created_at=model.created_at,
+    )
+
+
+def _to_auth_session(model: AuthSessionModel) -> AuthSession:
+    """将 ORM Session 转换为不暴露 Raw Token 的 Application Entity。"""
+
+    return AuthSession(
+        id=model.id,
+        account_id=model.account_id,
+        token_digest=model.token_digest,
+        created_at=model.created_at,
+        expires_at=model.expires_at,
+    )
 
 
 def _to_user(model: UserModel) -> User:
@@ -133,6 +163,89 @@ class SqlAlchemyPortfolioUnitOfWork:
                 initial_cash=user.initial_cash,
                 created_at=user.created_at,
             )
+        )
+
+    def get_account_by_email(
+        self,
+        email: str,
+        *,
+        for_update: bool = False,
+    ) -> Account | None:
+        """按规范化 Email 读取 Account。"""
+
+        statement: Select[tuple[AccountModel]] = select(AccountModel).where(
+            AccountModel.email == email
+        )
+        if for_update:
+            statement = statement.with_for_update()
+        model = self.session.scalar(statement)
+        return _to_account(model) if model is not None else None
+
+    def get_account_by_id(
+        self,
+        account_id: UUID,
+        *,
+        for_update: bool = False,
+    ) -> Account | None:
+        """按稳定 ID 读取 Account，Portfolio Setup 可请求行锁。"""
+
+        statement: Select[tuple[AccountModel]] = select(AccountModel).where(
+            AccountModel.id == account_id
+        )
+        if for_update:
+            statement = statement.with_for_update()
+        model = self.session.scalar(statement)
+        return _to_account(model) if model is not None else None
+
+    def add_account(self, account: Account) -> None:
+        """添加不暴露 Password 明文的本地 Account。"""
+
+        self.session.add(
+            AccountModel(
+                id=account.id,
+                email=account.email,
+                display_name=account.display_name,
+                password_hash=account.password_hash,
+                portfolio_user_id=account.portfolio_user_id,
+                created_at=account.created_at,
+            )
+        )
+
+    def set_account_portfolio(self, account_id: UUID, user_id: UUID) -> None:
+        """把 Account 原子绑定到唯一现有 Portfolio User。"""
+
+        self.session.execute(
+            update(AccountModel)
+            .where(AccountModel.id == account_id, AccountModel.portfolio_user_id.is_(None))
+            .values(portfolio_user_id=user_id)
+        )
+
+    def get_auth_session(self, token_digest: str) -> AuthSession | None:
+        """按不可逆 Token Digest 读取 Session。"""
+
+        model = self.session.scalar(
+            select(AuthSessionModel).where(AuthSessionModel.token_digest == token_digest)
+        )
+        return _to_auth_session(model) if model is not None else None
+
+    def add_auth_session(self, auth_session: AuthSession) -> None:
+        """保存不包含 Raw Cookie Token 的 Session。"""
+
+        self.session.add(
+            AuthSessionModel(
+                id=auth_session.id,
+                account_id=auth_session.account_id,
+                token_digest=auth_session.token_digest,
+                created_at=auth_session.created_at,
+                expires_at=auth_session.expires_at,
+            )
+        )
+
+    def delete_auth_session(self, token_digest: str) -> None:
+        """幂等撤销指定 Session。"""
+
+        self.session.execute(
+            delete(AuthSessionModel).where(AuthSessionModel.token_digest == token_digest)
         )
 
     def list_opening_positions(self, user_id: UUID) -> list[OpeningPosition]:
@@ -266,7 +379,13 @@ class SqlAlchemyPortfolioUnitOfWork:
     def commit(self) -> None:
         """提交当前数据库事务。"""
 
-        self.session.commit()
+        try:
+            self.session.commit()
+        except IntegrityError as error:
+            self.session.rollback()
+            if "uq_accounts_email" in str(error.orig):
+                raise EmailAlreadyRegistered() from error
+            raise
 
 
 class SqlAlchemyPortfolioUnitOfWorkFactory:

@@ -16,15 +16,19 @@ def test_create_database_engine_uses_psycopg_postgresql_dialect() -> None:
     engine.dispose()
 
 
-def test_metadata_contains_only_portfolio_source_of_truth_tables() -> None:
-    """只持久化 User、Opening State 与经济 Ledger，不建立状态投影表。"""
+def test_metadata_contains_only_approved_source_of_truth_tables() -> None:
+    """只持久化 Account、Session、Opening State 与经济 Ledger。"""
 
     assert models.UserModel.__tablename__ == "users"
     assert models.TransactionModel.__tablename__ == "transactions"
     assert models.CashEventModel.__tablename__ == "cash_events"
     assert models.OpeningPositionModel.__tablename__ == "opening_positions"
+    assert models.AccountModel.__tablename__ == "accounts"
+    assert models.AuthSessionModel.__tablename__ == "auth_sessions"
     assert set(Base.metadata.tables) == {
         "users",
+        "accounts",
+        "auth_sessions",
         "opening_positions",
         "transactions",
         "cash_events",
