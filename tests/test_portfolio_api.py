@@ -18,6 +18,7 @@ from position_pilot.application.portfolio_service import (
     RecordTransactionCommand,
 )
 from position_pilot.domain.errors import (
+    FutureTimestamp,
     InsufficientCash,
     InsufficientShares,
     InvalidPortfolioValue,
@@ -654,6 +655,7 @@ def test_records_transaction_and_returns_backend_derived_fields(client: TestClie
             409,
             "INSUFFICIENT_SHARES",
         ),
+        (FutureTimestamp("Transaction occurred_at 不得晚于当前时间"), 422, "FUTURE_TIMESTAMP"),
         (InvalidPortfolioValue("ticker 格式无效"), 422, "INVALID_TRANSACTION"),
     ],
 )
@@ -832,6 +834,7 @@ def test_maps_insufficient_cash_to_conflict(client: TestClient) -> None:
     ("error", "expected_status", "expected_code"),
     [
         (UserNotFound(USER_ID), 404, "USER_NOT_FOUND"),
+        (FutureTimestamp("Cash Event occurred_at 不得晚于当前时间"), 422, "FUTURE_TIMESTAMP"),
         (InvalidPortfolioValue("amount 无效"), 422, "INVALID_CASH_EVENT"),
     ],
 )

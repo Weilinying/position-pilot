@@ -34,7 +34,7 @@ from position_pilot.application.portfolio_service import (
     RecordCashEventCommand,
     RecordTransactionCommand,
 )
-from position_pilot.domain.errors import InvalidPortfolioValue
+from position_pilot.domain.errors import FutureTimestamp
 from position_pilot.domain.portfolio import (
     CashBalance,
     CashEvent,
@@ -194,7 +194,7 @@ class BrowserSmokePortfolioService:
             current_time = datetime.now(UTC)
             occurred_at = normalize_timestamp(command.occurred_at or current_time)
             if occurred_at > current_time:
-                raise InvalidPortfolioValue("Transaction occurred_at 不得晚于当前时间")
+                raise FutureTimestamp("Transaction occurred_at 不得晚于当前时间")
             transaction = Transaction.create(
                 user_id=user.id,
                 sequence=len(transactions) + 1,
@@ -221,7 +221,7 @@ class BrowserSmokePortfolioService:
             current_time = datetime.now(UTC)
             occurred_at = normalize_timestamp(command.occurred_at or current_time)
             if occurred_at > current_time:
-                raise InvalidPortfolioValue("Cash Event occurred_at 不得晚于当前时间")
+                raise FutureTimestamp("Cash Event occurred_at 不得晚于当前时间")
             cash_event = CashEvent.create(
                 user_id=user.id,
                 sequence=len(cash_events) + 1,

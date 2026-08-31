@@ -10,7 +10,7 @@ from uuid import UUID
 
 from position_pilot.application.errors import OpeningStateSealed, UserNotFound
 from position_pilot.application.investment_context import InvestmentPortfolioContext
-from position_pilot.domain.errors import InvalidPortfolioValue
+from position_pilot.domain.errors import FutureTimestamp, InvalidPortfolioValue
 from position_pilot.domain.portfolio import (
     CashEvent,
     CashEventType,
@@ -159,7 +159,7 @@ class PortfolioService:
             current_time = normalize_timestamp(self._clock())
             occurred_at = normalize_timestamp(command.occurred_at or current_time)
             if occurred_at > current_time:
-                raise InvalidPortfolioValue("Transaction occurred_at 不得晚于当前时间")
+                raise FutureTimestamp("Transaction occurred_at 不得晚于当前时间")
 
             transactions = unit_of_work.list_transactions(user.id)
             cash_events = unit_of_work.list_cash_events(user.id)
@@ -208,7 +208,7 @@ class PortfolioService:
             current_time = normalize_timestamp(self._clock())
             occurred_at = normalize_timestamp(command.occurred_at or current_time)
             if occurred_at > current_time:
-                raise InvalidPortfolioValue("Cash Event occurred_at 不得晚于当前时间")
+                raise FutureTimestamp("Cash Event occurred_at 不得晚于当前时间")
 
             transactions = unit_of_work.list_transactions(user.id)
             cash_events = unit_of_work.list_cash_events(user.id)

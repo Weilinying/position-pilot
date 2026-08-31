@@ -44,7 +44,12 @@ from position_pilot.application.portfolio_service import (
     RecordTransactionCommand,
 )
 from position_pilot.bootstrap import get_auth_service, get_investment_agent, get_portfolio_service
-from position_pilot.domain.errors import InsufficientCash, InsufficientShares, InvalidPortfolioValue
+from position_pilot.domain.errors import (
+    FutureTimestamp,
+    InsufficientCash,
+    InsufficientShares,
+    InvalidPortfolioValue,
+)
 from position_pilot.domain.portfolio import (
     CashEvent,
     CashEventType,
@@ -774,6 +779,11 @@ def record_transaction(
             status.HTTP_409_CONFLICT,
             ApiErrorDetail(code="INSUFFICIENT_SHARES", message=str(error)),
         )
+    except FutureTimestamp as error:
+        _raise_api_error(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            ApiErrorDetail(code="FUTURE_TIMESTAMP", message=str(error)),
+        )
     except InvalidPortfolioValue as error:
         _raise_api_error(
             status.HTTP_422_UNPROCESSABLE_CONTENT,
@@ -849,6 +859,11 @@ def record_cash_event(
         _raise_api_error(
             status.HTTP_409_CONFLICT,
             ApiErrorDetail(code="INSUFFICIENT_CASH", message=str(error)),
+        )
+    except FutureTimestamp as error:
+        _raise_api_error(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            ApiErrorDetail(code="FUTURE_TIMESTAMP", message=str(error)),
         )
     except InvalidPortfolioValue as error:
         _raise_api_error(

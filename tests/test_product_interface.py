@@ -48,7 +48,10 @@ def test_serves_public_auth_setup_and_authenticated_app_shell() -> None:
         "conversation-list",
         "account-display-name",
         "account-email",
+        "header-account-name",
+        "account-message",
         "logout-button",
+        "header-logout-button",
         "question-form",
         "portfolio-view",
         "portfolio-tab-overview",
@@ -76,13 +79,15 @@ def test_serves_public_auth_setup_and_authenticated_app_shell() -> None:
 def test_client_script_preserves_session_identity_safe_text_and_question_boundary() -> None:
     """前端应使用 Session-derived identity、安全 DOM 和独立 question 请求。"""
 
-    _, script, _ = _product_assets()
+    page, script, _ = _product_assets()
 
     for marker in (
         "account: null",
         "authGeneration",
         "loadedUserId",
         "portfolioGeneration",
+        "portfolioReadState",
+        "authTransition",
         "questionGeneration",
         'requestJson("/v1/auth/session")',
         'requestJson("/v1/auth/register"',
@@ -93,12 +98,50 @@ def test_client_script_preserves_session_identity_safe_text_and_question_boundar
         "questionPending",
         'state.writeState !== "refresh_required"',
         'HTTP_500: "unexpected_server_error"',
+        'FUTURE_TIMESTAMP: "future_time"',
+        'INVALID_TRANSACTION: "invalid_transaction"',
+        'INVALID_CASH_EVENT: "invalid_cash_event"',
+        'PORTFOLIO_ALREADY_EXISTS: "portfolio_already_exists"',
+        'state.portfolioReadState = "loading"',
+        "refreshPortfolio({ afterMutation: true })",
+        'state.authTransition = "logging_out"',
+        'state.authTransition = "restoring"',
+        'state.authTransition = "session_error"',
+        'setMessage(messageElement, "logout_failed")',
+        "state.portfolioController?.abort()",
+        "state.questionController?.abort()",
+        "setAuthNavigationDisabled(true)",
         "capturedUserId",
         ".textContent",
         "createOpeningRow",
         "position_type",
     ):
         assert marker in script
+
+    for code, label in {
+        "AUTHENTICATION_REQUIRED": "session_expired",
+        "PORTFOLIO_SETUP_REQUIRED": "setup_required",
+        "PORTFOLIO_NOT_FOUND": "portfolio_unavailable",
+        "USER_NOT_FOUND": "portfolio_unavailable",
+        "INVALID_CREDENTIALS": "invalid_credentials",
+        "EMAIL_ALREADY_REGISTERED": "email_registered",
+        "INVALID_ACCOUNT": "invalid_account",
+        "PORTFOLIO_ALREADY_EXISTS": "portfolio_already_exists",
+        "INVALID_PORTFOLIO": "invalid_portfolio",
+        "INVALID_OPENING_STATE": "invalid_opening_state",
+        "INVALID_TRANSACTION": "invalid_transaction",
+        "INVALID_CASH_EVENT": "invalid_cash_event",
+        "VALIDATION_ERROR": "invalid_form",
+        "INSUFFICIENT_CASH": "insufficient_cash",
+        "INSUFFICIENT_SHARES": "insufficient_shares",
+        "OPENING_STATE_SEALED": "opening_sealed",
+        "FUTURE_TIMESTAMP": "future_time",
+    }.items():
+        assert f'{code}: "{label}"' in script
+        assert script.count(f"{label}:") >= 2
+
+    assert 'ERROR_LABELS[error.code] ?? "unexpected_server_error"' in script
+    assert "20260831-m8-auth-2" in page
 
     assert "innerHTML" not in script
     assert "outerHTML" not in script
@@ -107,6 +150,12 @@ def test_client_script_preserves_session_identity_safe_text_and_question_boundar
     assert "LOCAL_POINTER" not in script
     assert "localStorage" not in script
     assert "JSON.stringify({ user_id" not in script
+    assert (
+        "error.message"
+        not in script[
+            script.index("function apiMessageKey") : script.index("function formatDecimal")
+        ]
+    )
     assert "/v1/portfolios/" not in script
     assert "/v1/portfolio/opening-positions" in script
     assert "/v1/portfolio/transactions" in script

@@ -11,6 +11,10 @@ class InvalidPortfolioValue(PortfolioError, ValueError):
     """输入或持久化状态不满足领域约束。"""
 
 
+class FutureTimestamp(InvalidPortfolioValue):
+    """Ledger 记录时间晚于 Application Clock。"""
+
+
 class InvalidLedger(PortfolioError):
     """Transaction Ledger 无法按可靠顺序重放。"""
 

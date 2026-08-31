@@ -19,7 +19,7 @@ from position_pilot.application.portfolio_service import (
     RecordCashEventCommand,
     RecordTransactionCommand,
 )
-from position_pilot.domain.errors import InsufficientCash, InvalidPortfolioValue
+from position_pilot.domain.errors import FutureTimestamp, InsufficientCash, InvalidPortfolioValue
 from position_pilot.domain.portfolio import (
     CashEvent,
     CashEventType,
@@ -250,7 +250,7 @@ def test_future_transaction_is_rejected_before_ledger_read_or_persistence() -> N
         CreateUserCommand(display_name="Alice", initial_cash=Decimal("1000"))
     )
 
-    with pytest.raises(InvalidPortfolioValue, match="occurred_at 不得晚于当前时间"):
+    with pytest.raises(FutureTimestamp, match="occurred_at 不得晚于当前时间"):
         service.record_transaction(
             RecordTransactionCommand(
                 user_id=user.id,
@@ -420,7 +420,7 @@ def test_future_cash_event_is_rejected_before_ledger_read_or_persistence() -> No
     service, store = make_service()
     user = service.create_user(CreateUserCommand(display_name="Alice", initial_cash=Decimal("100")))
 
-    with pytest.raises(InvalidPortfolioValue, match="occurred_at 不得晚于当前时间"):
+    with pytest.raises(FutureTimestamp, match="occurred_at 不得晚于当前时间"):
         service.record_cash_event(
             RecordCashEventCommand(
                 user_id=user.id,

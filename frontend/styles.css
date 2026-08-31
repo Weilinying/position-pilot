@@ -1159,6 +1159,80 @@ footer {
   margin-bottom: 5px;
 }
 
+.app-topbar-title,
+.app-topbar-actions,
+.topbar-account,
+.topbar-account-copy {
+  min-width: 0;
+}
+
+.app-topbar-actions,
+.topbar-account {
+  display: flex;
+  align-items: center;
+}
+
+.app-topbar-actions {
+  gap: 14px;
+}
+
+.topbar-account {
+  gap: 9px;
+  max-width: min(320px, 38vw);
+}
+
+.account-avatar {
+  display: grid;
+  flex: 0 0 34px;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border-radius: 50%;
+  color: var(--paper);
+  background: var(--signal-dark);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.topbar-account-copy {
+  display: flex;
+  flex-direction: column;
+}
+
+.topbar-account-copy small,
+.topbar-account-copy strong,
+.topbar-account-message {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.topbar-account-copy small {
+  color: var(--ink-soft);
+  font-size: 10px;
+}
+
+.topbar-account-copy strong {
+  font-size: 13px;
+}
+
+.topbar-account-message {
+  max-width: 260px;
+  margin: 0;
+  color: var(--danger);
+  font-size: 10px;
+}
+
+.topbar-account-message:empty {
+  display: none;
+}
+
+.topbar-logout {
+  flex: 0 0 auto;
+  margin: 0;
+  font-size: 11px;
+}
+
 .view-title {
   margin: 0;
   font-family: Georgia, "Times New Roman", serif;
@@ -1694,6 +1768,27 @@ footer {
     padding: 14px 72px 12px 18px;
   }
 
+  .app-topbar-actions {
+    gap: 8px;
+  }
+
+  .topbar-account {
+    max-width: min(42vw, 180px);
+  }
+
+  .topbar-account-copy small,
+  .account-avatar {
+    display: none;
+  }
+
+  .topbar-account-copy strong {
+    max-width: 92px;
+  }
+
+  .topbar-logout {
+    padding: 5px;
+  }
+
   .view-title {
     font-size: 23px;
   }
@@ -2154,11 +2249,16 @@ footer {
   }
 
   .setup-account-actions {
+    min-width: 0;
     padding-right: 58px;
   }
 
   .setup-account-actions > span {
-    display: none;
+    display: block;
+    max-width: 100px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .opening-row-fields {
@@ -2175,5 +2275,42 @@ footer {
 
   .account-card {
     display: none;
+  }
+}
+
+@media (max-width: 400px) {
+  .setup-shell .brand > span:last-child {
+    display: none;
+  }
+
+  .setup-account-actions {
+    gap: 7px;
+    padding-right: 54px;
+  }
+
+  .setup-account-actions > span {
+    max-width: 72px;
+  }
+
+  .app-topbar {
+    gap: 10px;
+  }
+
+  .app-topbar .eyebrow {
+    display: none;
+  }
+
+  .topbar-account {
+    gap: 4px;
+    max-width: 46vw;
+  }
+
+  .topbar-account-copy strong {
+    max-width: 62px;
+    font-size: 11px;
+  }
+
+  .topbar-logout {
+    font-size: 10px;
   }
 }

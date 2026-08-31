@@ -42,9 +42,20 @@ const translations = {
     logging_in: "Signing in…",
     register_unknown: "Account creation result unknown. Do not retry automatically; try logging in with the same email.",
     login_network_error: "Could not reach the local server. Check that PositionPilot is running and try again.",
+    session_restore_failed: "Could not verify your current session. Reload this page after checking the local server; do not register or log in again yet.",
     unexpected_server_error: "The local server could not complete this request. Reload to recover the current state before trying again.",
     invalid_credentials: "Email or password is incorrect.",
     email_registered: "That email is already registered. Log in instead.",
+    logging_out: "Signing out…",
+    logout_failed: "Sign out did not complete. You are still signed in; check the local server and try again.",
+    setup_required: "Complete portfolio setup before continuing.",
+    portfolio_unavailable: "This portfolio is unavailable for the current session.",
+    invalid_account: "Check the account details and try again.",
+    portfolio_already_exists: "A portfolio already exists for this account. Reload to recover it.",
+    invalid_portfolio: "Check the starting cash and positions, then try again.",
+    invalid_opening_state: "Check the existing-position rows and try again.",
+    invalid_transaction: "Check the transaction fields and try again.",
+    invalid_cash_event: "Check the cash-entry fields and try again.",
     setup_eyebrow: "Starting state",
     setup_title: "Tell PositionPilot where you are starting.",
     setup_summary: "Cash and existing positions form your opening state. They are not fabricated trades, and you can start with zero.",
@@ -180,7 +191,7 @@ const translations = {
   zh: {
     meta_description: "PositionPilot — 基于真实投资组合的投资决策支持。", brand_home: "PositionPilot 主页", account_actions: "账户操作", product_capabilities: "产品能力", authentication: "身份验证", create_account: "注册账户", log_in: "登录", log_out: "退出登录",
     hero_eyebrow: "先看持仓，再谈观点", hero_title: "基于你真实持仓的投资分析。", hero_summary: "录入起始持仓，维护不可变交易账本，并结合当前投资组合和市场信息提出具体问题。", start_local_account: "注册本地账户 ↗", already_have_account: "我已有账户", local_auth_boundary: "仅限本地账户 · 推荐服务只绑定 127.0.0.1。", proof_state: "确定性投资组合状态", proof_ledger: "不可变交易与现金账本", proof_agent: "真实的上下文 Agent 回答", engineering_smoke_notice: "工程 Smoke · Fake Agent 与固定测试数据 · 不是真实投资分析", decision_support_notice: "仅提供决策支持，不执行自动交易。", footer_disclaimer: "仅提供决策支持，不执行自动交易。", footer_boundary: "事实 · 推断 · 未知", local_workspace: "本地决策工作区",
-    account_eyebrow: "一个账户，一个投资组合。", register_title: "注册你的本地账户。", login_title: "欢迎回来。", auth_summary: "密码只在本地进行哈希保存；系统通过浏览器私有 Session 恢复身份，不再使用 UUID。", register: "注册", display_name: "显示名称", display_name_placeholder: "希望我们如何称呼你？", email: "邮箱", password: "密码", password_hint: "请输入 8–128 个字符。此本地 V1 暂不提供密码重置。", confirm_password: "确认密码", back_home: "返回主页", required_fields: "请填写所有必填字段。", invalid_email: "请输入有效邮箱。", invalid_password: "密码必须为 8–128 个字符。", password_mismatch: "两次输入的密码不一致。", registering: "正在创建本地账户…", logging_in: "正在登录…", register_unknown: "账户创建结果未知。请勿自动重试；请使用相同邮箱尝试登录。", login_network_error: "无法连接本地服务。请确认 PositionPilot 已启动后重试。", unexpected_server_error: "本地服务未能完成本次请求。请先刷新恢复当前状态，再决定是否重试。", invalid_credentials: "邮箱或密码错误。", email_registered: "该邮箱已经注册，请直接登录。",
+    account_eyebrow: "一个账户，一个投资组合。", register_title: "注册你的本地账户。", login_title: "欢迎回来。", auth_summary: "密码只在本地进行哈希保存；系统通过浏览器私有 Session 恢复身份，不再使用 UUID。", register: "注册", display_name: "显示名称", display_name_placeholder: "希望我们如何称呼你？", email: "邮箱", password: "密码", password_hint: "请输入 8–128 个字符。此本地 V1 暂不提供密码重置。", confirm_password: "确认密码", back_home: "返回主页", required_fields: "请填写所有必填字段。", invalid_email: "请输入有效邮箱。", invalid_password: "密码必须为 8–128 个字符。", password_mismatch: "两次输入的密码不一致。", registering: "正在创建本地账户…", logging_in: "正在登录…", register_unknown: "账户创建结果未知。请勿自动重试；请使用相同邮箱尝试登录。", login_network_error: "无法连接本地服务。请确认 PositionPilot 已启动后重试。", session_restore_failed: "无法确认当前 Session。请检查本地服务后刷新本页；在恢复前不要重复注册或登录。", unexpected_server_error: "本地服务未能完成本次请求。请先刷新恢复当前状态，再决定是否重试。", invalid_credentials: "邮箱或密码错误。", email_registered: "该邮箱已经注册，请直接登录。", logging_out: "正在退出…", logout_failed: "退出未完成，你仍处于登录状态。请检查本地服务后重试。", setup_required: "请先完成投资组合设置。", portfolio_unavailable: "当前 Session 无法访问此投资组合。", invalid_account: "请检查账户信息后重试。", portfolio_already_exists: "该账户已经存在投资组合，请刷新页面恢复。", invalid_portfolio: "请检查起始现金与持仓后重试。", invalid_opening_state: "请检查已有持仓记录后重试。", invalid_transaction: "请检查交易记录字段后重试。", invalid_cash_event: "请检查现金记录字段后重试。",
     setup_eyebrow: "起始状态", setup_title: "告诉 PositionPilot 你的起点。", setup_summary: "现金和已有持仓共同构成起始状态，不会被伪造成交易；也可以从零开始。", cash_balance: "现金余额", initial_cash: "初始现金", initial_cash_usd: "可用现金（USD）", cash_zero_hint: "未填写现金时，投资组合默认从 0 开始。", existing_holdings: "已有持仓", opening_positions: "起始持仓", opening_optional_hint: "可选。现在录入已持有股票，也可在第一笔交易或现金记录前稍后添加。", add_position: "添加一行持仓", start_empty: "从零开始", save_and_continue: "保存并继续 ↗", ticker: "标的", shares: "股数", average_cost: "平均成本", position_type_optional: "仓位类型（可选）", unspecified: "未分类", remove: "移除", invalid_cash: "现金必须是零或正数，且最多 8 位小数。", incomplete_position: "请完整填写标的、股数和平均成本，或移除此行。", invalid_positive_decimal: "请输入正数，且最多 8 位小数。", duplicate_position: "同一标的与仓位类型组合不能重复。", setup_saving: "正在保存起始状态…", setup_unknown: "投资组合设置结果未知。请勿自动重试；刷新页面以恢复当前状态。",
     workspace_navigation: "工作区导航", primary_navigation: "主要导航", new_question: "新问题", ask_nav: "提问", portfolio_nav: "投资组合", question_history: "问题记录", session_only: "仅当前标签页", no_questions: "还没有问题。", signed_in_as: "当前账户", context_aware: "上下文感知决策支持", chat_view_title: "投资问题", structured_state: "结构化状态", portfolio_manage_title: "投资组合工作区", portfolio_manage_summary: "查看确定性状态，或追加不可变交易与现金记录。", portfolio_ready: "投资组合已加载", portfolio_loading: "正在加载投资组合", portfolio_stale: "需要刷新", idle: "空闲", submitting: "正在保存", refresh_required: "需要刷新",
     chat_intro_eyebrow: "你的投资组合已连接", chat_intro_title: "你正在思考什么投资决策？", chat_intro_body: "提出一个具体问题。PositionPilot 会使用你的持仓及问题所需的当前信息。", no_memory_notice: "问题仅保留在当前浏览器标签页，不构成模型记忆。", investment_question: "投资问题", question_placeholder: "例如：GOOG 今天还能加一点吗？", question_ready: "将使用你的当前投资组合。", ask: "询问 PositionPilot ↗", asking: "分析中…",
@@ -200,12 +211,15 @@ const state = {
   cashRecords: [],
   openingDismissed: false,
   writeState: "idle",
+  portfolioReadState: "idle",
+  authTransition: "idle",
   authGeneration: 0,
   portfolioGeneration: 0,
   questionGeneration: 0,
   portfolioController: null,
   questionController: null,
   questionPending: false,
+  pendingQuestionView: null,
   questionCount: 0,
   activeView: "chat",
 };
@@ -220,12 +234,32 @@ const SOURCE_LABELS = {
 };
 const ERROR_LABELS = {
   HTTP_500: "unexpected_server_error",
+  AUTHENTICATION_REQUIRED: "session_expired",
+  PORTFOLIO_SETUP_REQUIRED: "setup_required",
+  PORTFOLIO_NOT_FOUND: "portfolio_unavailable",
+  USER_NOT_FOUND: "portfolio_unavailable",
   INVALID_CREDENTIALS: "invalid_credentials",
   EMAIL_ALREADY_REGISTERED: "email_registered",
+  INVALID_ACCOUNT: "invalid_account",
+  PORTFOLIO_ALREADY_EXISTS: "portfolio_already_exists",
+  INVALID_PORTFOLIO: "invalid_portfolio",
+  INVALID_OPENING_STATE: "invalid_opening_state",
+  INVALID_TRANSACTION: "invalid_transaction",
+  INVALID_CASH_EVENT: "invalid_cash_event",
+  VALIDATION_ERROR: "invalid_form",
   INSUFFICIENT_CASH: "insufficient_cash",
   INSUFFICIENT_SHARES: "insufficient_shares",
   OPENING_STATE_SEALED: "opening_sealed",
   FUTURE_TIMESTAMP: "future_time",
+  INVALID_QUESTION: "question_failed",
+  INVALID_TOOL_CALL: "question_failed",
+  TOOL_CALL_LIMIT_EXCEEDED: "question_failed",
+  TOOL_ROUND_LIMIT_EXCEEDED: "question_failed",
+  LLM_INVALID_REQUEST: "question_failed",
+  LLM_AUTHENTICATION_FAILED: "question_failed",
+  LLM_RATE_LIMITED: "question_failed",
+  LLM_PROVIDER_UNAVAILABLE: "question_failed",
+  LLM_INVALID_PROVIDER_RESPONSE: "question_failed",
 };
 
 function byId(id) {
@@ -237,7 +271,7 @@ const elements = {
   homeRegister: byId("home-register-button"), homeLogin: byId("home-login-button"), heroRegister: byId("hero-register-button"), heroLogin: byId("hero-login-button"), authHome: byId("auth-home-button"), authBack: byId("auth-back-button"), authTitle: byId("auth-title"),
   registerTab: byId("register-tab"), loginTab: byId("login-tab"), registerPanel: byId("register-panel"), loginPanel: byId("login-panel"), registerForm: byId("register-form"), registerFields: byId("register-fields"), registerName: byId("register-name"), registerEmail: byId("register-email"), registerPassword: byId("register-password"), registerConfirm: byId("register-confirm"), registerMessage: byId("register-message"), loginForm: byId("login-form"), loginFields: byId("login-fields"), loginEmail: byId("login-email"), loginPassword: byId("login-password"), loginMessage: byId("login-message"),
   setupAccountName: byId("setup-account-name"), setupLogout: byId("setup-logout-button"), setupForm: byId("setup-form"), setupFields: byId("setup-fields"), setupCash: byId("setup-initial-cash"), setupRows: byId("setup-draft-rows"), setupAddRow: byId("setup-add-row"), setupZero: byId("setup-zero-button"), setupMessage: byId("setup-message"),
-  navChat: byId("nav-chat"), navPortfolio: byId("nav-portfolio"), newQuestion: byId("new-question-button"), chatView: byId("chat-view"), portfolioView: byId("portfolio-view"), viewTitle: byId("view-title"), viewEyebrow: byId("view-eyebrow"), portfolioState: byId("portfolio-state"), writeState: byId("write-state"), reloadPortfolio: byId("reload-portfolio-button"), accountName: byId("account-display-name"), accountEmail: byId("account-email"), logout: byId("logout-button"),
+  navChat: byId("nav-chat"), navPortfolio: byId("nav-portfolio"), newQuestion: byId("new-question-button"), chatView: byId("chat-view"), portfolioView: byId("portfolio-view"), viewTitle: byId("view-title"), viewEyebrow: byId("view-eyebrow"), portfolioState: byId("portfolio-state"), writeState: byId("write-state"), reloadPortfolio: byId("reload-portfolio-button"), accountName: byId("account-display-name"), accountEmail: byId("account-email"), headerAccountName: byId("header-account-name"), headerAccountInitial: byId("header-account-initial"), accountMessage: byId("account-message"), logout: byId("logout-button"), headerLogout: byId("header-logout-button"),
   chatIntro: byId("chat-intro"), conversationScroll: byId("conversation-scroll"), conversationList: byId("conversation-list"), sessionEmpty: byId("session-empty"), sessionList: byId("session-list"), questionForm: byId("question-form"), question: byId("question"), questionHint: byId("question-hint"), ask: byId("ask-button"), responseTemplate: byId("assistant-response-template"),
   portfolioTabs: [byId("portfolio-tab-overview"), byId("portfolio-tab-trade"), byId("portfolio-tab-cash")], portfolioPanels: [byId("portfolio-overview-panel"), byId("portfolio-trade-panel"), byId("portfolio-cash-panel")], availableCash: byId("available-cash"), positionCount: byId("position-count"), positionsEmpty: byId("positions-empty"), positionList: byId("position-list"),
   openingSetup: byId("opening-setup"), reopenOpening: byId("reopen-opening-setup"), openingForm: byId("opening-form"), openingFields: byId("opening-fields"), openingRows: byId("opening-draft-rows"), addOpeningRow: byId("add-opening-row"), skipOpening: byId("skip-opening-setup"), openingMessage: byId("opening-message"), openingRecordCount: byId("opening-record-count"), openingRecordsEmpty: byId("opening-records-empty"), openingRecordList: byId("opening-record-list"),
@@ -257,7 +291,18 @@ function setLocalizedText(element, key) {
 
 function setMessage(element, keyOrText, tone = "danger", localized = true) {
   element.dataset.tone = tone;
-  element.textContent = localized ? translate(keyOrText) : keyOrText;
+  if (localized) {
+    element.dataset.i18n = keyOrText;
+    element.textContent = translate(keyOrText);
+  } else {
+    delete element.dataset.i18n;
+    element.textContent = keyOrText;
+  }
+}
+
+function clearMessage(element) {
+  delete element.dataset.i18n;
+  element.textContent = "";
 }
 
 function clearElement(element) {
@@ -333,8 +378,8 @@ async function requestJson(url, options = {}) {
   return payload;
 }
 
-function apiMessage(error) {
-  return ERROR_LABELS[error.code] ? translate(ERROR_LABELS[error.code]) : error.message;
+function apiMessageKey(error) {
+  return ERROR_LABELS[error.code] ?? "unexpected_server_error";
 }
 
 function formatDecimal(value) {
@@ -450,6 +495,8 @@ function resetSensitiveState() {
   state.cashRecords = [];
   state.openingDismissed = false;
   state.writeState = "idle";
+  state.portfolioReadState = "idle";
+  state.authTransition = "idle";
   state.portfolioGeneration += 1;
   state.questionGeneration += 1;
   state.portfolioController?.abort();
@@ -457,6 +504,7 @@ function resetSensitiveState() {
   state.portfolioController = null;
   state.questionController = null;
   state.questionPending = false;
+  state.pendingQuestionView = null;
   state.questionCount = 0;
   clearElement(elements.conversationList);
   clearElement(elements.sessionList);
@@ -468,9 +516,11 @@ function resetSensitiveState() {
   elements.cashForm.reset();
   clearElement(elements.setupRows);
   clearElement(elements.openingRows);
-  for (const message of [elements.setupMessage, elements.openingMessage, elements.tradeMessage, elements.cashMessage]) message.textContent = "";
+  for (const message of [elements.setupMessage, elements.accountMessage, elements.openingMessage, elements.tradeMessage, elements.cashMessage]) clearMessage(message);
   elements.accountName.textContent = "";
   elements.accountEmail.textContent = "";
+  elements.headerAccountName.textContent = "—";
+  elements.headerAccountInitial.textContent = "—";
   elements.setupAccountName.textContent = "";
   renderPortfolioEmpty();
   updateControls();
@@ -480,12 +530,14 @@ function renderAccount() {
   if (!state.account) return;
   elements.accountName.textContent = state.account.display_name;
   elements.accountEmail.textContent = state.account.email;
+  elements.headerAccountName.textContent = state.account.display_name;
+  elements.headerAccountInitial.textContent = state.account.display_name.trim().slice(0, 1).toUpperCase() || "?";
   elements.setupAccountName.textContent = state.account.display_name;
 }
 
 function renderPortfolioState() {
   if (!elements.portfolioState) return;
-  const key = state.writeState === "refresh_required" ? "portfolio_stale" : state.snapshot ? "portfolio_ready" : "portfolio_loading";
+  const key = state.portfolioReadState === "loading" ? "portfolio_loading" : state.writeState === "refresh_required" ? "portfolio_stale" : state.snapshot ? "portfolio_ready" : "portfolio_loading";
   setLocalizedText(elements.portfolioState, key);
   elements.portfolioState.dataset.tone = key === "portfolio_stale" ? "warning" : "success";
 }
@@ -497,19 +549,24 @@ function renderWriteState() {
 }
 
 function updateControls() {
-  const busy = state.writeState === "submitting";
+  const writeBusy = state.writeState === "submitting";
+  const readBusy = state.portfolioReadState === "loading";
+  const authBusy = state.authTransition !== "idle";
+  const busy = writeBusy || readBusy || authBusy || state.questionPending;
   const contextReady = Boolean(state.snapshot) && state.writeState !== "refresh_required";
-  elements.logout.disabled = busy;
-  elements.setupLogout.disabled = busy;
-  elements.reloadPortfolio.disabled = busy || state.questionPending;
-  elements.tradeFields.disabled = busy || state.questionPending || !contextReady;
-  elements.cashFields.disabled = busy || state.questionPending || !contextReady;
-  elements.openingFields.disabled = busy || state.questionPending || !contextReady;
-  elements.question.disabled = busy || state.questionPending || !contextReady;
-  elements.ask.disabled = busy || state.questionPending || !contextReady;
-  elements.navChat.disabled = busy || state.questionPending;
-  elements.navPortfolio.disabled = busy || state.questionPending;
-  elements.newQuestion.disabled = busy || state.questionPending;
+  elements.logout.disabled = writeBusy || authBusy;
+  elements.headerLogout.disabled = writeBusy || authBusy;
+  elements.setupLogout.disabled = writeBusy || authBusy;
+  elements.setupFields.disabled = authBusy || readBusy || state.writeState !== "idle";
+  elements.reloadPortfolio.disabled = busy;
+  elements.tradeFields.disabled = busy || !contextReady;
+  elements.cashFields.disabled = busy || !contextReady;
+  elements.openingFields.disabled = busy || !contextReady;
+  elements.question.disabled = busy || !contextReady;
+  elements.ask.disabled = busy || !contextReady;
+  elements.navChat.disabled = busy;
+  elements.navPortfolio.disabled = busy;
+  elements.newQuestion.disabled = busy;
   renderPortfolioState();
   renderWriteState();
 }
@@ -529,11 +586,17 @@ function clearAuthSecrets() {
   elements.loginPassword.value = "";
 }
 
+function setAuthNavigationDisabled(disabled) {
+  for (const control of [elements.authHome, elements.authBack, elements.registerTab, elements.loginTab]) control.disabled = disabled;
+}
+
 async function restoreSession() {
   const generation = ++state.authGeneration;
+  state.authTransition = "restoring";
   try {
     const payload = await requestJson("/v1/auth/session");
     if (generation !== state.authGeneration) return;
+    state.authTransition = "idle";
     state.account = payload.account;
     renderAccount();
     if (state.account.portfolio_ready) {
@@ -545,7 +608,15 @@ async function restoreSession() {
   } catch (error) {
     if (generation !== state.authGeneration) return;
     if (error instanceof ApiError && error.status === 401) enterHome();
-    else enterHome();
+    else {
+      resetSensitiveState();
+      setAuthMode("login");
+      state.authTransition = "session_error";
+      elements.registerFields.disabled = true;
+      elements.loginFields.disabled = true;
+      setAuthNavigationDisabled(true);
+      setMessage(elements.loginMessage, "session_restore_failed");
+    }
   }
 }
 
@@ -562,8 +633,9 @@ function validateEmail(value) {
 
 async function handleRegister(event) {
   event.preventDefault();
+  if (state.authTransition !== "idle") return;
   clearFieldErrors(elements.registerForm);
-  elements.registerMessage.textContent = "";
+  clearMessage(elements.registerMessage);
   const name = elements.registerName.value.trim();
   const email = elements.registerEmail.value.trim();
   const password = elements.registerPassword.value;
@@ -575,11 +647,14 @@ async function handleRegister(event) {
   if (confirm !== password) { showFieldError(elements.registerConfirm, "password_mismatch"); valid = false; }
   if (!valid) { setMessage(elements.registerMessage, "invalid_form"); return; }
   const generation = ++state.authGeneration;
+  state.authTransition = "registering";
   elements.registerFields.disabled = true;
+  setAuthNavigationDisabled(true);
   setMessage(elements.registerMessage, "registering", "active");
   try {
     const payload = await requestJson("/v1/auth/register", { method: "POST", body: JSON.stringify({ display_name: name, email, password }) });
     if (generation !== state.authGeneration) return;
+    state.authTransition = "idle";
     state.account = payload.account;
     elements.registerPassword.value = "";
     elements.registerConfirm.value = "";
@@ -587,60 +662,100 @@ async function handleRegister(event) {
     showSetup();
   } catch (error) {
     if (generation !== state.authGeneration) return;
+    state.authTransition = "idle";
     if (error instanceof TypeError) setMessage(elements.registerMessage, "register_unknown");
-    else if (error instanceof ApiError) setMessage(elements.registerMessage, apiMessage(error), "danger", false);
+    else if (error instanceof ApiError) setMessage(elements.registerMessage, apiMessageKey(error));
     else setMessage(elements.registerMessage, "login_network_error");
   } finally {
-    if (generation === state.authGeneration) elements.registerFields.disabled = false;
+    if (generation === state.authGeneration) {
+      state.authTransition = "idle";
+      elements.registerFields.disabled = false;
+      setAuthNavigationDisabled(false);
+    }
   }
 }
 
 async function handleLogin(event) {
   event.preventDefault();
+  if (state.authTransition !== "idle") return;
   clearFieldErrors(elements.loginForm);
-  elements.loginMessage.textContent = "";
+  clearMessage(elements.loginMessage);
   const email = elements.loginEmail.value.trim();
   const password = elements.loginPassword.value;
   if (!validateEmail(email)) { showFieldError(elements.loginEmail, "invalid_email"); setMessage(elements.loginMessage, "invalid_form"); return; }
   if (!password || password.length > 128) { showFieldError(elements.loginPassword, "invalid_password"); setMessage(elements.loginMessage, "invalid_form"); return; }
   const generation = ++state.authGeneration;
+  state.authTransition = "logging_in";
   elements.loginFields.disabled = true;
+  setAuthNavigationDisabled(true);
   setMessage(elements.loginMessage, "logging_in", "active");
   try {
     const payload = await requestJson("/v1/auth/login", { method: "POST", body: JSON.stringify({ email, password }) });
     if (generation !== state.authGeneration) return;
+    state.authTransition = "idle";
     state.account = payload.account;
     elements.loginPassword.value = "";
     renderAccount();
     if (state.account.portfolio_ready) { showOnly(elements.appShell); await refreshPortfolio(); } else showSetup();
   } catch (error) {
     if (generation !== state.authGeneration) return;
+    state.authTransition = "idle";
     if (error instanceof TypeError) setMessage(elements.loginMessage, "login_network_error");
-    else if (error instanceof ApiError) setMessage(elements.loginMessage, apiMessage(error), "danger", false);
+    else if (error instanceof ApiError) setMessage(elements.loginMessage, apiMessageKey(error));
     else setMessage(elements.loginMessage, "login_network_error");
   } finally {
-    if (generation === state.authGeneration) elements.loginFields.disabled = false;
+    if (generation === state.authGeneration) {
+      state.authTransition = "idle";
+      elements.loginFields.disabled = false;
+      setAuthNavigationDisabled(false);
+    }
   }
 }
 
 async function logout() {
-  if (state.writeState === "submitting") return;
+  if (state.authTransition !== "idle" || state.writeState === "submitting") return;
+  const cancelledQuestionView = state.pendingQuestionView;
+  state.portfolioGeneration += 1;
+  state.questionGeneration += 1;
+  state.portfolioController?.abort();
+  state.questionController?.abort();
+  state.portfolioController = null;
+  state.questionController = null;
+  state.portfolioReadState = "idle";
+  state.questionPending = false;
+  state.pendingQuestionView = null;
+  state.authTransition = "logging_out";
   ++state.authGeneration;
-  try { await requestJson("/v1/auth/logout", { method: "POST" }); } catch { /* Cookie 仍在前端状态中按失效处理。 */ }
-  enterHome();
+  const messageElement = elements.setupView.hidden ? elements.accountMessage : elements.setupMessage;
+  setMessage(messageElement, "logging_out", "active");
+  updateControls();
+  try {
+    await requestJson("/v1/auth/logout", { method: "POST" });
+    enterHome();
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 401) enterHome("session_expired");
+    else {
+      state.authTransition = "idle";
+      if (cancelledQuestionView) renderQuestionError(cancelledQuestionView, new Error("Question cancelled during sign out"));
+      setLocalizedText(elements.ask, "ask");
+      setLocalizedText(elements.questionHint, "question_ready");
+      setMessage(messageElement, "logout_failed");
+      updateControls();
+    }
+  }
 }
 
 async function handleSetup(event, forceEmpty = false) {
   event?.preventDefault();
+  if (state.writeState !== "idle" || state.authTransition !== "idle" || state.portfolioReadState !== "idle") return;
   clearFieldErrors(elements.setupForm);
-  elements.setupMessage.textContent = "";
+  clearMessage(elements.setupMessage);
   const cash = forceEmpty ? "0" : (elements.setupCash.value.trim() || "0");
   if (!DECIMAL_PATTERN.test(cash)) { showFieldError(elements.setupCash, "invalid_cash"); setMessage(elements.setupMessage, "invalid_form"); return; }
   const positions = forceEmpty ? [] : collectOpeningPositions(elements.setupRows);
   if (positions === null) { setMessage(elements.setupMessage, "invalid_form"); return; }
   state.writeState = "submitting";
-  elements.setupFields.disabled = true;
-  elements.setupLogout.disabled = true;
+  updateControls();
   setMessage(elements.setupMessage, "setup_saving", "active");
   try {
     const snapshot = await requestJson("/v1/portfolio", { method: "POST", body: JSON.stringify({ initial_cash: cash, opening_positions: positions }) });
@@ -648,19 +763,18 @@ async function handleSetup(event, forceEmpty = false) {
     state.snapshot = snapshot;
     state.loadedUserId = snapshot.user_id;
     state.openingDismissed = positions.length === 0;
-    state.writeState = "idle";
     clearElement(elements.setupRows);
     showOnly(elements.appShell);
-    await refreshPortfolio();
+    const refreshed = await refreshPortfolio({ afterMutation: true });
+    if (!state.account) return;
+    state.writeState = refreshed ? "idle" : "refresh_required";
   } catch (error) {
-    state.writeState = error instanceof TypeError ? "refresh_required" : "idle";
+    state.writeState = error instanceof TypeError || (error instanceof ApiError && error.code === "PORTFOLIO_ALREADY_EXISTS") ? "refresh_required" : "idle";
     if (error instanceof TypeError) setMessage(elements.setupMessage, "setup_unknown");
     else if (error instanceof ApiError && error.status === 401) enterHome("session_expired");
-    else if (error instanceof ApiError) setMessage(elements.setupMessage, apiMessage(error), "danger", false);
-    else setMessage(elements.setupMessage, "setup_unknown");
+    else if (error instanceof ApiError) setMessage(elements.setupMessage, apiMessageKey(error));
+    else { state.writeState = "refresh_required"; setMessage(elements.setupMessage, "setup_unknown"); }
   } finally {
-    elements.setupFields.disabled = false;
-    elements.setupLogout.disabled = false;
     updateControls();
   }
 }
@@ -742,12 +856,14 @@ function renderPortfolio() {
   updateControls();
 }
 
-async function refreshPortfolio() {
+async function refreshPortfolio({ afterMutation = false } = {}) {
+  if (state.authTransition !== "idle" || state.questionPending || state.portfolioReadState !== "idle" || (state.writeState === "submitting" && !afterMutation)) return false;
   const generation = ++state.portfolioGeneration;
   state.portfolioController?.abort();
   const controller = new AbortController();
   state.portfolioController = controller;
-  renderPortfolioState();
+  state.portfolioReadState = "loading";
+  updateControls();
   try {
     const [snapshot, openings, transactions, cash] = await Promise.all([
       requestJson("/v1/portfolio", { signal: controller.signal }),
@@ -761,7 +877,7 @@ async function refreshPortfolio() {
     state.openingRecords = openings.items;
     state.transactionRecords = transactions.items;
     state.cashRecords = cash.items;
-    state.writeState = "idle";
+    if (!afterMutation) state.writeState = "idle";
     renderPortfolio();
     return true;
   } catch (error) {
@@ -771,7 +887,11 @@ async function refreshPortfolio() {
     renderPortfolioState(); renderWriteState(); updateControls();
     return false;
   } finally {
-    if (generation === state.portfolioGeneration) state.portfolioController = null;
+    if (generation === state.portfolioGeneration) {
+      state.portfolioController = null;
+      state.portfolioReadState = "idle";
+      updateControls();
+    }
   }
 }
 
@@ -784,23 +904,29 @@ function localDateTimeToIso(input) {
 }
 
 async function runMutation({ url, payload, messageElement, successKey, recordId }) {
-  if (state.writeState !== "idle" || !state.loadedUserId || !state.snapshot) return false;
+  if (state.writeState !== "idle" || state.portfolioReadState !== "idle" || state.authTransition !== "idle" || state.questionPending || !state.loadedUserId || !state.snapshot) return false;
   const capturedUserId = state.loadedUserId;
   state.writeState = "submitting";
-  messageElement.textContent = "";
+  clearMessage(messageElement);
   updateControls();
   try {
     const result = await requestJson(url, { method: "POST", body: JSON.stringify(payload) });
     if (state.loadedUserId !== capturedUserId) return false;
-    const refreshed = await refreshPortfolio();
-    if (!refreshed) { state.writeState = "refresh_required"; setMessage(messageElement, "refresh_failed"); return false; }
+    const refreshed = await refreshPortfolio({ afterMutation: true });
+    if (!refreshed) {
+      if (!state.account) return false;
+      state.writeState = "refresh_required";
+      setMessage(messageElement, "refresh_failed");
+      return false;
+    }
+    state.writeState = "idle";
     const id = recordId(result);
     setMessage(messageElement, id ? `${translate(successKey)} · ${id}` : translate(successKey), "success", false);
     return true;
   } catch (error) {
     if (error instanceof TypeError) { state.writeState = "refresh_required"; setMessage(messageElement, "mutation_unknown"); }
     else if (error instanceof ApiError && error.status === 401) enterHome("session_expired");
-    else if (error instanceof ApiError) { state.writeState = "idle"; setMessage(messageElement, apiMessage(error), "danger", false); }
+    else if (error instanceof ApiError) { state.writeState = "idle"; setMessage(messageElement, apiMessageKey(error)); }
     else { state.writeState = "refresh_required"; setMessage(messageElement, "mutation_unknown"); }
     return false;
   } finally {
@@ -818,7 +944,7 @@ function validateRequiredPositive(field) {
 async function handleTrade(event) {
   event.preventDefault();
   clearFieldErrors(elements.tradeForm);
-  elements.tradeMessage.textContent = "";
+  clearMessage(elements.tradeMessage);
   const ticker = elements.tradeTicker.value.trim().toUpperCase();
   if (!ticker) showFieldError(elements.tradeTicker, "required_fields");
   const price = validateRequiredPositive(elements.tradePrice);
@@ -837,7 +963,7 @@ async function handleTrade(event) {
 async function handleCash(event) {
   event.preventDefault();
   clearFieldErrors(elements.cashForm);
-  elements.cashMessage.textContent = "";
+  clearMessage(elements.cashMessage);
   const amount = validateRequiredPositive(elements.cashAmount);
   if (!amount) { setMessage(elements.cashMessage, "invalid_form"); return; }
   const payload = { event_type: elements.cashType.value, amount };
@@ -925,7 +1051,7 @@ function renderQuestionError(view, error) {
   setLocalizedText(view.title, "answer_failed");
   view.status.textContent = error.code ?? "ERROR";
   view.status.dataset.tone = "danger";
-  view.answer.textContent = error instanceof ApiError ? apiMessage(error) : translate("question_failed");
+  setLocalizedText(view.answer, error instanceof ApiError ? apiMessageKey(error) : "question_failed");
   view.count.textContent = "0";
   clearElement(view.sources);
   view.details.open = false;
@@ -935,7 +1061,7 @@ async function handleQuestion(event) {
   event.preventDefault();
   const question = elements.question.value.trim();
   if (!question) { setMessage(elements.questionHint, "question_required"); elements.question.focus(); return; }
-  if (state.questionPending || state.writeState !== "idle" || !state.loadedUserId || !state.snapshot) return;
+  if (state.questionPending || state.writeState !== "idle" || state.portfolioReadState !== "idle" || state.authTransition !== "idle" || !state.loadedUserId || !state.snapshot) return;
   const capturedUserId = state.loadedUserId;
   const generation = ++state.questionGeneration;
   state.questionController?.abort();
@@ -945,6 +1071,7 @@ async function handleQuestion(event) {
   setLocalizedText(elements.ask, "asking");
   updateControls();
   const view = createQuestionExchange(question);
+  state.pendingQuestionView = view;
   elements.question.value = "";
   try {
     const payload = await requestJson("/v1/investment/questions", { method: "POST", body: JSON.stringify({ question }), signal: controller.signal });
@@ -955,7 +1082,7 @@ async function handleQuestion(event) {
     if (error instanceof ApiError && error.status === 401) enterHome("session_expired");
     else renderQuestionError(view, error);
   } finally {
-    if (generation === state.questionGeneration) { state.questionPending = false; state.questionController = null; setLocalizedText(elements.ask, "ask"); setLocalizedText(elements.questionHint, "question_ready"); updateControls(); }
+    if (generation === state.questionGeneration) { state.questionPending = false; state.pendingQuestionView = null; state.questionController = null; setLocalizedText(elements.ask, "ask"); setLocalizedText(elements.questionHint, "question_ready"); updateControls(); }
   }
 }
 
@@ -979,23 +1106,24 @@ function switchPortfolioTab(index) {
 
 function bindEvents() {
   elements.languageToggle.addEventListener("click", () => { state.language = state.language === "en" ? "zh" : "en"; applyTranslations(); renderPortfolio(); });
-  for (const button of [elements.homeRegister, elements.heroRegister]) button.addEventListener("click", () => setAuthMode("register"));
-  for (const button of [elements.homeLogin, elements.heroLogin]) button.addEventListener("click", () => setAuthMode("login"));
-  for (const button of [elements.authHome, elements.authBack]) button.addEventListener("click", () => { clearAuthSecrets(); showOnly(elements.homeView); });
-  elements.registerTab.addEventListener("click", () => setAuthMode("register"));
-  elements.loginTab.addEventListener("click", () => setAuthMode("login"));
+  for (const button of [elements.homeRegister, elements.heroRegister]) button.addEventListener("click", () => { if (state.authTransition === "idle") setAuthMode("register"); });
+  for (const button of [elements.homeLogin, elements.heroLogin]) button.addEventListener("click", () => { if (state.authTransition === "idle") setAuthMode("login"); });
+  for (const button of [elements.authHome, elements.authBack]) button.addEventListener("click", () => { if (state.authTransition !== "idle") return; state.authGeneration += 1; clearAuthSecrets(); showOnly(elements.homeView); });
+  elements.registerTab.addEventListener("click", () => { if (state.authTransition === "idle") setAuthMode("register"); });
+  elements.loginTab.addEventListener("click", () => { if (state.authTransition === "idle") setAuthMode("login"); });
   elements.registerForm.addEventListener("submit", handleRegister);
   elements.loginForm.addEventListener("submit", handleLogin);
   elements.setupForm.addEventListener("submit", (event) => handleSetup(event));
   elements.setupZero.addEventListener("click", () => handleSetup(null, true));
   elements.setupAddRow.addEventListener("click", () => createOpeningRow(elements.setupRows));
   elements.logout.addEventListener("click", logout);
+  elements.headerLogout.addEventListener("click", logout);
   elements.setupLogout.addEventListener("click", logout);
   elements.navChat.addEventListener("click", () => switchAppView("chat"));
   elements.navPortfolio.addEventListener("click", () => switchAppView("portfolio"));
   elements.newQuestion.addEventListener("click", () => { switchAppView("chat", false); elements.question.focus(); });
   elements.portfolioTabs.forEach((tab, index) => tab.addEventListener("click", () => switchPortfolioTab(index)));
-  elements.reloadPortfolio.addEventListener("click", refreshPortfolio);
+  elements.reloadPortfolio.addEventListener("click", () => refreshPortfolio());
   elements.addOpeningRow.addEventListener("click", () => createOpeningRow(elements.openingRows));
   elements.skipOpening.addEventListener("click", () => { state.openingDismissed = true; renderOpeningAvailability(); });
   elements.reopenOpening.addEventListener("click", () => { state.openingDismissed = false; renderOpeningAvailability(); });
