@@ -42,6 +42,7 @@ const translations = {
     logging_in: "Signing in…",
     register_unknown: "Account creation result unknown. Do not retry automatically; try logging in with the same email.",
     login_network_error: "Could not reach the local server. Check that PositionPilot is running and try again.",
+    unexpected_server_error: "The local server could not complete this request. Reload to recover the current state before trying again.",
     invalid_credentials: "Email or password is incorrect.",
     email_registered: "That email is already registered. Log in instead.",
     setup_eyebrow: "Starting state",
@@ -179,7 +180,7 @@ const translations = {
   zh: {
     meta_description: "PositionPilot — 基于真实投资组合的投资决策支持。", brand_home: "PositionPilot 主页", account_actions: "账户操作", product_capabilities: "产品能力", authentication: "身份验证", create_account: "注册账户", log_in: "登录", log_out: "退出登录",
     hero_eyebrow: "先看持仓，再谈观点", hero_title: "基于你真实持仓的投资分析。", hero_summary: "录入起始持仓，维护不可变交易账本，并结合当前投资组合和市场信息提出具体问题。", start_local_account: "注册本地账户 ↗", already_have_account: "我已有账户", local_auth_boundary: "仅限本地账户 · 推荐服务只绑定 127.0.0.1。", proof_state: "确定性投资组合状态", proof_ledger: "不可变交易与现金账本", proof_agent: "真实的上下文 Agent 回答", engineering_smoke_notice: "工程 Smoke · Fake Agent 与固定测试数据 · 不是真实投资分析", decision_support_notice: "仅提供决策支持，不执行自动交易。", footer_disclaimer: "仅提供决策支持，不执行自动交易。", footer_boundary: "事实 · 推断 · 未知", local_workspace: "本地决策工作区",
-    account_eyebrow: "一个账户，一个投资组合。", register_title: "注册你的本地账户。", login_title: "欢迎回来。", auth_summary: "密码只在本地进行哈希保存；系统通过浏览器私有 Session 恢复身份，不再使用 UUID。", register: "注册", display_name: "显示名称", display_name_placeholder: "希望我们如何称呼你？", email: "邮箱", password: "密码", password_hint: "请输入 8–128 个字符。此本地 V1 暂不提供密码重置。", confirm_password: "确认密码", back_home: "返回主页", required_fields: "请填写所有必填字段。", invalid_email: "请输入有效邮箱。", invalid_password: "密码必须为 8–128 个字符。", password_mismatch: "两次输入的密码不一致。", registering: "正在创建本地账户…", logging_in: "正在登录…", register_unknown: "账户创建结果未知。请勿自动重试；请使用相同邮箱尝试登录。", login_network_error: "无法连接本地服务。请确认 PositionPilot 已启动后重试。", invalid_credentials: "邮箱或密码错误。", email_registered: "该邮箱已经注册，请直接登录。",
+    account_eyebrow: "一个账户，一个投资组合。", register_title: "注册你的本地账户。", login_title: "欢迎回来。", auth_summary: "密码只在本地进行哈希保存；系统通过浏览器私有 Session 恢复身份，不再使用 UUID。", register: "注册", display_name: "显示名称", display_name_placeholder: "希望我们如何称呼你？", email: "邮箱", password: "密码", password_hint: "请输入 8–128 个字符。此本地 V1 暂不提供密码重置。", confirm_password: "确认密码", back_home: "返回主页", required_fields: "请填写所有必填字段。", invalid_email: "请输入有效邮箱。", invalid_password: "密码必须为 8–128 个字符。", password_mismatch: "两次输入的密码不一致。", registering: "正在创建本地账户…", logging_in: "正在登录…", register_unknown: "账户创建结果未知。请勿自动重试；请使用相同邮箱尝试登录。", login_network_error: "无法连接本地服务。请确认 PositionPilot 已启动后重试。", unexpected_server_error: "本地服务未能完成本次请求。请先刷新恢复当前状态，再决定是否重试。", invalid_credentials: "邮箱或密码错误。", email_registered: "该邮箱已经注册，请直接登录。",
     setup_eyebrow: "起始状态", setup_title: "告诉 PositionPilot 你的起点。", setup_summary: "现金和已有持仓共同构成起始状态，不会被伪造成交易；也可以从零开始。", cash_balance: "现金余额", initial_cash: "初始现金", initial_cash_usd: "可用现金（USD）", cash_zero_hint: "未填写现金时，投资组合默认从 0 开始。", existing_holdings: "已有持仓", opening_positions: "起始持仓", opening_optional_hint: "可选。现在录入已持有股票，也可在第一笔交易或现金记录前稍后添加。", add_position: "添加一行持仓", start_empty: "从零开始", save_and_continue: "保存并继续 ↗", ticker: "标的", shares: "股数", average_cost: "平均成本", position_type_optional: "仓位类型（可选）", unspecified: "未分类", remove: "移除", invalid_cash: "现金必须是零或正数，且最多 8 位小数。", incomplete_position: "请完整填写标的、股数和平均成本，或移除此行。", invalid_positive_decimal: "请输入正数，且最多 8 位小数。", duplicate_position: "同一标的与仓位类型组合不能重复。", setup_saving: "正在保存起始状态…", setup_unknown: "投资组合设置结果未知。请勿自动重试；刷新页面以恢复当前状态。",
     workspace_navigation: "工作区导航", primary_navigation: "主要导航", new_question: "新问题", ask_nav: "提问", portfolio_nav: "投资组合", question_history: "问题记录", session_only: "仅当前标签页", no_questions: "还没有问题。", signed_in_as: "当前账户", context_aware: "上下文感知决策支持", chat_view_title: "投资问题", structured_state: "结构化状态", portfolio_manage_title: "投资组合工作区", portfolio_manage_summary: "查看确定性状态，或追加不可变交易与现金记录。", portfolio_ready: "投资组合已加载", portfolio_loading: "正在加载投资组合", portfolio_stale: "需要刷新", idle: "空闲", submitting: "正在保存", refresh_required: "需要刷新",
     chat_intro_eyebrow: "你的投资组合已连接", chat_intro_title: "你正在思考什么投资决策？", chat_intro_body: "提出一个具体问题。PositionPilot 会使用你的持仓及问题所需的当前信息。", no_memory_notice: "问题仅保留在当前浏览器标签页，不构成模型记忆。", investment_question: "投资问题", question_placeholder: "例如：GOOG 今天还能加一点吗？", question_ready: "将使用你的当前投资组合。", ask: "询问 PositionPilot ↗", asking: "分析中…",
@@ -218,6 +219,7 @@ const SOURCE_LABELS = {
   MARKET_CONTEXT: "source_market",
 };
 const ERROR_LABELS = {
+  HTTP_500: "unexpected_server_error",
   INVALID_CREDENTIALS: "invalid_credentials",
   EMAIL_ALREADY_REGISTERED: "email_registered",
   INSUFFICIENT_CASH: "insufficient_cash",

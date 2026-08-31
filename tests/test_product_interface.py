@@ -92,6 +92,7 @@ def test_client_script_preserves_session_identity_safe_text_and_question_boundar
         "body: JSON.stringify({ question })",
         "questionPending",
         'state.writeState !== "refresh_required"',
+        'HTTP_500: "unexpected_server_error"',
         "capturedUserId",
         ".textContent",
         "createOpeningRow",

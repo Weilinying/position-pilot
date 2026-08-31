@@ -164,6 +164,9 @@ class SqlAlchemyPortfolioUnitOfWork:
                 created_at=user.created_at,
             )
         )
+        # Opening State 与 Account Ownership 都通过外键引用新 User；先落父记录，
+        # 避免后续 Core UPDATE 触发 autoflush 时由独立 ORM 对象产生错误插入顺序。
+        self.session.flush()
 
     def get_account_by_email(
         self,

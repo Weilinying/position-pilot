@@ -317,7 +317,8 @@ def test_persists_opening_state_and_seals_after_first_economic_mutation() -> Non
             ("GOOG", PositionType.UNSPECIFIED),
         ]
         assert all(item.recorded_at == application_now for item in opening_positions)
-        assert state.cash.available_cash == Decimal("654.65000000")
+        # 0.5 股属于小数股，手续费按成交金额 1% 计算为 0.55。
+        assert state.cash.available_cash == Decimal("654.45000000")
         unspecified = state.get_position("GOOG", PositionType.UNSPECIFIED)
         assert unspecified is not None
         assert unspecified.shares == Decimal("1.50000000")

@@ -588,6 +588,7 @@ Browser Smoke 是可重复的 Human Verification Evidence，不计入默认 Auto
 - Human UI Feedback 后，问答卡明确分隔“回答正文”和“上下文来源”，来源类型使用产品化名称并说明其证据性质；Decimal 仍保留后端原始精度，但浏览器展示会移除无意义的末尾零并限制大额现金文本溢出。
 - 2026-08-30 pre-auth Browser Smoke 已验证原 Portfolio / Ledger Slice：Create、默认现金 0、批量 Existing Positions、`UNSPECIFIED / LONG_TERM` 独立、DEPOSIT、WITHDRAWAL、BUY、SELL、Insufficient Cash、Oversell、future timestamp、写后 Snapshot / Record List refresh、OK / DEGRADED / Sources、中英文与 390px 窄屏。该证据不覆盖新 Authentication，也不作为真实 Agent Human Acceptance。
 - 2026-08-31 Auth Engineering Browser Verification 已检查 Public Home、Register / Login Screen、中英文切换、390px 无横向溢出与 Fake Agent Fixture 警告。该证据属于定向工程检查；正式真实 Agent 首次使用闭环仍等待 Human Browser Acceptance。
+- 2026-08-31 首次真实 Setup 暴露 SQLAlchemy autoflush 在新 User 落库前写入 Opening Position 的外键顺序错误。Infrastructure 现会先 flush 新 User 父记录，再写 Opening State 与 Account Ownership；同一事务的最终 Commit / Rollback 语义不变。显式 `TEST_DATABASE_URL` 下的全部 PostgreSQL Integration 已执行，最终结果为 `438 passed, 32 skipped`；Skip 仅剩真实模型与真实 Provider opt-in Tests。
 - 默认 Regression：`424 passed, 46 skipped`。Skip 包含 14 个需要显式 `TEST_DATABASE_URL` 的 PostgreSQL Integration Tests、28 个真实模型 Behavioral Eval，以及 4 个真实 Provider / Agent opt-in Tests；没有把 Skip 声称为已执行。
 - JavaScript syntax、Ruff lint、mypy、`uv lock --check`、Alembic heads / history 与 `git diff --check` 已通过；Ruff format 只检查受控的 `backend / alembic / tests`，用户未跟踪的根目录 `main.py` 未修改、未格式化或提交。
 
