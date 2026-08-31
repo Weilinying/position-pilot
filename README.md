@@ -52,15 +52,17 @@ curl http://127.0.0.1:8000/health
 
 ## Local Portfolio Management
 
-页面由 FastAPI 同源托管，不需要 Node、前端安装或单独构建步骤。首次打开 `/app/` 会进入 Start / Recover 引导页，可直接输入 Portfolio Name 与 Initial Cash 创建本地 Portfolio，无需先运行 Demo Seed 或准备 UUID。这是本地 Portfolio 初始化，不是账号注册；M8 没有 Authentication。Initial Cash 在界面中实际默认为 `0`，用户可改为 PositionPilot 开始跟踪时的可用现金。创建成功后，页面会保存最近一次成功加载的 User ID 本地指针并读取完整 Ledger-derived Snapshot。
+页面由 FastAPI 同源托管，不需要 Node、前端安装或单独构建步骤。未认证用户首次打开 `/app/` 只看到产品主页以及 Register / Login；正常产品流程不要求输入、保存或理解 User UUID，也不依赖 Demo Seed。
 
-加载成功后进入单一应用壳：左侧导航在 Decision Questions 与 Portfolio Workspace 之间切换。Question History 会保留当前浏览器标签页内的多个 Question / Answer 并支持跳转；它们不会写入 `localStorage`、不会跨刷新恢复，也不会作为下一次模型请求的 Conversation Memory。Portfolio Workspace 将 Positions、Transactions 与 Cash Activity 分开，避免初始化、账本输入和问答堆在同一页面。表单中的灰色内容统一带 `e.g.` / “例如”前缀，只是示例；缺少或非法字段会标记具体输入框并给出对应说明，后端领域失败同时展示稳定 Error Code 与安全 Detail。
+注册只需要 Display Name、Email 与 Password。Password 使用带随机 Salt 的 `scrypt` Hash 存入本地 PostgreSQL；Browser 只持有七天有效的 `HttpOnly + SameSite=Lax` Session Cookie，Database 只保存 Token Digest。登录成功会轮换当前 Browser Session；Logout、Session 过期或认证失败会清空当前页面的 Portfolio 与 Question Presentation State。M8 不提供 Email Verification、Password Reset、OAuth、MFA、Role / Permission 或远程 Session 管理。
 
-新 Portfolio 创建后会优先显示一次性的 Existing Positions Setup。用户可以手工录入开始跟踪前已经持有的 ticker、shares、average cost 与可选 Position Type；这些记录属于 immutable Opening State，不扣减现金、不产生交易 sequence，也不会伪造成历史 BUY。该入口只在尚无 Opening Position、Transaction 或 Cash Event 时可用；Text / Screenshot Recognition 仍属于 M9 `v1.1.0`。
+注册后进入一次性 Portfolio Setup。Initial Cash 默认是 `0`；Existing Positions 为可选批量输入，可记录开始跟踪前已经持有的 ticker、shares、average cost 与可选 Position Type。它们属于 immutable Opening State，不扣减现金、不产生交易 sequence，也不会伪造成历史 BUY。用户可以直接从零开始，并在第一笔 Opening Position、Transaction 或 Cash Event 之前稍后添加 Existing Positions；Text / Screenshot Recognition 仍属于 M9 `v1.1.0`。
+
+完成 Setup 后进入单一应用壳：左侧导航在 Decision Questions 与 Portfolio Workspace 之间切换。Question History 会保留当前浏览器标签页内的多个 Question / Answer 并支持跳转；它们不会写入 `localStorage`、不会跨刷新恢复，也不会作为下一次模型请求的 Conversation Memory。每次提问只发送当前 `question`，User Identity 由 Server Session 注入，并调用正式 `InvestmentAgent`；Answer 是默认视觉主体，Sources 默认折叠。Portfolio Workspace 将 Positions、Transactions 与 Cash Activity 分开，避免初始化、账本输入和问答堆在同一页面。
 
 页面支持：
 
-- 通过既有 UUID 恢复 Portfolio，或只忘记浏览器本地指针；Forget 不删除 Server Ledger；
+- 通过 HttpOnly Session 恢复当前 Account 与唯一 Portfolio；
 - 追加 BUY / SELL；Position Type 可留空并归一为 `UNSPECIFIED`，与 `LONG_TERM`、`SWING` 独立维护；
 - 追加 DEPOSIT / WITHDRAWAL；
 - 分别查看完整的 Opening Position、Transaction 与 Cash Event 只读记录；
@@ -69,7 +71,7 @@ curl http://127.0.0.1:8000/health
 
 Ledger 表单中的发生时间默认留空，此时由 Backend Application Clock 产生当前时间。只有补录历史记录时才填写本地时间；Browser 会转换为带时区的 ISO timestamp。Cash、Shares、Average Cost、Cost Basis、Transaction Amount 与 Fee 始终由后端 Decimal 规则和完整 Ledger replay 产生，Browser 不自行计算。
 
-本地指针只保存最近一个成功加载的 UUID，不保存 Snapshot、交易、问题、回答或 Secret。UUID 不是 Credential；清除浏览器 Storage 或换浏览器后，需要使用 URL 或已保存的 UUID 恢复。
+Browser 不把 Account、Email、Password、Session Token、Portfolio、Ledger、Question、Answer 或 Provider Data 写入 `localStorage`。内部 User UUID 仍存在于兼容 API 与 Ledger Response 中，但不是正常 UI 的身份或恢复方式；所有 Portfolio、Ledger 与 Investment Request 都由 Server 校验当前 Session Ownership。
 
 开发与测试仍可选择创建一份带固定 Ledger Records 的隔离 Demo Portfolio：
 
@@ -77,11 +79,11 @@ Ledger 表单中的发生时间默认留空，此时由 Backend Application Cloc
 uv run --directory backend python -m position_pilot.demo_seed
 ```
 
-命令会通过正式 Application Service 创建 User 与三条 BUY Ledger Records，并输出 User ID 与可直接访问的本地页面 URL。它不是正常使用前置条件；重复执行会创建新的 Demo User，不覆盖既有 Portfolio。
+命令会通过正式 Application Service 创建 User 与三条 BUY Ledger Records。它是开发 Fixture，不会自动创建 Account、认领 Portfolio 或替代正常注册流程；重复执行会创建新的 Demo User，不覆盖既有 Portfolio。
 
-如果 Mutation POST 的连接在响应前中断，页面会将当前 Snapshot 标记为需要刷新且不会自动重试。重新 Load 只取得最新 deterministic State，M8 不保证仅凭 Snapshot 精确判断某一次不确定 POST 是否已经执行。Create Response 丢失时也可能留下当前 UI 无法恢复的本地 Portfolio，这是无 Idempotency、Enumeration 与 Authentication 的已知 localhost 限制。
+如果 Ledger Mutation POST 的连接在响应前中断，页面会将当前 Snapshot 标记为需要刷新且不会自动重试。Reload 只取得最新 deterministic State 与只读 Records，M8 不保证仅凭它们精确判断某一次不确定 POST 是否执行或恰好执行一次。Register Response 丢失时应使用相同 Email 尝试 Login；Portfolio Setup Response 丢失时应刷新并恢复当前 Session State。M8 不增加 Idempotency、Mutation Reconciliation 或 Exactly-once Infrastructure。
 
-当前没有 Authentication / Authorization，User ID 不是访问控制。推荐启动命令只绑定 `127.0.0.1`；不得把该 Demo Server 直接暴露到公网或不受控局域网。
+M8 Authentication 只服务本地 Self-Service 闭环，不是完整公网 Account Security。推荐启动命令只绑定 `127.0.0.1`；Cookie 为 loopback HTTP 明确使用 `Secure=false`，没有 Rate Limit、TLS、Email Verification 或 Password Recovery，不得把该 Server 宣称为可安全暴露到公网或不受控局域网。
 
 ## Market Data
 
@@ -99,15 +101,21 @@ RUN_ALPACA_ONLINE_TESTS=1 uv run pytest tests/integration/test_alpaca_market_dat
 
 Agent 使用 Single Agent + Native Function Calling。Portfolio Snapshot 必定注入，Quote、History、News 与 Market Context 由 Agent 按需调用；默认 LLM Provider 为阿里云 Model Studio，业务层只依赖通用 `LLMProvider`。
 
-在本地 `.env` 配置 `LLM_API_KEY` 后，可以调用开发用问答接口：
+在本地 `.env` 配置 `LLM_API_KEY` 后，登录用户可以直接在 Decision Questions 页面调用真实 Agent。开发者若需要直接检查 API，必须先取得本地 Session Cookie；Question Body 不接受 `user_id`：
 
 ```bash
-curl -X POST http://127.0.0.1:8000/v1/investment/questions \
+curl -c /tmp/positionpilot-cookie.txt \
+  -X POST http://127.0.0.1:8000/v1/auth/login \
   -H 'Content-Type: application/json' \
-  -d '{"user_id":"<existing-user-uuid>","question":"GOOG 今天还能加一点吗？"}'
+  -d '{"email":"<local-email>","password":"<local-password>"}'
+
+curl -b /tmp/positionpilot-cookie.txt \
+  -X POST http://127.0.0.1:8000/v1/investment/questions \
+  -H 'Content-Type: application/json' \
+  -d '{"question":"GOOG 今天还能加一点吗？"}'
 ```
 
-`LLM_BASE_URL`、`LLM_MODEL` 和 `LLM_REQUEST_TIMEOUT_SECONDS` 均可覆盖。当前接口没有 Authentication / Authorization，只适合本地或开发环境，不应直接公开部署。
+`LLM_BASE_URL`、`LLM_MODEL` 和 `LLM_REQUEST_TIMEOUT_SECONDS` 均可覆盖。Authentication 仍只适合本地或受控开发环境，不应直接公开部署。
 
 真实模型 Behavioral Eval 使用固定 Fake Market Data，不进入默认 CI：
 
@@ -141,4 +149,4 @@ uv lock --check
 TEST_DATABASE_URL=postgresql+psycopg://position_pilot:position_pilot_dev_password@localhost:5432/position_pilot uv run pytest -m integration
 ```
 
-数据库集成测试只清理自身创建的 User、Opening Position、Transaction 与 Cash Event。当前模块边界、Structured State 恢复和 Market Data Provider 边界见 [`ARCHITECTURE.md`](ARCHITECTURE.md)。
+数据库集成测试只清理自身创建的 Account、Auth Session、User、Opening Position、Transaction 与 Cash Event。当前模块边界、Structured State 恢复和 Market Data Provider 边界见 [`ARCHITECTURE.md`](ARCHITECTURE.md)。

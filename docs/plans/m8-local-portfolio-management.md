@@ -580,13 +580,15 @@ Browser Smoke 是可重复的 Human Verification Evidence，不计入默认 Auto
 
 - `OpeningPosition` 已作为无 sequence、无现金影响的 immutable Starting Fact 实现；当前 State 由 `Opening State + Replay(Cash Events + Transactions)` 确定性重建。初始化在 User Row Lock 下检查三类记录均为空，1～100 行一次提交，规范化重复 key 或任一非法行不会产生部分写入。
 - `PositionType.UNSPECIFIED` 已贯穿 Domain、Database、API、Agent Prompt 与 UI。省略或 `null` 的 Public API 输入统一归一为 `UNSPECIFIED`；同一 Ticker 的 `UNSPECIFIED / LONG_TERM / SWING` 独立 replay，Agent 不得把未分类仓位推断为长期或波段策略。
-- Alembic `20260830_0005` 新增 `opening_positions`、扩展 Transaction Position Type Constraint，并在存在 Opening Position 或 `UNSPECIFIED` Transaction 时拒绝有损 downgrade。Authentication Revision 尚待新增独立 Account / Session Migration；仍不增加 Database、Framework、Node、Playwright、Idempotency 或 Multiple Portfolio Entity。
+- Alembic `20260830_0005` 新增 `opening_positions`、扩展 Transaction Position Type Constraint，并在存在 Opening Position 或 `UNSPECIFIED` Transaction 时拒绝有损 downgrade。`20260830_0006` 新增最小 `accounts` / `auth_sessions` 与 nullable unique Account→Portfolio User Ownership；仍不增加 Database、Framework、Node、Playwright、Idempotency 或 Multiple Portfolio Entity。
 - Public API 已提供 Opening Position 批量 POST，以及 Opening Position、Transaction、Cash Event 三个完整只读 List GET。Opening Position 按 `(ticker, position_type)`，经济记录按 sequence 升序；Response 保留 `items_are_complete`、后端 id / timestamp、Decimal string 与派生字段。
 - Portfolio Workspace 已提供一次性 Existing Positions Draft、Skip / Reopen、三个只读 Record List、可选 Position Type 与详细领域错误；创建空组合后优先进入 Positions Setup。Browser 仍不计算 Cash、Average Cost、Cost Basis、Amount 或 Fee，所有动态文本继续只通过安全 DOM Property 渲染。
-- 问答产品文案统一为 Decision Questions / Question History。当前标签页可保留多个独立 Question / Answer 与 Source Cards；T4C 后每次 Request 只发送当前 Question，身份由 Session 注入。刷新、Logout 或 Account 变化会清空展示历史，不构成 Conversation Memory。
+- Public Home、Register / Login、Portfolio Setup 与 Session Recovery 已实现。正常 UI 不显示或持久化 UUID；Portfolio / Ledger / Investment API 身份由 HttpOnly Opaque Session 注入，Password 使用带随机 Salt 的 scrypt Hash，Database 只保存 Session Digest。
+- 问答产品文案统一为 Decision Questions / Question History。当前标签页可保留多个独立 Question / Answer；每次 Request 只发送当前 Question，身份由 Session 注入。刷新、Logout 或 Account 变化会清空展示历史，不构成 Conversation Memory。Answer 是视觉主体，Sources 默认折叠。
 - Human UI Feedback 后，问答卡明确分隔“回答正文”和“上下文来源”，来源类型使用产品化名称并说明其证据性质；Decimal 仍保留后端原始精度，但浏览器展示会移除无意义的末尾零并限制大额现金文本溢出。
 - 2026-08-30 pre-auth Browser Smoke 已验证原 Portfolio / Ledger Slice：Create、默认现金 0、批量 Existing Positions、`UNSPECIFIED / LONG_TERM` 独立、DEPOSIT、WITHDRAWAL、BUY、SELL、Insufficient Cash、Oversell、future timestamp、写后 Snapshot / Record List refresh、OK / DEGRADED / Sources、中英文与 390px 窄屏。该证据不覆盖新 Authentication，也不作为真实 Agent Human Acceptance。
-- 默认 Regression：`410 passed, 45 skipped`。Skip 包含 13 个需要显式 `TEST_DATABASE_URL` 的 PostgreSQL Integration Tests、28 个真实模型 Behavioral Eval，以及 4 个真实 Provider / Agent opt-in Tests；没有把 Skip 声称为已执行。
+- 2026-08-31 Auth Engineering Browser Verification 已检查 Public Home、Register / Login Screen、中英文切换、390px 无横向溢出与 Fake Agent Fixture 警告。该证据属于定向工程检查；正式真实 Agent 首次使用闭环仍等待 Human Browser Acceptance。
+- 默认 Regression：`424 passed, 46 skipped`。Skip 包含 14 个需要显式 `TEST_DATABASE_URL` 的 PostgreSQL Integration Tests、28 个真实模型 Behavioral Eval，以及 4 个真实 Provider / Agent opt-in Tests；没有把 Skip 声称为已执行。
 - JavaScript syntax、Ruff lint、mypy、`uv lock --check`、Alembic heads / history 与 `git diff --check` 已通过；Ruff format 只检查受控的 `backend / alembic / tests`，用户未跟踪的根目录 `main.py` 未修改、未格式化或提交。
 
 ## 11. Human Review Gate

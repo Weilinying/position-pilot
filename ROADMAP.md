@@ -11,8 +11,8 @@
 ## 2. Current Status
 
 **Current Milestone:** M8 — Local Portfolio Management
-**Status:** IN PROGRESS — Authentication Revision Approved, Implementation Pending
-**Current Release State:** Portfolio / Ledger 自助 Slice 已实现；基础本地账户与真实 Agent 产品闭环尚未完成，未形成 `v1.0.0`
+**Status:** IN PROGRESS — Implementation Complete, Human Acceptance Pending
+**Current Release State:** M8 Local Self-Service 实现与 Automated Regression 已完成；等待真实 Agent Human Browser Acceptance，尚未形成 `v1.0.0`
 **Next Planned Milestone:** M9 — Portfolio Import（依赖 M8 完成，尚未开始）
 
 Milestone 状态统一使用 `NOT STARTED`、`IN PROGRESS`、`DONE`，不维护百分比进度。
@@ -237,7 +237,7 @@ M6 不从零开始 Evaluation，而是在 M3～M5 已积累的 Behavioral Eval C
 
 ## M8 — Local Portfolio Management
 
-**Status:** IN PROGRESS — Authentication Revision Approved
+**Status:** IN PROGRESS — Implementation Complete, Human Acceptance Pending
 
 **Goal**
 
