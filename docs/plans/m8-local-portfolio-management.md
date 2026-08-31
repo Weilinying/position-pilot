@@ -2,7 +2,7 @@
 
 ## 1. 状态与目标
 
-**Status:** AUTHENTICATION REVISION APPROVED — Implementation In Progress (2026-08-30)
+**Status:** DONE — Human Accepted and merged to `main` (2026-09-01)
 
 M8 将当前“需要 Demo Seed 或已知 UUID 才能使用”的 M7 Interface，扩展为本地用户可从零开始并持续维护的 Self-Service MVP。M8 完成并通过 Human Acceptance 后形成 `v1.0.0`。
 
@@ -338,7 +338,7 @@ Transaction / Cash Event 的 Application 查询能力已经存在，API 只做�
 - README、Architecture、Roadmap、Plan 与实际本地流程一致；默认只绑定 loopback。
 - 默认 Regression Gate、相关 PostgreSQL Integration、Automated Review 与固定 Human Browser Smoke 通过。
 - Human Acceptance 必须使用正式 `position_pilot.main:app` 验证真实 Investment Agent Response；`tests.browser_smoke_app` 的示例回答不构成产品 Acceptance Evidence。
-- Human Acceptance 通过后形成 `1.0.0`；不自动 Push、创建远程 Release 或公开部署。
+- Human Acceptance 已于 2026-09-01 通过并合并、推送到 `main`；`v1.0.0` Git Tag / GitHub Release 仍作为独立发布动作。
 
 ## 5. UX 与状态设计
 
@@ -602,4 +602,4 @@ Browser Smoke 是可重复的 Human Verification Evidence，不计入默认 Auto
 - 引入已批准 Account / Session Migration 之外的新 Database、Provider、Framework、Cache、Queue、Idempotency Store 或其他 Infrastructure；
 - M8 完成并准备合并到 `main`。
 
-本次 Plan 已获批执行 D1 Authentication Revision 与既有 D2～D6 本地实现范围，不等于 M8 Human Acceptance，也不授权开始 M9 Import。
+M8 已于 2026-09-01 通过 Human Acceptance 并进入 `main`。该验收不授权开始 M9 Import，也不自动创建 `v1.0.0` Git Tag、GitHub Release 或公开部署。

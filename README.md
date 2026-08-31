@@ -1,6 +1,6 @@
 # PositionPilot
 
-当前仓库已实现 Portfolio / Transaction Structured State、Current Quote、Price History、Recent News、SPY Market Context、Single Investment Agent，以及 M8 Local Portfolio Management。M8 实现已完成，正在等待 Human Acceptance。
+当前仓库已完成并通过 M8 Human Acceptance：Portfolio / Transaction Structured State、Current Quote、Price History、Recent News、SPY Market Context、Single Investment Agent 与 Local Portfolio Management 已形成 `v1.0.0` Local Self-Service MVP。Git Tag / GitHub Release 可在发布时单独创建。
 
 ## 前置条件
 

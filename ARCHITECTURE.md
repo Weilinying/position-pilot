@@ -2,7 +2,7 @@
 
 ## 1. 当前范围
 
-本文档描述 M8 Local Portfolio Management 当前已实现、等待 Human Acceptance 的系统结构。系统包含最小本地 Account / Session、immutable Opening State、Transaction / Cash Event Ledgers、Provider-neutral Market / News Data，以及可按问题选择 Current Quote、固定近期 Daily Price History、attributed Recent News 或 SPY Market Context 的 Single Investment Agent。M8 的同源静态 Web Interface 提供 Public Home、注册 / 登录、Portfolio Setup、Ledger Entry 与真实 Agent 闭环；Browser Identity 由 HttpOnly Session 恢复，金融事实仍由后端确定性 Ledger Replay 产生。
+本文档描述已通过 Human Acceptance 的 M8 Local Portfolio Management / `v1.0.0` Local Self-Service MVP 系统结构。系统包含最小本地 Account / Session、immutable Opening State、Transaction / Cash Event Ledgers、Provider-neutral Market / News Data，以及可按问题选择 Current Quote、固定近期 Daily Price History、attributed Recent News 或 SPY Market Context 的 Single Investment Agent。M8 的同源静态 Web Interface 提供 Public Home、注册 / 登录、Portfolio Setup、Ledger Entry 与真实 Agent 闭环；Browser Identity 由 HttpOnly Session 恢复，金融事实仍由后端确定性 Ledger Replay 产生。
 
 ## 2. 依赖方向
 
