@@ -40,6 +40,7 @@ from position_pilot.main import (
     app,
     get_auth_service_dependency,
     get_current_account_dependency,
+    get_opening_import_service_dependency,
     get_portfolio_service_dependency,
 )
 
@@ -241,6 +242,7 @@ def override_service(service: object) -> None:
     """避免 API Contract Test 读取真实数据库。"""
 
     app.dependency_overrides[get_portfolio_service_dependency] = lambda: service
+    app.dependency_overrides[get_opening_import_service_dependency] = lambda: service
 
 
 def override_auth_service(service: object) -> None:

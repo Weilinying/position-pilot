@@ -15,10 +15,17 @@ class Settings(BaseSettings):
     alpaca_api_secret_key: SecretStr | None = None
     alpaca_data_base_url: AnyHttpUrl = AnyHttpUrl("https://data.alpaca.markets")
     alpaca_request_timeout_seconds: float = 10.0
+    massive_api_key: SecretStr | None = None
+    massive_base_url: AnyHttpUrl = AnyHttpUrl("https://api.massive.com")
+    massive_request_timeout_seconds: float = 10.0
     llm_base_url: AnyHttpUrl = AnyHttpUrl("https://dashscope.aliyuncs.com/compatible-mode/v1")
     llm_api_key: SecretStr | None = None
     llm_model: str = "deepseek-v4-pro-0813"
     llm_request_timeout_seconds: float = 30.0
+    vision_base_url: AnyHttpUrl = AnyHttpUrl("https://dashscope.aliyuncs.com/compatible-mode/v1")
+    vision_api_key: SecretStr | None = None
+    vision_model: str = "qwen3-vl-flash"
+    vision_request_timeout_seconds: float = 30.0
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -53,6 +60,24 @@ class Settings(BaseSettings):
             raise ValueError("ALPACA_DATA_BASE_URL 必须使用 HTTPS")
         return value
 
+    @field_validator("massive_request_timeout_seconds")
+    @classmethod
+    def require_positive_massive_timeout(cls, value: float) -> float:
+        """限制 Asset Metadata Provider 请求等待时间。"""
+
+        if not isfinite(value) or value <= 0 or value > 60:
+            raise ValueError("MASSIVE_REQUEST_TIMEOUT_SECONDS 必须在 0 到 60 秒之间")
+        return value
+
+    @field_validator("massive_base_url")
+    @classmethod
+    def require_https_massive_url(cls, value: AnyHttpUrl) -> AnyHttpUrl:
+        """防止 Massive Credential 被发送到明文 HTTP endpoint。"""
+
+        if value.scheme != "https":
+            raise ValueError("MASSIVE_BASE_URL 必须使用 HTTPS")
+        return value
+
     @field_validator("llm_request_timeout_seconds")
     @classmethod
     def require_positive_llm_timeout(cls, value: float) -> float:
@@ -79,6 +104,34 @@ class Settings(BaseSettings):
         normalized = value.strip()
         if not normalized:
             raise ValueError("LLM_MODEL 不能为空")
+        return normalized
+
+    @field_validator("vision_request_timeout_seconds")
+    @classmethod
+    def require_positive_vision_timeout(cls, value: float) -> float:
+        """限制 Vision Provider 请求等待时间，避免图片识别无限阻塞。"""
+
+        if not isfinite(value) or value <= 0 or value > 120:
+            raise ValueError("VISION_REQUEST_TIMEOUT_SECONDS 必须在 0 到 120 秒之间")
+        return value
+
+    @field_validator("vision_base_url")
+    @classmethod
+    def require_https_vision_url(cls, value: AnyHttpUrl) -> AnyHttpUrl:
+        """防止 Vision Credential 与截图通过明文 HTTP 发送。"""
+
+        if value.scheme != "https":
+            raise ValueError("VISION_BASE_URL 必须使用 HTTPS")
+        return value
+
+    @field_validator("vision_model")
+    @classmethod
+    def require_nonempty_vision_model(cls, value: str) -> str:
+        """Vision 模型是可覆盖配置，但不能为空或只包含空白。"""
+
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("VISION_MODEL 不能为空")
         return normalized
 
 

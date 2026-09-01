@@ -1,16 +1,19 @@
 """FastAPI 应用入口。"""
 
+import base64
+import binascii
 from datetime import datetime
 from decimal import Decimal
 from pathlib import Path
-from typing import Annotated, NoReturn
+from typing import Annotated, Any, NoReturn
 from uuid import UUID
 
-from fastapi import Cookie, Depends, FastAPI, HTTPException, Response, status
+from fastapi import Cookie, Depends, FastAPI, HTTPException, Query, Response, status
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from position_pilot.application.asset_metadata_service import AssetMetadataService
 from position_pilot.application.auth_service import (
     Account,
     AuthService,
@@ -36,6 +39,10 @@ from position_pilot.application.investment_agent import (
     InvestmentRequestFailure,
     InvestmentResponseStatus,
 )
+from position_pilot.application.opening_import_service import (
+    AssetMetadataValidationError,
+    OpeningImportService,
+)
 from position_pilot.application.portfolio_service import (
     InitializeOpeningPositionsCommand,
     OpeningPositionInput,
@@ -43,7 +50,32 @@ from position_pilot.application.portfolio_service import (
     RecordCashEventCommand,
     RecordTransactionCommand,
 )
-from position_pilot.bootstrap import get_auth_service, get_investment_agent, get_portfolio_service
+from position_pilot.application.recognition_service import (
+    MAX_RECOGNITION_IMAGE_BYTES,
+    MAX_RECOGNITION_TEXT_LENGTH,
+    DraftField,
+    RecognitionDraft,
+    RecognitionDraftRow,
+    RecognitionFieldStatus,
+    RecognitionInputKind,
+    RecognitionResult,
+    RecognitionService,
+    RecognitionStatus,
+)
+from position_pilot.bootstrap import (
+    get_asset_metadata_service,
+    get_auth_service,
+    get_investment_agent,
+    get_opening_import_service,
+    get_portfolio_service,
+    get_recognition_service,
+)
+from position_pilot.domain.asset_metadata import (
+    AssetIdentity,
+    AssetMetadataStatus,
+    AssetSearchResult,
+    AssetStatus,
+)
 from position_pilot.domain.errors import (
     FutureTimestamp,
     InsufficientCash,
@@ -358,6 +390,74 @@ class PortfolioSnapshotResponse(BaseModel):
     positions: tuple[PositionResponse, ...]
 
 
+class AssetCandidateResponse(BaseModel):
+    """Asset Metadata Provider 返回给前端选择器的最小候选。"""
+
+    canonical_symbol: str
+    display_name: str
+    exchange: str
+    status: AssetStatus
+
+
+class AssetSearchResponse(BaseModel):
+    """Provider-neutral Asset 搜索结果及明确失败状态。"""
+
+    status: AssetMetadataStatus
+    candidates: tuple[AssetCandidateResponse, ...]
+    message: str | None
+
+
+class RecognitionTextRequest(BaseModel):
+    """文本识别的临时输入。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    text: str = Field(min_length=1, max_length=MAX_RECOGNITION_TEXT_LENGTH)
+
+
+class RecognitionScreenshotRequest(BaseModel):
+    """截图识别的临时 Base64 输入。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    mime_type: str = Field(min_length=1, max_length=100)
+    image_base64: str = Field(min_length=1, max_length=((MAX_RECOGNITION_IMAGE_BYTES + 2) // 3) * 4)
+
+
+class RecognitionFieldResponse(BaseModel):
+    """Recognition Draft 字段的值与人工复核状态。"""
+
+    value: str | Decimal | PositionType | None
+    status: RecognitionFieldStatus
+
+
+class RecognitionDraftRowResponse(BaseModel):
+    """单行 Recognition Draft 的完整可审查字段。"""
+
+    ticker: RecognitionFieldResponse
+    suggested_symbol: RecognitionFieldResponse
+    shares: RecognitionFieldResponse
+    average_cost: RecognitionFieldResponse
+    position_type: RecognitionFieldResponse
+    confidence: Decimal | None
+
+
+class RecognitionDraftResponse(BaseModel):
+    """当前请求生命周期内的 Structured Recognition Draft。"""
+
+    rows: tuple[RecognitionDraftRowResponse, ...]
+    warnings: tuple[str, ...]
+    input_kind: RecognitionInputKind | None
+
+
+class RecognitionResponse(BaseModel):
+    """Recognition 状态、临时 Draft 与安全提示。"""
+
+    status: RecognitionStatus
+    draft: RecognitionDraftResponse | None
+    message: str | None
+
+
 app = FastAPI(title="PositionPilot")
 app.mount("/static", StaticFiles(directory=FRONTEND_DIR), name="static")
 
@@ -392,6 +492,24 @@ def get_auth_service_dependency() -> AuthService:
     """延迟装配 Auth Service，允许 API 与 Browser Test 安全替换。"""
 
     return get_auth_service()
+
+
+def get_asset_metadata_service_dependency() -> AssetMetadataService:
+    """延迟装配 Asset Metadata Service，允许 API Contract Test 替换。"""
+
+    return get_asset_metadata_service()
+
+
+def get_recognition_service_dependency() -> RecognitionService:
+    """延迟装配 Recognition Service，允许 API Contract Test 替换。"""
+
+    return get_recognition_service()
+
+
+def get_opening_import_service_dependency() -> OpeningImportService:
+    """延迟装配 Opening Import Service，允许 API Contract Test 替换。"""
+
+    return get_opening_import_service()
 
 
 def get_current_account_dependency(
@@ -452,6 +570,129 @@ def _require_portfolio_owner(account: Account, user_id: UUID) -> None:
             status.HTTP_404_NOT_FOUND,
             ApiErrorDetail(code="PORTFOLIO_NOT_FOUND", message="Portfolio 不存在"),
         )
+
+
+def _ensure_opening_import_is_open(
+    account: Account,
+    portfolio_service: PortfolioService,
+) -> None:
+    """在 Recognition Provider 调用前确认 Opening State 仍可初始化。"""
+
+    user_id = account.portfolio_user_id
+    if user_id is None:
+        return
+    try:
+        if portfolio_service.list_opening_positions(user_id):
+            _raise_api_error(
+                status.HTTP_409_CONFLICT,
+                ApiErrorDetail(
+                    code="OPENING_STATE_SEALED",
+                    message="Opening State 已封闭，不能再执行 Import Recognition",
+                ),
+            )
+        if portfolio_service.list_transactions(user_id):
+            _raise_api_error(
+                status.HTTP_409_CONFLICT,
+                ApiErrorDetail(
+                    code="OPENING_STATE_SEALED",
+                    message="Opening State 已封闭，不能再执行 Import Recognition",
+                ),
+            )
+        if portfolio_service.list_cash_events(user_id):
+            _raise_api_error(
+                status.HTTP_409_CONFLICT,
+                ApiErrorDetail(
+                    code="OPENING_STATE_SEALED",
+                    message="Opening State 已封闭，不能再执行 Import Recognition",
+                ),
+            )
+    except UserNotFound:
+        _raise_api_error(
+            status.HTTP_404_NOT_FOUND,
+            ApiErrorDetail(code="PORTFOLIO_NOT_FOUND", message="Portfolio 不存在"),
+        )
+
+
+@app.get("/v1/assets/search", response_model=AssetSearchResponse)
+def search_assets(
+    query: Annotated[str, Query(min_length=1, max_length=100)],
+    account: Annotated[Account, Depends(get_current_account_dependency)],
+    asset_metadata_service: Annotated[
+        AssetMetadataService,
+        Depends(get_asset_metadata_service_dependency),
+    ],
+    limit: Annotated[int, Query(ge=1, le=20)] = 10,
+) -> AssetSearchResponse:
+    """搜索可供 Opening State 选择的 Provider-neutral Asset 候选。"""
+
+    del account
+    try:
+        result = asset_metadata_service.search(query, limit=limit)
+    except Exception:
+        return AssetSearchResponse(
+            status=AssetMetadataStatus.PROVIDER_UNAVAILABLE,
+            candidates=(),
+            message="Asset Metadata Provider 当前不可用",
+        )
+    return _asset_search_response(result)
+
+
+@app.post("/v1/portfolio/import/recognize-text", response_model=RecognitionResponse)
+def recognize_import_text(
+    request: RecognitionTextRequest,
+    account: Annotated[Account, Depends(get_current_account_dependency)],
+    recognition_service: Annotated[
+        RecognitionService,
+        Depends(get_recognition_service_dependency),
+    ],
+    portfolio_service: Annotated[PortfolioService, Depends(get_portfolio_service_dependency)],
+) -> RecognitionResponse:
+    """识别文本并返回当前请求生命周期内的 Opening Import Draft。"""
+
+    _ensure_opening_import_is_open(account, portfolio_service)
+    try:
+        result = recognition_service.recognize_text(request.text)
+    except Exception:
+        result = RecognitionResult.failure(
+            RecognitionStatus.PROVIDER_UNAVAILABLE,
+            "Recognition Provider 当前不可用",
+        )
+    return _recognition_response(result)
+
+
+@app.post("/v1/portfolio/import/recognize-screenshot", response_model=RecognitionResponse)
+def recognize_import_screenshot(
+    request: RecognitionScreenshotRequest,
+    account: Annotated[Account, Depends(get_current_account_dependency)],
+    recognition_service: Annotated[
+        RecognitionService,
+        Depends(get_recognition_service_dependency),
+    ],
+    portfolio_service: Annotated[PortfolioService, Depends(get_portfolio_service_dependency)],
+) -> RecognitionResponse:
+    """严格解码内存中的截图并返回当前请求生命周期内的 Draft。"""
+
+    _ensure_opening_import_is_open(account, portfolio_service)
+    try:
+        image_bytes = base64.b64decode(request.image_base64, validate=True)
+    except (binascii.Error, ValueError):
+        return _recognition_response(
+            RecognitionResult.failure(
+                RecognitionStatus.INVALID_REQUEST,
+                "image_base64 必须是有效的 Base64",
+            )
+        )
+    try:
+        result = recognition_service.recognize_screenshot(
+            image_bytes,
+            mime_type=request.mime_type,
+        )
+    except Exception:
+        result = RecognitionResult.failure(
+            RecognitionStatus.PROVIDER_UNAVAILABLE,
+            "Recognition Provider 当前不可用",
+        )
+    return _recognition_response(result)
 
 
 @app.post(
@@ -546,13 +787,16 @@ def get_auth_session(
 def setup_account_portfolio(
     request: PortfolioSetupRequest,
     account: Annotated[Account, Depends(get_current_account_dependency)],
-    auth_service: Annotated[AuthService, Depends(get_auth_service_dependency)],
+    opening_import_service: Annotated[
+        OpeningImportService,
+        Depends(get_opening_import_service_dependency),
+    ],
     portfolio_service: Annotated[PortfolioService, Depends(get_portfolio_service_dependency)],
 ) -> PortfolioSnapshotResponse:
     """为当前 Account 原子创建唯一 Portfolio 与可选 Opening State。"""
 
     try:
-        user = auth_service.setup_portfolio(
+        user = opening_import_service.setup_portfolio(
             SetupPortfolioCommand(
                 account_id=account.id,
                 initial_cash=request.initial_cash,
@@ -578,6 +822,8 @@ def setup_account_portfolio(
             status.HTTP_422_UNPROCESSABLE_CONTENT,
             ApiErrorDetail(code="INVALID_PORTFOLIO", message=str(error)),
         )
+    except AssetMetadataValidationError as error:
+        _raise_asset_metadata_error(error)
     return _portfolio_snapshot_response(portfolio)
 
 
@@ -658,13 +904,16 @@ def initialize_opening_positions(
     user_id: UUID,
     request: OpeningPositionsRequest,
     account: Annotated[Account, Depends(get_current_account_dependency)],
-    portfolio_service: Annotated[PortfolioService, Depends(get_portfolio_service_dependency)],
+    opening_import_service: Annotated[
+        OpeningImportService,
+        Depends(get_opening_import_service_dependency),
+    ],
 ) -> OpeningPositionsWriteResponse:
     """在首个经济 Mutation 前原子初始化 Existing Positions。"""
 
     _require_portfolio_owner(account, user_id)
     try:
-        opening_positions = portfolio_service.initialize_opening_positions(
+        opening_positions = opening_import_service.initialize_opening_positions(
             InitializeOpeningPositionsCommand(
                 user_id=user_id,
                 positions=tuple(
@@ -693,6 +942,8 @@ def initialize_opening_positions(
             status.HTTP_422_UNPROCESSABLE_CONTENT,
             ApiErrorDetail(code="INVALID_OPENING_STATE", message=str(error)),
         )
+    except AssetMetadataValidationError as error:
+        _raise_asset_metadata_error(error)
 
     return OpeningPositionsWriteResponse(
         opening_positions=tuple(
@@ -927,7 +1178,10 @@ def get_current_portfolio_snapshot(
 def initialize_current_opening_positions(
     request: OpeningPositionsRequest,
     account: Annotated[Account, Depends(get_current_account_dependency)],
-    portfolio_service: Annotated[PortfolioService, Depends(get_portfolio_service_dependency)],
+    opening_import_service: Annotated[
+        OpeningImportService,
+        Depends(get_opening_import_service_dependency),
+    ],
 ) -> OpeningPositionsWriteResponse:
     """为当前 Session Portfolio 初始化一次性 Existing Positions。"""
 
@@ -935,7 +1189,7 @@ def initialize_current_opening_positions(
         _require_portfolio_user(account),
         request,
         account,
-        portfolio_service,
+        opening_import_service,
     )
 
 
@@ -1119,6 +1373,101 @@ def _cash_event_response(cash_event: CashEvent) -> CashEventResponse:
         amount=cash_event.amount,
         occurred_at=cash_event.occurred_at,
         reason=cash_event.reason,
+    )
+
+
+def _asset_candidate_response(asset: AssetIdentity) -> AssetCandidateResponse:
+    return AssetCandidateResponse(
+        canonical_symbol=asset.canonical_symbol,
+        display_name=asset.display_name,
+        exchange=asset.exchange,
+        status=asset.status,
+    )
+
+
+def _asset_search_response(result: object) -> AssetSearchResponse:
+    """把 Asset Metadata Application Result 映射为稳定的 Search Response。"""
+
+    if not isinstance(result, AssetSearchResult):
+        return AssetSearchResponse(
+            status=AssetMetadataStatus.INVALID_PROVIDER_RESPONSE,
+            candidates=(),
+            message="Asset Metadata Provider 返回格式无效",
+        )
+    return AssetSearchResponse(
+        status=result.status,
+        candidates=tuple(_asset_candidate_response(asset) for asset in result.candidates),
+        message=result.message,
+    )
+
+
+def _recognition_field_response(field: DraftField[Any]) -> RecognitionFieldResponse:
+    return RecognitionFieldResponse(value=field.value, status=field.status)
+
+
+def _recognition_draft_row_response(row: RecognitionDraftRow) -> RecognitionDraftRowResponse:
+    return RecognitionDraftRowResponse(
+        ticker=_recognition_field_response(row.ticker),
+        suggested_symbol=_recognition_field_response(row.suggested_symbol),
+        shares=_recognition_field_response(row.shares),
+        average_cost=_recognition_field_response(row.average_cost),
+        position_type=_recognition_field_response(row.position_type),
+        confidence=row.confidence,
+    )
+
+
+def _recognition_draft_response(draft: RecognitionDraft) -> RecognitionDraftResponse:
+    return RecognitionDraftResponse(
+        rows=tuple(_recognition_draft_row_response(row) for row in draft.rows),
+        warnings=draft.warnings,
+        input_kind=draft.input_kind,
+    )
+
+
+def _recognition_response(result: object) -> RecognitionResponse:
+    """把 Recognition Result 映射为只读临时 Draft Response。"""
+
+    if not isinstance(result, RecognitionResult):
+        return RecognitionResponse(
+            status=RecognitionStatus.INVALID_PROVIDER_RESPONSE,
+            draft=None,
+            message="Recognition Provider 返回格式无效",
+        )
+    return RecognitionResponse(
+        status=result.status,
+        draft=_recognition_draft_response(result.draft) if result.draft is not None else None,
+        message=result.message,
+    )
+
+
+def _raise_asset_metadata_error(error: AssetMetadataValidationError) -> NoReturn:
+    """映射 Asset Validation 状态，不向客户端暴露 Provider 细节。"""
+
+    invalid_input_statuses = {
+        AssetMetadataStatus.NO_MATCH,
+        AssetMetadataStatus.INVALID_SYMBOL,
+        AssetMetadataStatus.INVALID_REQUEST,
+    }
+    status_code = (
+        status.HTTP_422_UNPROCESSABLE_CONTENT
+        if error.status in invalid_input_statuses
+        else status.HTTP_503_SERVICE_UNAVAILABLE
+    )
+    messages = {
+        AssetMetadataStatus.NO_MATCH: "没有找到可用 Asset",
+        AssetMetadataStatus.INVALID_SYMBOL: "Asset symbol 格式无效",
+        AssetMetadataStatus.INVALID_REQUEST: "Asset 请求无效",
+        AssetMetadataStatus.AUTHENTICATION_FAILED: "Asset Metadata Provider credential 无效",
+        AssetMetadataStatus.RATE_LIMITED: "Asset Metadata Provider 请求达到限流",
+        AssetMetadataStatus.PROVIDER_UNAVAILABLE: "Asset Metadata Provider 当前不可用",
+        AssetMetadataStatus.INVALID_PROVIDER_RESPONSE: "Asset Metadata Provider 返回格式无效",
+    }
+    _raise_api_error(
+        status_code,
+        ApiErrorDetail(
+            code=error.status.value,
+            message=messages.get(error.status, "Asset Metadata validation 失败"),
+        ),
     )
 
 

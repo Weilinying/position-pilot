@@ -148,3 +148,115 @@ def test_settings_requires_https_llm_url(monkeypatch: pytest.MonkeyPatch) -> Non
 
     with pytest.raises(ValidationError, match="LLM_BASE_URL"):
         Settings(_env_file=None)  # type: ignore[call-arg]
+
+
+def test_settings_uses_m9_provider_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
+    """M9 Provider 默认值应指向已批准的 HTTPS endpoint 与模型。"""
+
+    monkeypatch.setenv(
+        "DATABASE_URL",
+        "postgresql+psycopg://position_pilot:secret@localhost:5432/position_pilot",
+    )
+
+    settings = Settings(_env_file=None)  # type: ignore[call-arg]
+
+    assert str(settings.massive_base_url).rstrip("/") == "https://api.massive.com"
+    assert settings.massive_request_timeout_seconds == 10.0
+    assert str(settings.vision_base_url) == ("https://dashscope.aliyuncs.com/compatible-mode/v1")
+    assert settings.vision_model == "qwen3-vl-flash"
+    assert settings.vision_request_timeout_seconds == 30.0
+    assert settings.massive_api_key is None
+    assert settings.vision_api_key is None
+
+
+def test_settings_reads_m9_credentials_as_secrets(monkeypatch: pytest.MonkeyPatch) -> None:
+    """M9 Provider Credential 应使用 SecretStr 且 repr 不暴露明文。"""
+
+    monkeypatch.setenv(
+        "DATABASE_URL",
+        "postgresql+psycopg://position_pilot:secret@localhost:5432/position_pilot",
+    )
+    monkeypatch.setenv("MASSIVE_API_KEY", "massive-secret")
+    monkeypatch.setenv("VISION_API_KEY", "vision-secret")
+
+    settings = Settings(_env_file=None)  # type: ignore[call-arg]
+
+    assert settings.massive_api_key is not None
+    assert settings.massive_api_key.get_secret_value() == "massive-secret"
+    assert settings.vision_api_key is not None
+    assert settings.vision_api_key.get_secret_value() == "vision-secret"
+    assert "massive-secret" not in repr(settings)
+    assert "vision-secret" not in repr(settings)
+
+
+@pytest.mark.parametrize(
+    ("name", "timeout", "message"),
+    [
+        (
+            "MASSIVE_REQUEST_TIMEOUT_SECONDS",
+            "0",
+            "MASSIVE_REQUEST_TIMEOUT_SECONDS",
+        ),
+        (
+            "MASSIVE_REQUEST_TIMEOUT_SECONDS",
+            "61",
+            "MASSIVE_REQUEST_TIMEOUT_SECONDS",
+        ),
+        (
+            "VISION_REQUEST_TIMEOUT_SECONDS",
+            "0",
+            "VISION_REQUEST_TIMEOUT_SECONDS",
+        ),
+        (
+            "VISION_REQUEST_TIMEOUT_SECONDS",
+            "121",
+            "VISION_REQUEST_TIMEOUT_SECONDS",
+        ),
+    ],
+)
+def test_settings_rejects_invalid_m9_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+    name: str,
+    timeout: str,
+    message: str,
+) -> None:
+    """M9 外部请求 Timeout 必须处于有限安全范围。"""
+
+    monkeypatch.setenv(
+        "DATABASE_URL",
+        "postgresql+psycopg://position_pilot:secret@localhost:5432/position_pilot",
+    )
+    monkeypatch.setenv(name, timeout)
+
+    with pytest.raises(ValidationError, match=message):
+        Settings(_env_file=None)  # type: ignore[call-arg]
+
+
+@pytest.mark.parametrize("name", ["MASSIVE_BASE_URL", "VISION_BASE_URL"])
+def test_settings_requires_https_m9_provider_url(
+    monkeypatch: pytest.MonkeyPatch,
+    name: str,
+) -> None:
+    """M9 Provider Credential 与图片不得通过明文 HTTP 发送。"""
+
+    monkeypatch.setenv(
+        "DATABASE_URL",
+        "postgresql+psycopg://position_pilot:secret@localhost:5432/position_pilot",
+    )
+    monkeypatch.setenv(name, "http://provider.example.test/v1")
+
+    with pytest.raises(ValidationError, match="必须使用 HTTPS"):
+        Settings(_env_file=None)  # type: ignore[call-arg]
+
+
+def test_settings_rejects_empty_vision_model(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Vision 模型名不能为空。"""
+
+    monkeypatch.setenv(
+        "DATABASE_URL",
+        "postgresql+psycopg://position_pilot:secret@localhost:5432/position_pilot",
+    )
+    monkeypatch.setenv("VISION_MODEL", "   ")
+
+    with pytest.raises(ValidationError, match="VISION_MODEL"):
+        Settings(_env_file=None)  # type: ignore[call-arg]
