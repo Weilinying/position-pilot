@@ -5,8 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="description" content="PositionPilot — portfolio-grounded investment decision support." data-i18n-content="meta_description" />
     <title>PositionPilot · Decision Desk</title>
-    <link rel="stylesheet" href="/static/styles.css?v=20260831-m8-auth-2" />
-    <script type="module" src="/static/app.js?v=20260831-m8-auth-2"></script>
+    <link rel="stylesheet" href="/static/styles.css?v=20260901-m81-ask-1" />
+    <script type="module" src="/static/app.js?v=20260901-m81-ask-1"></script>
   </head>
   <body>
     <p class="engineering-smoke-banner" id="engineering-smoke-banner" data-i18n="engineering_smoke_notice" hidden>Engineering smoke · Fake Agent and fixture data · Not real investment analysis</p>
@@ -115,7 +115,7 @@
         <header class="app-topbar"><div class="app-topbar-title"><p class="eyebrow" id="view-eyebrow" data-i18n="context_aware">Context-aware decision support</p><h1 class="view-title" id="view-title" data-i18n="chat_view_title" tabindex="-1">Decision questions</h1></div><div class="app-topbar-actions"><span class="context-chip" id="portfolio-state">Loading</span><div class="topbar-account"><span class="account-avatar" id="header-account-initial" aria-hidden="true">—</span><div class="topbar-account-copy"><small data-i18n="signed_in_as">Signed in as</small><strong id="header-account-name">—</strong><p class="topbar-account-message" id="account-message" role="status" aria-live="polite"></p></div><button class="text-button topbar-logout" id="header-logout-button" type="button" data-i18n="log_out">Log out</button></div></div></header>
         <section class="app-view chat-view" id="chat-view" aria-labelledby="view-title">
           <div class="conversation-scroll" id="conversation-scroll"><section class="chat-intro" id="chat-intro"><span class="intro-mark" aria-hidden="true">PP</span><p class="eyebrow" data-i18n="chat_intro_eyebrow">Your portfolio is connected</p><h2 data-i18n="chat_intro_title">What decision are you working through?</h2><p data-i18n="chat_intro_body">Ask one focused question. PositionPilot uses your portfolio and only the current context the question needs.</p><small data-i18n="no_memory_notice">Questions remain in this browser tab only and are not model memory.</small></section><div class="conversation-list" id="conversation-list" aria-live="polite"></div></div>
-          <form class="question-card chat-composer" id="question-form"><label class="sr-only" for="question" data-i18n="investment_question">Investment question</label><textarea id="question" rows="2" maxlength="4000" data-i18n-placeholder="question_placeholder" placeholder="For example: Can I add a little more GOOG today?"></textarea><div class="question-actions"><span id="question-hint" data-i18n="question_ready">Uses your current portfolio.</span><button class="primary-button" id="ask-button" type="submit" data-i18n="ask">Ask PositionPilot ↗</button></div></form>
+          <form class="question-card chat-composer" id="question-form"><label class="sr-only" for="question" data-i18n="investment_question">Investment question</label><textarea id="question" rows="2" maxlength="4000" data-i18n-placeholder="question_placeholder" placeholder="For example: Can I add a little more GOOG today?"></textarea><div class="question-actions"><span id="question-hint" data-i18n="question_ready">Uses your current portfolio. Enter to ask · Shift+Enter for a new line.</span><button class="primary-button" id="ask-button" type="submit" data-i18n="ask">Ask PositionPilot ↗</button></div></form>
         </section>
 
         <section class="app-view portfolio-view" id="portfolio-view" aria-labelledby="portfolio-page-title" hidden>

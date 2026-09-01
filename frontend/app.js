@@ -107,7 +107,7 @@ const translations = {
     no_memory_notice: "Questions remain in this browser tab only and are not model memory.",
     investment_question: "Investment question",
     question_placeholder: "For example: Can I add a little more GOOG today?",
-    question_ready: "Uses your current portfolio.",
+    question_ready: "Uses your current portfolio. Enter to ask · Shift+Enter for a new line.",
     ask: "Ask PositionPilot ↗",
     asking: "Thinking…",
     portfolio_reload: "Reload",
@@ -194,7 +194,7 @@ const translations = {
     account_eyebrow: "一个账户，一个投资组合。", register_title: "注册你的本地账户。", login_title: "欢迎回来。", auth_summary: "密码只在本地进行哈希保存；系统通过浏览器私有 Session 恢复身份，不再使用 UUID。", register: "注册", display_name: "显示名称", display_name_placeholder: "希望我们如何称呼你？", email: "邮箱", password: "密码", password_hint: "请输入 8–128 个字符。此本地 V1 暂不提供密码重置。", confirm_password: "确认密码", back_home: "返回主页", required_fields: "请填写所有必填字段。", invalid_email: "请输入有效邮箱。", invalid_password: "密码必须为 8–128 个字符。", password_mismatch: "两次输入的密码不一致。", registering: "正在创建本地账户…", logging_in: "正在登录…", register_unknown: "账户创建结果未知。请勿自动重试；请使用相同邮箱尝试登录。", login_network_error: "无法连接本地服务。请确认 PositionPilot 已启动后重试。", session_restore_failed: "无法确认当前 Session。请检查本地服务后刷新本页；在恢复前不要重复注册或登录。", unexpected_server_error: "本地服务未能完成本次请求。请先刷新恢复当前状态，再决定是否重试。", invalid_credentials: "邮箱或密码错误。", email_registered: "该邮箱已经注册，请直接登录。", logging_out: "正在退出…", logout_failed: "退出未完成，你仍处于登录状态。请检查本地服务后重试。", setup_required: "请先完成投资组合设置。", portfolio_unavailable: "当前 Session 无法访问此投资组合。", invalid_account: "请检查账户信息后重试。", portfolio_already_exists: "该账户已经存在投资组合，请刷新页面恢复。", invalid_portfolio: "请检查起始现金与持仓后重试。", invalid_opening_state: "请检查已有持仓记录后重试。", invalid_transaction: "请检查交易记录字段后重试。", invalid_cash_event: "请检查现金记录字段后重试。",
     setup_eyebrow: "起始状态", setup_title: "告诉 PositionPilot 你的起点。", setup_summary: "现金和已有持仓共同构成起始状态，不会被伪造成交易；也可以从零开始。", cash_balance: "现金余额", initial_cash: "初始现金", initial_cash_usd: "可用现金（USD）", cash_zero_hint: "未填写现金时，投资组合默认从 0 开始。", existing_holdings: "已有持仓", opening_positions: "起始持仓", opening_optional_hint: "可选。现在录入已持有股票，也可在第一笔交易或现金记录前稍后添加。", add_position: "添加一行持仓", start_empty: "从零开始", save_and_continue: "保存并继续 ↗", ticker: "标的", shares: "股数", average_cost: "平均成本", position_type_optional: "仓位类型（可选）", unspecified: "未分类", remove: "移除", invalid_cash: "现金必须是零或正数，且最多 8 位小数。", incomplete_position: "请完整填写标的、股数和平均成本，或移除此行。", invalid_positive_decimal: "请输入正数，且最多 8 位小数。", duplicate_position: "同一标的与仓位类型组合不能重复。", setup_saving: "正在保存起始状态…", setup_unknown: "投资组合设置结果未知。请勿自动重试；刷新页面以恢复当前状态。",
     workspace_navigation: "工作区导航", primary_navigation: "主要导航", new_question: "新问题", ask_nav: "提问", portfolio_nav: "投资组合", question_history: "问题记录", session_only: "仅当前标签页", no_questions: "还没有问题。", signed_in_as: "当前账户", context_aware: "上下文感知决策支持", chat_view_title: "投资问题", structured_state: "结构化状态", portfolio_manage_title: "投资组合工作区", portfolio_manage_summary: "查看确定性状态，或追加不可变交易与现金记录。", portfolio_ready: "投资组合已加载", portfolio_loading: "正在加载投资组合", portfolio_stale: "需要刷新", idle: "空闲", submitting: "正在保存", refresh_required: "需要刷新",
-    chat_intro_eyebrow: "你的投资组合已连接", chat_intro_title: "你正在思考什么投资决策？", chat_intro_body: "提出一个具体问题。PositionPilot 会使用你的持仓及问题所需的当前信息。", no_memory_notice: "问题仅保留在当前浏览器标签页，不构成模型记忆。", investment_question: "投资问题", question_placeholder: "例如：GOOG 今天还能加一点吗？", question_ready: "将使用你的当前投资组合。", ask: "询问 PositionPilot ↗", asking: "分析中…",
+    chat_intro_eyebrow: "你的投资组合已连接", chat_intro_title: "你正在思考什么投资决策？", chat_intro_body: "提出一个具体问题。PositionPilot 会使用你的持仓及问题所需的当前信息。", no_memory_notice: "问题仅保留在当前浏览器标签页，不构成模型记忆。", investment_question: "投资问题", question_placeholder: "例如：GOOG 今天还能加一点吗？", question_ready: "将使用你的当前投资组合。Enter 提交 · Shift+Enter 换行。", ask: "询问 PositionPilot ↗", asking: "分析中…",
     portfolio_reload: "刷新", portfolio_sections: "投资组合分区", overview_tab: "持仓", trade_tab: "交易", cash_tab: "现金记录", available_cash: "可用现金", ledger_derived: "账本计算 · USD", portfolio_context: "投资组合上下文", session_owned: "当前 Session 所属", session_owned_hint: "身份来自你的本地私有 Session。", opening_state: "起始状态", existing_positions_setup: "添加已有持仓", starting_facts: "一次性起始事实", opening_explainer: "记录开始跟踪前已经持有的仓位，不改变现金，也不创建虚假交易。", skip_for_now: "暂时跳过", save_opening_positions: "保存已有持仓", add_existing_positions: "添加已有持仓", open_positions: "当前持仓", portfolio_empty_loaded: "目前没有持仓。", opening_records: "起始持仓记录", records_empty: "暂无记录。",
     transaction_entry: "交易", trade_entry: "交易记录", immutable_entry: "追加不可变记录", action: "操作", price: "价格", occurred_at_optional: "发生时间（可选）", occurred_at_hint: "留空使用后端应用时间。", reason_optional: "原因（可选）", save_trade: "保存交易", transaction_history: "交易历史", cash_activity: "现金活动", cash_entry: "现金记录", cash_event_type: "现金类型", amount: "金额", save_cash: "保存现金记录", cash_history: "现金历史", cost_basis: "成本基础", commission: "手续费", fee_schedule: "费用规则", occurred_at: "发生时间", reason: "原因", sequence: "序号", recorded_at: "记录时间", not_provided: "未填写", trade_saved: "交易已保存", cash_saved: "现金记录已保存", opening_saved: "已有持仓已保存", mutation_unknown: "结果未知。请勿自动重试，请刷新并检查最新投资组合状态。", refresh_failed: "写入可能已成功，但最新投资组合加载失败。继续前请先刷新。", invalid_form: "请检查标记的字段后再提交。", insufficient_cash: "可用现金不足以覆盖本次买入及后端计算的费用。", insufficient_shares: "该仓位类型下的股数不足。", opening_sealed: "已有持仓只能在第一笔交易或现金记录前添加。", future_time: "发生时间不能晚于当前时间。", session_expired: "本地 Session 已过期，请重新登录。",
     working_title: "正在整理决策上下文", working_answer: "正在读取你的投资组合并选择当前信息。", answer_label: "回答", sources_used: "使用的来源", source_explainer: "支持本次回答的上下文。", answer_ready: "基于投资组合的回答", answer_degraded: "上下文有限的回答", answer_failed: "暂时无法回答", source_ticker: "标的", source_provider: "数据提供方", source_feed: "数据源", source_market_time: "市场时间", source_fetched: "获取时间", source_portfolio: "投资组合持仓与现金", source_quote: "当前市场报价", source_history: "价格历史", source_news: "近期新闻", source_market: "市场环境", no_sources: "本次未返回支持来源。", question_required: "请输入一个具体的投资问题。", question_failed: "PositionPilot 未能完成本次问题，请查看状态后重试。",
@@ -219,6 +219,7 @@ const state = {
   portfolioController: null,
   questionController: null,
   questionPending: false,
+  questionComposing: false,
   pendingQuestionView: null,
   questionCount: 0,
   activeView: "chat",
@@ -504,6 +505,7 @@ function resetSensitiveState() {
   state.portfolioController = null;
   state.questionController = null;
   state.questionPending = false;
+  state.questionComposing = false;
   state.pendingQuestionView = null;
   state.questionCount = 0;
   clearElement(elements.conversationList);
@@ -1086,6 +1088,14 @@ async function handleQuestion(event) {
   }
 }
 
+function handleQuestionKeydown(event) {
+  if (event.key !== "Enter" || event.shiftKey) return;
+  if (state.questionComposing || event.isComposing || event.keyCode === 229) return;
+  if (event.repeat || state.questionPending) { event.preventDefault(); return; }
+  event.preventDefault();
+  elements.questionForm.requestSubmit();
+}
+
 function switchAppView(view, focus = true) {
   state.activeView = view;
   const chat = view === "chat";
@@ -1130,6 +1140,9 @@ function bindEvents() {
   elements.openingForm.addEventListener("submit", handleOpening);
   elements.tradeForm.addEventListener("submit", handleTrade);
   elements.cashForm.addEventListener("submit", handleCash);
+  elements.question.addEventListener("compositionstart", () => { state.questionComposing = true; });
+  elements.question.addEventListener("compositionend", () => { state.questionComposing = false; });
+  elements.question.addEventListener("keydown", handleQuestionKeydown);
   elements.questionForm.addEventListener("submit", handleQuestion);
 }
 

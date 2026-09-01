@@ -141,7 +141,7 @@ def test_client_script_preserves_session_identity_safe_text_and_question_boundar
         assert script.count(f"{label}:") >= 2
 
     assert 'ERROR_LABELS[error.code] ?? "unexpected_server_error"' in script
-    assert "20260831-m8-auth-2" in page
+    assert "20260901-m81-ask-1" in page
 
     assert "innerHTML" not in script
     assert "outerHTML" not in script
@@ -160,6 +160,32 @@ def test_client_script_preserves_session_identity_safe_text_and_question_boundar
     assert "/v1/portfolio/opening-positions" in script
     assert "/v1/portfolio/transactions" in script
     assert "/v1/portfolio/cash-events" in script
+
+
+def test_question_composer_keyboard_contract() -> None:
+    """Ask Composer 应复用标准表单提交，并保护换行、输入法与重复提交边界。"""
+
+    page, script, _ = _product_assets()
+
+    assert 'id="question-form"' in page
+    assert 'id="question-hint"' in page
+    assert "Enter to ask · Shift+Enter for a new line." in page
+    for marker in (
+        "questionComposing: false",
+        'addEventListener("compositionstart"',
+        'addEventListener("compositionend"',
+        'addEventListener("keydown", handleQuestionKeydown)',
+        'event.key !== "Enter"',
+        "event.shiftKey",
+        "state.questionComposing",
+        "event.isComposing",
+        "event.keyCode === 229",
+        "event.repeat",
+        "state.questionPending",
+        "elements.questionForm.requestSubmit()",
+    ):
+        assert marker in script
+    assert "event.preventDefault(); return;" in script
 
 
 def test_sources_are_details_closed_by_default() -> None:
