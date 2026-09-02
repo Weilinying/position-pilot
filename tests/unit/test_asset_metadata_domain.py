@@ -7,7 +7,6 @@ from position_pilot.domain.asset_metadata import (
     AssetMetadataStatus,
     AssetSearchQuery,
     AssetSearchResult,
-    AssetStatus,
     AssetValidationQuery,
     AssetValidationResult,
     InvalidAssetMetadata,
@@ -21,7 +20,6 @@ def asset(symbol: str = "GOOG", name: str = "Alphabet Inc.") -> AssetIdentity:
         canonical_symbol=symbol,
         display_name=name,
         exchange="nasdaq",
-        status=AssetStatus.ACTIVE,
     )
 
 
@@ -33,7 +31,7 @@ def test_asset_identity_normalizes_only_provider_neutral_fields() -> None:
     assert identity.canonical_symbol == "GOOG"
     assert identity.display_name == "Alphabet Inc."
     assert identity.exchange == "NASDAQ"
-    assert identity.status is AssetStatus.ACTIVE
+    assert not hasattr(identity, "status")
     assert not hasattr(identity, "alias")
     assert not hasattr(identity, "fractionable")
     assert not hasattr(identity, "fetched_at")
@@ -45,7 +43,6 @@ def test_asset_identity_normalizes_only_provider_neutral_fields() -> None:
         {"canonical_symbol": "not/a/symbol"},
         {"display_name": ""},
         {"exchange": ""},
-        {"status": "ACTIVE"},
     ],
 )
 def test_asset_identity_rejects_invalid_fields(kwargs: dict[str, object]) -> None:
@@ -55,7 +52,6 @@ def test_asset_identity_rejects_invalid_fields(kwargs: dict[str, object]) -> Non
         "canonical_symbol": "GOOG",
         "display_name": "Alphabet Inc.",
         "exchange": "NASDAQ",
-        "status": AssetStatus.ACTIVE,
     }
     values.update(kwargs)
 

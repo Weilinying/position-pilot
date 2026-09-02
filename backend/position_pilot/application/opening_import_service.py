@@ -14,7 +14,6 @@ from position_pilot.application.portfolio_service import (
 from position_pilot.domain.asset_metadata import (
     AssetIdentity,
     AssetMetadataStatus,
-    AssetStatus,
     AssetValidationResult,
 )
 from position_pilot.domain.errors import InvalidPortfolioValue
@@ -30,12 +29,10 @@ class AssetMetadataValidationError(ApplicationError):
         symbol: str,
         status: AssetMetadataStatus,
         message: str,
-        asset_status: AssetStatus | None = None,
     ) -> None:
         self.symbol = symbol
         self.status = status
         self.asset_metadata_status = status
-        self.asset_status = asset_status
         self.message = message
         super().__init__(f"Asset '{symbol}' validation failed: {status.value} - {message}")
 
@@ -138,7 +135,7 @@ class OpeningImportService:
         return tuple(validated)
 
     def _validate_asset(self, symbol: str) -> AssetIdentity:
-        """执行单行 exact validation，并拒绝非 active 或 Provider Failure。"""
+        """执行单行 exact validation，并拒绝 Provider Failure。"""
 
         try:
             result = self._asset_metadata_service.validate(symbol)
@@ -161,13 +158,6 @@ class OpeningImportService:
                 symbol=symbol,
                 status=AssetMetadataStatus.INVALID_PROVIDER_RESPONSE,
                 message="Asset Metadata validation 未返回 Asset",
-            )
-        if result.asset.status is not AssetStatus.ACTIVE:
-            raise AssetMetadataValidationError(
-                symbol=symbol,
-                status=AssetMetadataStatus.NO_MATCH,
-                message="Asset 当前不可用于 Opening State",
-                asset_status=result.asset.status,
             )
         return result.asset
 

@@ -8,7 +8,7 @@
 
 ### Added
 
-- 增加 Massive-backed Asset Search 与 exact validation，Opening Position 最终只写入 Provider
+- 增加 Finnhub-backed Asset Search 与 exact validation，Opening Position 最终只写入 Provider
   验证后的 canonical symbol，不建立本地 Asset Master。
 - 增加仅用于 Portfolio Opening State 的 Manual、Text 与 Screenshot Import；Recognition Draft
   可编辑且只存在于当前 Browser / Request 生命周期。
@@ -21,6 +21,8 @@
   Form Submit 路径。
 - Recognition Confidence 只作为 Human Review Signal；最终写入仍要求用户确认、Asset
   Validation 与 deterministic Domain Validation。
+- Asset Identity 缩减为 canonical symbol、display name 与 exchange；不把 Provider 未明确提供的
+  active / inactive 状态推断为 Portfolio Domain Truth。
 
 ### Fixed
 

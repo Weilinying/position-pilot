@@ -21,7 +21,7 @@ from position_pilot.integrations.aliyun_llm import create_aliyun_llm_provider
 from position_pilot.integrations.aliyun_vision import AliyunVisionProvider
 from position_pilot.integrations.alpaca_market_data import create_alpaca_market_data_provider
 from position_pilot.integrations.alpaca_news import create_alpaca_news_provider
-from position_pilot.integrations.massive_asset_metadata import MassiveAssetMetadataProvider
+from position_pilot.integrations.finnhub_asset_metadata import FinnhubAssetMetadataProvider
 
 
 @lru_cache
@@ -49,13 +49,13 @@ def get_auth_service() -> AuthService:
 
 @lru_cache
 def get_asset_metadata_service() -> AssetMetadataService:
-    """装配进程内共享的 Massive Asset Metadata Application Service。"""
+    """装配进程内共享的 Finnhub Asset Metadata Application Service。"""
 
     settings = get_settings()
-    provider = MassiveAssetMetadataProvider(
-        api_key=_secret_value(settings.massive_api_key),
-        base_url=str(settings.massive_base_url),
-        timeout_seconds=settings.massive_request_timeout_seconds,
+    provider = FinnhubAssetMetadataProvider(
+        api_key=_secret_value(settings.finnhub_api_key),
+        base_url=str(settings.finnhub_base_url),
+        timeout_seconds=settings.finnhub_request_timeout_seconds,
     )
     return AssetMetadataService(provider)
 

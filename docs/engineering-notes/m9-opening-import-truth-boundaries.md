@@ -13,8 +13,9 @@ Confidence 识别结果直接当作 Portfolio Truth，或把一次性 Opening Im
   当前业务所需的 canonical symbol，不复制或持续同步完整 Asset Master。
 - Provider-specific Asset Metadata 只存在于 Integration Adapter；Application / Domain 使用
   Provider-neutral Schema 与明确 Failure Status。
-- M9 只规范化 Asset Selector 所需的 canonical symbol、display name、exchange 与 status；其他
-  Metadata 只有出现当前界面需求时才增加，不设计通用证券主数据模型。
+- M9 只规范化 Asset Selector 所需的 canonical symbol、display name 与 exchange；Provider exact
+  validation 成功只表示能够识别并规范化 symbol，不把未明确提供的 active / inactive 状态推断为
+  Domain Truth。其他 Metadata 只有出现当前界面需求时才增加，不设计通用证券主数据模型。
 - Recognition 只生成可编辑 Draft。Confidence 只作为 Human Review Signal，不进入 Portfolio
   Domain，也不单独允许或阻止写入。
 - 最终写入只接受用户确认后的确定字段，并重新执行 Asset Validation 与 deterministic Domain

@@ -160,12 +160,12 @@ def test_settings_uses_m9_provider_defaults(monkeypatch: pytest.MonkeyPatch) -> 
 
     settings = Settings(_env_file=None)  # type: ignore[call-arg]
 
-    assert str(settings.massive_base_url).rstrip("/") == "https://api.massive.com"
-    assert settings.massive_request_timeout_seconds == 10.0
+    assert str(settings.finnhub_base_url).rstrip("/") == "https://finnhub.io/api/v1"
+    assert settings.finnhub_request_timeout_seconds == 10.0
     assert str(settings.vision_base_url) == ("https://dashscope.aliyuncs.com/compatible-mode/v1")
     assert settings.vision_model == "qwen3-vl-flash"
     assert settings.vision_request_timeout_seconds == 30.0
-    assert settings.massive_api_key is None
+    assert settings.finnhub_api_key is None
     assert settings.vision_api_key is None
 
 
@@ -176,16 +176,16 @@ def test_settings_reads_m9_credentials_as_secrets(monkeypatch: pytest.MonkeyPatc
         "DATABASE_URL",
         "postgresql+psycopg://position_pilot:secret@localhost:5432/position_pilot",
     )
-    monkeypatch.setenv("MASSIVE_API_KEY", "massive-secret")
+    monkeypatch.setenv("FINNHUB_API_KEY", "finnhub-secret")
     monkeypatch.setenv("VISION_API_KEY", "vision-secret")
 
     settings = Settings(_env_file=None)  # type: ignore[call-arg]
 
-    assert settings.massive_api_key is not None
-    assert settings.massive_api_key.get_secret_value() == "massive-secret"
+    assert settings.finnhub_api_key is not None
+    assert settings.finnhub_api_key.get_secret_value() == "finnhub-secret"
     assert settings.vision_api_key is not None
     assert settings.vision_api_key.get_secret_value() == "vision-secret"
-    assert "massive-secret" not in repr(settings)
+    assert "finnhub-secret" not in repr(settings)
     assert "vision-secret" not in repr(settings)
 
 
@@ -193,14 +193,14 @@ def test_settings_reads_m9_credentials_as_secrets(monkeypatch: pytest.MonkeyPatc
     ("name", "timeout", "message"),
     [
         (
-            "MASSIVE_REQUEST_TIMEOUT_SECONDS",
+            "FINNHUB_REQUEST_TIMEOUT_SECONDS",
             "0",
-            "MASSIVE_REQUEST_TIMEOUT_SECONDS",
+            "FINNHUB_REQUEST_TIMEOUT_SECONDS",
         ),
         (
-            "MASSIVE_REQUEST_TIMEOUT_SECONDS",
+            "FINNHUB_REQUEST_TIMEOUT_SECONDS",
             "61",
-            "MASSIVE_REQUEST_TIMEOUT_SECONDS",
+            "FINNHUB_REQUEST_TIMEOUT_SECONDS",
         ),
         (
             "VISION_REQUEST_TIMEOUT_SECONDS",
@@ -232,7 +232,7 @@ def test_settings_rejects_invalid_m9_timeout(
         Settings(_env_file=None)  # type: ignore[call-arg]
 
 
-@pytest.mark.parametrize("name", ["MASSIVE_BASE_URL", "VISION_BASE_URL"])
+@pytest.mark.parametrize("name", ["FINNHUB_BASE_URL", "VISION_BASE_URL"])
 def test_settings_requires_https_m9_provider_url(
     monkeypatch: pytest.MonkeyPatch,
     name: str,

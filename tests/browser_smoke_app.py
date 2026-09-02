@@ -52,7 +52,6 @@ from position_pilot.domain.asset_metadata import (
     AssetMetadataStatus,
     AssetSearchQuery,
     AssetSearchResult,
-    AssetStatus,
     AssetValidationQuery,
     AssetValidationResult,
 )
@@ -518,13 +517,12 @@ class BrowserSmokeInvestmentAgent:
 
 
 def _smoke_asset(symbol: str, display_name: str, exchange: str = "NASDAQ") -> AssetIdentity:
-    """创建供 Import UI 使用的最小 active Asset Fixture。"""
+    """创建供 Import UI 使用的最小 Asset Fixture。"""
 
     return AssetIdentity(
         canonical_symbol=symbol,
         display_name=display_name,
         exchange=exchange,
-        status=AssetStatus.ACTIVE,
     )
 
 

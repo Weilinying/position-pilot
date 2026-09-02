@@ -28,7 +28,6 @@ from position_pilot.domain.asset_metadata import (
     AssetIdentity,
     AssetMetadataStatus,
     AssetSearchResult,
-    AssetStatus,
 )
 from position_pilot.domain.portfolio import (
     CashBalance,
@@ -201,7 +200,7 @@ def test_asset_search_allows_account_without_portfolio(client: TestClient) -> No
 
     override_account()
     result = AssetSearchResult.success(
-        (AssetIdentity("ADBE", "Adobe Inc.", "NASDAQ", AssetStatus.ACTIVE),)
+        (AssetIdentity("ADBE", "Adobe Inc.", "NASDAQ"),)
     )
     service = FakeAssetMetadataService(result)
     app.dependency_overrides[get_asset_metadata_service_dependency] = lambda: service
@@ -216,7 +215,6 @@ def test_asset_search_allows_account_without_portfolio(client: TestClient) -> No
                 "canonical_symbol": "ADBE",
                 "display_name": "Adobe Inc.",
                 "exchange": "NASDAQ",
-                "status": "ACTIVE",
             }
         ],
         "message": None,

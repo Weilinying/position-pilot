@@ -8,7 +8,6 @@ from position_pilot.domain.asset_metadata import (
     AssetMetadataStatus,
     AssetSearchQuery,
     AssetSearchResult,
-    AssetStatus,
     AssetValidationQuery,
     AssetValidationResult,
 )
@@ -17,7 +16,7 @@ from position_pilot.domain.asset_metadata import (
 def identity(symbol: str, name: str) -> AssetIdentity:
     """创建测试候选。"""
 
-    return AssetIdentity(symbol, name, "NASDAQ", AssetStatus.ACTIVE)
+    return AssetIdentity(symbol, name, "NASDAQ")
 
 
 @dataclass(slots=True)

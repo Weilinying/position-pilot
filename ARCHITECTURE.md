@@ -50,7 +50,7 @@ Application / InvestmentAgent
 
 Portfolio callers
       ↓
-Application / OpeningImportService → AssetMetadataService → Massive Adapter
+Application / OpeningImportService → AssetMetadataService → Finnhub Adapter
       ↓ confirmed canonical symbol
 AuthService / PortfolioService
       ↓
@@ -169,7 +169,7 @@ Cash Event amount 必须为正数且最多 8 位小数。Transaction 与 Cash Ev
 - `backend/position_pilot/infrastructure/unit_of_work.py`：同步 SQLAlchemy 持久化实现和领域映射。
 - `backend/position_pilot/integrations/aliyun_llm.py`：阿里云 Model Studio OpenAI-compatible Adapter。
 - `backend/position_pilot/integrations/aliyun_vision.py`：`qwen3-vl-flash` Recognition Adapter；图片文字只作为数据处理。
-- `backend/position_pilot/integrations/massive_asset_metadata.py`：Massive Ticker Search / Overview、最小字段映射与 Failure Mapping。
+- `backend/position_pilot/integrations/finnhub_asset_metadata.py`：Finnhub Symbol Lookup / Company Profile 2、最小字段映射与 Failure Mapping。
 - `backend/position_pilot/integrations/alpaca_news.py`：Alpaca News beta JSON、attribution 与 Failure Mapping Adapter。
 - `backend/position_pilot/bootstrap.py`：Portfolio、Market Data 与 LLM Provider 的依赖装配。
 - `backend/position_pilot/demo_seed.py`：通过正式 Application Service 创建隔离本地 Demo Portfolio 的显式命令。
@@ -185,7 +185,7 @@ Cash Event amount 必须为正数且最多 8 位小数。Transaction 与 Cash Ev
 - 手续费只实现 `IBKR_PRO_TIERED_US_2026_08` 第一档基础佣金，不模拟月累计量跨档、执行场所、清算、监管或 pass-through fees。
 - 不处理税费、多币种、拆股、公司行动、转仓或外部券商同步。
 - M9 Import 只初始化仍为空的 Opening State；不 merge、overwrite、sync 或 reconcile 已初始化 Portfolio。
-- M9 不维护本地 Asset Master；搜索与最终写入依赖 Massive 可用性。`qwen3-vl-flash` 图片不会由 PositionPilot 持久化，但 Provider 未公开固定原图保留时长。
+- M9 不维护本地 Asset Master；搜索与最终写入依赖 Finnhub 可用性。`qwen3-vl-flash` 图片不会由 PositionPilot 持久化，但 Provider 未公开固定原图保留时长。
 - Current Quote 默认来自 Alpaca Basic 的实时 IEX feed，只代表单一交易所覆盖；Historical Daily OHLCV 来自至少延迟 15 分钟的 SIP feed。
 - 不包含 WebSocket、行情 / 新闻缓存或持久化、通用技术指标、VIX、市场宽度、宏观 Context、News 全文抓取、Earnings 或 Fundamentals；Market Regime 仅为已批准的 SPY Daily Price Stress V1 Heuristic。
 - Portfolio Snapshot 是 Agent 必定注入的完整当前持仓集合，并包含当前 Positions 对应的有界历史 BUY Facts；它不包含完整 Transaction Ledger 或 Cash Event History。每个 `(ticker, position_type)` 只保留最近 5 条 BUY，并显式声明总数与截断状态。
@@ -201,7 +201,7 @@ Cash Event amount 必须为正数且最多 8 位小数。Transaction 与 Cash Ev
 - Current Quote 正确性不再依赖自然语言 Regex、同义词表或确定性 Renderer。Backend 强约束 Portfolio / Ledger / Derived Facts 和 Tool / Source 真实性；最终自然语言是否准确使用这些事实由 Prompt、Behavioral Eval 与 Human Review 衡量。成功取得但未声明使用的 Context 不进入 Final Source Tracking；失败 Tool Attempt 仍保留原 status 以维持降级可观测性，但不能被声明为成功 Source。
 - 同一轮内大小写或空白不同的重复调用按 `(tool_name, ticker)` 共用一次 Provider Result，但每个 Native Tool Call 都获得对应 Tool Message。Quote、History 与 News 即使 Ticker 相同仍是三个独立来源。
 - 超出 Portfolio Snapshot、成功 Current Quote、成功 Price History、attributed Recent News 与成功 SPY Market Context Tool Result 的事实保持 `UNKNOWN`；新闻报道不得自动升级为系统验证事实，Market Context Failure 时不得从其他来源补造 Regime。
-- Investment Agent 当前仍无 Trading / Asset Metadata Context；`normalize_ticker()` 本身仍只验证字符串格式。M9 通过独立 Provider-neutral Boundary 为一次性 Opening State Import 提供最小 Asset Selector 与可审查 Draft，并在确认写入前使用 Massive exact validation 产生 canonical symbol；该能力不进入 Investment Agent 指令链路，也不允许 LLM、Browser Suggestion 或 Recognition Confidence 替代 Asset Validation。实现边界见 `docs/plans/m9-asset-identity-portfolio-import.md` 与 `docs/engineering-notes/m9-opening-import-truth-boundaries.md`。
+- Investment Agent 当前仍无 Trading / Asset Metadata Context；`normalize_ticker()` 本身仍只验证字符串格式。M9 通过独立 Provider-neutral Boundary 为一次性 Opening State Import 提供最小 Asset Selector 与可审查 Draft，并在确认写入前使用 Finnhub exact validation 产生 canonical symbol；该能力不进入 Investment Agent 指令链路，也不允许 LLM、Browser Suggestion 或 Recognition Confidence 替代 Asset Validation。实现边界见 `docs/plans/m9-asset-identity-portfolio-import.md` 与 `docs/engineering-notes/m9-opening-import-truth-boundaries.md`。
 
 ## 8. Local Product Interface Boundary
 
@@ -255,8 +255,8 @@ stale / refresh_required; never automatic retry
 ```text
 symbol / company name
         ↓ bounded search
-AssetMetadataService → MassiveAssetMetadataProvider
-        ↓ canonical_symbol + display_name + exchange + status
+AssetMetadataService → FinnhubAssetMetadataProvider
+        ↓ canonical_symbol + display_name + exchange
 Browser candidate selection
 
 Text / Screenshot
@@ -270,8 +270,8 @@ AuthService / PortfolioService → User row lock → recheck one-time Gate
 OpeningPosition facts
 ```
 
-- Asset Metadata Provider JSON、Credential 与 HTTP Error 只存在于 Massive Adapter；Domain 只认识
-  `canonical_symbol`、`display_name`、`exchange`、`status` 与稳定 Failure Status，不保存完整
+- Asset Metadata Provider JSON、Credential 与 HTTP Error 只存在于 Finnhub Adapter；Domain 只认识
+  `canonical_symbol`、`display_name`、`exchange` 与稳定 Failure Status，不保存完整
   Asset Master。
 - Recognition 不是 `InvestmentAgent` Tool，也不进入 Agent 的 Message / Instruction 链路。图片与
   OCR 文本全部作为待提取数据，输出必须通过严格 Provider-neutral Draft Schema；Confidence 只在

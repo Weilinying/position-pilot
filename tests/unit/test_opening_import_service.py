@@ -19,7 +19,6 @@ from position_pilot.application.portfolio_service import (
 from position_pilot.domain.asset_metadata import (
     AssetIdentity,
     AssetMetadataStatus,
-    AssetStatus,
     AssetValidationResult,
 )
 from position_pilot.domain.errors import InvalidPortfolioValue
@@ -34,7 +33,6 @@ def identity(
     symbol: str,
     *,
     name: str = "Example Asset",
-    status: AssetStatus = AssetStatus.ACTIVE,
 ) -> AssetIdentity:
     """创建最小 Provider-neutral Asset Identity。"""
 
@@ -42,7 +40,6 @@ def identity(
         canonical_symbol=symbol,
         display_name=name,
         exchange="NASDAQ",
-        status=status,
     )
 
 
@@ -228,17 +225,13 @@ def test_empty_setup_skips_asset_provider() -> None:
             ),
             AssetMetadataStatus.PROVIDER_UNAVAILABLE,
         ),
-        (
-            AssetValidationResult.success(identity("DEAD", status=AssetStatus.INACTIVE)),
-            AssetMetadataStatus.NO_MATCH,
-        ),
     ],
 )
 def test_asset_failure_exposes_stable_status_and_never_writes(
     result: AssetValidationResult,
     expected_status: AssetMetadataStatus,
 ) -> None:
-    """No Match、Inactive 与 Provider Failure 都必须在写入前终止。"""
+    """No Match 与 Provider Failure 都必须在写入前终止。"""
 
     metadata = FakeAssetMetadataService(results={"dead": result})
     auth = FakeAuthService(make_user())

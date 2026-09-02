@@ -74,7 +74,6 @@ from position_pilot.domain.asset_metadata import (
     AssetIdentity,
     AssetMetadataStatus,
     AssetSearchResult,
-    AssetStatus,
 )
 from position_pilot.domain.errors import (
     FutureTimestamp,
@@ -396,7 +395,6 @@ class AssetCandidateResponse(BaseModel):
     canonical_symbol: str
     display_name: str
     exchange: str
-    status: AssetStatus
 
 
 class AssetSearchResponse(BaseModel):
@@ -1381,7 +1379,6 @@ def _asset_candidate_response(asset: AssetIdentity) -> AssetCandidateResponse:
         canonical_symbol=asset.canonical_symbol,
         display_name=asset.display_name,
         exchange=asset.exchange,
-        status=asset.status,
     )
 
 

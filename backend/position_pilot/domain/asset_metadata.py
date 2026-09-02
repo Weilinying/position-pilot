@@ -30,13 +30,6 @@ class AssetMetadataStatus(StrEnum):
     INVALID_PROVIDER_RESPONSE = "INVALID_PROVIDER_RESPONSE"
 
 
-class AssetStatus(StrEnum):
-    """Selector 当前允许使用的 Asset 状态。"""
-
-    ACTIVE = "ACTIVE"
-    INACTIVE = "INACTIVE"
-
-
 def _normalize_nonempty_text(
     value: str,
     *,
@@ -72,7 +65,6 @@ class AssetIdentity:
     canonical_symbol: str
     display_name: str
     exchange: str
-    status: AssetStatus
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "canonical_symbol", normalize_asset_symbol(self.canonical_symbol))
@@ -94,8 +86,6 @@ class AssetIdentity:
                 max_length=MAX_ASSET_EXCHANGE_LENGTH,
             ).upper(),
         )
-        if not isinstance(self.status, AssetStatus):
-            raise InvalidAssetMetadata("status 必须是 AssetStatus")
 
 
 @dataclass(frozen=True, slots=True)

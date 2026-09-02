@@ -56,7 +56,7 @@ V1 优先实现 Structured Memory。总可投资资金、剩余现金、Portfoli
 
 系统开始跟踪前已经存在的持仓使用独立、不可变的 Opening State 表达，只记录 ticker、shares、average cost、可选 Position Type 与后端记录时间。Opening Position 不是经济 Ledger Event，不伪造成 BUY、不扣减现金、没有交易 sequence 或手续费；当前 State 由 Opening State 与 Cash / Transaction Ledger 共同确定性重建。
 
-从 M9 开始，Opening State 中的 Asset Identity 以 Asset Metadata Provider 验证后的 canonical symbol 表示；现有 `ticker` 字段承载该 canonical symbol，而不是未经验证的用户输入或公司名称。V1 不建立、复制或持续同步完整的本地 Asset Master；M9 只通过 Provider-neutral Asset Metadata Boundary 规范化前端 Asset Selector 与写入校验所需的 canonical symbol、display name、exchange 和 status，Provider-specific Payload 不进入 Portfolio Domain。只有当前界面出现真实需求时才增加其他 Metadata 字段，不建设通用证券主数据模型。
+从 M9 开始，Opening State 中的 Asset Identity 以 Asset Metadata Provider 验证后的 canonical symbol 表示；现有 `ticker` 字段承载该 canonical symbol，而不是未经验证的用户输入或公司名称。V1 不建立、复制或持续同步完整的本地 Asset Master；M9 只通过 Provider-neutral Asset Metadata Boundary 规范化前端 Asset Selector 与写入校验所需的 canonical symbol、display name 和 exchange，Provider-specific Payload 不进入 Portfolio Domain。Provider exact validation 成功只表示当前能够识别并规范化该 symbol，不把 Provider 未明确提供的 active / inactive 状态推断为 Portfolio Domain Truth。只有当前界面出现真实需求时才增加其他 Metadata 字段，不建设通用证券主数据模型。
 
 V1 的 Email / Password 账户只为本地产品闭环提供稳定身份与 Portfolio Ownership。Account 与现有单一 `User → Portfolio State` 之间保持一对一关系；Browser 不再把 UUID 当作正常用户身份或恢复方式。密码明文不得持久化，认证后由 HttpOnly Session Cookie 识别当前 Account，Portfolio 与 Investment API 的 User Identity 必须由 Session 在 Server 端确定。
 
@@ -145,7 +145,7 @@ V1 已确定使用 Python、FastAPI、Pydantic、PostgreSQL 和 pytest。
 
 ## 10. 尚未确定的技术问题
 
-PositionPilot 自身的 Agent Orchestration 已在 M3 Human Review 中确定使用 Single Agent + Native Function Calling，M3 不引入 LangGraph。M2 已选择 Alpaca Market Data API v2 REST 作为 Market Data Provider，具体覆盖与限制见 ADR 0004；M3 已选择阿里云 Model Studio 作为 V1 默认 LLM Provider，并保持 Provider / Model 可配置和与 Agent / Domain 解耦；M9 已选择 Massive 作为 Asset Metadata Provider、Alibaba Model Studio `qwen3-vl-flash` 作为 Vision / OCR Capability，具体边界见 ADR 0010；News Provider 和 Financial Data Provider 尚未确定。
+PositionPilot 自身的 Agent Orchestration 已在 M3 Human Review 中确定使用 Single Agent + Native Function Calling，M3 不引入 LangGraph。M2 已选择 Alpaca Market Data API v2 REST 作为 Market Data Provider，具体覆盖与限制见 ADR 0004；M3 已选择阿里云 Model Studio 作为 V1 默认 LLM Provider，并保持 Provider / Model 可配置和与 Agent / Domain 解耦；M9 已选择 Finnhub 作为 Asset Metadata Provider、Alibaba Model Studio `qwen3-vl-flash` 作为 Vision / OCR Capability，具体边界见 ADR 0010；News Provider 和 Financial Data Provider 尚未确定。
 
 “尚未确定”本身是一种有效状态。开发过程中不得因为需要继续编码，就未经评估默认选择某个 Framework 或 Provider。进入相关 Milestone 后，应根据真实需求、Technical Spike 或可验证比较做出决策，并在必要时记录 ADR。
 

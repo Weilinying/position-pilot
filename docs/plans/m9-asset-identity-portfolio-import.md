@@ -31,9 +31,10 @@ M9 不建设本地完整 Asset Master，不把 Recognition Confidence 当作 Dom
 - Asset Identity 以 Asset Metadata Provider 验证后的 `canonical_symbol` 表示。
 - Portfolio Domain 现有 `ticker` 字段承载 canonical symbol；M9 不仅通过 uppercase / regex
   把任意用户输入声明为真实 Asset。
-- M9 只规范化前端 Asset Selector 与写入校验实际需要的 `canonical_symbol`、`display_name`、
-  `exchange` 与 `status`。若选定 Provider 直接提供且当前 UI 确实使用，可以附加 `tradable`；
-  不为 `fractionable`、alias、class shares、source timestamp 等未来字段建设通用 Metadata Model。
+- M9 只规范化前端 Asset Selector 与写入校验实际需要的 `canonical_symbol`、`display_name` 与
+  `exchange`。Provider exact validation 成功只表示能够识别并规范化 symbol，不推断未明确
+  提供的 active / inactive 状态；不为 `tradable`、`fractionable`、alias、class shares、source
+  timestamp 等未来字段建设通用 Metadata Model。
 - 不创建完整本地 Asset Master、Security Master 同步任务或 Symbol Mapping Database。
 - Provider-specific JSON、枚举和错误只存在于 Integration Adapter。
 
@@ -151,9 +152,7 @@ AssetValidationResult(status, asset?)
 AssetIdentity
 ├── canonical_symbol
 ├── display_name
-├── exchange
-├── status
-└── optional tradable（Provider 直接提供且当前 UI 使用时）
+└── exchange
 ```
 
 这不是通用证券主数据模型。Provider-specific Metadata 与诊断信息留在 Adapter；Search Candidate
@@ -284,13 +283,13 @@ Portfolio Setup / still-open Opening State
 - 将 verified canonical symbol 传入现有 `OpeningPositionInput`；不新增 Asset Master Foreign Key。
 - Provider Validation 在数据库事务外完成；现有 User Row Lock 内重新检查 one-time Gate，避免
   外部 I/O 持锁并阻止并发状态变化绕过 Gate。
-- Provider Failure、invalid / inactive Asset、canonical duplicate 或 sealed Gate 全部原子失败。
+- Provider Failure、invalid Asset、canonical duplicate 或 sealed Gate 全部原子失败。
 - 保持 Opening Position 无现金影响、无 sequence、无历史 BUY 和 immutable 语义。
 
 ### T7 — Frontend Import Review Flow
 
 - 在现有 Setup / Opening State UI 增加 Manual、Text、Screenshot 三种输入入口。
-- 展示 editable Draft、`canonical_symbol / display_name / exchange / status` 候选、missing / invalid
+- 展示 editable Draft、`canonical_symbol / display_name / exchange` 候选、missing / invalid
   状态、Confidence Review Signal 与明确 Human Confirmation。
 - 处理 stale response、身份切换、重复 Processing、Upload Cancellation 与 Write Ambiguity。
 - 不引入 Frontend Framework、Node Build Pipeline 或前端金融计算。
@@ -379,13 +378,15 @@ T0 Evaluation + Human Review
 2. 实现过程中若需要改变既有 Domain、Database 或 M9 Scope；
 3. M9 完成后的 Human Acceptance。
 
-当前计划状态：真实性与 Scope Boundary，以及 Massive + Alibaba Model Studio `qwen3-vl-flash`
-选型与图片隐私边界均已获 Human 批准。M9 的 Domain / Application Boundary、Provider Adapter、
+当前计划状态：真实性与 Scope Boundary，以及 Finnhub + Alibaba Model Studio `qwen3-vl-flash`
+选型与图片隐私边界均已获 Human 批准。Massive 的 5 requests/min 免费额度经 Review 被确认不适合
+交互式搜索与多持仓 exact validation，因此 2026-09-02 改用 Finnhub，并从最小 Asset Identity
+删除 active / inactive status。M9 的 Domain / Application Boundary、Provider Adapter、
 API、Confirmed Write Validation、Frontend Import Flow、默认 Regression、Automated Review 与
 Engineering Browser Smoke 已完成；Review 发现的 FileReader Session Race、malformed Draft 提示、
-Massive malformed response mapping 与 detached pending row 已修复并重新验证。
+Provider malformed response mapping 与 detached pending row 已修复并重新验证。
 
-当前等待第三个 Human Review Gate：正式 Massive / `qwen3-vl-flash` Online Smoke、可清理
+当前等待第三个 Human Review Gate：正式 Finnhub / `qwen3-vl-flash` Online Smoke、可清理
 PostgreSQL Integration 与用户在正式 `position_pilot.main:app` 上的 Human Acceptance。缺少显式
 导出的 Provider Credential 与 `TEST_DATABASE_URL` 时，这三项不会由默认 Test Suite 假装通过。
 Human Acceptance 前保持 `IN PROGRESS`，不 merge `main`、不 Push、不 Tag，也不创建 Release。

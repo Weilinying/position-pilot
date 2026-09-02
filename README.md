@@ -56,14 +56,14 @@ curl http://127.0.0.1:8000/health
 
 注册只需要 Display Name、Email 与 Password。Password 使用带随机 Salt 的 `scrypt` Hash 存入本地 PostgreSQL；Browser 只持有七天有效的 `HttpOnly + SameSite=Lax` Session Cookie，Database 只保存 Token Digest。登录成功会轮换当前 Browser Session；Logout、Session 过期或认证失败会清空当前页面的 Portfolio 与 Question Presentation State。M8 不提供 Email Verification、Password Reset、OAuth、MFA、Role / Permission 或远程 Session 管理。
 
-注册后进入一次性 Portfolio Setup。Initial Cash 默认是 `0`；Existing Positions 为可选批量输入，可记录开始跟踪前已经持有的 ticker、shares、average cost 与可选 Position Type。它们属于 immutable Opening State，不扣减现金、不产生交易 sequence，也不会伪造成历史 BUY。用户可以直接从零开始，并在第一笔 Opening Position、Transaction 或 Cash Event 之前稍后添加 Existing Positions。M9 在同一 Opening State Gate 内提供 Manual Asset Search、Text Import 与 Screenshot Import：Recognition 只生成可编辑 Draft，最终字段必须经用户确认、Massive exact Asset Validation 与 deterministic Domain Validation；已初始化 Portfolio 不提供增量同步或 Reconciliation。
+注册后进入一次性 Portfolio Setup。Initial Cash 默认是 `0`；Existing Positions 为可选批量输入，可记录开始跟踪前已经持有的 ticker、shares、average cost 与可选 Position Type。它们属于 immutable Opening State，不扣减现金、不产生交易 sequence，也不会伪造成历史 BUY。用户可以直接从零开始，并在第一笔 Opening Position、Transaction 或 Cash Event 之前稍后添加 Existing Positions。M9 在同一 Opening State Gate 内提供 Manual Asset Search、Text Import 与 Screenshot Import：Recognition 只生成可编辑 Draft，最终字段必须经用户确认、Finnhub exact Asset Validation 与 deterministic Domain Validation；已初始化 Portfolio 不提供增量同步或 Reconciliation。
 
 完成 Setup 后进入单一应用壳：左侧导航在 Decision Questions 与 Portfolio Workspace 之间切换。Question History 会保留当前浏览器标签页内的多个 Question / Answer 并支持跳转；它们不会写入 `localStorage`、不会跨刷新恢复，也不会作为下一次模型请求的 Conversation Memory。Ask Composer 支持按 Enter 提交、按 Shift+Enter 换行；输入法 composing、自动重复事件和请求进行中不会产生重复 Request，按钮提交仍复用同一标准 Form 路径。每次提问只发送当前 `question`，User Identity 由 Server Session 注入，并调用正式 `InvestmentAgent`；Answer 是默认视觉主体，Sources 默认折叠。Portfolio Workspace 将 Positions、Transactions 与 Cash Activity 分开，避免初始化、账本输入和问答堆在同一页面。
 
 页面支持：
 
 - 通过 HttpOnly Session 恢复当前 Account 与唯一 Portfolio；
-- 通过 Massive 按 symbol / company name 搜索并选择 Provider 验证的 canonical symbol；
+- 通过 Finnhub 按 symbol / company name 搜索并选择 Provider 验证的 canonical symbol；
 - 从 Text 或单张 JPEG / PNG / WebP Screenshot 生成当前 Browser 生命周期内的可编辑 Opening Position Draft；
 - 追加 BUY / SELL；Position Type 可留空并归一为 `UNSPECIFIED`，与 `LONG_TERM`、`SWING` 独立维护；
 - 追加 DEPOSIT / WITHDRAWAL；
@@ -101,24 +101,24 @@ RUN_ALPACA_ONLINE_TESTS=1 uv run pytest tests/integration/test_alpaca_market_dat
 
 ## Asset Identity 与 Opening Import
 
-M9 使用 Massive 进行美国股票 / ETF 的 symbol、company name 搜索与 exact validation；Portfolio
+M9 使用 Finnhub 进行美国股票 / ETF 的 symbol、company name 搜索与 exact validation；Portfolio
 只保存 Provider 验证后的 canonical symbol，不维护本地完整 Asset Master。Screenshot Recognition
 使用 Alibaba Model Studio `qwen3-vl-flash`，图片只在当前 Browser / Request 内处理，PositionPilot
 不持久化图片、OCR 全文、Draft、Confidence 或 Provider Payload。图片会发送至 Alibaba Model
 Studio；Provider 官方声明数据不用于训练，但没有公开固定原图保留时长，因此界面不会宣称 Zero
 Retention。
 
-在本地 `.env` 配置 `MASSIVE_API_KEY`；Vision 可以配置独立 `VISION_API_KEY`，留空时复用
+在本地 `.env` 配置 `FINNHUB_API_KEY`；Vision 可以配置独立 `VISION_API_KEY`，留空时复用
 `LLM_API_KEY`。真实 Provider Smoke 默认关闭，并且只读取显式导出的环境变量：
 
 ```bash
 RUN_M9_ONLINE_TESTS=1 \
-MASSIVE_API_KEY=<local-secret> \
+FINNHUB_API_KEY=<local-secret> \
 VISION_API_KEY=<local-secret> \
 M9_VISION_FIXTURE_PATH=/absolute/path/to/non-sensitive-fixture.png \
 M9_VISION_EXPECTED_SYMBOL=NVDA \
 uv run pytest \
-  tests/integration/test_massive_asset_metadata_online.py \
+  tests/integration/test_finnhub_asset_metadata_online.py \
   tests/integration/test_aliyun_vision_online.py -s
 ```
 

@@ -15,9 +15,9 @@ class Settings(BaseSettings):
     alpaca_api_secret_key: SecretStr | None = None
     alpaca_data_base_url: AnyHttpUrl = AnyHttpUrl("https://data.alpaca.markets")
     alpaca_request_timeout_seconds: float = 10.0
-    massive_api_key: SecretStr | None = None
-    massive_base_url: AnyHttpUrl = AnyHttpUrl("https://api.massive.com")
-    massive_request_timeout_seconds: float = 10.0
+    finnhub_api_key: SecretStr | None = None
+    finnhub_base_url: AnyHttpUrl = AnyHttpUrl("https://finnhub.io/api/v1")
+    finnhub_request_timeout_seconds: float = 10.0
     llm_base_url: AnyHttpUrl = AnyHttpUrl("https://dashscope.aliyuncs.com/compatible-mode/v1")
     llm_api_key: SecretStr | None = None
     llm_model: str = "deepseek-v4-pro-0813"
@@ -60,22 +60,22 @@ class Settings(BaseSettings):
             raise ValueError("ALPACA_DATA_BASE_URL 必须使用 HTTPS")
         return value
 
-    @field_validator("massive_request_timeout_seconds")
+    @field_validator("finnhub_request_timeout_seconds")
     @classmethod
-    def require_positive_massive_timeout(cls, value: float) -> float:
+    def require_positive_finnhub_timeout(cls, value: float) -> float:
         """限制 Asset Metadata Provider 请求等待时间。"""
 
         if not isfinite(value) or value <= 0 or value > 60:
-            raise ValueError("MASSIVE_REQUEST_TIMEOUT_SECONDS 必须在 0 到 60 秒之间")
+            raise ValueError("FINNHUB_REQUEST_TIMEOUT_SECONDS 必须在 0 到 60 秒之间")
         return value
 
-    @field_validator("massive_base_url")
+    @field_validator("finnhub_base_url")
     @classmethod
-    def require_https_massive_url(cls, value: AnyHttpUrl) -> AnyHttpUrl:
-        """防止 Massive Credential 被发送到明文 HTTP endpoint。"""
+    def require_https_finnhub_url(cls, value: AnyHttpUrl) -> AnyHttpUrl:
+        """防止 Finnhub Credential 被发送到明文 HTTP endpoint。"""
 
         if value.scheme != "https":
-            raise ValueError("MASSIVE_BASE_URL 必须使用 HTTPS")
+            raise ValueError("FINNHUB_BASE_URL 必须使用 HTTPS")
         return value
 
     @field_validator("llm_request_timeout_seconds")

@@ -174,7 +174,7 @@ const translations = {
     use_asset: "Use this asset",
     asset_selected: "Asset selected. Complete the remaining fields, then confirm with Save.",
     asset_search_empty: "Enter a symbol or company name to search.",
-    asset_no_match: "No active US stock or ETF matched that search.",
+    asset_no_match: "No supported US stock or ETF matched that search.",
     asset_search_failed: "Asset search is temporarily unavailable. Review the symbol manually or try again later.",
     asset_provider_auth_failed: "Asset search is not configured. Review the symbol manually or configure the provider.",
     asset_rate_limited: "Asset search is rate limited. Try again later.",
@@ -751,31 +751,27 @@ function renderAssetCandidates(config, payload) {
   clearMessage(config.controls.assetMessage);
   const heading = makeElement("p", "asset-candidate-heading", translate("asset_candidate_heading"));
   config.controls.assetCandidates.append(heading);
-  let activeCandidateCount = 0;
+  let candidateCount = 0;
   for (const candidate of payload.candidates) {
     if (!candidate || typeof candidate !== "object") continue;
     const card = makeElement("button", "asset-candidate");
     card.type = "button";
-    card.disabled = candidate.status !== "ACTIVE";
     const title = makeElement("strong", "asset-candidate-symbol", String(candidate.canonical_symbol ?? ""));
     const name = makeElement("span", "asset-candidate-name", String(candidate.display_name ?? ""));
     const exchange = makeElement("span", "asset-candidate-exchange", String(candidate.exchange ?? ""));
-    const status = makeElement("span", "asset-candidate-status", String(candidate.status ?? "UNKNOWN"));
-    card.append(title, name, exchange, status);
-    if (!card.disabled) {
-      activeCandidateCount += 1;
-      card.addEventListener("click", () => selectAssetCandidate(config, candidate));
-    }
+    card.append(title, name, exchange);
+    candidateCount += 1;
+    card.addEventListener("click", () => selectAssetCandidate(config, candidate));
     config.controls.assetCandidates.append(card);
   }
-  if (activeCandidateCount === 0) {
+  if (candidateCount === 0) {
     importStatusMessage(config.controls.assetMessage, "NO_MATCH", ASSET_STATUS_MESSAGES);
   }
 }
 
 function selectAssetCandidate(config, candidate) {
   const symbol = String(candidate.canonical_symbol ?? "").trim().toUpperCase();
-  if (!symbol || candidate.status !== "ACTIVE") return;
+  if (!symbol) return;
   const pendingRow = config.pendingRow && config.rows.contains(config.pendingRow) ? config.pendingRow : null;
   const target = pendingRow || [...config.rows.querySelectorAll(".opening-draft-row")].find((row) => {
     return !row.querySelector("[data-field='ticker']")?.value.trim();
@@ -835,7 +831,7 @@ async function handleAssetSearch(event, config) {
   clearElement(config.controls.assetCandidates);
   setLocalizedText(config.controls.assetSearch, "searching_assets");
   try {
-    const params = new URLSearchParams({ query, limit: "10" });
+    const params = new URLSearchParams({ query, limit: "5" });
     const payload = await requestJson(`/v1/assets/search?${params.toString()}`, { signal: task.controller.signal });
     if (task.generation !== state.importGeneration) return;
     renderAssetCandidates(config, payload);

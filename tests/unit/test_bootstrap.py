@@ -10,7 +10,7 @@ from position_pilot.application.asset_metadata_service import AssetMetadataServi
 from position_pilot.application.recognition_service import RecognitionService
 from position_pilot.config import Settings
 from position_pilot.integrations.aliyun_vision import AliyunVisionProvider
-from position_pilot.integrations.massive_asset_metadata import MassiveAssetMetadataProvider
+from position_pilot.integrations.finnhub_asset_metadata import FinnhubAssetMetadataProvider
 
 DATABASE_URL = "postgresql+psycopg://position_pilot:secret@localhost:5432/position_pilot"
 
@@ -28,7 +28,7 @@ def clear_provider_service_caches() -> Iterator[None]:
 
 def make_settings(
     *,
-    massive_api_key: SecretStr | None = None,
+    finnhub_api_key: SecretStr | None = None,
     llm_api_key: SecretStr | None = None,
     vision_api_key: SecretStr | None = None,
 ) -> Settings:
@@ -37,9 +37,9 @@ def make_settings(
     return Settings(
         _env_file=None,  # type: ignore[call-arg]
         database_url=PostgresDsn(DATABASE_URL),
-        massive_api_key=massive_api_key,
-        massive_base_url=AnyHttpUrl("https://massive.example.test"),
-        massive_request_timeout_seconds=9,
+        finnhub_api_key=finnhub_api_key,
+        finnhub_base_url=AnyHttpUrl("https://finnhub.example.test/api/v1"),
+        finnhub_request_timeout_seconds=9,
         llm_api_key=llm_api_key,
         vision_base_url=AnyHttpUrl("https://vision.example.test/compatible-mode/v1"),
         vision_api_key=vision_api_key,
@@ -48,24 +48,24 @@ def make_settings(
     )
 
 
-def test_asset_metadata_service_uses_massive_runtime_settings(
+def test_asset_metadata_service_uses_finnhub_runtime_settings(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Asset Metadata Service 应由 Massive 配置装配且保持 Application Boundary。"""
+    """Asset Metadata Service 应由 Finnhub 配置装配且保持 Application Boundary。"""
 
     monkeypatch.setattr(
         bootstrap,
         "get_settings",
-        lambda: make_settings(massive_api_key=SecretStr("massive-secret")),
+        lambda: make_settings(finnhub_api_key=SecretStr("finnhub-secret")),
     )
 
     service = bootstrap.get_asset_metadata_service()
 
     assert isinstance(service, AssetMetadataService)
     provider = service._provider
-    assert isinstance(provider, MassiveAssetMetadataProvider)
-    assert provider._api_key == "massive-secret"
-    assert provider._base_url == "https://massive.example.test"
+    assert isinstance(provider, FinnhubAssetMetadataProvider)
+    assert provider._api_key == "finnhub-secret"
+    assert provider._base_url == "https://finnhub.example.test/api/v1"
     assert provider._timeout_seconds == 9
 
 
@@ -78,7 +78,7 @@ def test_recognition_service_reuses_llm_key_when_vision_key_is_missing(
         bootstrap,
         "get_settings",
         lambda: make_settings(
-            massive_api_key=None,
+            finnhub_api_key=None,
             llm_api_key=SecretStr("shared-llm-secret"),
             vision_api_key=None,
         ),
