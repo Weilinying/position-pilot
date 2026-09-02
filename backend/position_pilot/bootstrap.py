@@ -81,7 +81,6 @@ def get_opening_import_service() -> OpeningImportService:
     """装配不持久化 Draft 的 Opening Import Application Service。"""
 
     return OpeningImportService(
-        get_asset_metadata_service(),
         get_auth_service(),
         get_portfolio_service(),
     )

@@ -664,7 +664,6 @@ auth_service = AuthService(
     clock=lambda: datetime.now(UTC),
 )
 opening_import_service = OpeningImportService(
-    asset_metadata_service,
     auth_service,
     portfolio_service,
 )

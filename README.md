@@ -101,8 +101,10 @@ RUN_ALPACA_ONLINE_TESTS=1 uv run pytest tests/integration/test_alpaca_market_dat
 
 ## Asset Identity 与 Opening Import
 
-M9 使用 Finnhub 进行美国股票 / ETF 的 symbol、company name 搜索与 exact validation；Portfolio
-只保存 Provider 验证后的 canonical symbol，不维护本地完整 Asset Master。Screenshot Recognition
+M9 使用 Finnhub 进行美国股票 / ETF 的 symbol、company name 搜索与 Recognition 自动解析；Portfolio
+只保存本地 Browser Draft 已绑定的 canonical symbol，不维护本地完整 Asset Master。手工输入必须从
+Provider 候选中选择，Recognition symbol 仅在 exact validation 成功后自动绑定；Confirm 接受本地
+Browser 已绑定的 symbol，不重复调用 Finnhub，并继续执行确定性 Domain Validation。Screenshot Recognition
 使用 Alibaba Model Studio `qwen3-vl-flash`，图片只在当前 Browser / Request 内处理，PositionPilot
 不持久化图片、OCR 全文、Draft、Confidence 或 Provider Payload。图片会发送至 Alibaba Model
 Studio；Provider 官方声明数据不用于训练，但没有公开固定原图保留时长，因此界面不会宣称 Zero

@@ -11,9 +11,6 @@ import pytest
 from fastapi.testclient import TestClient
 
 from position_pilot.application.auth_service import Account, SetupPortfolioCommand
-from position_pilot.application.opening_import_service import (
-    AssetMetadataValidationError,
-)
 from position_pilot.application.portfolio_service import InitializeOpeningPositionsCommand
 from position_pilot.application.recognition_service import (
     DraftField,
@@ -40,7 +37,6 @@ from position_pilot.main import (
     app,
     get_asset_metadata_service_dependency,
     get_current_account_dependency,
-    get_opening_import_service_dependency,
     get_portfolio_service_dependency,
     get_recognition_service_dependency,
 )
@@ -450,42 +446,3 @@ def test_recognition_rejects_sealed_portfolio_before_provider_call(client: TestC
     assert response.json()["detail"]["code"] == "OPENING_STATE_SEALED"
     assert recognition.text_inputs == []
     assert portfolio.queried == ["opening"]
-
-
-@pytest.mark.parametrize(
-    ("asset_status", "expected_http_status"),
-    [
-        (AssetMetadataStatus.NO_MATCH, 422),
-        (AssetMetadataStatus.INVALID_SYMBOL, 422),
-        (AssetMetadataStatus.INVALID_REQUEST, 422),
-        (AssetMetadataStatus.AUTHENTICATION_FAILED, 503),
-        (AssetMetadataStatus.RATE_LIMITED, 503),
-        (AssetMetadataStatus.PROVIDER_UNAVAILABLE, 503),
-        (AssetMetadataStatus.INVALID_PROVIDER_RESPONSE, 503),
-    ],
-)
-def test_opening_write_maps_asset_validation_status_without_leaking_details(
-    client: TestClient,
-    asset_status: AssetMetadataStatus,
-    expected_http_status: int,
-) -> None:
-    """Opening Import 的 Provider Failure 使用稳定 HTTP Code 且不泄露异常内容。"""
-
-    override_account(portfolio_user_id=USER_ID)
-    opening = FakeOpeningImportService(
-        AssetMetadataValidationError(
-            symbol="ADBE",
-            status=asset_status,
-            message="credential=secret-must-not-leak",
-        )
-    )
-    app.dependency_overrides[get_opening_import_service_dependency] = lambda: opening
-
-    response = client.post(
-        "/v1/portfolio/opening-positions",
-        json={"positions": [{"ticker": "ADBE", "shares": "1", "average_cost": "100"}]},
-    )
-
-    assert response.status_code == expected_http_status
-    assert response.json()["detail"]["code"] == asset_status.value
-    assert "secret-must-not-leak" not in response.text

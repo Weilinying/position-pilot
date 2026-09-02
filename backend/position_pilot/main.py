@@ -39,10 +39,7 @@ from position_pilot.application.investment_agent import (
     InvestmentRequestFailure,
     InvestmentResponseStatus,
 )
-from position_pilot.application.opening_import_service import (
-    AssetMetadataValidationError,
-    OpeningImportService,
-)
+from position_pilot.application.opening_import_service import OpeningImportService
 from position_pilot.application.portfolio_service import (
     InitializeOpeningPositionsCommand,
     OpeningPositionInput,
@@ -838,8 +835,6 @@ def setup_account_portfolio(
             status.HTTP_422_UNPROCESSABLE_CONTENT,
             ApiErrorDetail(code="INVALID_PORTFOLIO", message=str(error)),
         )
-    except AssetMetadataValidationError as error:
-        _raise_asset_metadata_error(error)
     return _portfolio_snapshot_response(portfolio)
 
 
@@ -958,9 +953,6 @@ def initialize_opening_positions(
             status.HTTP_422_UNPROCESSABLE_CONTENT,
             ApiErrorDetail(code="INVALID_OPENING_STATE", message=str(error)),
         )
-    except AssetMetadataValidationError as error:
-        _raise_asset_metadata_error(error)
-
     return OpeningPositionsWriteResponse(
         opening_positions=tuple(
             _opening_position_response(position) for position in opening_positions
@@ -1519,37 +1511,6 @@ def _recognition_response(
             else None
         ),
         message=result.message,
-    )
-
-
-def _raise_asset_metadata_error(error: AssetMetadataValidationError) -> NoReturn:
-    """映射 Asset Validation 状态，不向客户端暴露 Provider 细节。"""
-
-    invalid_input_statuses = {
-        AssetMetadataStatus.NO_MATCH,
-        AssetMetadataStatus.INVALID_SYMBOL,
-        AssetMetadataStatus.INVALID_REQUEST,
-    }
-    status_code = (
-        status.HTTP_422_UNPROCESSABLE_CONTENT
-        if error.status in invalid_input_statuses
-        else status.HTTP_503_SERVICE_UNAVAILABLE
-    )
-    messages = {
-        AssetMetadataStatus.NO_MATCH: "没有找到可用 Asset",
-        AssetMetadataStatus.INVALID_SYMBOL: "Asset symbol 格式无效",
-        AssetMetadataStatus.INVALID_REQUEST: "Asset 请求无效",
-        AssetMetadataStatus.AUTHENTICATION_FAILED: "Asset Metadata Provider credential 无效",
-        AssetMetadataStatus.RATE_LIMITED: "Asset Metadata Provider 请求达到限流",
-        AssetMetadataStatus.PROVIDER_UNAVAILABLE: "Asset Metadata Provider 当前不可用",
-        AssetMetadataStatus.INVALID_PROVIDER_RESPONSE: "Asset Metadata Provider 返回格式无效",
-    }
-    _raise_api_error(
-        status_code,
-        ApiErrorDetail(
-            code=error.status.value,
-            message=messages.get(error.status, "Asset Metadata validation 失败"),
-        ),
     )
 
 

@@ -18,8 +18,9 @@ Confidence 识别结果直接当作 Portfolio Truth，或把一次性 Opening Im
   Domain Truth。其他 Metadata 只有出现当前界面需求时才增加，不设计通用证券主数据模型。
 - Recognition 只生成可编辑 Draft。Confidence 只作为 Human Review Signal，不进入 Portfolio
   Domain，也不单独允许或阻止写入。
-- 最终写入只接受用户确认后的确定字段，并重新执行 Asset Validation 与 deterministic Domain
-  Validation；识别结果、Browser Suggestion 或高 Confidence 均不能绕过它们。
+- 最终写入只接受用户确认、在本地 Browser Draft 中已绑定 Provider-validated Asset Identity 的
+  确定字段，并执行 deterministic Domain Validation。M9 接受 loopback 本地应用的受信任
+  Browser 边界，Confirm 不重复调用 Asset Provider；识别建议或高 Confidence 不能自行建立绑定。
 - Import 只复用 M8 一次性 Opening State Gate，不支持已初始化 Portfolio 的增量 Import、外部
   Account Sync、Diff、Conflict Resolution 或 Reconciliation。
 - Asset Metadata Provider 与 Vision / OCR Capability 先通过短 Spike 回答 M9 的最小可行性问题，
@@ -35,6 +36,9 @@ Confidence 识别结果直接当作 Portfolio Truth，或把一次性 Opening Im
   真实性，且不同 Recognition Provider 的分数不可直接比较。
 - 增量 Import / Reconciliation 对已存在 Portfolio 更便利，但需要外部账户身份、幂等、冲突、
   删除 / 更正和 Accounting 语义，显著超出 Opening State 初始化闭环。
+- Confirm 时重新调用 Asset Provider 可强化不受控客户端边界，但会使多持仓 Import 的查询量
+  翻倍。当前本地个人产品接受 Browser Selection State；未来开放公网时必须恢复写入时验证，
+  或使用后端签名且短期有效的 Asset Validation Receipt。
 
 ## Trigger / Future
 

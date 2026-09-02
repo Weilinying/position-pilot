@@ -15,7 +15,7 @@ Provider-neutral Structured Import Draft
 canonical symbol + Missing / Invalid / Confidence Review Signal
         ↓ Human Review / Edit / Confirmation
 确定的 canonical symbol + shares + average_cost + optional position_type
-        ↓ Asset Revalidation + deterministic Domain Validation
+        ↓ trusted local Asset Binding + deterministic Domain Validation
 M8 one-time Opening State Command
         ↓ atomic write
 Portfolio Opening State
@@ -31,7 +31,7 @@ M9 不建设本地完整 Asset Master，不把 Recognition Confidence 当作 Dom
 - Asset Identity 以 Asset Metadata Provider 验证后的 `canonical_symbol` 表示。
 - Portfolio Domain 现有 `ticker` 字段承载 canonical symbol；M9 不仅通过 uppercase / regex
   把任意用户输入声明为真实 Asset。
-- M9 只规范化前端 Asset Selector 与写入校验实际需要的 `canonical_symbol`、`display_name` 与
+- M9 只规范化前端 Asset Selector 与 Recognition 自动解析实际需要的 `canonical_symbol`、`display_name` 与
   `exchange`。Provider exact validation 成功只表示能够识别并规范化 symbol，不推断未明确
   提供的 active / inactive 状态；不为 `tradable`、`fractionable`、alias、class shares、source
   timestamp 等未来字段建设通用 Metadata Model。
@@ -51,7 +51,7 @@ M9 不建设本地完整 Asset Master，不把 Recognition Confidence 当作 Dom
 - Recognition Provider 可以返回数值或枚举 Confidence，但 Application 只把它规范化为
   Provider-neutral Review Signal。
 - Confidence 不进入 `OpeningPosition`、Transaction、Ledger 或 Portfolio Replay。
-- 高 Confidence 不能绕过 Human Confirmation、Asset Validation、必填字段检查或 Domain
+- 高 Confidence 不能绕过 Human Confirmation、Asset Binding、必填字段检查或 Domain
   Validation；低 Confidence 也不能单独否决一个已被用户修正、确认且验证通过的确定字段。
 - `MISSING` / `INVALID` 是确定性字段状态，与 Confidence Review Signal 分开表达；缺失或
   非法字段必须修正后才能提交。
@@ -156,7 +156,8 @@ AssetIdentity
 ```
 
 这不是通用证券主数据模型。Provider-specific Metadata 与诊断信息留在 Adapter；Search Candidate
-只用于选择，最终写入必须执行 exact validation，不能把 Browser Candidate 直接视为有效 Asset。
+用于本地 Browser 建立选择状态，Recognition suggestion 必须先 exact validate 才能自动绑定。
+Confirm 信任该本地 Binding，不重复调用 Provider。
 
 ### Recognition Draft
 
@@ -182,14 +183,13 @@ Draft 只存在于当前 Browser / Request 生命周期，除非后续 Human Rev
 
 ### Confirmation / Write
 
-确认请求只包含用户最终确认的确定字段与 canonical symbol，不包含能够影响 Domain 决策的
-Confidence。Application 使用两阶段 Use Case；外部 Provider 调用不得发生在持有 User 数据库
-行锁期间：
+确认请求只包含用户最终确认的确定字段与 Browser 已绑定的 canonical symbol，不包含能够影响
+Domain 决策的 Confidence。M9 接受 loopback 本地产品的受信任 Browser 边界，Confirm 不重复调用
+Asset Provider：
 
 ```text
 require Session Ownership
 → optional fast Opening State eligibility read
-→ exact Asset Validation for every canonical symbol（数据库事务外）
 → normalize Position Type / Decimal
 → reject duplicate (canonical_symbol, position_type)
 → InitializeOpeningPositionsCommand acquires User Row Lock
@@ -198,9 +198,9 @@ require Session Ownership
 → atomic commit
 ```
 
-Asset Provider Failure 时不得跳过验证后写入，也不得把 Browser Cache 当作后端真实性证明。
-Validation 与取得行锁之间若出现并发 Ledger Write，锁内 Gate 必须拒绝本次 Import；系统不尝试
-merge 或自动重试。
+Asset Provider Failure 会阻止 Browser 建立 Asset Binding；未绑定 Draft 不得 Confirm。取得行锁前
+若出现并发 Ledger Write，锁内 Gate 必须拒绝本次 Import；系统不尝试 merge 或自动重试。若未来
+客户端不再受 loopback 本地边界控制，必须恢复 Confirm revalidation 或引入后端签名的短期 Receipt。
 
 ## 6. Public API 与 UI 实现方向
 
@@ -212,7 +212,7 @@ Upload Limit 或 Error Schema 单独暂停 Review：
 - Opening Import Recognition：Session-authenticated、无写入能力的 Text / Screenshot endpoint，
   返回 Import Draft；Screenshot 使用明确 MIME / size limits，不接受 URL 抓取。
 - Opening State Commit：优先复用现有 `POST /v1/portfolio` 与
-  `POST /v1/portfolio/opening-positions`，在 Application Boundary 增加 exact Asset Validation；
+  `POST /v1/portfolio/opening-positions`，接收 Browser 已绑定的 canonical symbol 并执行确定性校验；
   不新增 Import-specific Write Endpoint，除非 Human Review 发现现有原子 Contract 无法表达。
 
 Browser Flow：
@@ -224,13 +224,13 @@ Portfolio Setup / still-open Opening State
 → resolve ambiguous asset candidates
 → show missing / invalid fields and confidence review cues
 → user explicitly confirms
-→ backend revalidates assets and writes once
+→ backend performs deterministic validation and writes once
 → refresh deterministic Snapshot + read-only Opening Records
 ```
 
 - 用户可以忽略 Confidence 并直接修正字段；UI 不显示“Confidence 通过所以可安全写入”。
-- Recognition / Search Failure 保留 Draft 与用户编辑能力时，仍不得在缺少后端 Asset Validation
-  的情况下写入。
+- Recognition / Search Failure 保留 Draft 与用户编辑能力，但 Browser 未建立 Asset Binding 时不得
+  提交写入。
 - Upload、Recognition 与 Asset Search 是可重试 Read-like Processing；Opening State POST 仍沿用
   M8 Network Ambiguity 规则，不自动 Retry。
 - 动态文本继续使用安全 DOM API。Recognition 输出只作为 Structured Draft 数据处理，不进入
@@ -279,11 +279,10 @@ Portfolio Setup / still-open Opening State
 
 ### T6 — Confirmed Opening State Validation
 
-- 在 Portfolio 创建与后续 Opening State 初始化路径执行 exact Asset Validation。
-- 将 verified canonical symbol 传入现有 `OpeningPositionInput`；不新增 Asset Master Foreign Key。
-- Provider Validation 在数据库事务外完成；现有 User Row Lock 内重新检查 one-time Gate，避免
-  外部 I/O 持锁并阻止并发状态变化绕过 Gate。
-- Provider Failure、invalid Asset、canonical duplicate 或 sealed Gate 全部原子失败。
+- 将 Browser 已绑定的 canonical symbol 传入现有 `OpeningPositionInput`；Confirm 不重复调用
+  Provider，也不新增 Asset Master Foreign Key。
+- 现有 User Row Lock 内重新检查 one-time Gate，阻止并发状态变化绕过 Gate。
+- invalid symbol format、duplicate 或 sealed Gate 全部原子失败。
 - 保持 Opening Position 无现金影响、无 sequence、无历史 BUY 和 immutable 语义。
 
 ### T7 — Frontend Import Review Flow
@@ -329,7 +328,7 @@ Portfolio Setup / still-open Opening State
 | Human Confirmation | 未确认 Draft 不能写入；确认 Payload 不携带 Domain-authoritative Confidence |
 | Opening Gate | 仅无 Opening / Transaction / Cash Event 时原子写入 |
 | No Reconciliation | sealed Portfolio 不 merge / overwrite / diff external state |
-| Validation | commit 前重新 Asset Validation，再执行 Decimal / duplicate / Domain replay |
+| Validation | Confirm 信任本地 Browser Asset Binding，并执行 ticker format / Decimal / duplicate / Domain replay |
 | Failures | no match 与 Provider / invalid response / unsupported input Failure 可区分 |
 | Privacy | 原图默认不持久化、不写普通日志、不进入未授权 Provider |
 | Data Boundary | 图片 / OCR 文本只成为 Structured Draft 数据，不进入 Agent 指令链路 |
@@ -359,7 +358,7 @@ T0 Evaluation + Human Review
 → T1 Asset Contract / T3 Recognition Contract
 → T2 Asset Adapter / T4 Recognition Adapter
 → T5 API
-→ T6 Confirmed Write Validation
+→ T6 Confirmed Deterministic Write
 → T7 Frontend
 → T8 Verification
 → T9 Review / Human Acceptance
@@ -385,7 +384,7 @@ T0 Evaluation + Human Review
 选型与图片隐私边界均已获 Human 批准。Massive 的 5 requests/min 免费额度经 Review 被确认不适合
 交互式搜索与多持仓 exact validation，因此 2026-09-02 改用 Finnhub，并从最小 Asset Identity
 删除 active / inactive status。M9 的 Domain / Application Boundary、Provider Adapter、
-API、Confirmed Write Validation、Frontend Import Flow、默认 Regression、Automated Review 与
+API、Confirmed Deterministic Write、Frontend Import Flow、默认 Regression、Automated Review 与
 Engineering Browser Smoke 已完成；Review 发现的 FileReader Session Race、malformed Draft 提示、
 Provider malformed response mapping 与 detached pending row 已修复并重新验证。
 

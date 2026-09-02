@@ -51,6 +51,9 @@ Provider 请求和 Domain 语义。
   删除 `ACTIVE / INACTIVE` status，不把 Provider 是否返回记录解释为 Domain 的存续状态。
 - Validation Result 的 `OK`、`NO_MATCH`、`PROVIDER_UNAVAILABLE`、`RATE_LIMITED` 等请求结果
   状态仍保留，用于区分验证成功、未匹配和 Provider Failure。
+- M9 接受 loopback 本地产品的受信任 Browser 边界：手工输入必须从 Provider Candidate 中选择，
+  Recognition symbol 经 exact validation 成功后可自动绑定；Confirm 提交已绑定 canonical symbol，
+  不再次调用 Finnhub。
 - Vision / OCR 使用 Alibaba Model Studio `qwen3-vl-flash`，通过独立 Recognition Boundary 接入，
   不复用 `InvestmentAgent` 或其 Prompt / Tool 流程。
 - 使用当前 `qwen3-vl-flash` alias，并通过严格 Application Schema 验证 Structured Output；具体
@@ -72,6 +75,8 @@ Provider 请求和 Domain 语义。
 - Qwen3-VL 可复用现有 Model Studio 运维条件，减少个人项目的 Provider 和 Credential 数量。
 - 独立 Boundary 与临时 Draft 保持 Portfolio Structured State、Recognition Suggestion 和外部
   Provider Payload 的职责清晰。
+- Confirm 不重复验证避免多持仓 Screenshot 在写入阶段再次产生同等数量的 Finnhub 请求；既有
+  Domain Validation、一次性 Gate、User Row Lock 与原子写入保持不变。
 - 明确披露未知 Provider Retention，比在证据不足时承诺 Zero Retention 更准确。
 
 ## Trade-off
@@ -87,6 +92,8 @@ Provider 请求和 Domain 语义。
   并将 rate limit 明确暴露为失败，而不是降级为未匹配。
 - `qwen3-vl-flash` alias 可能随 Provider 更新；Online Smoke 必须证明当前图片输入和 Structured
   Output Contract 可用。
+- 受信任 Browser 不是公网安全边界；直接调用本地 API 的客户端可以提交任意格式合法的 symbol。
+  当前个人 loopback 产品接受该限制，以换取更少 Provider 调用和更简单的无状态 Draft。
 - Model Studio 未公开固定原图保留时长，因此不适合需要严格 Zero Retention 的敏感截图场景。
 - Screenshot 可能没有 average cost；这会增加人工补全，但不会降低 Portfolio Truth 边界。
 
@@ -98,6 +105,8 @@ Provider 请求和 Domain 语义。
 - Qwen3-VL 无法在固定脱敏 Fixture 上稳定返回所需 Structured Draft。
 - 产品需要可证明的 Zero Data Retention，或图片包含当前个人项目无法接受的敏感信息。
 - 新 Provider 在相同最小 Fixture 上明显降低 Failure、成本或集成复杂度。
+- 产品开放到公网、不受控局域网或第三方客户端；届时必须恢复 Confirm revalidation，或引入后端
+  签名且短期有效的 Asset Validation Receipt。
 
 ## 参考
 

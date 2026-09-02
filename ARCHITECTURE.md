@@ -158,7 +158,7 @@ Cash Event amount 必须为正数且最多 8 位小数。Transaction 与 Cash Ev
 - `backend/position_pilot/application/auth_service.py`：本地 Account 注册 / 登录 / 退出、scrypt Password Verification、Opaque Session 与一对一 Portfolio Ownership。
 - `backend/position_pilot/application/asset_metadata_service.py`：Provider-neutral Asset Search / exact Validation Boundary。
 - `backend/position_pilot/application/recognition_service.py`：Text / Screenshot 临时 Structured Draft、Field Status、Confidence Review Signal 与输入边界。
-- `backend/position_pilot/application/opening_import_service.py`：用户确认字段的 Asset Revalidation 与一次性 Opening State 写入编排。
+- `backend/position_pilot/application/opening_import_service.py`：本地 Browser 已确认字段与一次性 Opening State 写入编排；不重复调用 Asset Provider。
 - `backend/position_pilot/application/llm.py`：Provider-neutral Message、Tool、Completion 与 Failure Contract。
 - `backend/position_pilot/application/investment_agent.py`：Portfolio Snapshot、单轮 Native Function Calling、Structured Source Validation、Source Tracking 与 Request Failure。
 - `backend/position_pilot/application/investment_answer.py`：自由文本 Answer 外层 JSON、统一 Source Reference Schema 与真实性校验。
@@ -262,9 +262,9 @@ Browser candidate selection
 Text / Screenshot
         ↓ RecognitionService → AliyunVisionProvider(qwen3-vl-flash)
 Provider-neutral editable Draft + field status + confidence review signal
-        ↓ Human edit / confirmation
-OpeningImportService → exact Asset revalidation outside DB transaction
-        ↓ canonical symbol only
+        ↓ exact Asset resolution / Browser binding → Human edit / confirmation
+OpeningImportService → trusted local canonical symbol
+        ↓ deterministic validation only
 AuthService / PortfolioService → User row lock → recheck one-time Gate
         ↓ deterministic validation + atomic write
 OpeningPosition facts
@@ -279,9 +279,10 @@ OpeningPosition facts
 - Screenshot 只接受单张 JPEG / PNG / WebP，Backend 上限为 10 MB；Browser 使用 Base64 JSON
   传输，Request 完成、取消、Logout 或刷新后不保留原图。普通日志只记录 Provider、Model、
   Failure Kind、HTTP Status 与 Latency，不记录图片、识别文本、Credential 或原始 Payload。
-- Human Confirmation 复用现有 Save；缺失 `average_cost` 等必填字段必须由用户补全。最终写入
-  对每个 symbol 重新 exact validation，再由既有 Decimal、duplicate、replay 与 User Row Lock
-  Gate 决定是否原子提交。
+- Human Confirmation 复用现有 Save；缺失 `average_cost` 等必填字段必须由用户补全。M9 接受
+  loopback 本地受信任 Browser 边界，Confirm 不重复调用 Provider；既有 ticker format、Decimal、
+  duplicate、replay 与 User Row Lock Gate 决定是否原子提交。若未来开放到不受控客户端，必须
+  恢复写入时验证或引入后端签名的短期 Asset Receipt。
 - API 的 sealed 预检查避免无意义 Provider 调用；它不是最终真实性 Gate。最终 Gate 仍在锁内
   检查 Opening Position、Transaction 与 Cash Event 全空，避免并发状态变化绕过一次性语义。
 - Import 不创建 Transaction、不影响 Cash、不持久化 Draft，也不对已初始化 Portfolio 执行
