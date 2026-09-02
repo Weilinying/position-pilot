@@ -203,6 +203,9 @@ def test_opening_import_review_contract_is_provider_neutral_and_explicit() -> No
         "state.importGeneration",
         "state.importPending",
         "config.rows.contains(config.pendingRow)",
+        "row.dataset.assetSymbol",
+        "clearSelectedAsset(row)",
+        "asset_selection_required",
         "readFileAsDataUrl(file, task.controller.signal)",
         "if (renderRecognitionDraft(config, payload",
         "recognition_draft_ready",
@@ -216,6 +219,7 @@ def test_opening_import_review_contract_is_provider_neutral_and_explicit() -> No
     assert "Provider's fixed retention period is not publicly disclosed" in page
     assert "innerHTML" not in script
     assert "localStorage" not in script
+    assert 'row.dataset.assetSymbol !== normalizedTicker' in script
     assert "data-review-status" in stylesheet
     assert "draft-row-review" in stylesheet
 

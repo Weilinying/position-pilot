@@ -77,6 +77,7 @@ const translations = {
     remove: "Remove",
     invalid_cash: "Cash must be zero or a positive decimal with at most 8 decimal places.",
     incomplete_position: "Complete ticker, shares, and average cost, or remove this row.",
+    asset_selection_required: "Choose this asset from the verified candidate list before saving.",
     invalid_positive_decimal: "Use a positive decimal with at most 8 decimal places.",
     duplicate_position: "Each ticker and position type combination may appear only once.",
     setup_saving: "Saving your starting state…",
@@ -175,8 +176,8 @@ const translations = {
     asset_selected: "Asset selected. Complete the remaining fields, then confirm with Save.",
     asset_search_empty: "Enter a symbol or company name to search.",
     asset_no_match: "No supported US stock or ETF matched that search.",
-    asset_search_failed: "Asset search is temporarily unavailable. Review the symbol manually or try again later.",
-    asset_provider_auth_failed: "Asset search is not configured. Review the symbol manually or configure the provider.",
+    asset_search_failed: "Asset search is temporarily unavailable. Try again later.",
+    asset_provider_auth_failed: "Asset search is not configured. Configure the provider before selecting an asset.",
     asset_rate_limited: "Asset search is rate limited. Try again later.",
     asset_invalid_response: "Asset search returned an invalid response.",
     text_import_label: "Paste the holdings text",
@@ -191,9 +192,9 @@ const translations = {
     screenshot_file_invalid: "Choose a supported JPEG, PNG, or WebP screenshot.",
     screenshot_file_too_large: "That screenshot is too large. Choose an image no larger than 10 MB.",
     recognition_invalid_request: "The import input is not valid. Check the text or screenshot and try again.",
-    recognition_auth_failed: "Screenshot recognition is not configured. You can enter the holdings manually.",
-    recognition_rate_limited: "Recognition is rate limited. Try again later or enter the holdings manually.",
-    recognition_provider_failed: "Recognition is temporarily unavailable. You can enter the holdings manually.",
+    recognition_auth_failed: "Screenshot recognition is not configured. You can search and select the holdings manually.",
+    recognition_rate_limited: "Recognition is rate limited. Try again later or search and select the holdings manually.",
+    recognition_provider_failed: "Recognition is temporarily unavailable. You can search and select the holdings manually.",
     recognition_invalid_response: "Recognition returned an invalid response. Review the fields manually.",
     recognition_empty: "No holding rows were recognized. Add a row manually to continue.",
     draft_review_signal: "Review cue",
@@ -245,7 +246,7 @@ const translations = {
     setup_eyebrow: "起始状态", setup_title: "告诉 PositionPilot 你的起点。", setup_summary: "现金和已有持仓共同构成起始状态，不会被伪造成交易；也可以从零开始。", cash_balance: "现金余额", initial_cash: "初始现金", initial_cash_usd: "可用现金（USD）", cash_zero_hint: "未填写现金时，投资组合默认从 0 开始。", existing_holdings: "已有持仓", opening_positions: "起始持仓", opening_optional_hint: "可选。现在录入已持有股票，也可在第一笔交易或现金记录前稍后添加。", add_position: "添加一行持仓", start_empty: "从零开始", save_and_continue: "保存并继续 ↗", ticker: "标的", shares: "股数", average_cost: "平均成本", position_type_optional: "仓位类型（可选）", unspecified: "未分类", remove: "移除", invalid_cash: "现金必须是零或正数，且最多 8 位小数。", incomplete_position: "请完整填写标的、股数和平均成本，或移除此行。", invalid_positive_decimal: "请输入正数，且最多 8 位小数。", duplicate_position: "同一标的与仓位类型组合不能重复。", setup_saving: "正在保存起始状态…", setup_unknown: "投资组合设置结果未知。请勿自动重试；刷新页面以恢复当前状态。",
     workspace_navigation: "工作区导航", primary_navigation: "主要导航", new_question: "新问题", ask_nav: "提问", portfolio_nav: "投资组合", question_history: "问题记录", session_only: "仅当前标签页", no_questions: "还没有问题。", signed_in_as: "当前账户", context_aware: "上下文感知决策支持", chat_view_title: "投资问题", structured_state: "结构化状态", portfolio_manage_title: "投资组合工作区", portfolio_manage_summary: "查看确定性状态，或追加不可变交易与现金记录。", portfolio_ready: "投资组合已加载", portfolio_loading: "正在加载投资组合", portfolio_stale: "需要刷新", idle: "空闲", submitting: "正在保存", refresh_required: "需要刷新",
     chat_intro_eyebrow: "你的投资组合已连接", chat_intro_title: "你正在思考什么投资决策？", chat_intro_body: "提出一个具体问题。PositionPilot 会使用你的持仓及问题所需的当前信息。", no_memory_notice: "问题仅保留在当前浏览器标签页，不构成模型记忆。", investment_question: "投资问题", question_placeholder: "例如：GOOG 今天还能加一点吗？", question_ready: "将使用你的当前投资组合。Enter 提交 · Shift+Enter 换行。", ask: "询问 PositionPilot ↗", asking: "分析中…",
-    portfolio_reload: "刷新", portfolio_sections: "投资组合分区", overview_tab: "持仓", trade_tab: "交易", cash_tab: "现金记录", available_cash: "可用现金", ledger_derived: "账本计算 · USD", portfolio_context: "投资组合上下文", session_owned: "当前 Session 所属", session_owned_hint: "身份来自你的本地私有 Session。", opening_state: "起始状态", existing_positions_setup: "添加已有持仓", starting_facts: "一次性起始事实", opening_explainer: "记录开始跟踪前已经持有的仓位，不改变现金，也不创建虚假交易。", skip_for_now: "暂时跳过", save_opening_positions: "保存已有持仓", add_existing_positions: "添加已有持仓", open_positions: "当前持仓", portfolio_empty_loaded: "目前没有持仓。", opening_records: "起始持仓记录", records_empty: "暂无记录。", import_starting_positions: "导入起始持仓", import_review_title: "保存前请复核", draft_only_note: "仅为 Draft · 尚未保存", import_review_hint: "可以手动搜索、粘贴文本或选择一张截图，生成可编辑 Draft。请确认下面每个字段后再保存。", import_methods: "导入方式", manual_import: "手动搜索", text_import: "文本导入", screenshot_import: "截图识别", asset_search_label: "搜索标的或公司名称", asset_search_placeholder: "搜索标的或公司名称", search_assets: "搜索", asset_candidate_heading: "请选择已验证的标的", searching_assets: "搜索中…", use_asset: "使用此标的", asset_selected: "已选择标的。请补完其余字段，再点击保存完成确认。", asset_search_empty: "请输入标的或公司名称后搜索。", asset_no_match: "没有匹配的可用美国股票或 ETF。", asset_search_failed: "标的搜索暂时不可用。请手动复核标的，或稍后重试。", asset_provider_auth_failed: "标的搜索尚未配置。请手动复核标的或配置 Provider。", asset_rate_limited: "标的搜索已达到限流，请稍后重试。", asset_invalid_response: "标的搜索返回了无效响应。", text_import_label: "粘贴持仓文本", text_import_placeholder: "粘贴券商对账单中的持仓行", prepare_text_draft: "生成可编辑 Draft", preparing_text_draft: "正在生成文本 Draft…", screenshot_import_label: "选择一张券商持仓截图", prepare_screenshot_draft: "生成可编辑 Draft", preparing_screenshot_draft: "正在生成截图 Draft…", screenshot_privacy_notice: "截图会发送至 Alibaba Model Studio 进行识别。PositionPilot 不保存图片；Provider 的固定保留时长尚未公开。", screenshot_file_required: "请先选择 JPEG、PNG 或 WebP 截图。", screenshot_file_invalid: "请选择受支持的 JPEG、PNG 或 WebP 截图。", screenshot_file_too_large: "截图过大，请选择不超过 10 MB 的图片。", recognition_invalid_request: "导入输入无效。请检查文本或截图后重试。", recognition_auth_failed: "截图识别尚未配置。你也可以手动录入持仓。", recognition_rate_limited: "识别请求已达到限流，请稍后重试或手动录入。", recognition_provider_failed: "识别暂时不可用，你可以手动录入持仓。", recognition_invalid_response: "识别返回了无效响应，请手动复核字段。", recognition_empty: "没有识别出持仓行。请手动添加一行后继续。", draft_review_signal: "复核提示", draft_status_present: "已识别", draft_status_missing: "缺失 — 请填写", draft_status_invalid: "需要修正", draft_status_ambiguous: "有歧义 — 请选择匹配标的", confidence_signal: "识别置信度", confidence_unavailable: "未提供", find_matching_assets: "查找匹配标的", recognition_draft_ready: "Draft 已生成。请复核每个字段，再点击保存完成确认。", recognition_input_text: "文本导入", recognition_input_screenshot: "截图导入", imported_warning: "Provider 提示",
+    portfolio_reload: "刷新", portfolio_sections: "投资组合分区", overview_tab: "持仓", trade_tab: "交易", cash_tab: "现金记录", available_cash: "可用现金", ledger_derived: "账本计算 · USD", portfolio_context: "投资组合上下文", session_owned: "当前 Session 所属", session_owned_hint: "身份来自你的本地私有 Session。", opening_state: "起始状态", existing_positions_setup: "添加已有持仓", starting_facts: "一次性起始事实", opening_explainer: "记录开始跟踪前已经持有的仓位，不改变现金，也不创建虚假交易。", skip_for_now: "暂时跳过", save_opening_positions: "保存已有持仓", add_existing_positions: "添加已有持仓", open_positions: "当前持仓", portfolio_empty_loaded: "目前没有持仓。", opening_records: "起始持仓记录", records_empty: "暂无记录。", import_starting_positions: "导入起始持仓", import_review_title: "保存前请复核", draft_only_note: "仅为 Draft · 尚未保存", import_review_hint: "可以手动搜索、粘贴文本或选择一张截图，生成可编辑 Draft。请确认下面每个字段后再保存。", import_methods: "导入方式", manual_import: "手动搜索", text_import: "文本导入", screenshot_import: "截图识别", asset_search_label: "搜索标的或公司名称", asset_search_placeholder: "搜索标的或公司名称", search_assets: "搜索", asset_candidate_heading: "请选择已验证的标的", searching_assets: "搜索中…", use_asset: "使用此标的", asset_selected: "已选择标的。请补完其余字段，再点击保存完成确认。", asset_search_empty: "请输入标的或公司名称后搜索。", asset_no_match: "没有匹配的可用美国股票或 ETF。", asset_search_failed: "标的搜索暂时不可用。请稍后重试。", asset_provider_auth_failed: "标的搜索尚未配置，请先配置 Provider。", asset_rate_limited: "标的搜索已达到限流，请稍后重试。", asset_invalid_response: "标的搜索返回了无效响应。", text_import_label: "粘贴持仓文本", text_import_placeholder: "粘贴券商对账单中的持仓行", prepare_text_draft: "生成可编辑 Draft", preparing_text_draft: "正在生成文本 Draft…", screenshot_import_label: "选择一张券商持仓截图", prepare_screenshot_draft: "生成可编辑 Draft", preparing_screenshot_draft: "正在生成截图 Draft…", screenshot_privacy_notice: "截图会发送至 Alibaba Model Studio 进行识别。PositionPilot 不保存图片；Provider 的固定保留时长尚未公开。", screenshot_file_required: "请先选择 JPEG、PNG 或 WebP 截图。", screenshot_file_invalid: "请选择受支持的 JPEG、PNG 或 WebP 截图。", screenshot_file_too_large: "截图过大，请选择不超过 10 MB 的图片。", recognition_invalid_request: "导入输入无效。请检查文本或截图后重试。", recognition_auth_failed: "截图识别尚未配置。你也可以手动搜索并选择持仓。", recognition_rate_limited: "识别请求已达到限流，请稍后重试或手动搜索并选择持仓。", recognition_provider_failed: "识别暂时不可用，你可以手动搜索并选择持仓。", recognition_invalid_response: "识别返回了无效响应，请手动复核字段。", recognition_empty: "没有识别出持仓行。请手动添加一行后继续。", draft_review_signal: "复核提示", draft_status_present: "已识别", draft_status_missing: "缺失 — 请填写", draft_status_invalid: "需要修正", draft_status_ambiguous: "有歧义 — 请选择匹配标的", confidence_signal: "识别置信度", confidence_unavailable: "未提供", find_matching_assets: "查找匹配标的", asset_selection_required: "保存前必须从已验证的候选列表中选择此标的。", recognition_draft_ready: "Draft 已生成。请复核每个字段，再点击保存完成确认。", recognition_input_text: "文本导入", recognition_input_screenshot: "截图导入", imported_warning: "Provider 提示",
     transaction_entry: "交易", trade_entry: "交易记录", immutable_entry: "追加不可变记录", action: "操作", price: "价格", occurred_at_optional: "发生时间（可选）", occurred_at_hint: "留空使用后端应用时间。", reason_optional: "原因（可选）", save_trade: "保存交易", transaction_history: "交易历史", cash_activity: "现金活动", cash_entry: "现金记录", cash_event_type: "现金类型", amount: "金额", save_cash: "保存现金记录", cash_history: "现金历史", cost_basis: "成本基础", commission: "手续费", fee_schedule: "费用规则", occurred_at: "发生时间", reason: "原因", sequence: "序号", recorded_at: "记录时间", not_provided: "未填写", trade_saved: "交易已保存", cash_saved: "现金记录已保存", opening_saved: "已有持仓已保存", mutation_unknown: "结果未知。请勿自动重试，请刷新并检查最新投资组合状态。", refresh_failed: "写入可能已成功，但最新投资组合加载失败。继续前请先刷新。", invalid_form: "请检查标记的字段后再提交。", insufficient_cash: "可用现金不足以覆盖本次买入及后端计算的费用。", insufficient_shares: "该仓位类型下的股数不足。", opening_sealed: "已有持仓只能在第一笔交易或现金记录前添加。", future_time: "发生时间不能晚于当前时间。", session_expired: "本地 Session 已过期，请重新登录。",
     working_title: "正在整理决策上下文", working_answer: "正在读取你的投资组合并选择当前信息。", answer_label: "回答", sources_used: "使用的来源", source_explainer: "支持本次回答的上下文。", answer_ready: "基于投资组合的回答", answer_degraded: "上下文有限的回答", answer_failed: "暂时无法回答", source_ticker: "标的", source_provider: "数据提供方", source_feed: "数据源", source_market_time: "市场时间", source_fetched: "获取时间", source_portfolio: "投资组合持仓与现金", source_quote: "当前市场报价", source_history: "价格历史", source_news: "近期新闻", source_market: "市场环境", no_sources: "本次未返回支持来源。", question_required: "请输入一个具体的投资问题。", question_failed: "PositionPilot 未能完成本次问题，请查看状态后重试。",
   },
@@ -655,6 +656,30 @@ function setDraftField(row, fieldName, draftField, valueOverride = null) {
   return parsed;
 }
 
+function ensureDraftSymbolSearch(row) {
+  if (row.querySelector(".draft-symbol-search")) return;
+  const findButton = makeElement("button", "text-button draft-symbol-search", translate("find_matching_assets"));
+  findButton.type = "button";
+  findButton.dataset.i18n = "find_matching_assets";
+  findButton.addEventListener("click", () => {
+    const config = importConfigs.find((candidate) => candidate.rows.contains(row));
+    if (!config) return;
+    const ticker = row.querySelector("[data-field='ticker']");
+    config.pendingRow = row;
+    config.controls.assetQuery.value = ticker?.value.trim() ?? "";
+    switchImportMode(config, "manual");
+    config.controls.assetQuery.focus();
+  });
+  row.append(findButton);
+}
+
+function clearSelectedAsset(row) {
+  delete row.dataset.assetSymbol;
+  delete row.dataset.assetDisplayName;
+  delete row.dataset.assetExchange;
+  ensureDraftSymbolSearch(row);
+}
+
 function setTickerDraftFields(row, tickerField, suggestedField) {
   const ticker = normalizeDraftField(tickerField);
   const suggested = normalizeDraftField(suggestedField);
@@ -671,20 +696,7 @@ function setTickerDraftFields(row, tickerField, suggestedField) {
       visibleTicker.dataset.fieldName = "ticker";
     });
   }
-  if (suggested.status === "AMBIGUOUS" || ticker.status === "AMBIGUOUS") {
-    const seed = suggested.value || ticker.value;
-    const findButton = makeElement("button", "text-button draft-symbol-search", translate("find_matching_assets"));
-    findButton.type = "button";
-    findButton.addEventListener("click", () => {
-      const config = importConfigs.find((candidate) => candidate.rows.contains(row));
-      if (!config) return;
-      config.pendingRow = row;
-      config.controls.assetQuery.value = seed;
-      switchImportMode(config, "manual");
-      config.controls.assetQuery.focus();
-    });
-    row.append(findButton);
-  }
+  clearSelectedAsset(row);
   return { value: tickerValue, status: tickerStatus };
 }
 
@@ -778,6 +790,9 @@ function selectAssetCandidate(config, candidate) {
   }) || createOpeningRow(config.rows);
   const ticker = target.querySelector("[data-field='ticker']");
   ticker.value = symbol;
+  target.dataset.assetSymbol = symbol;
+  target.dataset.assetDisplayName = String(candidate.display_name ?? "").trim();
+  target.dataset.assetExchange = String(candidate.exchange ?? "").trim();
   clearFieldReviewCue(ticker);
   ticker.dataset.fieldName = "ticker";
   target.querySelector(".draft-symbol-search")?.remove();
@@ -955,6 +970,9 @@ function createOpeningRow(container) {
   const tickerWrap = makeElement("div");
   const tickerLabel = makeElement("label"); setLocalizedText(tickerLabel, "ticker");
   const ticker = makeElement("input"); ticker.id = `opening-${rowId}-ticker`; ticker.type = "text"; ticker.maxLength = 10; ticker.autocomplete = "off"; ticker.dataset.field = "ticker"; tickerLabel.htmlFor = ticker.id;
+  for (const eventName of ["input", "change"]) {
+    ticker.addEventListener(eventName, () => clearSelectedAsset(row));
+  }
   tickerWrap.append(tickerLabel, ticker);
   const sharesWrap = makeElement("div");
   const sharesLabel = makeElement("label"); setLocalizedText(sharesLabel, "shares");
@@ -991,6 +1009,7 @@ function collectOpeningPositions(container) {
     const any = normalizedTicker || shares.value.trim() || cost.value.trim() || type.value;
     if (!any) continue;
     if (!normalizedTicker || !shares.value.trim() || !cost.value.trim()) { showFieldError(!normalizedTicker ? ticker : !shares.value.trim() ? shares : cost, "incomplete_position"); valid = false; continue; }
+    if (row.dataset.assetSymbol !== normalizedTicker) { showFieldError(ticker, "asset_selection_required"); valid = false; continue; }
     if (!isPositiveDecimal(shares.value.trim())) { showFieldError(shares, "invalid_positive_decimal"); valid = false; }
     if (!isPositiveDecimal(cost.value.trim())) { showFieldError(cost, "invalid_positive_decimal"); valid = false; }
     const key = `${normalizedTicker}:${type.value || "UNSPECIFIED"}`;
