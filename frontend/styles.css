@@ -2089,6 +2089,224 @@ footer {
   font-size: 12px;
 }
 
+.opening-import-tools {
+  margin: 18px 0 20px;
+  padding: 16px;
+  border: 1px solid rgba(27, 107, 84, 0.2);
+  border-radius: 14px;
+  background: rgba(27, 107, 84, 0.045);
+}
+
+.opening-import-tools h3 {
+  margin: 0;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 19px;
+  font-weight: 500;
+}
+
+.import-tools-heading {
+  display: flex;
+  gap: 12px;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.import-mode-tabs {
+  display: flex;
+  gap: 4px;
+  margin: 16px 0 14px;
+  padding: 4px;
+  overflow-x: auto;
+  border-radius: 11px;
+  background: rgba(215, 255, 67, 0.24);
+}
+
+.import-mode-tab {
+  min-height: 35px;
+  padding: 7px 11px;
+  color: var(--ink-soft);
+  background: transparent;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.import-mode-tab.is-active {
+  color: var(--ink);
+  background: var(--panel);
+  box-shadow: 0 2px 7px rgba(20, 37, 31, 0.08);
+}
+
+.import-mode-panel {
+  min-width: 0;
+}
+
+.import-search-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: end;
+}
+
+.import-search-row .compact-button,
+.import-submit {
+  min-height: 42px;
+  margin-top: 0;
+}
+
+.import-mode-panel textarea {
+  min-height: 84px;
+  margin-top: 7px;
+  padding: 11px 12px;
+  font-size: 13px;
+}
+
+.import-mode-panel input[type="file"] {
+  margin-top: 7px;
+  padding: 9px;
+  font-size: 12px;
+}
+
+.privacy-note {
+  margin-top: 13px;
+}
+
+.asset-candidate-list {
+  display: grid;
+  gap: 7px;
+  margin-top: 12px;
+}
+
+.asset-candidate-heading {
+  margin: 0 0 2px;
+  color: var(--ink-soft);
+  font-size: 11px;
+  font-weight: 720;
+}
+
+.asset-candidate {
+  display: grid;
+  grid-template-columns: minmax(70px, auto) minmax(0, 1fr) auto auto;
+  gap: 9px;
+  align-items: center;
+  width: 100%;
+  padding: 10px 11px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.8);
+  text-align: left;
+}
+
+.asset-candidate:not(:disabled):hover {
+  border-color: var(--teal);
+  background: rgba(215, 255, 67, 0.14);
+}
+
+.asset-candidate:disabled {
+  cursor: not-allowed;
+}
+
+.asset-candidate-symbol {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+}
+
+.asset-candidate-name,
+.asset-candidate-exchange,
+.asset-candidate-status {
+  overflow: hidden;
+  color: var(--ink-soft);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.asset-candidate-status {
+  color: var(--teal);
+  font-size: 9px;
+  font-weight: 780;
+  letter-spacing: 0.05em;
+}
+
+.import-draft-feedback {
+  margin-top: 12px;
+}
+
+.draft-feedback-summary {
+  display: grid;
+  gap: 5px;
+  padding: 10px 11px;
+  border-left: 3px solid var(--amber);
+  color: var(--ink-soft);
+  background: rgba(243, 185, 95, 0.12);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.draft-feedback-title {
+  color: #805814;
+}
+
+.draft-feedback-copy {
+  color: var(--ink-soft);
+}
+
+.import-warning-list {
+  display: grid;
+  gap: 3px;
+  margin: 4px 0 0;
+  padding-left: 18px;
+}
+
+.draft-empty {
+  margin: 12px 0 0;
+  color: var(--ink-soft);
+  font-size: 12px;
+}
+
+.opening-draft-row .field-review-cue {
+  display: block;
+  margin-top: 4px;
+  color: #805814;
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+.opening-draft-row [data-review-status="MISSING"],
+.opening-draft-row [data-review-status="INVALID"],
+.opening-draft-row [data-review-status="AMBIGUOUS"] {
+  border-color: rgba(180, 119, 20, 0.52);
+  box-shadow: 0 0 0 3px rgba(243, 185, 95, 0.12);
+}
+
+.draft-symbol-search,
+.draft-row-review {
+  grid-column: 1 / -1;
+}
+
+.draft-symbol-search {
+  width: fit-content;
+  margin: 0;
+}
+
+.draft-row-review {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  flex-wrap: wrap;
+  color: #805814;
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+.draft-confidence {
+  font-weight: 760;
+}
+
+.draft-row-statuses {
+  color: var(--ink-soft);
+}
+
 .account-card {
   display: flex;
   flex-direction: column;
@@ -2271,6 +2489,29 @@ footer {
 
   .opening-row-fields label {
     min-height: 0;
+  }
+
+  .import-tools-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .import-search-row {
+    grid-template-columns: 1fr;
+  }
+
+  .import-search-row .compact-button,
+  .import-submit {
+    width: 100%;
+  }
+
+  .asset-candidate {
+    grid-template-columns: minmax(70px, auto) minmax(0, 1fr);
+  }
+
+  .asset-candidate-exchange,
+  .asset-candidate-status {
+    grid-column: 2;
   }
 
   .account-card {

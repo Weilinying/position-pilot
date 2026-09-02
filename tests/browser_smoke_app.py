@@ -17,6 +17,7 @@ from uuid import UUID
 from fastapi import Request
 from starlette.responses import RedirectResponse, Response
 
+from position_pilot.application.asset_metadata_service import AssetMetadataService
 from position_pilot.application.auth_service import Account, AuthService, AuthSession
 from position_pilot.application.errors import OpeningStateSealed, UserNotFound
 from position_pilot.application.investment_agent import (
@@ -27,12 +28,33 @@ from position_pilot.application.investment_agent import (
     InvestmentRequestFailure,
     InvestmentResponseStatus,
 )
+from position_pilot.application.opening_import_service import OpeningImportService
 from position_pilot.application.portfolio_service import (
     CashAdjustmentResult,
     CreateUserCommand,
     InitializeOpeningPositionsCommand,
     RecordCashEventCommand,
     RecordTransactionCommand,
+)
+from position_pilot.application.recognition_service import (
+    DraftField,
+    RecognitionDraft,
+    RecognitionDraftRow,
+    RecognitionFieldStatus,
+    RecognitionInput,
+    RecognitionInputKind,
+    RecognitionProvider,
+    RecognitionResult,
+    RecognitionService,
+)
+from position_pilot.domain.asset_metadata import (
+    AssetIdentity,
+    AssetMetadataStatus,
+    AssetSearchQuery,
+    AssetSearchResult,
+    AssetStatus,
+    AssetValidationQuery,
+    AssetValidationResult,
 )
 from position_pilot.domain.errors import FutureTimestamp
 from position_pilot.domain.portfolio import (
@@ -51,9 +73,12 @@ from position_pilot.domain.portfolio import (
 )
 from position_pilot.main import (
     app,
+    get_asset_metadata_service_dependency,
     get_auth_service_dependency,
     get_investment_agent_dependency,
+    get_opening_import_service_dependency,
     get_portfolio_service_dependency,
+    get_recognition_service_dependency,
 )
 
 USER_A = UUID("10000000-0000-4000-8000-000000000001")
@@ -492,14 +517,163 @@ class BrowserSmokeInvestmentAgent:
         )
 
 
+def _smoke_asset(symbol: str, display_name: str, exchange: str = "NASDAQ") -> AssetIdentity:
+    """创建供 Import UI 使用的最小 active Asset Fixture。"""
+
+    return AssetIdentity(
+        canonical_symbol=symbol,
+        display_name=display_name,
+        exchange=exchange,
+        status=AssetStatus.ACTIVE,
+    )
+
+
+class BrowserSmokeAssetMetadataProvider:
+    """提供不访问网络的 Asset Search / exact Validation Fixture。"""
+
+    _assets = (
+        _smoke_asset("ADBE", "Adobe Inc."),
+        _smoke_asset("GOOG", "Alphabet Inc."),
+        _smoke_asset("GOOGL", "Alphabet Inc."),
+        _smoke_asset("NVDA", "NVIDIA Corporation"),
+        _smoke_asset("SPY", "SPDR S&P 500 ETF Trust", "NYSE ARCA"),
+    )
+
+    def search(self, query: AssetSearchQuery) -> AssetSearchResult:
+        """按 symbol 或公司名称返回固定 active 候选。"""
+
+        normalized = query.query.casefold()
+        candidates = tuple(
+            asset
+            for asset in self._assets
+            if normalized in asset.canonical_symbol.casefold()
+            or normalized in asset.display_name.casefold()
+        )[: query.limit]
+        if not candidates:
+            return AssetSearchResult.failure(
+                AssetMetadataStatus.NO_MATCH,
+                "Smoke fixture 没有找到匹配 Asset",
+            )
+        return AssetSearchResult.success(candidates)
+
+    def get_exact(self, query: AssetValidationQuery) -> AssetValidationResult:
+        """对固定候选执行 deterministic exact Validation。"""
+
+        for asset in self._assets:
+            if asset.canonical_symbol == query.symbol:
+                return AssetValidationResult.success(asset)
+        return AssetValidationResult.failure(
+            AssetMetadataStatus.NO_MATCH,
+            "Smoke fixture 没有找到对应 Asset",
+        )
+
+
+def _smoke_draft_row(
+    *,
+    ticker: str | None,
+    suggested_symbol: str | None,
+    shares: str | None,
+    average_cost: str | None,
+    position_type: PositionType | None = None,
+    confidence: str | None = "0.93",
+    ticker_status: RecognitionFieldStatus | None = None,
+    suggested_status: RecognitionFieldStatus | None = None,
+) -> RecognitionDraftRow:
+    """创建可供 Browser Smoke Review 的临时 Draft 行。"""
+
+    def text_field(value: str | None, status: RecognitionFieldStatus | None) -> DraftField[str]:
+        return DraftField(
+            value=value,
+            status=status
+            or (
+                RecognitionFieldStatus.PRESENT
+                if value is not None
+                else RecognitionFieldStatus.MISSING
+            ),
+        )
+
+    def decimal_field(value: str | None) -> DraftField[Decimal]:
+        return DraftField(
+            value=Decimal(value) if value is not None else None,
+            status=RecognitionFieldStatus.PRESENT
+            if value is not None
+            else RecognitionFieldStatus.MISSING,
+        )
+
+    return RecognitionDraftRow(
+        ticker=text_field(ticker, ticker_status),
+        suggested_symbol=text_field(suggested_symbol, suggested_status),
+        shares=decimal_field(shares),
+        average_cost=decimal_field(average_cost),
+        position_type=DraftField(
+            value=position_type,
+            status=RecognitionFieldStatus.PRESENT
+            if position_type is not None
+            else RecognitionFieldStatus.MISSING,
+        ),
+        confidence=Decimal(confidence) if confidence is not None else None,
+    )
+
+
+class BrowserSmokeRecognitionProvider(RecognitionProvider):
+    """返回固定 Text / Screenshot Draft，不执行真实 Vision Provider。"""
+
+    def recognize(self, request: RecognitionInput) -> RecognitionResult:
+        """按输入形式返回正常与 ambiguous 主流程 Fixture。"""
+
+        if request.kind is RecognitionInputKind.TEXT:
+            text = (request.text or "").upper()
+            if "AMBIGUOUS" in text:
+                row = _smoke_draft_row(
+                    ticker="GOOG",
+                    suggested_symbol="GOOG",
+                    shares="2",
+                    average_cost="180.25",
+                    confidence="0.48",
+                    ticker_status=RecognitionFieldStatus.AMBIGUOUS,
+                    suggested_status=RecognitionFieldStatus.AMBIGUOUS,
+                )
+            else:
+                row = _smoke_draft_row(
+                    ticker="ADBE",
+                    suggested_symbol="ADBE",
+                    shares="3",
+                    average_cost="260.50",
+                )
+            return RecognitionResult.success(
+                RecognitionDraft(rows=(row,), input_kind=RecognitionInputKind.TEXT)
+            )
+
+        row = _smoke_draft_row(
+            ticker="NVDA",
+            suggested_symbol="NVDA",
+            shares="4",
+            # 用户提供的 IBKR 参考截图没有展示平均成本，Smoke 必须保留该缺失事实。
+            average_cost=None,
+        )
+        return RecognitionResult.success(
+            RecognitionDraft(rows=(row,), input_kind=RecognitionInputKind.SCREENSHOT)
+        )
+
+
 portfolio_service = BrowserSmokePortfolioService()
 investment_agent = BrowserSmokeInvestmentAgent()
+asset_metadata_service = AssetMetadataService(BrowserSmokeAssetMetadataProvider())
+recognition_service = RecognitionService(BrowserSmokeRecognitionProvider())
 auth_store = BrowserSmokeAuthStore()
 auth_service = AuthService(
     lambda: BrowserSmokeAuthUnitOfWork(auth_store, portfolio_service),
     clock=lambda: datetime.now(UTC),
 )
+opening_import_service = OpeningImportService(
+    asset_metadata_service,
+    auth_service,
+    portfolio_service,
+)
 
 app.dependency_overrides[get_portfolio_service_dependency] = lambda: portfolio_service
 app.dependency_overrides[get_investment_agent_dependency] = lambda: investment_agent
 app.dependency_overrides[get_auth_service_dependency] = lambda: auth_service
+app.dependency_overrides[get_asset_metadata_service_dependency] = lambda: asset_metadata_service
+app.dependency_overrides[get_recognition_service_dependency] = lambda: recognition_service
+app.dependency_overrides[get_opening_import_service_dependency] = lambda: opening_import_service

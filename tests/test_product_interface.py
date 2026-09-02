@@ -141,7 +141,7 @@ def test_client_script_preserves_session_identity_safe_text_and_question_boundar
         assert script.count(f"{label}:") >= 2
 
     assert 'ERROR_LABELS[error.code] ?? "unexpected_server_error"' in script
-    assert "20260901-m81-ask-1" in page
+    assert "20260901-m9-import-1" in page
 
     assert "innerHTML" not in script
     assert "outerHTML" not in script
@@ -160,6 +160,64 @@ def test_client_script_preserves_session_identity_safe_text_and_question_boundar
     assert "/v1/portfolio/opening-positions" in script
     assert "/v1/portfolio/transactions" in script
     assert "/v1/portfolio/cash-events" in script
+
+
+def test_opening_import_review_contract_is_provider_neutral_and_explicit() -> None:
+    """Opening Import 应只生成可编辑 Draft，并沿用现有 Save 完成用户确认。"""
+
+    page, script, stylesheet = _product_assets()
+
+    for prefix in ("setup", "opening"):
+        for element_id in (
+            f"{prefix}-import-tools",
+            f"{prefix}-import-manual-tab",
+            f"{prefix}-import-text-tab",
+            f"{prefix}-import-screenshot-tab",
+            f"{prefix}-asset-query",
+            f"{prefix}-asset-search",
+            f"{prefix}-asset-candidates",
+            f"{prefix}-import-text",
+            f"{prefix}-import-text-submit",
+            f"{prefix}-import-screenshot",
+            f"{prefix}-import-screenshot-submit",
+            f"{prefix}-import-draft-feedback",
+        ):
+            assert f'id="{element_id}"' in page
+
+    for endpoint in (
+        "/v1/assets/search",
+        "/v1/portfolio/import/recognize-text",
+        "/v1/portfolio/import/recognize-screenshot",
+    ):
+        assert endpoint in script
+    for marker in (
+        "canonical_symbol",
+        "display_name",
+        "exchange",
+        "suggested_symbol",
+        "average_cost",
+        "confidence",
+        "FileReader",
+        "image_base64",
+        "state.importController?.abort()",
+        "state.importGeneration",
+        "state.importPending",
+        "config.rows.contains(config.pendingRow)",
+        "readFileAsDataUrl(file, task.controller.signal)",
+        "if (renderRecognitionDraft(config, payload",
+        "recognition_draft_ready",
+        "screenshot_privacy_notice",
+    ):
+        assert marker in script or marker in page
+
+    assert 'accept="image/jpeg,image/png,image/webp"' in page
+    assert "Alibaba Model Studio" in page
+    assert "PositionPilot does not save" in page
+    assert "Provider's fixed retention period is not publicly disclosed" in page
+    assert "innerHTML" not in script
+    assert "localStorage" not in script
+    assert "data-review-status" in stylesheet
+    assert "draft-row-review" in stylesheet
 
 
 def test_question_composer_keyboard_contract() -> None:
