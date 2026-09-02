@@ -2,7 +2,7 @@
 
 ## 1. 当前范围
 
-本文档描述已通过 Human Acceptance 的 M8 Local Portfolio Management / `v1.0.0` Local Self-Service MVP 系统结构。系统包含最小本地 Account / Session、immutable Opening State、Transaction / Cash Event Ledgers、Provider-neutral Market / News Data，以及可按问题选择 Current Quote、固定近期 Daily Price History、attributed Recent News 或 SPY Market Context 的 Single Investment Agent。M8 的同源静态 Web Interface 提供 Public Home、注册 / 登录、Portfolio Setup、Ledger Entry 与真实 Agent 闭环；Browser Identity 由 HttpOnly Session 恢复，金融事实仍由后端确定性 Ledger Replay 产生。
+本文档描述 M8 Local Portfolio Management / `v1.0.0` 稳定基线，以及当前 M9 Branch 已实现、等待正式 Provider Smoke 与 Human Acceptance 的 Asset Identity / Opening Import 结构。系统包含最小本地 Account / Session、immutable Opening State、Transaction / Cash Event Ledgers、Provider-neutral Asset / Recognition / Market / News Data，以及可按问题选择 Current Quote、固定近期 Daily Price History、attributed Recent News 或 SPY Market Context 的 Single Investment Agent。同源静态 Web Interface 提供 Public Home、注册 / 登录、Portfolio Setup、Manual / Text / Screenshot Opening Import、Ledger Entry 与真实 Agent 闭环；Browser Identity 由 HttpOnly Session 恢复，金融事实仍由后端确定性 Ledger Replay 产生。
 
 ## 2. 依赖方向
 
@@ -18,6 +18,9 @@ Vanilla HTML / CSS / ES Modules
   ├── POST + GET /v1/portfolio/opening-positions
   ├── POST + GET /v1/portfolio/transactions
   ├── POST + GET /v1/portfolio/cash-events
+  ├── GET /v1/assets/search
+  ├── POST /v1/portfolio/import/recognize-text
+  ├── POST /v1/portfolio/import/recognize-screenshot
   └── POST /v1/investment/questions
 
 FastAPI /health
@@ -47,7 +50,9 @@ Application / InvestmentAgent
 
 Portfolio callers
       ↓
-Application / PortfolioService
+Application / OpeningImportService → AssetMetadataService → Massive Adapter
+      ↓ confirmed canonical symbol
+AuthService / PortfolioService
       ↓
 Domain / deterministic Portfolio replay
       ↑
@@ -145,11 +150,15 @@ Cash Event amount 必须为正数且最多 8 位小数。Transaction 与 Cash Ev
 ## 6. 主要模块
 
 - `backend/position_pilot/domain/portfolio.py`：领域实体、枚举、Decimal 规则以及 Transaction / Cash Event combined replay。
+- `backend/position_pilot/domain/asset_metadata.py`：Selector 使用的最小 Asset Identity、Search / exact Validation 与 Failure Status。
 - `backend/position_pilot/domain/market_context.py`：SPY Daily Price Stress 指标、确定性 Market Regime 与 V1 Heuristic 元数据。
 - `backend/position_pilot/domain/news.py`：Provider-neutral News Article、归因、时间、稳定排序与 Failure Status。
 - `backend/position_pilot/domain/errors.py`：明确的领域失败状态。
 - `backend/position_pilot/application/portfolio_service.py`：Opening State、Transaction / Cash Event Use Case、写入 Command、Unit of Work Contract，以及同一 State Read 的 Agent Portfolio Context。
 - `backend/position_pilot/application/auth_service.py`：本地 Account 注册 / 登录 / 退出、scrypt Password Verification、Opaque Session 与一对一 Portfolio Ownership。
+- `backend/position_pilot/application/asset_metadata_service.py`：Provider-neutral Asset Search / exact Validation Boundary。
+- `backend/position_pilot/application/recognition_service.py`：Text / Screenshot 临时 Structured Draft、Field Status、Confidence Review Signal 与输入边界。
+- `backend/position_pilot/application/opening_import_service.py`：用户确认字段的 Asset Revalidation 与一次性 Opening State 写入编排。
 - `backend/position_pilot/application/llm.py`：Provider-neutral Message、Tool、Completion 与 Failure Contract。
 - `backend/position_pilot/application/investment_agent.py`：Portfolio Snapshot、单轮 Native Function Calling、Structured Source Validation、Source Tracking 与 Request Failure。
 - `backend/position_pilot/application/investment_answer.py`：自由文本 Answer 外层 JSON、统一 Source Reference Schema 与真实性校验。
@@ -159,6 +168,8 @@ Cash Event amount 必须为正数且最多 8 位小数。Transaction 与 Cash Ev
 - `backend/position_pilot/infrastructure/models.py`：Account / Auth Session / User / Opening Position / Transaction / Cash Event SQLAlchemy Model 与数据库约束。
 - `backend/position_pilot/infrastructure/unit_of_work.py`：同步 SQLAlchemy 持久化实现和领域映射。
 - `backend/position_pilot/integrations/aliyun_llm.py`：阿里云 Model Studio OpenAI-compatible Adapter。
+- `backend/position_pilot/integrations/aliyun_vision.py`：`qwen3-vl-flash` Recognition Adapter；图片文字只作为数据处理。
+- `backend/position_pilot/integrations/massive_asset_metadata.py`：Massive Ticker Search / Overview、最小字段映射与 Failure Mapping。
 - `backend/position_pilot/integrations/alpaca_news.py`：Alpaca News beta JSON、attribution 与 Failure Mapping Adapter。
 - `backend/position_pilot/bootstrap.py`：Portfolio、Market Data 与 LLM Provider 的依赖装配。
 - `backend/position_pilot/demo_seed.py`：通过正式 Application Service 创建隔离本地 Demo Portfolio 的显式命令。
@@ -173,12 +184,14 @@ Cash Event amount 必须为正数且最多 8 位小数。Transaction 与 Cash Ev
 - Transaction 与 Cash Event 还没有跨表全局 sequence；相同 `occurred_at` 使用 Cash Event 优先的固定重放顺序。只有后续现金流类型或对账需求证明必要时才重新评估全局 Event Store。
 - 手续费只实现 `IBKR_PRO_TIERED_US_2026_08` 第一档基础佣金，不模拟月累计量跨档、执行场所、清算、监管或 pass-through fees。
 - 不处理税费、多币种、拆股、公司行动、转仓或外部券商同步。
+- M9 Import 只初始化仍为空的 Opening State；不 merge、overwrite、sync 或 reconcile 已初始化 Portfolio。
+- M9 不维护本地 Asset Master；搜索与最终写入依赖 Massive 可用性。`qwen3-vl-flash` 图片不会由 PositionPilot 持久化，但 Provider 未公开固定原图保留时长。
 - Current Quote 默认来自 Alpaca Basic 的实时 IEX feed，只代表单一交易所覆盖；Historical Daily OHLCV 来自至少延迟 15 分钟的 SIP feed。
 - 不包含 WebSocket、行情 / 新闻缓存或持久化、通用技术指标、VIX、市场宽度、宏观 Context、News 全文抓取、Earnings 或 Fundamentals；Market Regime 仅为已批准的 SPY Daily Price Stress V1 Heuristic。
 - Portfolio Snapshot 是 Agent 必定注入的完整当前持仓集合，并包含当前 Positions 对应的有界历史 BUY Facts；它不包含完整 Transaction Ledger 或 Cash Event History。每个 `(ticker, position_type)` 只保留最近 5 条 BUY，并显式声明总数与截断状态。
 - 发给 LLM 的 Snapshot 不包含内部 User ID，并提供由代码计算的 Ticker 数量、总持仓历史成本和按 Ticker 聚合、保留两位小数的历史成本权重百分比。历史成本权重不包含 Available Cash，也不表示当前市值权重；原始 `LONG_TERM` / `SWING` Position 继续独立保留。
 - Quote 成功后，Tool Result 向 LLM 提供实际 last / bid / ask price、Source Metadata、统一的 `CURRENT_QUOTE(ticker)` Source Reference，以及代码派生的 Cash/Quote、Quote/Average Cost 关系。Cash/Quote 关系是纯数值比较，不能支持交易执行结论，真实可执行购买数量保持 `UNKNOWN`。Portfolio Context 继续提供同 Ticker 股数汇总，并将现金权重、总组合价值、当前市值权重和缺少策略阈值时的集中度结论标为 `UNAVAILABLE` 或 `UNKNOWN`。
-- 每次请求注入结构化 Context Capability Manifest。Current Quote、Price History、News、Market Context 与 Historical Buy Facts 可用；Earnings、Fundamentals、Technical Analysis、Asset Metadata 和 Sector Classification 仍不可用。
+- 每次请求注入结构化 Context Capability Manifest。Current Quote、Price History、News、Market Context 与 Historical Buy Facts 可用；Earnings、Fundamentals、Technical Analysis、Asset Metadata 和 Sector Classification 仍不可用。M9 Asset Metadata 只服务 Opening Import，不暴露为 Investment Agent Context Capability。
 - Decision Context 将 Trading Plan、Exit Conditions 与 Risk Budget 显式标记为 `UNKNOWN`；它们不是 Conversation Memory，也不由模型从通用知识补足。
 - Agent 每个请求只允许一个 Tool Round，Current Quote、Recent Price History、Recent News 与 Market Context 合计最多四个调用；仍按问题实际需要选择 Tool，不默认调用全部 Context Tools。不支持 Conversation Memory 或多阶段检索。
 - Recent Price History 的窗口由 Application 固定为截至当前时间至少 15 分钟前的最近 45 个日历日、最多 30 根 Daily Bars。Adapter 使用 Provider `sort=desc` 取得窗口内最新 N 根，再反转为 Domain 要求的 timestamp 严格升序，避免较早的 N 根冒充 Recent History。LLM 只能选择 Ticker，不能控制 start、end 或 limit。Application 只提供 Bar 数量、首尾时间与收盘价、区间高低、首尾涨跌额/幅和 `UP / DOWN / FLAT` 方向；最新历史收盘价不等于 Current Quote，Price History 不提供移动平均、RSI、支撑阻力、交易信号或预测。
@@ -188,7 +201,7 @@ Cash Event amount 必须为正数且最多 8 位小数。Transaction 与 Cash Ev
 - Current Quote 正确性不再依赖自然语言 Regex、同义词表或确定性 Renderer。Backend 强约束 Portfolio / Ledger / Derived Facts 和 Tool / Source 真实性；最终自然语言是否准确使用这些事实由 Prompt、Behavioral Eval 与 Human Review 衡量。成功取得但未声明使用的 Context 不进入 Final Source Tracking；失败 Tool Attempt 仍保留原 status 以维持降级可观测性，但不能被声明为成功 Source。
 - 同一轮内大小写或空白不同的重复调用按 `(tool_name, ticker)` 共用一次 Provider Result，但每个 Native Tool Call 都获得对应 Tool Message。Quote、History 与 News 即使 Ticker 相同仍是三个独立来源。
 - 超出 Portfolio Snapshot、成功 Current Quote、成功 Price History、attributed Recent News 与成功 SPY Market Context Tool Result 的事实保持 `UNKNOWN`；新闻报道不得自动升级为系统验证事实，Market Context Failure 时不得从其他来源补造 Regime。
-- 当前仍无 Trading / Asset Metadata Context；未来 Capability 扩展点为确定性的 `tradable` 与 `fractionable`。不得由 LLM 假设整股或碎股资格，也不由 LLM 计算具体可购买股数。
+- Investment Agent 当前仍无 Trading / Asset Metadata Context；`normalize_ticker()` 本身仍只验证字符串格式。M9 通过独立 Provider-neutral Boundary 为一次性 Opening State Import 提供最小 Asset Selector 与可审查 Draft，并在确认写入前使用 Massive exact validation 产生 canonical symbol；该能力不进入 Investment Agent 指令链路，也不允许 LLM、Browser Suggestion 或 Recognition Confidence 替代 Asset Validation。实现边界见 `docs/plans/m9-asset-identity-portfolio-import.md` 与 `docs/engineering-notes/m9-opening-import-truth-boundaries.md`。
 
 ## 8. Local Product Interface Boundary
 
@@ -237,7 +250,44 @@ stale / refresh_required; never automatic retry
 - 正式 `position_pilot.main:app` 装配真实 `InvestmentAgent`。确定性 Fake Agent 只存在于 Engineering Browser Smoke Fixture；Fixture URL 强制显示醒目的 Fake Agent / Fixture Data 警告，不能作为真实 Agent Human Acceptance Evidence。
 - M8 使用固定 Checklist 的 Human Browser Smoke 作为界面 Evidence，不把它描述为自动化 E2E，也不将其纳入默认 Regression Gate。Network Ambiguity、POST 后 GET Failure、XSS Payload 与 delayed stale read 属于定向 Engineering Verification / Automated Review。
 
-## 9. Market Data Boundary
+## 9. Asset Metadata 与 Opening Import Boundary
+
+```text
+symbol / company name
+        ↓ bounded search
+AssetMetadataService → MassiveAssetMetadataProvider
+        ↓ canonical_symbol + display_name + exchange + status
+Browser candidate selection
+
+Text / Screenshot
+        ↓ RecognitionService → AliyunVisionProvider(qwen3-vl-flash)
+Provider-neutral editable Draft + field status + confidence review signal
+        ↓ Human edit / confirmation
+OpeningImportService → exact Asset revalidation outside DB transaction
+        ↓ canonical symbol only
+AuthService / PortfolioService → User row lock → recheck one-time Gate
+        ↓ deterministic validation + atomic write
+OpeningPosition facts
+```
+
+- Asset Metadata Provider JSON、Credential 与 HTTP Error 只存在于 Massive Adapter；Domain 只认识
+  `canonical_symbol`、`display_name`、`exchange`、`status` 与稳定 Failure Status，不保存完整
+  Asset Master。
+- Recognition 不是 `InvestmentAgent` Tool，也不进入 Agent 的 Message / Instruction 链路。图片与
+  OCR 文本全部作为待提取数据，输出必须通过严格 Provider-neutral Draft Schema；Confidence 只在
+  Browser 显示，不进入 Portfolio Command 或 Database。
+- Screenshot 只接受单张 JPEG / PNG / WebP，Backend 上限为 10 MB；Browser 使用 Base64 JSON
+  传输，Request 完成、取消、Logout 或刷新后不保留原图。普通日志只记录 Provider、Model、
+  Failure Kind、HTTP Status 与 Latency，不记录图片、识别文本、Credential 或原始 Payload。
+- Human Confirmation 复用现有 Save；缺失 `average_cost` 等必填字段必须由用户补全。最终写入
+  对每个 symbol 重新 exact validation，再由既有 Decimal、duplicate、replay 与 User Row Lock
+  Gate 决定是否原子提交。
+- API 的 sealed 预检查避免无意义 Provider 调用；它不是最终真实性 Gate。最终 Gate 仍在锁内
+  检查 Opening Position、Transaction 与 Cash Event 全空，避免并发状态变化绕过一次性语义。
+- Import 不创建 Transaction、不影响 Cash、不持久化 Draft，也不对已初始化 Portfolio 执行
+  merge、sync、diff 或 Reconciliation。
+
+## 10. Market Data Boundary
 
 ```text
 Ticker / HistoricalBarsQuery
@@ -254,7 +304,7 @@ MarketDataResult[MarketQuote | HistoricalBars]
 - `integrations/alpaca_market_data.py` 负责 Credential、REST、IEX / SIP feed、分页以及 HTTP / Payload Failure 映射。
 - 正常空结果使用 `NO_DATA`；认证、限流、Provider 不可用和非法响应具有不同状态，失败结果不携带伪造数据。
 
-## 10. News Data Boundary
+## 11. News Data Boundary
 
 ```text
 NewsQuery
@@ -271,7 +321,7 @@ NewsResult[RecentNews]
 - Adapter 只请求 Metadata、headline 与 summary，不请求 `content`，并拒绝窗口外、超上限或缺少 attribution 的 Provider Response。
 - `NO_NEWS_FOUND` 是局部查询结果，不是世界状态；它不会被解释成没有相关新闻、事件或驱动因素。
 
-## 11. Market Context 与 Regime Boundary
+## 12. Market Context 与 Regime Boundary
 
 ```text
 get_market_context() 无模型参数
@@ -297,7 +347,7 @@ NORMAL / ELEVATED_VOLATILITY / HIGH_STRESS / EXTREME_STRESS
 - 少于 21 根 completed Bars 同样为 `NO_DATA`；认证、限流、Provider 不可用与非法成功 Payload 继续保持独立状态。
 - 决策、阈值、局限与重新考虑条件见 ADR 0007。
 
-## 12. Investment Agent 与 LLM Boundary
+## 13. Investment Agent 与 LLM Boundary
 
 ```text
 Transaction + Cash Event Ledgers

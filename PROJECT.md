@@ -56,6 +56,8 @@ V1 优先实现 Structured Memory。总可投资资金、剩余现金、Portfoli
 
 系统开始跟踪前已经存在的持仓使用独立、不可变的 Opening State 表达，只记录 ticker、shares、average cost、可选 Position Type 与后端记录时间。Opening Position 不是经济 Ledger Event，不伪造成 BUY、不扣减现金、没有交易 sequence 或手续费；当前 State 由 Opening State 与 Cash / Transaction Ledger 共同确定性重建。
 
+从 M9 开始，Opening State 中的 Asset Identity 以 Asset Metadata Provider 验证后的 canonical symbol 表示；现有 `ticker` 字段承载该 canonical symbol，而不是未经验证的用户输入或公司名称。V1 不建立、复制或持续同步完整的本地 Asset Master；M9 只通过 Provider-neutral Asset Metadata Boundary 规范化前端 Asset Selector 与写入校验所需的 canonical symbol、display name、exchange 和 status，Provider-specific Payload 不进入 Portfolio Domain。只有当前界面出现真实需求时才增加其他 Metadata 字段，不建设通用证券主数据模型。
+
 V1 的 Email / Password 账户只为本地产品闭环提供稳定身份与 Portfolio Ownership。Account 与现有单一 `User → Portfolio State` 之间保持一对一关系；Browser 不再把 UUID 当作正常用户身份或恢复方式。密码明文不得持久化，认证后由 HttpOnly Session Cookie 识别当前 Account，Portfolio 与 Investment API 的 User Identity 必须由 Session 在 Server 端确定。
 
 同一 Ticker 可以同时存在 `UNSPECIFIED`、`LONG_TERM` 和 `SWING` 三类独立仓位。`UNSPECIFIED` 只表示用户尚未提供策略分类，系统与 LLM 都不得自动把它推断为长期仓或波段仓；已明确的长期与波段仓仍必须在数据结构和分析逻辑中保持区别，因为两者的 Thesis、Plan、风险管理方式和退出条件不同。
@@ -119,7 +121,9 @@ Tool 负责获取外部事实或暴露系统能力，例如当前价格、历史
 
 确定性代码负责平均成本、金额、仓位比例、技术指标以及能够明确编码的 Market Regime 规则。
 
-交易能力同样属于确定性事实。标的是否可交易、是否支持 Fractional Shares，应由 Broker / Asset Metadata 等可靠来源提供 `tradable` 与 `fractionable` 状态，不能由 LLM 根据训练知识判断。规划新增买入时，若 `fractionable` 未知，Agent 不得默认只支持整股，也不得默认支持碎股；只有明确支持碎股时，潜在可购买数量才允许为 Decimal，明确不支持时才应用整股约束，具体数量仍由确定性代码计算。Available Cash 低于单股价格不能作为通用的“无法买入”判断。
+交易能力同样属于确定性事实。标的是否可交易、是否支持 Fractional Shares，应由 Broker / Asset Metadata 等可靠来源提供 `tradable` 与 `fractionable` 状态，不能由 LLM 根据训练知识判断。规划新增买入时，若 `fractionable` 未知，Agent 不得默认只支持整股，也不得默认支持碎股；只有明确支持碎股时，潜在可购买数量才允许为 Decimal，明确不支持时才应用整股约束，具体数量仍由确定性代码计算。Available Cash 低于单股价格不能作为通用的“无法买入”判断。这一未来交易规划边界不要求 M9 Asset Selector 提前规范化 `fractionable` 或建设通用 Metadata Model。
+
+Portfolio Import 中的识别结果只生成可审查 Draft，不直接成为 Structured State。Recognition Confidence 只用于帮助用户定位需要复核的字段，不是 Portfolio Domain Truth，也不形成独立 Write Gate；最终写入只接受用户明确确认、经过 Asset Validation 且通过 deterministic Domain Validation 的确定字段。Asset Metadata Provider 与 Vision / OCR Capability 必须在实现前通过短 Capability Spike 完成选型，并通过各自的 Provider-neutral Boundary 接入。Recognition 输出只作为数据处理，不进入 PositionPilot Agent 的指令链路。
 
 LLM 负责理解开放式问题、判断需要哪些 Context、选择 Tool、综合多个来源、解释金融信息和生成条件式 Decision Support。
 
@@ -141,7 +145,7 @@ V1 已确定使用 Python、FastAPI、Pydantic、PostgreSQL 和 pytest。
 
 ## 10. 尚未确定的技术问题
 
-PositionPilot 自身的 Agent Orchestration 已在 M3 Human Review 中确定使用 Single Agent + Native Function Calling，M3 不引入 LangGraph。M2 已选择 Alpaca Market Data API v2 REST 作为 Market Data Provider，具体覆盖与限制见 ADR 0004；M3 已选择阿里云 Model Studio 作为 V1 默认 LLM Provider，并保持 Provider / Model 可配置和与 Agent / Domain 解耦；News Provider 和 Financial Data Provider 尚未确定。
+PositionPilot 自身的 Agent Orchestration 已在 M3 Human Review 中确定使用 Single Agent + Native Function Calling，M3 不引入 LangGraph。M2 已选择 Alpaca Market Data API v2 REST 作为 Market Data Provider，具体覆盖与限制见 ADR 0004；M3 已选择阿里云 Model Studio 作为 V1 默认 LLM Provider，并保持 Provider / Model 可配置和与 Agent / Domain 解耦；M9 已选择 Massive 作为 Asset Metadata Provider、Alibaba Model Studio `qwen3-vl-flash` 作为 Vision / OCR Capability，具体边界见 ADR 0010；News Provider 和 Financial Data Provider 尚未确定。
 
 “尚未确定”本身是一种有效状态。开发过程中不得因为需要继续编码，就未经评估默认选择某个 Framework 或 Provider。进入相关 Milestone 后，应根据真实需求、Technical Spike 或可验证比较做出决策，并在必要时记录 ADR。
 
@@ -154,6 +158,8 @@ V1 不实现自动交易、券商账户控制、自动调仓、期权策略、�
 V1 也暂不实现自动投资复盘、行为偏差分析、复杂 Semantic Memory、Vector Database、大型 RAG Pipeline 和 Multi-Agent；不为了增加技术复杂度主动加入 Redis、Kafka、Microservices、Kubernetes、MCP Server 或多个未实际使用的 LLM Provider。
 
 V1.x 保持本地、受控环境与单 Account / 单 Portfolio Context。V1 只实现基础 Email / Password 注册、登录、退出和持久 Session，不实现 Email Verification、Password Reset、OAuth、MFA、Organization、Role / Permission、Cloud Account、Broker Sync、Multiple Portfolio Management、完整 Portfolio Performance History、Dividend 或 Corporate Action；这些 Account Platform、connected product 与 accounting 边界留到 V2。
+
+M9 Import 只辅助 Portfolio Opening State 初始化。它不把已经初始化的 Portfolio 与外部账户状态做增量合并，不提供 Broker / Account Sync、Diff、Reconciliation、Conflict Resolution 或持续同步；Recognition Draft 也不得绕过用户确认直接写入。
 
 复杂度必须由真实需求证明。
 
