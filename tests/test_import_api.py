@@ -28,6 +28,7 @@ from position_pilot.domain.asset_metadata import (
     AssetIdentity,
     AssetMetadataStatus,
     AssetSearchResult,
+    AssetValidationResult,
 )
 from position_pilot.domain.portfolio import (
     CashBalance,
@@ -91,6 +92,21 @@ class FakeAssetMetadataService:
     def search(self, query: str, *, limit: int = 10) -> AssetSearchResult:
         self.queries.append((query, limit))
         return self.result
+
+
+@dataclass(slots=True)
+class FakeAssetValidator:
+    """记录 Recognition 自动解析使用的 exact validation。"""
+
+    results: dict[str, AssetValidationResult] = field(default_factory=dict)
+    queries: list[str] = field(default_factory=list)
+
+    def get_exact(self, symbol: str) -> AssetValidationResult:
+        self.queries.append(symbol)
+        return self.results.get(
+            symbol,
+            AssetValidationResult.failure(AssetMetadataStatus.NO_MATCH, "没有匹配 Asset"),
+        )
 
 
 @dataclass(slots=True)
@@ -193,6 +209,7 @@ def override_account(*, portfolio_user_id: UUID | None = None) -> None:
     app.dependency_overrides[get_current_account_dependency] = lambda: make_account(
         portfolio_user_id=portfolio_user_id
     )
+    app.dependency_overrides[get_asset_metadata_service_dependency] = lambda: FakeAssetValidator()
 
 
 def test_asset_search_allows_account_without_portfolio(client: TestClient) -> None:
@@ -229,8 +246,16 @@ def test_text_recognition_returns_reviewable_draft_without_portfolio(
 
     override_account()
     recognition = FakeRecognitionService(RecognitionResult.success(make_draft()))
+    asset_validator = FakeAssetValidator(
+        {
+            "ADBE": AssetValidationResult.success(
+                AssetIdentity("ADBE", "Adobe Inc.", "NASDAQ")
+            )
+        }
+    )
     portfolio = FakePortfolioReader()
     app.dependency_overrides[get_recognition_service_dependency] = lambda: recognition
+    app.dependency_overrides[get_asset_metadata_service_dependency] = lambda: asset_validator
     app.dependency_overrides[get_portfolio_service_dependency] = lambda: portfolio
 
     response = client.post(
@@ -250,6 +275,14 @@ def test_text_recognition_returns_reviewable_draft_without_portfolio(
                     "average_cost": {"value": None, "status": "MISSING"},
                     "position_type": {"value": None, "status": "MISSING"},
                     "confidence": "0.87",
+                    "asset_resolution": {
+                        "status": "OK",
+                        "candidate": {
+                            "canonical_symbol": "ADBE",
+                            "display_name": "Adobe Inc.",
+                            "exchange": "NASDAQ",
+                        },
+                    },
                 }
             ],
             "warnings": ["average cost 未在截图中显示"],
@@ -258,7 +291,91 @@ def test_text_recognition_returns_reviewable_draft_without_portfolio(
         "message": None,
     }
     assert recognition.text_inputs == ["ADBE 0.2 shares"]
+    assert asset_validator.queries == ["ADBE"]
     assert portfolio.queried == []
+
+
+def test_recognition_asset_resolution_failure_keeps_editable_draft(
+    client: TestClient,
+) -> None:
+    """Asset 自动解析失败不能丢弃 Recognition Draft 或伪造选择。"""
+
+    override_account()
+    recognition = FakeRecognitionService(RecognitionResult.success(make_draft()))
+    asset_validator = FakeAssetValidator(
+        {
+            "ADBE": AssetValidationResult.failure(
+                AssetMetadataStatus.RATE_LIMITED,
+                "Provider rate limited",
+            )
+        }
+    )
+    app.dependency_overrides[get_recognition_service_dependency] = lambda: recognition
+    app.dependency_overrides[get_asset_metadata_service_dependency] = lambda: asset_validator
+    app.dependency_overrides[get_portfolio_service_dependency] = lambda: FakePortfolioReader()
+
+    response = client.post(
+        "/v1/portfolio/import/recognize-text",
+        json={"text": "ADBE 0.2 shares"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "OK"
+    assert payload["draft"]["rows"][0]["suggested_symbol"] == {
+        "value": "ADBE",
+        "status": "PRESENT",
+    }
+    assert payload["draft"]["rows"][0]["asset_resolution"] == {
+        "status": "RATE_LIMITED",
+        "candidate": None,
+    }
+
+
+def test_recognition_only_resolves_present_symbols_and_deduplicates_validation(
+    client: TestClient,
+) -> None:
+    """同一 Draft 的重复 symbol 只验证一次，歧义字段不自动绑定。"""
+
+    override_account()
+    present_row = make_draft().rows[0]
+    ambiguous_row = RecognitionDraftRow(
+        ticker=DraftField("GOOG/GOOGL", RecognitionFieldStatus.AMBIGUOUS),
+        suggested_symbol=DraftField("GOOG", RecognitionFieldStatus.PRESENT),
+        shares=DraftField(Decimal("1"), RecognitionFieldStatus.PRESENT),
+        average_cost=DraftField(Decimal("100"), RecognitionFieldStatus.PRESENT),
+        position_type=DraftField(None, RecognitionFieldStatus.MISSING),
+        confidence=Decimal("0.5"),
+    )
+    recognition = FakeRecognitionService(
+        RecognitionResult.success(
+            RecognitionDraft(
+                rows=(present_row, present_row, ambiguous_row),
+                input_kind=RecognitionInputKind.TEXT,
+            )
+        )
+    )
+    asset_validator = FakeAssetValidator(
+        {
+            "ADBE": AssetValidationResult.success(
+                AssetIdentity("ADBE", "Adobe Inc.", "NASDAQ")
+            )
+        }
+    )
+    app.dependency_overrides[get_recognition_service_dependency] = lambda: recognition
+    app.dependency_overrides[get_asset_metadata_service_dependency] = lambda: asset_validator
+    app.dependency_overrides[get_portfolio_service_dependency] = lambda: FakePortfolioReader()
+
+    response = client.post(
+        "/v1/portfolio/import/recognize-text",
+        json={"text": "three rows"},
+    )
+
+    rows = response.json()["draft"]["rows"]
+    assert asset_validator.queries == ["ADBE"]
+    assert rows[0]["asset_resolution"]["status"] == "OK"
+    assert rows[1]["asset_resolution"]["status"] == "OK"
+    assert rows[2]["asset_resolution"] is None
 
 
 def test_screenshot_recognition_strictly_decodes_base64_and_keeps_bytes_in_memory(
@@ -268,7 +385,15 @@ def test_screenshot_recognition_strictly_decodes_base64_and_keeps_bytes_in_memor
 
     override_account()
     recognition = FakeRecognitionService(RecognitionResult.success(make_draft()))
+    asset_validator = FakeAssetValidator(
+        {
+            "ADBE": AssetValidationResult.success(
+                AssetIdentity("ADBE", "Adobe Inc.", "NASDAQ")
+            )
+        }
+    )
     app.dependency_overrides[get_recognition_service_dependency] = lambda: recognition
+    app.dependency_overrides[get_asset_metadata_service_dependency] = lambda: asset_validator
     app.dependency_overrides[get_portfolio_service_dependency] = lambda: FakePortfolioReader()
 
     response = client.post(
@@ -283,6 +408,7 @@ def test_screenshot_recognition_strictly_decodes_base64_and_keeps_bytes_in_memor
     assert response.json()["status"] == "OK"
     assert len(recognition.screenshot_inputs) == 1
     assert recognition.screenshot_inputs[0].image_bytes == b"ibkr-image"
+    assert asset_validator.queries == ["ADBE"]
 
     invalid = client.post(
         "/v1/portfolio/import/recognize-screenshot",
@@ -295,6 +421,7 @@ def test_screenshot_recognition_strictly_decodes_base64_and_keeps_bytes_in_memor
         "message": "image_base64 必须是有效的 Base64",
     }
     assert len(recognition.screenshot_inputs) == 1
+    assert asset_validator.queries == ["ADBE"]
 
 
 def test_recognition_rejects_sealed_portfolio_before_provider_call(client: TestClient) -> None:

@@ -291,8 +291,9 @@ Portfolio Setup / still-open Opening State
 - 在现有 Setup / Opening State UI 增加 Manual、Text、Screenshot 三种输入入口。
 - 展示 editable Draft、`canonical_symbol / display_name / exchange` 候选、missing / invalid
   状态、Confidence Review Signal 与明确 Human Confirmation。
-- 每条 Draft 必须保存用户从候选列表明确选择的 Asset Identity；自由输入和 Recognition
-  `suggested_symbol` 只作为搜索提示，编辑已选择 ticker 后立即清除选择状态，未重新选择时禁止 Confirm。
+- 每条 Draft 必须绑定 Provider 验证后的 Asset Identity；自由输入必须由用户从候选列表明确选择，
+  Recognition `suggested_symbol` 经后端 exact validation 成功后可自动绑定，失败或歧义时才要求
+  人工选择。编辑已绑定 ticker 后立即清除选择状态，未重新选择或验证时禁止 Confirm。
 - 处理 stale response、身份切换、重复 Processing、Upload Cancellation 与 Write Ambiguity。
 - 不引入 Frontend Framework、Node Build Pipeline 或前端金融计算。
 

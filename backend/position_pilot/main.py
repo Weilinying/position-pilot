@@ -74,6 +74,7 @@ from position_pilot.domain.asset_metadata import (
     AssetIdentity,
     AssetMetadataStatus,
     AssetSearchResult,
+    AssetValidationResult,
 )
 from position_pilot.domain.errors import (
     FutureTimestamp,
@@ -429,6 +430,13 @@ class RecognitionFieldResponse(BaseModel):
     status: RecognitionFieldStatus
 
 
+class RecognitionAssetResolutionResponse(BaseModel):
+    """Recognition symbol 的 Provider-backed 自动解析结果。"""
+
+    status: AssetMetadataStatus
+    candidate: AssetCandidateResponse | None
+
+
 class RecognitionDraftRowResponse(BaseModel):
     """单行 Recognition Draft 的完整可审查字段。"""
 
@@ -438,6 +446,7 @@ class RecognitionDraftRowResponse(BaseModel):
     average_cost: RecognitionFieldResponse
     position_type: RecognitionFieldResponse
     confidence: Decimal | None
+    asset_resolution: RecognitionAssetResolutionResponse | None
 
 
 class RecognitionDraftResponse(BaseModel):
@@ -643,6 +652,10 @@ def recognize_import_text(
         RecognitionService,
         Depends(get_recognition_service_dependency),
     ],
+    asset_metadata_service: Annotated[
+        AssetMetadataService,
+        Depends(get_asset_metadata_service_dependency),
+    ],
     portfolio_service: Annotated[PortfolioService, Depends(get_portfolio_service_dependency)],
 ) -> RecognitionResponse:
     """识别文本并返回当前请求生命周期内的 Opening Import Draft。"""
@@ -655,7 +668,7 @@ def recognize_import_text(
             RecognitionStatus.PROVIDER_UNAVAILABLE,
             "Recognition Provider 当前不可用",
         )
-    return _recognition_response(result)
+    return _recognition_response(result, asset_metadata_service)
 
 
 @app.post("/v1/portfolio/import/recognize-screenshot", response_model=RecognitionResponse)
@@ -665,6 +678,10 @@ def recognize_import_screenshot(
     recognition_service: Annotated[
         RecognitionService,
         Depends(get_recognition_service_dependency),
+    ],
+    asset_metadata_service: Annotated[
+        AssetMetadataService,
+        Depends(get_asset_metadata_service_dependency),
     ],
     portfolio_service: Annotated[PortfolioService, Depends(get_portfolio_service_dependency)],
 ) -> RecognitionResponse:
@@ -678,7 +695,8 @@ def recognize_import_screenshot(
             RecognitionResult.failure(
                 RecognitionStatus.INVALID_REQUEST,
                 "image_base64 必须是有效的 Base64",
-            )
+            ),
+            asset_metadata_service,
         )
     try:
         result = recognition_service.recognize_screenshot(
@@ -690,7 +708,7 @@ def recognize_import_screenshot(
             RecognitionStatus.PROVIDER_UNAVAILABLE,
             "Recognition Provider 当前不可用",
         )
-    return _recognition_response(result)
+    return _recognition_response(result, asset_metadata_service)
 
 
 @app.post(
@@ -1402,7 +1420,55 @@ def _recognition_field_response(field: DraftField[Any]) -> RecognitionFieldRespo
     return RecognitionFieldResponse(value=field.value, status=field.status)
 
 
-def _recognition_draft_row_response(row: RecognitionDraftRow) -> RecognitionDraftRowResponse:
+def _recognition_asset_resolution_response(
+    row: RecognitionDraftRow,
+    asset_metadata_service: AssetMetadataService,
+    cache: dict[str, RecognitionAssetResolutionResponse],
+) -> RecognitionAssetResolutionResponse | None:
+    """仅对 Recognition 明确给出的 symbol 尝试自动绑定 Asset Identity。"""
+
+    if row.ticker.status is not RecognitionFieldStatus.PRESENT:
+        return None
+    field = row.suggested_symbol
+    if field.status is not RecognitionFieldStatus.PRESENT or not isinstance(field.value, str):
+        return None
+    symbol = field.value
+    if not symbol.strip():
+        return None
+    cache_key = symbol.strip().casefold()
+    if cache_key in cache:
+        return cache[cache_key]
+    try:
+        result = asset_metadata_service.get_exact(symbol)
+    except Exception:
+        resolution = RecognitionAssetResolutionResponse(
+            status=AssetMetadataStatus.PROVIDER_UNAVAILABLE,
+            candidate=None,
+        )
+        cache[cache_key] = resolution
+        return resolution
+    if not isinstance(result, AssetValidationResult):
+        resolution = RecognitionAssetResolutionResponse(
+            status=AssetMetadataStatus.INVALID_PROVIDER_RESPONSE,
+            candidate=None,
+        )
+        cache[cache_key] = resolution
+        return resolution
+    candidate = (
+        _asset_candidate_response(result.asset)
+        if result.status is AssetMetadataStatus.OK and result.asset is not None
+        else None
+    )
+    resolution = RecognitionAssetResolutionResponse(status=result.status, candidate=candidate)
+    cache[cache_key] = resolution
+    return resolution
+
+
+def _recognition_draft_row_response(
+    row: RecognitionDraftRow,
+    asset_metadata_service: AssetMetadataService,
+    cache: dict[str, RecognitionAssetResolutionResponse],
+) -> RecognitionDraftRowResponse:
     return RecognitionDraftRowResponse(
         ticker=_recognition_field_response(row.ticker),
         suggested_symbol=_recognition_field_response(row.suggested_symbol),
@@ -1410,18 +1476,33 @@ def _recognition_draft_row_response(row: RecognitionDraftRow) -> RecognitionDraf
         average_cost=_recognition_field_response(row.average_cost),
         position_type=_recognition_field_response(row.position_type),
         confidence=row.confidence,
+        asset_resolution=_recognition_asset_resolution_response(
+            row,
+            asset_metadata_service,
+            cache,
+        ),
     )
 
 
-def _recognition_draft_response(draft: RecognitionDraft) -> RecognitionDraftResponse:
+def _recognition_draft_response(
+    draft: RecognitionDraft,
+    asset_metadata_service: AssetMetadataService,
+) -> RecognitionDraftResponse:
+    cache: dict[str, RecognitionAssetResolutionResponse] = {}
     return RecognitionDraftResponse(
-        rows=tuple(_recognition_draft_row_response(row) for row in draft.rows),
+        rows=tuple(
+            _recognition_draft_row_response(row, asset_metadata_service, cache)
+            for row in draft.rows
+        ),
         warnings=draft.warnings,
         input_kind=draft.input_kind,
     )
 
 
-def _recognition_response(result: object) -> RecognitionResponse:
+def _recognition_response(
+    result: object,
+    asset_metadata_service: AssetMetadataService,
+) -> RecognitionResponse:
     """把 Recognition Result 映射为只读临时 Draft Response。"""
 
     if not isinstance(result, RecognitionResult):
@@ -1432,7 +1513,11 @@ def _recognition_response(result: object) -> RecognitionResponse:
         )
     return RecognitionResponse(
         status=result.status,
-        draft=_recognition_draft_response(result.draft) if result.draft is not None else None,
+        draft=(
+            _recognition_draft_response(result.draft, asset_metadata_service)
+            if result.draft is not None
+            else None
+        ),
         message=result.message,
     )
 
