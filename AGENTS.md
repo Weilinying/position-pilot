@@ -36,7 +36,9 @@ Reviewer 原则上应审查一个已经通过基础测试和已有质量检查�
 
 不要为了开发 PositionPilot 预先构建独立 Agent Framework。优先使用 Codex 已有 explorer / worker 能力；前者适合代码库探索、依赖与测试定位，后者适合边界清楚、验收标准明确的实现、修复和测试任务。
 
-Codex subagent 属于开发工具，不属于 PositionPilot 产品架构。主线程负责 Planning、关键判断、最终整合、Automated Review 和 git commit；低判断密度、低耦合且边界明确的任务应优先考虑交给 subagents，以减少主线程上下文和推理开销。
+Codex subagent 属于开发工具，不属于 PositionPilot 产品架构。主线程负责 Planning、关键判断、最终整合、Automated Review 和 git commit；Plan 已经 Human Review / Approved 后，主线程不得重复进行 Milestone 级 Planning；只做执行前必要的状态校验、依赖分析和任务拆分。
+
+对于低判断密度、低耦合、边界明确且验收标准清晰的任务，主线程应默认交给 explorer / worker subagents 执行；只有任务过小、委派成本明显高于直接执行，或涉及核心架构判断、公共接口设计、跨模块高耦合修改时，才由主线程直接实现。
 
 涉及同一核心模块、公共接口或存在明确依赖关系的写任务默认串行；只有真正独立且修改范围不冲突的任务才并行。subagents 不得自行执行 `git add`、`git commit`、`git rebase`、`git merge`。
 
@@ -66,6 +68,8 @@ Human Review 关注产品方向、架构选择、关键业务正确性和 Milest
 ## 5. Python 工程原则
 
 代码优先保证可读性、明确职责、低耦合、可测试性和合理复用。采用轻量 DDD / Clean Architecture 思想，但不要机械复制 Java 的复杂模式。
+
+禁止防御性编程。不得为尚未发生、没有产品需求或没有真实 Failure 证明的假设场景预先增加 Fallback、Retry、兼容分支、重复校验或抽象层；只实现当前明确的成功路径、已知失败语义和必要的 Domain / Security Boundary。已有明确业务约束的 Validation、Provider Failure Handling 和数据一致性保证不属于应删除的防御性代码。
 
 推荐依赖方向：`API → Application / Services → Domain`，Repository / Infrastructure / Integrations 为外部实现。API 层只负责请求接收、校验和 Response；核心业务规则不得散落在 API Handler、Prompt 或数据库访问代码中。
 
@@ -132,6 +136,8 @@ Coding Agent 禁止读取仓库中的 `.env` 或 `.env.*` 文件内容，以避�
 Unit Test 不依赖真实 LLM API 或真实金融 API，外部 Provider 应 Mock。确定性业务逻辑应尽量与 LLM 隔离，使其能够独立测试。
 
 实现完成后，先运行相关 Tests 和项目已有的 Formatter / Lint / Type Check，再进入 Automated Review。根据 Review 修改代码后，必须重新运行受影响的 Tests 和质量检查。
+
+测试默认只运行并维护本次新增或修改功能直接相关的 Test，不把每次局部改动都升级为全量 Regression。不得仅因为代码库已有测试就重复验证未受影响的旧功能；只有修改跨模块公共 Contract、准备 Release / Merge Gate、相关测试暴露影响范围不确定，或 Human 明确要求时，才运行更大范围或全量测试。
 
 不得仅为满足本条规则擅自引入新的质量工具。没有实际执行的检查不得声称通过；测试失败不得通过删除测试、弱化断言或静默忽略错误制造绿色结果。
 
