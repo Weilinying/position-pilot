@@ -191,6 +191,31 @@ def test_search_null_result_is_invalid_provider_response() -> None:
     assert result.status is AssetMetadataStatus.INVALID_PROVIDER_RESPONSE
 
 
+def test_search_skips_candidate_when_profile_resolves_to_different_ticker() -> None:
+    """候选别名不一致不能让其他已验证候选的整次搜索失败。"""
+
+    transport = FakeJsonTransport(
+        [
+            JsonHttpResponse(
+                200,
+                {
+                    "result": [
+                        search_candidate("GOOG"),
+                        search_candidate("GOOG.ALIAS"),
+                    ]
+                },
+            ),
+            JsonHttpResponse(200, profile_payload("GOOG")),
+            JsonHttpResponse(200, profile_payload("GOOG")),
+        ]
+    )
+
+    result = make_provider(transport).search(AssetSearchQuery("GOOG", limit=5))
+
+    assert result.status is AssetMetadataStatus.OK
+    assert [candidate.canonical_symbol for candidate in result.candidates] == ["GOOG"]
+
+
 def test_exact_validation_uses_exact_search_then_profile2() -> None:
     """exact validation 必须先命中 displaySymbol，再以 profile ticker 严格确认。"""
 

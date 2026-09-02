@@ -119,7 +119,10 @@ class FinnhubAssetMetadataProvider(AssetMetadataProvider):
                 symbol = normalize_asset_symbol(
                     self._required_text(raw_result, "displaySymbol")
                 )
-                profile_result = self._get_profile_identity(symbol)
+                profile_result = self._get_profile_identity(
+                    symbol,
+                    ticker_mismatch_status=AssetMetadataStatus.NO_MATCH,
+                )
                 if profile_result.status is AssetMetadataStatus.NO_MATCH:
                     continue
                 if profile_result.status is not AssetMetadataStatus.OK:
@@ -230,9 +233,17 @@ class FinnhubAssetMetadataProvider(AssetMetadataProvider):
                 "Finnhub 没有找到对应 Asset",
             )
 
-        return self._get_profile_identity(query.symbol)
+        return self._get_profile_identity(
+            query.symbol,
+            ticker_mismatch_status=AssetMetadataStatus.INVALID_PROVIDER_RESPONSE,
+        )
 
-    def _get_profile_identity(self, symbol: str) -> AssetValidationResult:
+    def _get_profile_identity(
+        self,
+        symbol: str,
+        *,
+        ticker_mismatch_status: AssetMetadataStatus,
+    ) -> AssetValidationResult:
         """用免费 Profile 2 补齐并精确验证最小 Asset Identity。"""
 
         profile_response = self._get("/stock/profile2", {"symbol": symbol})
@@ -259,7 +270,7 @@ class FinnhubAssetMetadataProvider(AssetMetadataProvider):
             ticker = self._required_text(profile_payload, "ticker")
             if ticker != symbol:
                 return AssetValidationResult.failure(
-                    AssetMetadataStatus.INVALID_PROVIDER_RESPONSE,
+                    ticker_mismatch_status,
                     "Finnhub profile 的 ticker 与请求不一致",
                 )
             asset = AssetIdentity(
