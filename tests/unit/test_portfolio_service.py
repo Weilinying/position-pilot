@@ -16,7 +16,9 @@ from position_pilot.application.portfolio_service import (
     InitializeOpeningPositionsCommand,
     OpeningPositionInput,
     PortfolioService,
+    PositionReconciliationInput,
     RecordCashEventCommand,
+    RecordPositionReconciliationsCommand,
     RecordTransactionCommand,
 )
 from position_pilot.domain.errors import FutureTimestamp, InsufficientCash, InvalidPortfolioValue
@@ -24,6 +26,7 @@ from position_pilot.domain.portfolio import (
     CashEvent,
     CashEventType,
     OpeningPosition,
+    PositionReconciliation,
     PositionType,
     Transaction,
     TransactionAction,
@@ -40,6 +43,7 @@ class FakeStore:
 
     users: dict[UUID, User] = field(default_factory=dict)
     opening_positions: dict[UUID, list[OpeningPosition]] = field(default_factory=dict)
+    reconciliations: dict[UUID, list[PositionReconciliation]] = field(default_factory=dict)
     transactions: dict[UUID, list[Transaction]] = field(default_factory=dict)
     cash_events: dict[UUID, list[CashEvent]] = field(default_factory=dict)
     lock_requests: list[UUID] = field(default_factory=list)
@@ -71,6 +75,7 @@ class FakeUnitOfWork:
     def add_user(self, user: User) -> None:
         self._store.users[user.id] = user
         self._store.opening_positions[user.id] = []
+        self._store.reconciliations[user.id] = []
         self._store.transactions[user.id] = []
         self._store.cash_events[user.id] = []
 
@@ -83,6 +88,15 @@ class FakeUnitOfWork:
     def add_opening_positions(self, opening_positions: list[OpeningPosition]) -> None:
         if opening_positions:
             self._store.opening_positions[opening_positions[0].user_id].extend(opening_positions)
+
+    def list_position_reconciliations(self, user_id: UUID) -> list[PositionReconciliation]:
+        return sorted(
+            self._store.reconciliations[user_id],
+            key=lambda reconciliation: (reconciliation.confirmed_at, reconciliation.id.hex),
+        )
+
+    def add_position_reconciliation(self, reconciliation: PositionReconciliation) -> None:
+        self._store.reconciliations[reconciliation.user_id].append(reconciliation)
 
     def list_transactions(self, user_id: UUID) -> list[Transaction]:
         return sorted(
@@ -624,6 +638,58 @@ def test_initializes_opening_state_once_with_stable_order_and_no_cash_impact() -
     assert service.get_portfolio(user.id).cash.available_cash == Decimal("500.00000000")
 
 
+def test_records_position_reconciliation_as_immutable_event_without_cash_mutation() -> None:
+    """Service 应追加校准事件，并保持 Cash 与未覆盖 Position 不变。"""
+
+    service, store = make_service()
+    user = service.create_user(CreateUserCommand(display_name="Alice", initial_cash=Decimal("500")))
+    service.initialize_opening_positions(
+        InitializeOpeningPositionsCommand(
+            user_id=user.id,
+            positions=(
+                OpeningPositionInput(
+                    ticker="GOOG",
+                    shares=Decimal("2"),
+                    average_cost=Decimal("100"),
+                ),
+                OpeningPositionInput(
+                    ticker="MSFT",
+                    shares=Decimal("3"),
+                    average_cost=Decimal("200"),
+                ),
+            ),
+        )
+    )
+
+    result = service.record_position_reconciliations(
+        RecordPositionReconciliationsCommand(
+            user_id=user.id,
+            positions=(
+                PositionReconciliationInput(
+                    ticker="GOOG",
+                    target_shares=Decimal("5"),
+                    target_average_cost=Decimal("125"),
+                ),
+            ),
+            source="screenshot",
+            broker="paper-broker",
+        )
+    )
+
+    recovered = service.get_portfolio(user.id)
+    goog = recovered.get_position("GOOG", PositionType.UNSPECIFIED)
+    msft = recovered.get_position("MSFT", PositionType.UNSPECIFIED)
+    assert result.reconciliations[0].source == "screenshot"
+    assert goog is not None and goog.shares == Decimal("5.00000000")
+    assert goog.average_cost == Decimal("125.00000000")
+    assert msft is not None and msft.shares == Decimal("3.00000000")
+    assert recovered.cash.available_cash == Decimal("500.00000000")
+    assert recovered.transaction_count == 0
+    assert recovered.reconciliation_count == 1
+    assert service.list_position_reconciliations(user.id) == result.reconciliations
+    assert store.commit_count == 3
+
+
 def test_opening_state_rejects_duplicate_normalized_position_key_atomically() -> None:
     """重复 Key 必须在持久化前失败，不能产生部分 Opening State。"""
 
@@ -654,9 +720,12 @@ def test_opening_state_rejects_duplicate_normalized_position_key_atomically() ->
     assert store.commit_count == 1
 
 
-@pytest.mark.parametrize("existing_fact", ["opening", "transaction", "cash_event"])
+@pytest.mark.parametrize(
+    "existing_fact",
+    ["opening", "transaction", "cash_event", "reconciliation"],
+)
 def test_opening_state_is_sealed_by_any_existing_portfolio_fact(existing_fact: str) -> None:
-    """Opening Position、Transaction 或 Cash Event 任一存在时都必须封闭初始化。"""
+    """任何已有 Portfolio Fact 都必须封闭 Opening State 初始化。"""
 
     service, _ = make_service()
     user = service.create_user(
@@ -684,12 +753,26 @@ def test_opening_state_is_sealed_by_any_existing_portfolio_fact(existing_fact: s
                 shares=Decimal("1"),
             )
         )
-    else:
+    elif existing_fact == "cash_event":
         service.record_cash_event(
             RecordCashEventCommand(
                 user_id=user.id,
                 event_type=CashEventType.DEPOSIT,
                 amount=Decimal("100"),
+            )
+        )
+    else:
+        service.record_position_reconciliations(
+            RecordPositionReconciliationsCommand(
+                user_id=user.id,
+                positions=(
+                    PositionReconciliationInput(
+                        ticker="GOOG",
+                        target_shares=Decimal("1"),
+                        target_average_cost=Decimal("100"),
+                    ),
+                ),
+                source="screenshot",
             )
         )
 

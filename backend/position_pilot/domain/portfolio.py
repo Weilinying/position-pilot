@@ -20,6 +20,8 @@ MAX_PERSISTED_DECIMAL = Decimal("99999999999999999999.99999999")
 TICKER_PATTERN = re.compile(r"^[A-Z][A-Z0-9.-]{0,9}$")
 MAX_DISPLAY_NAME_LENGTH = 200
 MAX_REASON_LENGTH = 1000
+MAX_SOURCE_LENGTH = 100
+MAX_SOURCE_INFO_LENGTH = 1000
 COMMISSION_SCHEDULE = "IBKR_PRO_TIERED_US_2026_08"
 IBKR_TIERED_PER_SHARE = Decimal("0.0035")
 IBKR_TIERED_MINIMUM = Decimal("0.35")
@@ -142,6 +144,26 @@ def normalize_reason(reason: str | None) -> str | None:
     normalized = reason.strip()
     if len(normalized) > MAX_REASON_LENGTH:
         raise InvalidPortfolioValue("reason 最多支持 1000 个字符")
+    return normalized or None
+
+
+def normalize_source(source: str) -> str:
+    """规范化不可变事件来源，并限制持久化长度。"""
+
+    normalized = source.strip()
+    if not normalized or len(normalized) > MAX_SOURCE_LENGTH:
+        raise InvalidPortfolioValue("source 长度必须在 1 到 100 个字符之间")
+    return normalized
+
+
+def normalize_source_info(source_info: str | None) -> str | None:
+    """规范化来源补充信息，并限制持久化长度。"""
+
+    if source_info is None:
+        return None
+    normalized = source_info.strip()
+    if len(normalized) > MAX_SOURCE_INFO_LENGTH:
+        raise InvalidPortfolioValue("source_info 最多支持 1000 个字符")
     return normalized or None
 
 
@@ -325,6 +347,85 @@ class OpeningPosition:
 
 
 @dataclass(frozen=True, slots=True)
+class PositionReconciliation:
+    """不可变的外部持仓校准事实，不产生交易或现金影响。"""
+
+    id: UUID
+    user_id: UUID
+    ticker: str
+    target_shares: Decimal
+    target_average_cost: Decimal
+    position_type: PositionType
+    source: str
+    confirmed_at: datetime
+    broker: str | None = None
+    source_info: str | None = None
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.position_type, PositionType):
+            raise InvalidPortfolioValue("position_type 必须是 LONG_TERM、SWING 或 UNSPECIFIED")
+        object.__setattr__(self, "ticker", normalize_ticker(self.ticker))
+        object.__setattr__(
+            self,
+            "target_shares",
+            normalize_decimal(self.target_shares, field_name="target_shares"),
+        )
+        object.__setattr__(
+            self,
+            "target_average_cost",
+            normalize_decimal(self.target_average_cost, field_name="target_average_cost"),
+        )
+        # 校准后的成本基数仍必须能安全进入与 Transaction 相同的金额边界。
+        calculate_amount(self.target_average_cost, self.target_shares)
+        object.__setattr__(self, "source", normalize_source(self.source))
+        object.__setattr__(self, "confirmed_at", normalize_timestamp(self.confirmed_at))
+        object.__setattr__(
+            self,
+            "broker",
+            normalize_source(self.broker) if self.broker is not None else None,
+        )
+        object.__setattr__(self, "source_info", normalize_source_info(self.source_info))
+
+    @property
+    def target_cost_basis(self) -> Decimal:
+        """由目标 Shares 与目标 Average Cost 确定性计算校准成本基数。"""
+
+        return calculate_amount(self.target_average_cost, self.target_shares)
+
+    @classmethod
+    def create(
+        cls,
+        *,
+        user_id: UUID,
+        ticker: str,
+        target_shares: Decimal,
+        target_average_cost: Decimal,
+        source: str,
+        position_type: PositionType | None = None,
+        confirmed_at: datetime | None = None,
+        broker: str | None = None,
+        source_info: str | None = None,
+        reconciliation_id: UUID | None = None,
+    ) -> Self:
+        """创建一次不生成交易与现金变化的持仓校准事件。"""
+
+        return cls(
+            id=reconciliation_id or uuid4(),
+            user_id=user_id,
+            ticker=ticker,
+            target_shares=target_shares,
+            target_average_cost=target_average_cost,
+            position_type=(
+                position_type if position_type is not None else PositionType.UNSPECIFIED
+            ),
+            source=source,
+            confirmed_at=confirmed_at or datetime.now(UTC),
+            broker=broker,
+            source_info=source_info,
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class CashEvent:
     """不可变 Cash Event Ledger Record。"""
 
@@ -418,13 +519,14 @@ class Position:
 
 @dataclass(frozen=True, slots=True)
 class PortfolioState:
-    """Opening State 与经济 Ledger 重放后的完整 Structured State。"""
+    """Opening State、校准事实与经济 Ledger 重放后的完整 Structured State。"""
 
     user_id: UUID
     cash: CashBalance
     positions: tuple[Position, ...]
     transaction_count: int
     cash_event_count: int = 0
+    reconciliation_count: int = 0
 
     def get_position(self, ticker: str, position_type: PositionType) -> Position | None:
         """按规范化 Ticker 与 Position Type 查找持仓。"""
@@ -444,6 +546,7 @@ class PortfolioState:
 class _PositionAccumulator:
     shares: Decimal
     cost_basis: Decimal
+    reconciled_average_cost: Decimal | None = None
 
 
 def rebuild_portfolio(
@@ -451,6 +554,7 @@ def rebuild_portfolio(
     transactions: list[Transaction],
     cash_events: list[CashEvent] | None = None,
     opening_positions: list[OpeningPosition] | None = None,
+    reconciliations: list[PositionReconciliation] | None = None,
 ) -> PortfolioState:
     """从 Opening State 开始，按实际发生时间重建当前 Portfolio。
 
@@ -459,6 +563,7 @@ def rebuild_portfolio(
         transactions: 该用户的完整 Transaction Ledger。
         cash_events: 该用户的完整 Cash Event Ledger。
         opening_positions: 系统开始跟踪时接收的完整持仓起始事实。
+        reconciliations: 该用户按确认时间发生的不可变持仓校准事实。
 
     异常:
         InvalidLedger: Ledger 所有者或 sequence 不一致。
@@ -471,6 +576,10 @@ def rebuild_portfolio(
     ordered_opening_positions = sorted(
         opening_positions or [],
         key=lambda position: (position.ticker, position.position_type.value),
+    )
+    ordered_reconciliations = sorted(
+        reconciliations or [],
+        key=lambda reconciliation: (reconciliation.confirmed_at, reconciliation.id.hex),
     )
     opening_keys: set[tuple[str, PositionType]] = set()
     for opening_position in ordered_opening_positions:
@@ -490,14 +599,31 @@ def rebuild_portfolio(
             raise InvalidLedger("Ledger 包含其他 User 的 Cash Event")
         if cash_event.sequence != expected_sequence:
             raise InvalidLedger("Cash Event sequence 必须连续且唯一")
+    reconciliation_ids: set[UUID] = set()
+    for reconciliation in ordered_reconciliations:
+        if reconciliation.user_id != user.id:
+            raise InvalidLedger("Reconciliation 包含其他 User 的 Position")
+        if reconciliation.id in reconciliation_ids:
+            raise InvalidLedger("Reconciliation ID 必须唯一")
+        reconciliation_ids.add(reconciliation.id)
 
-    # 跨表没有全局 sequence；同一时间固定先处理现金事件，保证重建结果稳定。
-    ledger_records: list[Transaction | CashEvent] = sorted(
-        [*ordered_transactions, *ordered_cash_events],
+    # 跨表没有全局 sequence；同一时间固定按现金、校准、交易处理，保证重建结果稳定。
+    ledger_records: list[Transaction | CashEvent | PositionReconciliation] = sorted(
+        [*ordered_transactions, *ordered_cash_events, *ordered_reconciliations],
         key=lambda record: (
-            record.occurred_at,
-            0 if isinstance(record, CashEvent) else 1,
-            record.sequence,
+            (
+                record.occurred_at
+                if isinstance(record, (Transaction, CashEvent))
+                else record.confirmed_at
+            ),
+            (
+                0
+                if isinstance(record, CashEvent)
+                else 1
+                if isinstance(record, PositionReconciliation)
+                else 2
+            ),
+            record.sequence if isinstance(record, (Transaction, CashEvent)) else record.id.hex,
         ),
     )
     available_cash = user.initial_cash
@@ -523,6 +649,14 @@ def rebuild_portfolio(
             total_withdrawals += record.amount
             continue
 
+        if isinstance(record, PositionReconciliation):
+            positions[(record.ticker, record.position_type)] = _PositionAccumulator(
+                shares=record.target_shares,
+                cost_basis=record.target_cost_basis,
+                reconciled_average_cost=record.target_average_cost,
+            )
+            continue
+
         transaction = record
         key = (transaction.ticker, transaction.position_type)
         position = positions.get(key)
@@ -540,6 +674,7 @@ def rebuild_portfolio(
             else:
                 position.shares += transaction.shares
                 position.cost_basis += cash_required
+                position.reconciled_average_cost = None
             continue
 
         available_shares = position.shares if position is not None else Decimal("0")
@@ -554,7 +689,13 @@ def rebuild_portfolio(
         if position is None:
             raise InvalidLedger("SELL 缺少对应 Position")
         remaining_shares = position.shares - transaction.shares
-        position.cost_basis *= remaining_shares / position.shares
+        if position.reconciled_average_cost is not None:
+            position.cost_basis = calculate_amount(
+                position.reconciled_average_cost,
+                remaining_shares,
+            )
+        else:
+            position.cost_basis *= remaining_shares / position.shares
         position.shares = remaining_shares
 
     derived_positions = tuple(
@@ -566,9 +707,13 @@ def rebuild_portfolio(
                 DECIMAL_QUANTUM,
                 rounding=ROUND_HALF_EVEN,
             ),
-            average_cost=(accumulator.cost_basis / accumulator.shares).quantize(
-                DECIMAL_QUANTUM,
-                rounding=ROUND_HALF_EVEN,
+            average_cost=(
+                accumulator.reconciled_average_cost
+                if accumulator.reconciled_average_cost is not None
+                else (accumulator.cost_basis / accumulator.shares).quantize(
+                    DECIMAL_QUANTUM,
+                    rounding=ROUND_HALF_EVEN,
+                )
             ),
         )
         for (ticker, position_type), accumulator in sorted(
@@ -598,4 +743,5 @@ def rebuild_portfolio(
         positions=derived_positions,
         transaction_count=len(ordered_transactions),
         cash_event_count=len(ordered_cash_events),
+        reconciliation_count=len(ordered_reconciliations),
     )

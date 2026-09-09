@@ -188,6 +188,13 @@ const translations = {
     screenshot_import_label: "Choose one broker screenshot",
     prepare_screenshot_draft: "Prepare editable draft",
     preparing_screenshot_draft: "Preparing screenshot draft…",
+    start_recognition: "Start recognition",
+    attachment_choose_file: "Choose file",
+    attachment_drop_prompt: "Drop an image here or paste a screenshot",
+    attachment_drop_hint: "JPEG, PNG, or WebP · up to 10 MB",
+    attachment_ready: "Attachment ready. Nothing is uploaded until you start recognition.",
+    attachment_remove: "Remove",
+    attachment_file_required: "Choose, drop, or paste an image first.",
     screenshot_privacy_notice: "The screenshot is sent to Alibaba Model Studio for recognition. PositionPilot does not save it; the Provider's fixed retention period is not publicly disclosed.",
     screenshot_file_required: "Choose a JPEG, PNG, or WebP screenshot first.",
     screenshot_file_invalid: "Choose a supported JPEG, PNG, or WebP screenshot.",
@@ -210,12 +217,31 @@ const translations = {
     recognition_input_text: "Text import",
     recognition_input_screenshot: "Screenshot import",
     imported_warning: "Provider warning",
+    reconciliation_title: "Reconcile from a broker screenshot",
+    reconciliation_summary: "Update selected positions from a current screenshot. Unlisted positions stay unchanged, and no trade or cash record is created.",
+    reconciliation_broker_label: "Broker or source (optional)",
+    reconciliation_broker_placeholder: "e.g. Fidelity, Schwab, IBKR",
+    reconciliation_screenshot_label: "Attach a current positions screenshot",
+    reconciliation_revalidate: "Revalidate all assets",
+    reconciliation_revalidate_running: "Revalidating assets…",
+    reconciliation_save: "Save reconciliation",
+    reconciliation_saved: "Position reconciliation saved",
+    reconciliation_no_positions: "Recognize a screenshot and confirm at least one position first.",
+    reconciliation_not_validated: "Revalidate and explicitly choose a verified asset before saving.",
+    reconciliation_canonical_match: "Canonical match found. Confirm to bind",
+    reconciliation_provider_unavailable: "Asset provider is unavailable. Try revalidation again later.",
+    reconciliation_invalid_asset: "No verified candidate matched this ticker.",
+    reconciliation_records: "Position reconciliation records",
+    source: "Source",
+    broker: "Broker",
+    source_info: "Source details",
+    confirmed_at: "Confirmed at",
     mutation_unknown: "Result unknown. Do not retry automatically. Reload and inspect the latest portfolio state.",
     refresh_failed: "The write may have succeeded, but the latest portfolio could not be loaded. Reload before continuing.",
     invalid_form: "Check the highlighted fields and try again.",
     insufficient_cash: "Insufficient cash for this purchase and backend-calculated fees.",
     insufficient_shares: "Insufficient shares in this position type.",
-    opening_sealed: "Existing positions can only be added before the first trade or cash entry.",
+    opening_sealed: "Existing positions can only be added before the first trade, cash entry, or position reconciliation.",
     future_time: "Occurred at cannot be in the future.",
     session_expired: "Your local session expired. Log in again.",
     working_title: "Assembling decision context",
@@ -247,8 +273,9 @@ const translations = {
     setup_eyebrow: "起始状态", setup_title: "告诉 PositionPilot 你的起点。", setup_summary: "现金和已有持仓共同构成起始状态，不会被伪造成交易；也可以从零开始。", cash_balance: "现金余额", initial_cash: "初始现金", initial_cash_usd: "可用现金（USD）", cash_zero_hint: "未填写现金时，投资组合默认从 0 开始。", existing_holdings: "已有持仓", opening_positions: "起始持仓", opening_optional_hint: "可选。现在录入已持有股票，也可在第一笔交易或现金记录前稍后添加。", add_position: "添加一行持仓", start_empty: "从零开始", save_and_continue: "保存并继续 ↗", ticker: "标的", shares: "股数", average_cost: "平均成本", position_type_optional: "仓位类型（可选）", unspecified: "未分类", remove: "移除", invalid_cash: "现金必须是零或正数，且最多 8 位小数。", incomplete_position: "请完整填写标的、股数和平均成本，或移除此行。", invalid_positive_decimal: "请输入正数，且最多 8 位小数。", duplicate_position: "同一标的与仓位类型组合不能重复。", setup_saving: "正在保存起始状态…", setup_unknown: "投资组合设置结果未知。请勿自动重试；刷新页面以恢复当前状态。",
     workspace_navigation: "工作区导航", primary_navigation: "主要导航", new_question: "新问题", ask_nav: "提问", portfolio_nav: "投资组合", question_history: "问题记录", session_only: "仅当前标签页", no_questions: "还没有问题。", signed_in_as: "当前账户", context_aware: "上下文感知决策支持", chat_view_title: "投资问题", structured_state: "结构化状态", portfolio_manage_title: "投资组合工作区", portfolio_manage_summary: "查看确定性状态，或追加不可变交易与现金记录。", portfolio_ready: "投资组合已加载", portfolio_loading: "正在加载投资组合", portfolio_stale: "需要刷新", idle: "空闲", submitting: "正在保存", refresh_required: "需要刷新",
     chat_intro_eyebrow: "你的投资组合已连接", chat_intro_title: "你正在思考什么投资决策？", chat_intro_body: "提出一个具体问题。PositionPilot 会使用你的持仓及问题所需的当前信息。", no_memory_notice: "问题仅保留在当前浏览器标签页，不构成模型记忆。", investment_question: "投资问题", question_placeholder: "例如：GOOG 今天还能加一点吗？", question_ready: "将使用你的当前投资组合。Enter 提交 · Shift+Enter 换行。", ask: "询问 PositionPilot ↗", asking: "分析中…",
-    portfolio_reload: "刷新", portfolio_sections: "投资组合分区", overview_tab: "持仓", trade_tab: "交易", cash_tab: "现金记录", available_cash: "可用现金", ledger_derived: "账本计算 · USD", portfolio_context: "投资组合上下文", session_owned: "当前 Session 所属", session_owned_hint: "身份来自你的本地私有 Session。", opening_state: "起始状态", existing_positions_setup: "添加已有持仓", starting_facts: "一次性起始事实", opening_explainer: "记录开始跟踪前已经持有的仓位，不改变现金，也不创建虚假交易。", skip_for_now: "暂时跳过", save_opening_positions: "保存已有持仓", add_existing_positions: "添加已有持仓", open_positions: "当前持仓", portfolio_empty_loaded: "目前没有持仓。", opening_records: "起始持仓记录", records_empty: "暂无记录。", import_starting_positions: "导入起始持仓", import_review_title: "保存前请复核", draft_only_note: "仅为 Draft · 尚未保存", import_review_hint: "可以手动搜索、粘贴文本或选择一张截图，生成可编辑 Draft。请确认下面每个字段后再保存。", import_methods: "导入方式", manual_import: "手动搜索", text_import: "文本导入", screenshot_import: "截图识别", asset_search_label: "搜索标的或公司名称", asset_search_placeholder: "搜索标的或公司名称", search_assets: "搜索", asset_candidate_heading: "请选择已验证的标的", searching_assets: "搜索中…", use_asset: "使用此标的", asset_selected: "已选择标的。请补完其余字段，再点击保存完成确认。", asset_search_empty: "请输入标的或公司名称后搜索。", asset_no_match: "没有匹配的可用美国股票或 ETF。", asset_search_failed: "标的搜索暂时不可用。请稍后重试。", asset_provider_auth_failed: "标的搜索尚未配置，请先配置 Provider。", asset_rate_limited: "标的搜索已达到限流，请稍后重试。", asset_invalid_response: "标的搜索返回了无效响应。", text_import_label: "粘贴持仓文本", text_import_placeholder: "粘贴券商对账单中的持仓行", prepare_text_draft: "生成可编辑 Draft", preparing_text_draft: "正在生成文本 Draft…", screenshot_import_label: "选择一张券商持仓截图", prepare_screenshot_draft: "生成可编辑 Draft", preparing_screenshot_draft: "正在生成截图 Draft…", screenshot_privacy_notice: "截图会发送至 Alibaba Model Studio 进行识别。PositionPilot 不保存图片；Provider 的固定保留时长尚未公开。", screenshot_file_required: "请先选择 JPEG、PNG 或 WebP 截图。", screenshot_file_invalid: "请选择受支持的 JPEG、PNG 或 WebP 截图。", screenshot_file_too_large: "截图过大，请选择不超过 10 MB 的图片。", recognition_invalid_request: "导入输入无效。请检查文本或截图后重试。", recognition_auth_failed: "截图识别尚未配置。你也可以手动搜索并选择持仓。", recognition_rate_limited: "识别请求已达到限流，请稍后重试或手动搜索并选择持仓。", recognition_provider_failed: "识别暂时不可用，你可以手动搜索并选择持仓。", recognition_invalid_response: "识别返回了无效响应，请手动复核字段。", recognition_empty: "没有识别出持仓行。请手动添加一行后继续。", draft_review_signal: "复核提示", draft_status_present: "已识别", draft_status_missing: "缺失 — 请填写", draft_status_invalid: "需要修正", draft_status_ambiguous: "有歧义 — 请选择匹配标的", confidence_signal: "识别置信度", confidence_unavailable: "未提供", find_matching_assets: "查找匹配标的", asset_selection_required: "保存前必须从已验证的候选列表中选择此标的。", asset_auto_selected: "已自动选择经过验证的标的。", recognition_draft_ready: "Draft 已生成。请复核每个字段，再点击保存完成确认。", recognition_input_text: "文本导入", recognition_input_screenshot: "截图导入", imported_warning: "Provider 提示",
-    transaction_entry: "交易", trade_entry: "交易记录", immutable_entry: "追加不可变记录", action: "操作", price: "价格", occurred_at_optional: "发生时间（可选）", occurred_at_hint: "留空使用后端应用时间。", reason_optional: "原因（可选）", save_trade: "保存交易", transaction_history: "交易历史", cash_activity: "现金活动", cash_entry: "现金记录", cash_event_type: "现金类型", amount: "金额", save_cash: "保存现金记录", cash_history: "现金历史", cost_basis: "成本基础", commission: "手续费", fee_schedule: "费用规则", occurred_at: "发生时间", reason: "原因", sequence: "序号", recorded_at: "记录时间", not_provided: "未填写", trade_saved: "交易已保存", cash_saved: "现金记录已保存", opening_saved: "已有持仓已保存", mutation_unknown: "结果未知。请勿自动重试，请刷新并检查最新投资组合状态。", refresh_failed: "写入可能已成功，但最新投资组合加载失败。继续前请先刷新。", invalid_form: "请检查标记的字段后再提交。", insufficient_cash: "可用现金不足以覆盖本次买入及后端计算的费用。", insufficient_shares: "该仓位类型下的股数不足。", opening_sealed: "已有持仓只能在第一笔交易或现金记录前添加。", future_time: "发生时间不能晚于当前时间。", session_expired: "本地 Session 已过期，请重新登录。",
+    portfolio_reload: "刷新", portfolio_sections: "投资组合分区", overview_tab: "持仓", trade_tab: "交易", cash_tab: "现金记录", available_cash: "可用现金", ledger_derived: "账本计算 · USD", portfolio_context: "投资组合上下文", session_owned: "当前 Session 所属", session_owned_hint: "身份来自你的本地私有 Session。", opening_state: "起始状态", existing_positions_setup: "添加已有持仓", starting_facts: "一次性起始事实", opening_explainer: "记录开始跟踪前已经持有的仓位，不改变现金，也不创建虚假交易。", skip_for_now: "暂时跳过", save_opening_positions: "保存已有持仓", add_existing_positions: "添加已有持仓", open_positions: "当前持仓", portfolio_empty_loaded: "目前没有持仓。", opening_records: "起始持仓记录", records_empty: "暂无记录。", import_starting_positions: "导入起始持仓", import_review_title: "保存前请复核", draft_only_note: "仅为 Draft · 尚未保存", import_review_hint: "可以手动搜索、粘贴文本或选择一张截图，生成可编辑 Draft。请确认下面每个字段后再保存。", import_methods: "导入方式", manual_import: "手动搜索", text_import: "文本导入", screenshot_import: "截图识别", asset_search_label: "搜索标的或公司名称", asset_search_placeholder: "搜索标的或公司名称", search_assets: "搜索", asset_candidate_heading: "请选择已验证的标的", searching_assets: "搜索中…", use_asset: "使用此标的", asset_selected: "已选择标的。请补完其余字段，再点击保存完成确认。", asset_search_empty: "请输入标的或公司名称后搜索。", asset_no_match: "没有匹配的可用美国股票或 ETF。", asset_search_failed: "标的搜索暂时不可用。请稍后重试。", asset_provider_auth_failed: "标的搜索尚未配置，请先配置 Provider。", asset_rate_limited: "标的搜索已达到限流，请稍后重试。", asset_invalid_response: "标的搜索返回了无效响应。", text_import_label: "粘贴持仓文本", text_import_placeholder: "粘贴券商对账单中的持仓行", prepare_text_draft: "生成可编辑 Draft", preparing_text_draft: "正在生成文本 Draft…", screenshot_import_label: "选择一张券商持仓截图", prepare_screenshot_draft: "生成可编辑 Draft", preparing_screenshot_draft: "正在生成截图 Draft…", start_recognition: "开始识别", attachment_choose_file: "选择文件", attachment_drop_prompt: "将图片拖到这里，或直接粘贴截图", attachment_drop_hint: "JPEG、PNG 或 WebP · 最大 10 MB", attachment_ready: "附件已准备好。点击“开始识别”前不会上传。", attachment_remove: "移除", attachment_file_required: "请先选择、拖入或粘贴图片。", screenshot_privacy_notice: "截图会发送至 Alibaba Model Studio 进行识别。PositionPilot 不保存图片；Provider 的固定保留时长尚未公开。", screenshot_file_required: "请先选择 JPEG、PNG 或 WebP 截图。", screenshot_file_invalid: "请选择受支持的 JPEG、PNG 或 WebP 截图。", screenshot_file_too_large: "截图过大，请选择不超过 10 MB 的图片。", recognition_invalid_request: "导入输入无效。请检查文本或截图后重试。", recognition_auth_failed: "截图识别尚未配置。你也可以手动搜索并选择持仓。", recognition_rate_limited: "识别请求已达到限流，请稍后重试或手动搜索并选择持仓。", recognition_provider_failed: "识别暂时不可用，你可以手动搜索并选择持仓。", recognition_invalid_response: "识别返回了无效响应，请手动复核字段。", recognition_empty: "没有识别出持仓行。请手动添加一行后继续。", draft_review_signal: "复核提示", draft_status_present: "已识别", draft_status_missing: "缺失 — 请填写", draft_status_invalid: "需要修正", draft_status_ambiguous: "有歧义 — 请选择匹配标的", confidence_signal: "识别置信度", confidence_unavailable: "未提供", find_matching_assets: "查找匹配标的", asset_selection_required: "保存前必须从已验证的候选列表中选择此标的。", asset_auto_selected: "已自动选择经过验证的标的。", recognition_draft_ready: "Draft 已生成。请复核每个字段，再点击保存完成确认。", recognition_input_text: "文本导入", recognition_input_screenshot: "截图导入", imported_warning: "Provider 提示", reconciliation_title: "用券商截图校准持仓", reconciliation_summary: "根据当前截图更新选中的持仓。截图中未出现的持仓保持不变，也不会创建交易或现金记录。", reconciliation_broker_label: "券商或来源（可选）", reconciliation_broker_placeholder: "例如：Fidelity、Schwab、IBKR", reconciliation_screenshot_label: "附加当前持仓截图", reconciliation_revalidate: "重新验证全部标的", reconciliation_revalidate_running: "正在重新验证标的…", reconciliation_save: "保存持仓校准", reconciliation_saved: "持仓校准已保存", reconciliation_no_positions: "请先识别截图，并确认至少一条持仓。", reconciliation_not_validated: "请重新验证并明确选择已验证的标的后再保存。", reconciliation_canonical_match: "找到规范标的。点击确认绑定", reconciliation_provider_unavailable: "标的 Provider 暂时不可用，请稍后重试。", reconciliation_invalid_asset: "没有找到与该 ticker 匹配的已验证候选。",
+    reconciliation_records: "持仓校准记录", source: "来源", broker: "券商", source_info: "来源详情", confirmed_at: "确认时间",
+    transaction_entry: "交易", trade_entry: "交易记录", immutable_entry: "追加不可变记录", action: "操作", price: "价格", occurred_at_optional: "发生时间（可选）", occurred_at_hint: "留空使用后端应用时间。", reason_optional: "原因（可选）", save_trade: "保存交易", transaction_history: "交易历史", cash_activity: "现金活动", cash_entry: "现金记录", cash_event_type: "现金类型", amount: "金额", save_cash: "保存现金记录", cash_history: "现金历史", cost_basis: "成本基础", commission: "手续费", fee_schedule: "费用规则", occurred_at: "发生时间", reason: "原因", sequence: "序号", recorded_at: "记录时间", not_provided: "未填写", trade_saved: "交易已保存", cash_saved: "现金记录已保存", opening_saved: "已有持仓已保存", mutation_unknown: "结果未知。请勿自动重试，请刷新并检查最新投资组合状态。", refresh_failed: "写入可能已成功，但最新投资组合加载失败。继续前请先刷新。", invalid_form: "请检查标记的字段后再提交。", insufficient_cash: "可用现金不足以覆盖本次买入及后端计算的费用。", insufficient_shares: "该仓位类型下的股数不足。", opening_sealed: "已有持仓只能在第一笔交易、现金记录或持仓校准前添加。", future_time: "发生时间不能晚于当前时间。", session_expired: "本地 Session 已过期，请重新登录。",
     working_title: "正在整理决策上下文", working_answer: "正在读取你的投资组合并选择当前信息。", answer_label: "回答", sources_used: "使用的来源", source_explainer: "支持本次回答的上下文。", answer_ready: "基于投资组合的回答", answer_degraded: "上下文有限的回答", answer_failed: "暂时无法回答", source_ticker: "标的", source_provider: "数据提供方", source_feed: "数据源", source_market_time: "市场时间", source_fetched: "获取时间", source_portfolio: "投资组合持仓与现金", source_quote: "当前市场报价", source_history: "价格历史", source_news: "近期新闻", source_market: "市场环境", no_sources: "本次未返回支持来源。", question_required: "请输入一个具体的投资问题。", question_failed: "PositionPilot 未能完成本次问题，请查看状态后重试。",
   },
 };
@@ -259,6 +286,7 @@ const state = {
   loadedUserId: null,
   snapshot: null,
   openingRecords: [],
+  reconciliationRecords: [],
   transactionRecords: [],
   cashRecords: [],
   openingDismissed: false,
@@ -343,6 +371,16 @@ function importElements(prefix) {
     screenshotInput: byId(`${prefix}-import-screenshot`),
     screenshotSubmit: byId(`${prefix}-import-screenshot-submit`),
     screenshotMessage: byId(`${prefix}-import-screenshot-message`),
+    attachmentComposer: byId(`${prefix}-attachment-composer`),
+    attachmentDropzone: byId(`${prefix}-attachment-dropzone`),
+    attachmentChoose: byId(`${prefix}-attachment-choose`),
+    attachmentRemove: byId(`${prefix}-attachment-remove`),
+    attachmentPreview: byId(`${prefix}-attachment-preview`),
+    attachmentPreviewImage: byId(`${prefix}-attachment-preview-image`),
+    attachmentPreviewName: byId(`${prefix}-attachment-preview-name`),
+    attachmentPreviewSize: byId(`${prefix}-attachment-preview-size`),
+    attachment: { kind: null, file: null, previewUrl: null, dataUrl: null },
+    defaultMode: document.querySelector(`#${prefix}-import-tools [data-import-mode]`)?.dataset.importMode ?? "manual",
     draftFeedback: byId(`${prefix}-import-draft-feedback`),
   };
 }
@@ -355,7 +393,7 @@ const elements = {
   navChat: byId("nav-chat"), navPortfolio: byId("nav-portfolio"), newQuestion: byId("new-question-button"), chatView: byId("chat-view"), portfolioView: byId("portfolio-view"), viewTitle: byId("view-title"), viewEyebrow: byId("view-eyebrow"), portfolioState: byId("portfolio-state"), writeState: byId("write-state"), reloadPortfolio: byId("reload-portfolio-button"), accountName: byId("account-display-name"), accountEmail: byId("account-email"), headerAccountName: byId("header-account-name"), headerAccountInitial: byId("header-account-initial"), accountMessage: byId("account-message"), logout: byId("logout-button"), headerLogout: byId("header-logout-button"),
   chatIntro: byId("chat-intro"), conversationScroll: byId("conversation-scroll"), conversationList: byId("conversation-list"), sessionEmpty: byId("session-empty"), sessionList: byId("session-list"), questionForm: byId("question-form"), question: byId("question"), questionHint: byId("question-hint"), ask: byId("ask-button"), responseTemplate: byId("assistant-response-template"),
   portfolioTabs: [byId("portfolio-tab-overview"), byId("portfolio-tab-trade"), byId("portfolio-tab-cash")], portfolioPanels: [byId("portfolio-overview-panel"), byId("portfolio-trade-panel"), byId("portfolio-cash-panel")], availableCash: byId("available-cash"), positionCount: byId("position-count"), positionsEmpty: byId("positions-empty"), positionList: byId("position-list"),
-  openingSetup: byId("opening-setup"), reopenOpening: byId("reopen-opening-setup"), openingForm: byId("opening-form"), openingFields: byId("opening-fields"), openingRows: byId("opening-draft-rows"), addOpeningRow: byId("add-opening-row"), skipOpening: byId("skip-opening-setup"), openingMessage: byId("opening-message"), openingRecordCount: byId("opening-record-count"), openingRecordsEmpty: byId("opening-records-empty"), openingRecordList: byId("opening-record-list"), openingImport: importElements("opening"),
+  openingSetup: byId("opening-setup"), reopenOpening: byId("reopen-opening-setup"), openingForm: byId("opening-form"), openingFields: byId("opening-fields"), openingRows: byId("opening-draft-rows"), addOpeningRow: byId("add-opening-row"), skipOpening: byId("skip-opening-setup"), openingMessage: byId("opening-message"), openingRecordCount: byId("opening-record-count"), openingRecordsEmpty: byId("opening-records-empty"), openingRecordList: byId("opening-record-list"), openingImport: importElements("opening"), reconciliationCard: byId("position-reconciliation"), reconciliationForm: byId("reconciliation-form"), reconciliationFields: byId("reconciliation-fields"), reconciliationRows: byId("reconciliation-draft-rows"), reconciliationBroker: byId("reconciliation-broker"), reconciliationRevalidate: byId("reconciliation-revalidate"), reconciliationSubmit: byId("reconciliation-submit"), reconciliationMessage: byId("reconciliation-message"), reconciliationImport: importElements("reconciliation"), reconciliationRecordCount: byId("reconciliation-record-count"), reconciliationRecordsEmpty: byId("reconciliation-records-empty"), reconciliationRecordList: byId("reconciliation-record-list"),
   tradeForm: byId("trade-form"), tradeFields: byId("trade-fields"), tradeAction: byId("trade-action"), tradeType: byId("trade-position-type"), tradeTicker: byId("trade-ticker"), tradePrice: byId("trade-price"), tradeShares: byId("trade-shares"), tradeTime: byId("trade-occurred-at"), tradeReason: byId("trade-reason"), tradeMessage: byId("trade-message"), transactionCount: byId("transaction-count"), transactionsEmpty: byId("transactions-empty"), transactionList: byId("transaction-list"),
   cashForm: byId("cash-form"), cashFields: byId("cash-fields"), cashType: byId("cash-event-type"), cashAmount: byId("cash-amount"), cashTime: byId("cash-occurred-at"), cashReason: byId("cash-reason"), cashMessage: byId("cash-message"), cashCount: byId("cash-event-count"), cashEmpty: byId("cash-events-empty"), cashList: byId("cash-event-list"),
 };
@@ -363,6 +401,7 @@ const elements = {
 const importConfigs = [
   { key: "setup", controls: elements.setupImport, rows: elements.setupRows },
   { key: "opening", controls: elements.openingImport, rows: elements.openingRows },
+  { key: "reconciliation", controls: elements.reconciliationImport, rows: elements.reconciliationRows },
 ];
 
 function translate(key) {
@@ -376,6 +415,7 @@ function setLocalizedText(element, key) {
 }
 
 function setMessage(element, keyOrText, tone = "danger", localized = true) {
+  if (!element) return;
   element.dataset.tone = tone;
   if (localized) {
     element.dataset.i18n = keyOrText;
@@ -387,11 +427,13 @@ function setMessage(element, keyOrText, tone = "danger", localized = true) {
 }
 
 function clearMessage(element) {
+  if (!element) return;
   delete element.dataset.i18n;
   element.textContent = "";
 }
 
 function clearElement(element) {
+  if (!element) return;
   element.replaceChildren();
 }
 
@@ -531,21 +573,120 @@ const RECOGNITION_STATUS_MESSAGES = {
   INVALID_PROVIDER_RESPONSE: "recognition_invalid_response",
 };
 
+function clearAttachment(config) {
+  const controls = config.controls;
+  if (controls.attachment?.previewUrl) URL.revokeObjectURL(controls.attachment.previewUrl);
+  controls.attachment = { kind: null, file: null, previewUrl: null, dataUrl: null };
+  if (controls.screenshotInput) controls.screenshotInput.value = "";
+  if (controls.attachmentPreview) controls.attachmentPreview.hidden = true;
+  if (controls.attachmentPreviewImage) controls.attachmentPreviewImage.removeAttribute("src");
+  if (controls.attachmentPreviewName) controls.attachmentPreviewName.textContent = "";
+  if (controls.attachmentPreviewSize) controls.attachmentPreviewSize.textContent = "";
+  controls.attachmentDropzone?.classList.remove("is-dragging");
+}
+
+function formatAttachmentSize(bytes) {
+  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function stageAttachment(config, file) {
+  const controls = config.controls;
+  clearMessage(controls.screenshotMessage);
+  if (!file) {
+    setMessage(controls.screenshotMessage, "attachment_file_required", "neutral");
+    return false;
+  }
+  const mimeType = String(file.type || "").toLowerCase();
+  if (!IMPORT_IMAGE_TYPES.has(mimeType)) {
+    clearAttachment(config);
+    setMessage(controls.screenshotMessage, "screenshot_file_invalid");
+    return false;
+  }
+  if (file.size > MAX_IMPORT_IMAGE_BYTES) {
+    clearAttachment(config);
+    setMessage(controls.screenshotMessage, "screenshot_file_too_large");
+    return false;
+  }
+  clearAttachment(config);
+  controls.attachment = {
+    kind: "image",
+    file,
+    previewUrl: URL.createObjectURL(file),
+    dataUrl: null,
+  };
+  if (controls.attachmentPreviewImage) controls.attachmentPreviewImage.src = controls.attachment.previewUrl;
+  if (controls.attachmentPreviewName) controls.attachmentPreviewName.textContent = file.name || "Pasted image";
+  if (controls.attachmentPreviewSize) controls.attachmentPreviewSize.textContent = `${mimeType} · ${formatAttachmentSize(file.size)}`;
+  if (controls.attachmentPreview) controls.attachmentPreview.hidden = false;
+  if (controls.screenshotInput) controls.screenshotInput.value = "";
+  setMessage(controls.screenshotMessage, "attachment_ready", "success");
+  return true;
+}
+
+function pastedImageFile(event) {
+  const items = [...(event.clipboardData?.items ?? [])];
+  const imageItem = items.find((item) => item.kind === "file" && String(item.type || "").toLowerCase().startsWith("image/"));
+  if (!imageItem) return null;
+  const file = imageItem.getAsFile();
+  if (!file) return null;
+  return file.name ? file : new File([file], "pasted-screenshot", { type: file.type, lastModified: Date.now() });
+}
+
+function bindAttachmentComposer(config) {
+  const controls = config.controls;
+  if (!controls.attachmentComposer || !controls.screenshotInput) return;
+  controls.attachmentChoose?.addEventListener("click", (event) => {
+    event.stopPropagation();
+    controls.screenshotInput.click();
+  });
+  controls.attachmentRemove?.addEventListener("click", () => clearAttachment(config));
+  controls.screenshotInput.addEventListener("change", () => stageAttachment(config, controls.screenshotInput.files?.[0]));
+  controls.attachmentDropzone?.addEventListener("click", () => controls.screenshotInput.click());
+  controls.attachmentDropzone?.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    event.preventDefault();
+    controls.screenshotInput.click();
+  });
+  controls.attachmentComposer.addEventListener("dragenter", (event) => {
+    event.preventDefault();
+    controls.attachmentDropzone?.classList.add("is-dragging");
+  });
+  controls.attachmentComposer.addEventListener("dragover", (event) => {
+    event.preventDefault();
+    controls.attachmentDropzone?.classList.add("is-dragging");
+  });
+  controls.attachmentComposer.addEventListener("dragleave", (event) => {
+    if (event.relatedTarget && controls.attachmentComposer.contains(event.relatedTarget)) return;
+    controls.attachmentDropzone?.classList.remove("is-dragging");
+  });
+  controls.attachmentComposer.addEventListener("drop", (event) => {
+    event.preventDefault();
+    controls.attachmentDropzone?.classList.remove("is-dragging");
+    stageAttachment(config, event.dataTransfer?.files?.[0]);
+  });
+  controls.attachmentComposer.addEventListener("paste", (event) => {
+    const file = pastedImageFile(event);
+    if (!file) return;
+    event.preventDefault();
+    stageAttachment(config, file);
+  });
+}
+
 function resetImportControls(config) {
   config.pendingRow = null;
   const controls = config.controls;
-  controls.mode = "manual";
+  controls.mode = controls.defaultMode;
   controls.tabs.forEach((tab, index) => {
-    const active = index === 0;
+    const active = tab.dataset.importMode === controls.defaultMode;
     tab.classList.toggle("is-active", active);
     tab.setAttribute("aria-selected", String(active));
   });
-  controls.panels.manual.hidden = false;
-  controls.panels.text.hidden = true;
-  controls.panels.screenshot.hidden = true;
-  controls.assetQuery.value = "";
-  controls.textInput.value = "";
-  controls.screenshotInput.value = "";
+  for (const [panelMode, panel] of Object.entries(controls.panels)) if (panel) panel.hidden = panelMode !== controls.defaultMode;
+  if (controls.assetQuery) controls.assetQuery.value = "";
+  if (controls.textInput) controls.textInput.value = "";
+  if (controls.screenshotInput) controls.screenshotInput.value = "";
+  clearAttachment(config);
   clearElement(controls.assetCandidates);
   clearElement(controls.draftFeedback);
   clearMessage(controls.assetMessage);
@@ -561,8 +702,8 @@ function switchImportMode(config, mode) {
     tab.classList.toggle("is-active", active);
     tab.setAttribute("aria-selected", String(active));
   });
-  for (const [panelMode, panel] of Object.entries(config.controls.panels)) panel.hidden = panelMode !== mode;
-  const focusTarget = mode === "manual" ? config.controls.assetQuery : mode === "text" ? config.controls.textInput : config.controls.screenshotInput;
+  for (const [panelMode, panel] of Object.entries(config.controls.panels)) if (panel) panel.hidden = panelMode !== mode;
+  const focusTarget = mode === "manual" ? config.controls.assetQuery : mode === "text" ? config.controls.textInput : config.controls.attachmentDropzone ?? config.controls.screenshotInput;
   focusTarget?.focus();
 }
 
@@ -572,7 +713,7 @@ function beginImportRequest() {
   for (const config of importConfigs) {
     setLocalizedText(config.controls.assetSearch, "search_assets");
     setLocalizedText(config.controls.textSubmit, "prepare_text_draft");
-    setLocalizedText(config.controls.screenshotSubmit, "prepare_screenshot_draft");
+    setLocalizedText(config.controls.screenshotSubmit, "start_recognition");
   }
   const generation = state.importGeneration;
   const controller = new AbortController();
@@ -659,6 +800,8 @@ function setDraftField(row, fieldName, draftField, valueOverride = null) {
 
 function ensureDraftSymbolSearch(row) {
   if (row.querySelector(".draft-symbol-search")) return;
+  const config = importConfigs.find((candidate) => candidate.rows.contains(row));
+  if (!config?.controls.assetQuery) return;
   const findButton = makeElement("button", "text-button draft-symbol-search", translate("find_matching_assets"));
   findButton.type = "button";
   findButton.dataset.i18n = "find_matching_assets";
@@ -666,6 +809,7 @@ function ensureDraftSymbolSearch(row) {
     const config = importConfigs.find((candidate) => candidate.rows.contains(row));
     if (!config) return;
     const ticker = row.querySelector("[data-field='ticker']");
+    if (!config.controls.assetQuery) return;
     config.pendingRow = row;
     config.controls.assetQuery.value = ticker?.value.trim() ?? "";
     switchImportMode(config, "manual");
@@ -679,6 +823,9 @@ function clearSelectedAsset(row) {
   delete row.dataset.assetDisplayName;
   delete row.dataset.assetExchange;
   row.querySelector(".draft-asset-resolution")?.remove();
+  row.querySelector(".reconciliation-asset-options")?.remove();
+  row.querySelector(".reconciliation-asset-status")?.remove();
+  delete row.dataset.revalidationStatus;
   ensureDraftSymbolSearch(row);
 }
 
@@ -765,7 +912,8 @@ function renderRecognitionDraft(config, payload, messageElement) {
     setDraftField(row, "average_cost", rowData.average_cost);
     const positionType = normalizeDraftField(rowData.position_type);
     const typeValue = ["LONG_TERM", "SWING"].includes(positionType.value) ? positionType.value : "";
-    setDraftField(row, "position_type", rowData.position_type, typeValue);
+    const optionalPositionType = positionType.status === "MISSING" ? { value: "", status: "PRESENT" } : positionType;
+    setDraftField(row, "position_type", optionalPositionType, typeValue);
     const confidence = makeElement("span", "draft-confidence", `${translate("confidence_signal")}: ${confidenceText(rowData.confidence)}`);
     const review = makeElement("div", "draft-row-review");
     review.append(confidence);
@@ -911,11 +1059,11 @@ async function handleTextImport(event, config) {
 async function handleScreenshotImport(event, config) {
   event?.preventDefault();
   if (state.importPending) return;
-  const file = config.controls.screenshotInput.files?.[0];
+  const file = config.controls.attachment?.file;
   clearMessage(config.controls.screenshotMessage);
   if (!file) {
-    setMessage(config.controls.screenshotMessage, "screenshot_file_required", "neutral");
-    config.controls.screenshotInput.focus();
+    setMessage(config.controls.screenshotMessage, "attachment_file_required", "neutral");
+    config.controls.attachmentDropzone?.focus();
     return;
   }
   const mimeType = String(file.type || "").toLowerCase();
@@ -958,9 +1106,8 @@ async function handleScreenshotImport(event, config) {
       }
     }
   } finally {
-    config.controls.screenshotInput.value = "";
     if (task.generation === state.importGeneration) {
-      setLocalizedText(config.controls.screenshotSubmit, "prepare_screenshot_draft");
+      setLocalizedText(config.controls.screenshotSubmit, "start_recognition");
       finishImportRequest(task.generation);
     }
   }
@@ -968,14 +1115,15 @@ async function handleScreenshotImport(event, config) {
 
 function bindImportEvents(config) {
   config.controls.tabs.forEach((tab) => tab.addEventListener("click", () => switchImportMode(config, tab.dataset.importMode)));
-  config.controls.assetSearch.addEventListener("click", () => handleAssetSearch(null, config));
-  config.controls.assetQuery.addEventListener("keydown", (event) => {
+  config.controls.assetSearch?.addEventListener("click", () => handleAssetSearch(null, config));
+  config.controls.assetQuery?.addEventListener("keydown", (event) => {
     if (event.key !== "Enter" || event.isComposing || event.keyCode === 229) return;
     event.preventDefault();
     handleAssetSearch(event, config);
   });
-  config.controls.textSubmit.addEventListener("click", () => handleTextImport(null, config));
-  config.controls.screenshotSubmit.addEventListener("click", () => handleScreenshotImport(null, config));
+  config.controls.textSubmit?.addEventListener("click", () => handleTextImport(null, config));
+  config.controls.screenshotSubmit?.addEventListener("click", () => handleScreenshotImport(null, config));
+  bindAttachmentComposer(config);
 }
 
 function createOpeningRow(container) {
@@ -1047,6 +1195,7 @@ function resetSensitiveState() {
   state.loadedUserId = null;
   state.snapshot = null;
   state.openingRecords = [];
+  state.reconciliationRecords = [];
   state.transactionRecords = [];
   state.cashRecords = [];
   state.openingDismissed = false;
@@ -1077,8 +1226,10 @@ function resetSensitiveState() {
   elements.cashForm.reset();
   clearElement(elements.setupRows);
   clearElement(elements.openingRows);
+  clearElement(elements.reconciliationRows);
+  elements.reconciliationBroker.value = "";
   for (const config of importConfigs) resetImportControls(config);
-  for (const message of [elements.setupMessage, elements.accountMessage, elements.openingMessage, elements.tradeMessage, elements.cashMessage]) clearMessage(message);
+  for (const message of [elements.setupMessage, elements.accountMessage, elements.openingMessage, elements.reconciliationMessage, elements.tradeMessage, elements.cashMessage]) clearMessage(message);
   elements.accountName.textContent = "";
   elements.accountEmail.textContent = "";
   elements.headerAccountName.textContent = "—";
@@ -1124,6 +1275,7 @@ function updateControls() {
   elements.tradeFields.disabled = busy || !contextReady;
   elements.cashFields.disabled = busy || !contextReady;
   elements.openingFields.disabled = busy || !contextReady;
+  elements.reconciliationFields.disabled = busy || !contextReady;
   elements.question.disabled = busy || !contextReady;
   elements.ask.disabled = busy || !contextReady;
   elements.navChat.disabled = busy;
@@ -1350,7 +1502,7 @@ function renderPortfolioEmpty() {
   elements.positionCount.textContent = "0";
   clearElement(elements.positionList);
   elements.positionsEmpty.hidden = false;
-  for (const [list, count, empty] of [[elements.openingRecordList, elements.openingRecordCount, elements.openingRecordsEmpty], [elements.transactionList, elements.transactionCount, elements.transactionsEmpty], [elements.cashList, elements.cashCount, elements.cashEmpty]]) {
+  for (const [list, count, empty] of [[elements.openingRecordList, elements.openingRecordCount, elements.openingRecordsEmpty], [elements.reconciliationRecordList, elements.reconciliationRecordCount, elements.reconciliationRecordsEmpty], [elements.transactionList, elements.transactionCount, elements.transactionsEmpty], [elements.cashList, elements.cashCount, elements.cashEmpty]]) {
     clearElement(list); count.textContent = "0"; empty.hidden = false;
   }
 }
@@ -1401,7 +1553,7 @@ function renderRecordCollection(list, empty, count, records, factory) {
 }
 
 function renderOpeningAvailability() {
-  const eligible = state.openingRecords.length === 0 && state.transactionRecords.length === 0 && state.cashRecords.length === 0;
+  const eligible = state.openingRecords.length === 0 && state.reconciliationRecords.length === 0 && state.transactionRecords.length === 0 && state.cashRecords.length === 0;
   elements.openingSetup.hidden = !eligible || state.openingDismissed;
   elements.reopenOpening.hidden = !eligible || !state.openingDismissed;
   if (eligible && !state.openingDismissed && elements.openingRows.childElementCount === 0) createOpeningRow(elements.openingRows);
@@ -1416,6 +1568,7 @@ function renderPortfolio() {
   elements.positionsEmpty.hidden = snapshot.positions.length > 0;
   for (const position of snapshot.positions) elements.positionList.append(createPositionCard(position));
   renderRecordCollection(elements.openingRecordList, elements.openingRecordsEmpty, elements.openingRecordCount, state.openingRecords, (record) => createRecordCard(record.ticker, record.position_type, [["shares", record.shares, "decimal"], ["average_cost", record.average_cost, "decimal"], ["cost_basis", record.cost_basis, "decimal"], ["recorded_at", record.recorded_at, "timestamp"]]));
+  renderRecordCollection(elements.reconciliationRecordList, elements.reconciliationRecordsEmpty, elements.reconciliationRecordCount, state.reconciliationRecords, (record) => createRecordCard(record.ticker, record.position_type, [["shares", record.target_shares, "decimal"], ["average_cost", record.target_average_cost, "decimal"], ["cost_basis", record.target_cost_basis, "decimal"], ["source", record.source], ["broker", record.broker], ["source_info", record.source_info], ["confirmed_at", record.confirmed_at, "timestamp"]]));
   renderRecordCollection(elements.transactionList, elements.transactionsEmpty, elements.transactionCount, state.transactionRecords, (record) => createRecordCard(`${record.action} · ${record.ticker}`, record.position_type, [["sequence", record.sequence], ["price", record.price, "decimal"], ["shares", record.shares, "decimal"], ["amount", record.amount, "decimal"], ["commission", record.commission, "decimal"], ["fee_schedule", record.fee_schedule], ["occurred_at", record.occurred_at, "timestamp"], ["reason", record.reason]]));
   renderRecordCollection(elements.cashList, elements.cashEmpty, elements.cashCount, state.cashRecords, (record) => createRecordCard(record.event_type, null, [["sequence", record.sequence], ["amount", record.amount, "decimal"], ["occurred_at", record.occurred_at, "timestamp"], ["reason", record.reason]]));
   renderOpeningAvailability();
@@ -1431,9 +1584,10 @@ async function refreshPortfolio({ afterMutation = false } = {}) {
   state.portfolioReadState = "loading";
   updateControls();
   try {
-    const [snapshot, openings, transactions, cash] = await Promise.all([
+    const [snapshot, openings, reconciliations, transactions, cash] = await Promise.all([
       requestJson("/v1/portfolio", { signal: controller.signal }),
       requestJson("/v1/portfolio/opening-positions", { signal: controller.signal }),
+      requestJson("/v1/portfolio/reconciliations", { signal: controller.signal }),
       requestJson("/v1/portfolio/transactions", { signal: controller.signal }),
       requestJson("/v1/portfolio/cash-events", { signal: controller.signal }),
     ]);
@@ -1441,6 +1595,7 @@ async function refreshPortfolio({ afterMutation = false } = {}) {
     state.snapshot = snapshot;
     state.loadedUserId = snapshot.user_id;
     state.openingRecords = openings.items;
+    state.reconciliationRecords = reconciliations.items;
     state.transactionRecords = transactions.items;
     state.cashRecords = cash.items;
     if (!afterMutation) state.writeState = "idle";
@@ -1548,6 +1703,131 @@ async function handleOpening(event) {
   if (!positions || positions.length === 0) { setMessage(elements.openingMessage, "invalid_form"); return; }
   const saved = await runMutation({ url: "/v1/portfolio/opening-positions", payload: { positions }, messageElement: elements.openingMessage, successKey: "opening_saved", recordId: (result) => result.opening_positions?.[0]?.id });
   if (saved) clearElement(elements.openingRows);
+}
+
+function collectReconciliationPositions(container) {
+  clearFieldErrors(container);
+  const positions = [];
+  const keys = new Set();
+  let valid = true;
+  for (const row of container.querySelectorAll(".opening-draft-row")) {
+    const ticker = row.querySelector("[data-field='ticker']");
+    const shares = row.querySelector("[data-field='shares']");
+    const cost = row.querySelector("[data-field='average_cost']");
+    const type = row.querySelector("[data-field='position_type']");
+    const normalizedTicker = ticker.value.trim().toUpperCase();
+    const any = normalizedTicker || shares.value.trim() || cost.value.trim() || type.value;
+    if (!any) continue;
+    if (!normalizedTicker || !shares.value.trim() || !cost.value.trim()) {
+      showFieldError(!normalizedTicker ? ticker : !shares.value.trim() ? shares : cost, "incomplete_position");
+      valid = false;
+      continue;
+    }
+    if (row.dataset.assetSymbol !== normalizedTicker) {
+      showFieldError(ticker, "reconciliation_not_validated");
+      valid = false;
+    }
+    if (!isPositiveDecimal(shares.value.trim())) { showFieldError(shares, "invalid_positive_decimal"); valid = false; }
+    if (!isPositiveDecimal(cost.value.trim())) { showFieldError(cost, "invalid_positive_decimal"); valid = false; }
+    const key = `${normalizedTicker}:${type.value || "UNSPECIFIED"}`;
+    if (keys.has(key)) { showFieldError(ticker, "duplicate_position"); valid = false; }
+    keys.add(key);
+    const item = { ticker: normalizedTicker, target_shares: shares.value.trim(), target_average_cost: cost.value.trim() };
+    if (type.value) item.position_type = type.value;
+    positions.push(item);
+  }
+  return valid ? positions : null;
+}
+
+function clearRevalidationFeedback(row) {
+  row.querySelector(".reconciliation-asset-options")?.remove();
+  row.querySelector(".reconciliation-asset-status")?.remove();
+  delete row.dataset.revalidationStatus;
+}
+
+function appendRevalidationStatus(row, key, tone = "warning") {
+  clearRevalidationFeedback(row);
+  const status = makeElement("span", `reconciliation-asset-status ${tone}`, translate(key));
+  status.dataset.i18n = key;
+  row.append(status);
+}
+
+function renderRevalidationCandidate(row, candidate) {
+  clearRevalidationFeedback(row);
+  const options = makeElement("div", "reconciliation-asset-options");
+  const title = makeElement("span", "reconciliation-asset-options-title", translate("reconciliation_canonical_match"));
+  title.dataset.i18n = "reconciliation_canonical_match";
+  options.append(title);
+  const confirm = makeElement("button", "text-button reconciliation-asset-confirm");
+  confirm.type = "button";
+  const symbol = String(candidate?.canonical_symbol ?? "").trim().toUpperCase();
+  confirm.textContent = symbol || translate("use_asset");
+  confirm.addEventListener("click", () => {
+    if (!applySelectedAsset(row, candidate)) return;
+    appendRevalidationStatus(row, "asset_auto_selected", "success");
+  });
+  options.append(confirm);
+  row.append(options);
+}
+
+async function revalidateReconciliationAssets(event) {
+  event?.preventDefault();
+  if (state.importPending) return;
+  const rows = [...elements.reconciliationRows.querySelectorAll(".opening-draft-row")].filter((row) => row.querySelector("[data-field='ticker']")?.value.trim());
+  if (!rows.length) {
+    setMessage(elements.reconciliationMessage, "reconciliation_no_positions", "neutral");
+    return;
+  }
+  const task = beginImportRequest();
+  setLocalizedText(elements.reconciliationRevalidate, "reconciliation_revalidate_running");
+  clearMessage(elements.reconciliationMessage);
+  for (const row of rows) {
+    delete row.dataset.assetSymbol;
+    clearRevalidationFeedback(row);
+  }
+  try {
+    for (const row of rows) {
+      if (task.generation !== state.importGeneration) return;
+      const ticker = row.querySelector("[data-field='ticker']").value.trim().toUpperCase();
+      const params = new URLSearchParams({ symbol: ticker });
+      const payload = await requestJson(`/v1/assets/validate?${params.toString()}`, { signal: task.controller.signal });
+      if (task.generation !== state.importGeneration) return;
+      if (payload?.status === "VALID" && payload.candidate) {
+        renderRevalidationCandidate(row, payload.candidate);
+      } else if (payload?.status === "PROVIDER_UNAVAILABLE") {
+        appendRevalidationStatus(row, "reconciliation_provider_unavailable", "danger");
+      } else {
+        appendRevalidationStatus(row, "reconciliation_invalid_asset", "danger");
+      }
+    }
+    setMessage(elements.reconciliationMessage, "reconciliation_not_validated", "neutral");
+  } catch (error) {
+    if (task.generation === state.importGeneration) importFailureMessage({ controls: elements.reconciliationImport }, elements.reconciliationMessage, error, { PROVIDER_UNAVAILABLE: "reconciliation_provider_unavailable", INVALID_ASSET_SYMBOL: "reconciliation_invalid_asset", INVALID_SYMBOL: "reconciliation_invalid_asset" });
+  } finally {
+    if (task.generation === state.importGeneration) {
+      setLocalizedText(elements.reconciliationRevalidate, "reconciliation_revalidate");
+      finishImportRequest(task.generation);
+    }
+  }
+}
+
+async function handleReconciliation(event) {
+  event.preventDefault();
+  if (state.importPending) return;
+  const positions = collectReconciliationPositions(elements.reconciliationRows);
+  if (!positions || positions.length === 0) {
+    setMessage(elements.reconciliationMessage, "reconciliation_no_positions", "neutral");
+    return;
+  }
+  const payload = { source: "SCREENSHOT", positions };
+  const broker = elements.reconciliationBroker.value.trim();
+  if (broker) payload.broker = broker;
+  const saved = await runMutation({ url: "/v1/portfolio/reconciliations", payload, messageElement: elements.reconciliationMessage, successKey: "reconciliation_saved", recordId: (result) => result.reconciliations?.[0]?.id });
+  if (saved) {
+    clearElement(elements.reconciliationRows);
+    elements.reconciliationBroker.value = "";
+    resetImportControls(elements.reconciliationImport);
+  }
 }
 
 function sourceTone(status) {
@@ -1704,6 +1984,8 @@ function bindEvents() {
   elements.skipOpening.addEventListener("click", () => { state.openingDismissed = true; renderOpeningAvailability(); });
   elements.reopenOpening.addEventListener("click", () => { state.openingDismissed = false; renderOpeningAvailability(); });
   elements.openingForm.addEventListener("submit", handleOpening);
+  elements.reconciliationRevalidate.addEventListener("click", revalidateReconciliationAssets);
+  elements.reconciliationForm.addEventListener("submit", handleReconciliation);
   elements.tradeForm.addEventListener("submit", handleTrade);
   elements.cashForm.addEventListener("submit", handleCash);
   elements.question.addEventListener("compositionstart", () => { state.questionComposing = true; });

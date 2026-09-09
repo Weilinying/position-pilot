@@ -194,6 +194,51 @@ class OpeningPositionModel(Base):
     recorded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 
+class PositionReconciliationModel(Base):
+    """不可变外部持仓校准事实的持久化记录。"""
+
+    __tablename__ = "position_reconciliations"
+    __table_args__ = (
+        CheckConstraint(
+            "target_shares > 0",
+            name="ck_position_reconciliations_target_shares_positive",
+        ),
+        CheckConstraint(
+            "target_average_cost > 0",
+            name="ck_position_reconciliations_target_average_cost_positive",
+        ),
+        CheckConstraint(
+            "position_type IN ('LONG_TERM', 'SWING', 'UNSPECIFIED')",
+            name="position_reconciliation_type",
+        ),
+        Index(
+            "ix_position_reconciliations_user_confirmed_at",
+            "user_id",
+            "confirmed_at",
+        ),
+        Index(
+            "ix_position_reconciliations_user_position",
+            "user_id",
+            "ticker",
+            "position_type",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    user_id: Mapped[UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    ticker: Mapped[str] = mapped_column(String(10))
+    target_shares: Mapped[Decimal] = mapped_column(Numeric(28, 8))
+    target_average_cost: Mapped[Decimal] = mapped_column(Numeric(28, 8))
+    position_type: Mapped[str] = mapped_column(String(11))
+    source: Mapped[str] = mapped_column(String(100))
+    confirmed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    broker: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    source_info: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
 class CashEventModel(Base):
     """Portfolio 创建后的不可变 Cash Event Ledger。"""
 

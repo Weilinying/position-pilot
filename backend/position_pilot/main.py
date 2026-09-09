@@ -4,6 +4,7 @@ import base64
 import binascii
 from datetime import datetime
 from decimal import Decimal
+from enum import StrEnum
 from pathlib import Path
 from typing import Annotated, Any, NoReturn
 from uuid import UUID
@@ -44,7 +45,9 @@ from position_pilot.application.portfolio_service import (
     InitializeOpeningPositionsCommand,
     OpeningPositionInput,
     PortfolioService,
+    PositionReconciliationInput,
     RecordCashEventCommand,
+    RecordPositionReconciliationsCommand,
     RecordTransactionCommand,
 )
 from position_pilot.application.recognition_service import (
@@ -84,6 +87,7 @@ from position_pilot.domain.portfolio import (
     CashEventType,
     OpeningPosition,
     PortfolioState,
+    PositionReconciliation,
     PositionType,
     Transaction,
     TransactionAction,
@@ -354,6 +358,61 @@ class OpeningPositionListResponse(BaseModel):
     items_are_complete: bool = True
 
 
+class PositionReconciliationItemRequest(BaseModel):
+    """已确认 Screenshot Draft 中的单行目标持仓。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    ticker: str = Field(min_length=1, max_length=100)
+    target_shares: Decimal = Field(gt=0, max_digits=28, decimal_places=8)
+    target_average_cost: Decimal = Field(gt=0, max_digits=28, decimal_places=8)
+    position_type: PositionType | None = None
+
+
+class PositionReconciliationRequest(BaseModel):
+    """用户确认的一份 Screenshot Position Reconciliation。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    positions: tuple[PositionReconciliationItemRequest, ...] = Field(
+        min_length=1,
+        max_length=100,
+    )
+    source: str = Field(default="SCREENSHOT", min_length=1, max_length=100)
+    broker: str | None = Field(default=None, max_length=100)
+    source_info: str | None = Field(default=None, max_length=1000)
+
+
+class PositionReconciliationResponse(BaseModel):
+    """API 暴露的不可变 Position Reconciliation 事实。"""
+
+    id: UUID
+    user_id: UUID
+    ticker: str
+    target_shares: Decimal
+    target_average_cost: Decimal
+    target_cost_basis: Decimal
+    position_type: PositionType
+    source: str
+    confirmed_at: datetime
+    broker: str | None
+    source_info: str | None
+
+
+class PositionReconciliationsWriteResponse(BaseModel):
+    """同一请求原子追加的校准事实与最新 Snapshot。"""
+
+    reconciliations: tuple[PositionReconciliationResponse, ...]
+    portfolio: "PortfolioSnapshotResponse"
+
+
+class PositionReconciliationListResponse(BaseModel):
+    """完整只读 Position Reconciliation List。"""
+
+    items: tuple[PositionReconciliationResponse, ...]
+    items_are_complete: bool = True
+
+
 class TransactionListResponse(BaseModel):
     """完整只读 Transaction List。"""
 
@@ -401,6 +460,23 @@ class AssetSearchResponse(BaseModel):
     status: AssetMetadataStatus
     candidates: tuple[AssetCandidateResponse, ...]
     message: str | None
+
+
+class AssetValidationStatus(StrEnum):
+    """前端重试 exact validation 时只需要三态结论。"""
+
+    VALID = "VALID"
+    INVALID = "INVALID"
+    PROVIDER_UNAVAILABLE = "PROVIDER_UNAVAILABLE"
+
+
+class AssetValidationResponse(BaseModel):
+    """区分真实无匹配与 Provider Failure 的 exact validation 结果。"""
+
+    status: AssetValidationStatus
+    candidate: AssetCandidateResponse | None
+    message: str | None
+    provider_status: AssetMetadataStatus
 
 
 class RecognitionTextRequest(BaseModel):
@@ -610,6 +686,14 @@ def _ensure_opening_import_is_open(
                     message="Opening State 已封闭，不能再执行 Import Recognition",
                 ),
             )
+        if portfolio_service.list_position_reconciliations(user_id):
+            _raise_api_error(
+                status.HTTP_409_CONFLICT,
+                ApiErrorDetail(
+                    code="OPENING_STATE_SEALED",
+                    message="Opening State 已封闭，不能再执行 Import Recognition",
+                ),
+            )
     except UserNotFound:
         _raise_api_error(
             status.HTTP_404_NOT_FOUND,
@@ -639,6 +723,60 @@ def search_assets(
             message="Asset Metadata Provider 当前不可用",
         )
     return _asset_search_response(result)
+
+
+@app.get("/v1/assets/validate", response_model=AssetValidationResponse)
+def validate_asset(
+    symbol: Annotated[str, Query(min_length=1, max_length=100)],
+    account: Annotated[Account, Depends(get_current_account_dependency)],
+    asset_metadata_service: Annotated[
+        AssetMetadataService,
+        Depends(get_asset_metadata_service_dependency),
+    ],
+) -> AssetValidationResponse:
+    """返回可供 Browser 明确确认的 canonical match 或稳定失败三态。"""
+
+    del account
+    try:
+        result = asset_metadata_service.validate(symbol)
+    except Exception:
+        return AssetValidationResponse(
+            status=AssetValidationStatus.PROVIDER_UNAVAILABLE,
+            candidate=None,
+            message="Asset Metadata Provider 当前不可用",
+            provider_status=AssetMetadataStatus.PROVIDER_UNAVAILABLE,
+        )
+
+    if result.status is AssetMetadataStatus.OK and result.asset is not None:
+        return AssetValidationResponse(
+            status=AssetValidationStatus.VALID,
+            candidate=_asset_candidate_response(result.asset),
+            message=None,
+            provider_status=result.status,
+        )
+    if result.status is AssetMetadataStatus.NO_MATCH:
+        return AssetValidationResponse(
+            status=AssetValidationStatus.INVALID,
+            candidate=None,
+            message=result.message,
+            provider_status=result.status,
+        )
+    if result.status in {
+        AssetMetadataStatus.INVALID_SYMBOL,
+        AssetMetadataStatus.INVALID_REQUEST,
+    }:
+        _raise_api_error(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            ApiErrorDetail(
+                code="INVALID_ASSET_SYMBOL", message=result.message or "ticker 格式无效"
+            ),
+        )
+    return AssetValidationResponse(
+        status=AssetValidationStatus.PROVIDER_UNAVAILABLE,
+        candidate=None,
+        message=result.message,
+        provider_status=result.status,
+    )
 
 
 @app.post("/v1/portfolio/import/recognize-text", response_model=RecognitionResponse)
@@ -680,11 +818,10 @@ def recognize_import_screenshot(
         AssetMetadataService,
         Depends(get_asset_metadata_service_dependency),
     ],
-    portfolio_service: Annotated[PortfolioService, Depends(get_portfolio_service_dependency)],
 ) -> RecognitionResponse:
-    """严格解码内存中的截图并返回当前请求生命周期内的 Draft。"""
+    """严格解码内存中的截图，为 Opening 或 Reconciliation 返回临时 Draft。"""
 
-    _ensure_opening_import_is_open(account, portfolio_service)
+    del account
     try:
         image_bytes = base64.b64decode(request.image_base64, validate=True)
     except (binascii.Error, ValueError):
@@ -1216,6 +1353,86 @@ def list_current_opening_positions(
 
 
 @app.post(
+    "/v1/portfolio/reconciliations",
+    response_model=PositionReconciliationsWriteResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def record_current_position_reconciliations(
+    request: PositionReconciliationRequest,
+    account: Annotated[Account, Depends(get_current_account_dependency)],
+    portfolio_service: Annotated[PortfolioService, Depends(get_portfolio_service_dependency)],
+) -> PositionReconciliationsWriteResponse:
+    """原子追加用户确认的 Screenshot Reconciliation，并返回最新状态。"""
+
+    user_id = _require_portfolio_user(account)
+    try:
+        result = portfolio_service.record_position_reconciliations(
+            RecordPositionReconciliationsCommand(
+                user_id=user_id,
+                positions=tuple(
+                    PositionReconciliationInput(
+                        ticker=position.ticker,
+                        target_shares=position.target_shares,
+                        target_average_cost=position.target_average_cost,
+                        position_type=position.position_type,
+                    )
+                    for position in request.positions
+                ),
+                source=request.source,
+                broker=request.broker,
+                source_info=request.source_info,
+            )
+        )
+    except UserNotFound:
+        _raise_api_error(
+            status.HTTP_404_NOT_FOUND,
+            ApiErrorDetail(code="USER_NOT_FOUND", message="Portfolio User 不存在"),
+        )
+    except FutureTimestamp as error:
+        _raise_api_error(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            ApiErrorDetail(code="FUTURE_TIMESTAMP", message=str(error)),
+        )
+    except InvalidPortfolioValue as error:
+        _raise_api_error(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            ApiErrorDetail(code="INVALID_RECONCILIATION", message=str(error)),
+        )
+    return PositionReconciliationsWriteResponse(
+        reconciliations=tuple(
+            _position_reconciliation_response(reconciliation)
+            for reconciliation in result.reconciliations
+        ),
+        portfolio=_portfolio_snapshot_response(result.portfolio),
+    )
+
+
+@app.get(
+    "/v1/portfolio/reconciliations",
+    response_model=PositionReconciliationListResponse,
+)
+def list_current_position_reconciliations(
+    account: Annotated[Account, Depends(get_current_account_dependency)],
+    portfolio_service: Annotated[PortfolioService, Depends(get_portfolio_service_dependency)],
+) -> PositionReconciliationListResponse:
+    """返回当前 Session Portfolio 的不可变持仓校准事实。"""
+
+    user_id = _require_portfolio_user(account)
+    try:
+        reconciliations = portfolio_service.list_position_reconciliations(user_id)
+    except UserNotFound:
+        _raise_api_error(
+            status.HTTP_404_NOT_FOUND,
+            ApiErrorDetail(code="USER_NOT_FOUND", message="Portfolio User 不存在"),
+        )
+    return PositionReconciliationListResponse(
+        items=tuple(
+            _position_reconciliation_response(reconciliation) for reconciliation in reconciliations
+        )
+    )
+
+
+@app.post(
     "/v1/portfolio/transactions",
     response_model=TransactionWriteResponse,
     status_code=status.HTTP_201_CREATED,
@@ -1327,6 +1544,26 @@ def _opening_position_response(position: OpeningPosition) -> OpeningPositionResp
         cost_basis=position.cost_basis,
         position_type=position.position_type,
         recorded_at=position.recorded_at,
+    )
+
+
+def _position_reconciliation_response(
+    reconciliation: PositionReconciliation,
+) -> PositionReconciliationResponse:
+    """把不可变持仓校准事实映射为稳定 Public Response。"""
+
+    return PositionReconciliationResponse(
+        id=reconciliation.id,
+        user_id=reconciliation.user_id,
+        ticker=reconciliation.ticker,
+        target_shares=reconciliation.target_shares,
+        target_average_cost=reconciliation.target_average_cost,
+        target_cost_basis=reconciliation.target_cost_basis,
+        position_type=reconciliation.position_type,
+        source=reconciliation.source,
+        confirmed_at=reconciliation.confirmed_at,
+        broker=reconciliation.broker,
+        source_info=reconciliation.source_info,
     )
 
 

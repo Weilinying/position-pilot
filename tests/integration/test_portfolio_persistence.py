@@ -20,7 +20,9 @@ from position_pilot.application.portfolio_service import (
     InitializeOpeningPositionsCommand,
     OpeningPositionInput,
     PortfolioService,
+    PositionReconciliationInput,
     RecordCashEventCommand,
+    RecordPositionReconciliationsCommand,
     RecordTransactionCommand,
 )
 from position_pilot.database import create_database_engine, create_session_factory
@@ -35,6 +37,7 @@ from position_pilot.domain.portfolio import (
 from position_pilot.infrastructure.models import (
     CashEventModel,
     OpeningPositionModel,
+    PositionReconciliationModel,
     TransactionModel,
     UserModel,
 )
@@ -338,6 +341,80 @@ def test_persists_opening_state_and_seals_after_first_economic_mutation() -> Non
             )
     finally:
         with engine.begin() as connection:
+            connection.execute(delete(CashEventModel).where(CashEventModel.user_id == user.id))
+            connection.execute(delete(TransactionModel).where(TransactionModel.user_id == user.id))
+            connection.execute(
+                delete(OpeningPositionModel).where(OpeningPositionModel.user_id == user.id)
+            )
+            connection.execute(delete(UserModel).where(UserModel.id == user.id))
+        engine.dispose()
+
+
+def test_persists_and_replays_position_reconciliation_without_cash_or_deletion() -> None:
+    """持仓校准跨 Service 恢复后仍只覆盖目标 Position Key。"""
+
+    engine = create_database_engine(get_test_database_url())
+    session_factory = create_session_factory(engine)
+    service = PortfolioService(SqlAlchemyPortfolioUnitOfWorkFactory(session_factory))
+    user = service.create_user(
+        CreateUserCommand(display_name="Reconciliation User", initial_cash=Decimal("1000"))
+    )
+
+    try:
+        service.initialize_opening_positions(
+            InitializeOpeningPositionsCommand(
+                user_id=user.id,
+                positions=(
+                    OpeningPositionInput(
+                        ticker="GOOG",
+                        shares=Decimal("2"),
+                        average_cost=Decimal("100"),
+                    ),
+                    OpeningPositionInput(
+                        ticker="MSFT",
+                        shares=Decimal("3"),
+                        average_cost=Decimal("200"),
+                    ),
+                ),
+            )
+        )
+        result = service.record_position_reconciliations(
+            RecordPositionReconciliationsCommand(
+                user_id=user.id,
+                positions=(
+                    PositionReconciliationInput(
+                        ticker="GOOG",
+                        target_shares=Decimal("5"),
+                        target_average_cost=Decimal("125"),
+                    ),
+                ),
+                source="screenshot",
+                broker="paper-broker",
+            )
+        )
+
+        recovered_service = PortfolioService(
+            SqlAlchemyPortfolioUnitOfWorkFactory(create_session_factory(engine))
+        )
+        state = recovered_service.get_portfolio(user.id)
+        reconciliations = recovered_service.list_position_reconciliations(user.id)
+        goog = state.get_position("GOOG", PositionType.UNSPECIFIED)
+        msft = state.get_position("MSFT", PositionType.UNSPECIFIED)
+
+        assert goog is not None and goog.shares == Decimal("5.00000000")
+        assert goog.average_cost == Decimal("125.00000000")
+        assert msft is not None and msft.shares == Decimal("3.00000000")
+        assert state.cash.available_cash == Decimal("1000.00000000")
+        assert state.transaction_count == 0
+        assert state.reconciliation_count == 1
+        assert reconciliations == result.reconciliations
+    finally:
+        with engine.begin() as connection:
+            connection.execute(
+                delete(PositionReconciliationModel).where(
+                    PositionReconciliationModel.user_id == user.id
+                )
+            )
             connection.execute(delete(CashEventModel).where(CashEventModel.user_id == user.id))
             connection.execute(delete(TransactionModel).where(TransactionModel.user_id == user.id))
             connection.execute(

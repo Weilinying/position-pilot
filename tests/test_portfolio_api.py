@@ -14,7 +14,9 @@ from position_pilot.application.errors import OpeningStateSealed, UserNotFound
 from position_pilot.application.portfolio_service import (
     CashAdjustmentResult,
     InitializeOpeningPositionsCommand,
+    PositionReconciliationsResult,
     RecordCashEventCommand,
+    RecordPositionReconciliationsCommand,
     RecordTransactionCommand,
 )
 from position_pilot.domain.errors import (
@@ -30,6 +32,7 @@ from position_pilot.domain.portfolio import (
     OpeningPosition,
     PortfolioState,
     Position,
+    PositionReconciliation,
     PositionType,
     Transaction,
     TransactionAction,
@@ -48,6 +51,7 @@ USER_ID = UUID("00000000-0000-0000-0000-000000000001")
 EVENT_ID = UUID("00000000-0000-0000-0000-000000000002")
 TRANSACTION_ID = UUID("00000000-0000-0000-0000-000000000003")
 OPENING_ID = UUID("00000000-0000-0000-0000-000000000004")
+RECONCILIATION_ID = UUID("00000000-0000-0000-0000-000000000005")
 OCCURRED_AT = datetime(2026, 8, 25, 8, 30, tzinfo=UTC)
 ACCOUNT_ID = UUID("00000000-0000-0000-0000-000000000010")
 
@@ -146,6 +150,34 @@ class FakeOpeningPositionService:
 
 
 @dataclass(slots=True)
+class FakePositionReconciliationService:
+    """返回固定 Reconciliation Result，并记录批量 Command 或查询。"""
+
+    write_result: PositionReconciliationsResult | Exception
+    list_result: tuple[PositionReconciliation, ...] | Exception
+    commands: list[RecordPositionReconciliationsCommand] = field(default_factory=list)
+    user_ids: list[UUID] = field(default_factory=list)
+
+    def record_position_reconciliations(
+        self,
+        command: RecordPositionReconciliationsCommand,
+    ) -> PositionReconciliationsResult:
+        self.commands.append(command)
+        if isinstance(self.write_result, Exception):
+            raise self.write_result
+        return self.write_result
+
+    def list_position_reconciliations(
+        self,
+        user_id: UUID,
+    ) -> tuple[PositionReconciliation, ...]:
+        self.user_ids.append(user_id)
+        if isinstance(self.list_result, Exception):
+            raise self.list_result
+        return self.list_result
+
+
+@dataclass(slots=True)
 class FakeTransactionListReader:
     """返回固定 Transaction List。"""
 
@@ -235,6 +267,23 @@ def make_opening_position(
         average_cost=Decimal("100"),
         position_type=position_type,
         recorded_at=OCCURRED_AT,
+    )
+
+
+def make_reconciliation() -> PositionReconciliation:
+    """创建 API Response 使用的固定持仓校准事实。"""
+
+    return PositionReconciliation.create(
+        reconciliation_id=RECONCILIATION_ID,
+        user_id=USER_ID,
+        ticker="AAOX",
+        target_shares=Decimal("8"),
+        target_average_cost=Decimal("42.5"),
+        position_type=PositionType.LONG_TERM,
+        source="SCREENSHOT",
+        confirmed_at=OCCURRED_AT,
+        broker="IBKR",
+        source_info="portfolio page",
     )
 
 
@@ -528,6 +577,74 @@ def test_rejects_client_derived_opening_fields_before_service_call(client: TestC
 
     assert response.status_code == 422
     assert service.commands == []
+
+
+def test_records_and_lists_position_reconciliations(client: TestClient) -> None:
+    """Reconciliation API 只接收目标状态，并返回不可变事实与最新 Snapshot。"""
+
+    reconciliation = make_reconciliation()
+    portfolio = make_portfolio_state(
+        positions=(
+            Position(
+                ticker="AAOX",
+                position_type=PositionType.LONG_TERM,
+                shares=Decimal("8.00000000"),
+                cost_basis=Decimal("340.00000000"),
+                average_cost=Decimal("42.50000000"),
+            ),
+        )
+    )
+    service = FakePositionReconciliationService(
+        write_result=PositionReconciliationsResult(
+            reconciliations=(reconciliation,),
+            portfolio=portfolio,
+        ),
+        list_result=(reconciliation,),
+    )
+    override_service(service)
+
+    write_response = client.post(
+        "/v1/portfolio/reconciliations",
+        json={
+            "positions": [
+                {
+                    "ticker": "aaox",
+                    "target_shares": "8",
+                    "target_average_cost": "42.5",
+                    "position_type": "LONG_TERM",
+                }
+            ],
+            "source": "SCREENSHOT",
+            "broker": "IBKR",
+            "source_info": "portfolio page",
+        },
+    )
+    list_response = client.get("/v1/portfolio/reconciliations")
+
+    assert write_response.status_code == 201
+    assert write_response.json()["reconciliations"] == [
+        {
+            "id": str(RECONCILIATION_ID),
+            "user_id": str(USER_ID),
+            "ticker": "AAOX",
+            "target_shares": "8.00000000",
+            "target_average_cost": "42.50000000",
+            "target_cost_basis": "340.00000000",
+            "position_type": "LONG_TERM",
+            "source": "SCREENSHOT",
+            "confirmed_at": "2026-08-25T08:30:00Z",
+            "broker": "IBKR",
+            "source_info": "portfolio page",
+        }
+    ]
+    assert write_response.json()["portfolio"]["available_cash"] == "1679.30000000"
+    assert write_response.json()["portfolio"]["positions"][0]["ticker"] == "AAOX"
+    assert len(service.commands) == 1
+    assert service.commands[0].positions[0].ticker == "aaox"
+    assert list_response.status_code == 200
+    assert list_response.json()["items_are_complete"] is True
+    assert list_response.json()["items"][0]["id"] == str(RECONCILIATION_ID)
+    assert service.user_ids == [USER_ID]
 
 
 def test_returns_complete_read_only_record_lists(client: TestClient) -> None:

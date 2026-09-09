@@ -18,6 +18,7 @@ from position_pilot.domain.portfolio import (
     CashEvent,
     CashEventType,
     OpeningPosition,
+    PositionReconciliation,
     PositionType,
     Transaction,
     TransactionAction,
@@ -104,6 +105,29 @@ def make_opening_position(
     )
 
 
+def make_reconciliation(
+    *,
+    ticker: str = "GOOG",
+    target_shares: str = "4",
+    target_average_cost: str = "125",
+    position_type: PositionType | None = None,
+    confirmed_at: datetime = OCCURRED_AT,
+    user_id: UUID = USER_ID,
+) -> PositionReconciliation:
+    """创建固定 User 的持仓校准事件。"""
+
+    return PositionReconciliation.create(
+        user_id=user_id,
+        ticker=ticker,
+        target_shares=Decimal(target_shares),
+        target_average_cost=Decimal(target_average_cost),
+        position_type=position_type,
+        source="screenshot",
+        confirmed_at=confirmed_at,
+        broker="paper-broker",
+    )
+
+
 def test_transaction_amount_is_derived_and_not_a_create_input() -> None:
     """amount 与 commission 应只读派生，不能出现在 Transaction 写入参数中。"""
 
@@ -186,6 +210,110 @@ def test_replay_starts_from_opening_state_without_cash_impact() -> None:
     assert position.cost_basis == Decimal("200.00000000")
     assert position.average_cost == Decimal("100.00000000")
     assert state.cash.available_cash == Decimal("500.00000000")
+
+
+def test_reconciliation_calibrates_position_without_cash_or_trade_effect() -> None:
+    """持仓校准应直接替换目标 Position，但不产生交易或现金变化。"""
+
+    opening_position = make_opening_position(shares="2", average_cost="100")
+    transaction = make_transaction(
+        sequence=1,
+        action=TransactionAction.BUY,
+        price="10",
+        shares="1",
+        occurred_at=datetime(2026, 8, 20, 10, 0, tzinfo=UTC),
+    )
+    reconciliation = make_reconciliation(
+        target_shares="7",
+        target_average_cost="130",
+        confirmed_at=datetime(2026, 8, 20, 12, 0, tzinfo=UTC),
+    )
+
+    state = rebuild_portfolio(
+        make_user("500"),
+        [transaction],
+        [],
+        [opening_position],
+        [reconciliation],
+    )
+
+    position = state.get_position("GOOG", PositionType.UNSPECIFIED)
+    assert position is not None
+    assert position.shares == Decimal("7.00000000")
+    assert position.average_cost == Decimal("130.00000000")
+    assert state.cash.available_cash == Decimal("489.90000000")
+    assert state.transaction_count == 1
+    assert state.reconciliation_count == 1
+
+
+def test_reconciliation_preserves_unmentioned_positions() -> None:
+    """校准只覆盖对应 Position Key，截图未出现的持仓必须保留。"""
+
+    opening_positions = [
+        make_opening_position(ticker="GOOG", shares="2"),
+        make_opening_position(ticker="MSFT", shares="3"),
+    ]
+    state = rebuild_portfolio(
+        make_user(),
+        [],
+        [],
+        opening_positions,
+        [make_reconciliation(ticker="GOOG", target_shares="5")],
+    )
+
+    goog = state.get_position("GOOG", PositionType.UNSPECIFIED)
+    msft = state.get_position("MSFT", PositionType.UNSPECIFIED)
+    assert goog is not None and goog.shares == Decimal("5.00000000")
+    assert msft is not None and msft.shares == Decimal("3.00000000")
+
+
+def test_reconciliation_preserves_confirmed_average_cost_without_round_trip_drift() -> None:
+    """校准均价不得经已量化 Cost Basis 反推后产生最小精度漂移。"""
+
+    state = rebuild_portfolio(
+        make_user(),
+        [],
+        [],
+        [],
+        [
+            make_reconciliation(
+                target_shares="0.3",
+                target_average_cost="100.12345678",
+            )
+        ],
+    )
+
+    position = state.get_position("GOOG", PositionType.UNSPECIFIED)
+    assert position is not None
+    assert position.shares == Decimal("0.30000000")
+    assert position.cost_basis == Decimal("30.03703703")
+    assert position.average_cost == Decimal("100.12345678")
+
+
+def test_reconciliation_is_applied_before_later_transaction() -> None:
+    """校准后的后续交易必须继续作用在目标状态上。"""
+
+    reconciliation = make_reconciliation(
+        target_shares="7",
+        target_average_cost="130",
+        confirmed_at=datetime(2026, 8, 20, 12, 0, tzinfo=UTC),
+    )
+    transaction = make_transaction(
+        sequence=1,
+        action=TransactionAction.SELL,
+        price="150",
+        shares="2",
+        position_type=PositionType.UNSPECIFIED,
+        occurred_at=datetime(2026, 8, 21, 12, 0, tzinfo=UTC),
+    )
+
+    state = rebuild_portfolio(make_user(), [transaction], [], [], [reconciliation])
+
+    position = state.get_position("GOOG", PositionType.UNSPECIFIED)
+    assert position is not None
+    assert position.shares == Decimal("5.00000000")
+    assert position.average_cost == Decimal("130.00000000")
+    assert state.cash.available_cash == Decimal("1299.65000000")
 
 
 def test_three_position_types_remain_independent_during_replay() -> None:

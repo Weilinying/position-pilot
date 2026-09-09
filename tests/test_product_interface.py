@@ -76,6 +76,59 @@ def test_serves_public_auth_setup_and_authenticated_app_shell() -> None:
     assert 'get("engineering_smoke")' in script
 
 
+def test_attachment_composer_and_reconciliation_contract() -> None:
+    """截图附件只在用户点击识别后上传，并支持复核后校准已有持仓。"""
+
+    page, script, stylesheet = _product_assets()
+
+    for prefix in ("setup", "opening", "reconciliation"):
+        for element_id in (
+            f"{prefix}-attachment-composer",
+            f"{prefix}-attachment-dropzone",
+            f"{prefix}-attachment-choose",
+            f"{prefix}-attachment-preview",
+            f"{prefix}-attachment-remove",
+            f"{prefix}-import-screenshot-submit",
+        ):
+            assert f'id="{element_id}"' in page
+    for element_id in (
+        "position-reconciliation",
+        "reconciliation-form",
+        "reconciliation-broker",
+        "reconciliation-revalidate",
+        "reconciliation-submit",
+        "reconciliation-record-count",
+        "reconciliation-records-empty",
+        "reconciliation-record-list",
+    ):
+        assert f'id="{element_id}"' in page
+
+    for marker in (
+        "data-attachment-composer",
+        "data-attachment-dropzone",
+        "stageAttachment",
+        "pastedImageFile",
+        "event.clipboardData",
+        "dragover",
+        "dataTransfer?.files",
+        "attachment: { kind: null",
+        "readFileAsDataUrl(file, task.controller.signal)",
+        "start_recognition",
+        "revalidateReconciliationAssets",
+        "requestJson(`/v1/assets/validate?${params.toString()}`",
+        'url: "/v1/portfolio/reconciliations"',
+        'source: "SCREENSHOT"',
+        "target_shares",
+        "target_average_cost",
+        "optionalPositionType",
+    ):
+        assert marker in script or marker in page
+
+    assert ".attachment-dropzone" in stylesheet
+    assert ".attachment-preview" in stylesheet
+    assert ".reconciliation-card" in stylesheet
+
+
 def test_client_script_preserves_session_identity_safe_text_and_question_boundary() -> None:
     """前端应使用 Session-derived identity、安全 DOM 和独立 question 请求。"""
 
@@ -141,7 +194,7 @@ def test_client_script_preserves_session_identity_safe_text_and_question_boundar
         assert script.count(f"{label}:") >= 2
 
     assert 'ERROR_LABELS[error.code] ?? "unexpected_server_error"' in script
-    assert "20260901-m9-import-1" in page
+    assert "20260909-m9-attachment-1" in page
 
     assert "innerHTML" not in script
     assert "outerHTML" not in script
@@ -158,6 +211,7 @@ def test_client_script_preserves_session_identity_safe_text_and_question_boundar
     )
     assert "/v1/portfolios/" not in script
     assert "/v1/portfolio/opening-positions" in script
+    assert "/v1/portfolio/reconciliations" in script
     assert "/v1/portfolio/transactions" in script
     assert "/v1/portfolio/cash-events" in script
 
@@ -222,7 +276,7 @@ def test_opening_import_review_contract_is_provider_neutral_and_explicit() -> No
     assert "Provider's fixed retention period is not publicly disclosed" in page
     assert "innerHTML" not in script
     assert "localStorage" not in script
-    assert 'row.dataset.assetSymbol !== normalizedTicker' in script
+    assert "row.dataset.assetSymbol !== normalizedTicker" in script
     assert "data-review-status" in stylesheet
     assert "draft-row-review" in stylesheet
 
@@ -287,6 +341,7 @@ def test_static_mount_and_v1_authenticated_route_contract() -> None:
         "/v1/auth/session",
         "/v1/portfolio",
         "/v1/portfolio/opening-positions",
+        "/v1/portfolio/reconciliations",
         "/v1/portfolio/transactions",
         "/v1/portfolio/cash-events",
         "/v1/investment/questions",

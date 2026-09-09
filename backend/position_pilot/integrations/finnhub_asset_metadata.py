@@ -1,9 +1,12 @@
 """Finnhub Asset Metadata API 的 Provider Adapter。"""
 
 import logging
+import ssl
 from collections.abc import Mapping
 from time import monotonic
 from urllib.parse import urlencode
+
+import httpx2
 
 from position_pilot.application.asset_metadata_service import AssetMetadataProvider
 from position_pilot.domain.asset_metadata import (
@@ -18,10 +21,10 @@ from position_pilot.domain.asset_metadata import (
 )
 from position_pilot.integrations.alpaca_market_data import (
     HttpTransportFailure,
+    HttpTransportFailureKind,
     HttpTransportUnavailable,
     JsonHttpResponse,
     JsonHttpTransport,
-    UrllibJsonHttpTransport,
 )
 
 FINNHUB_SOURCE = "FINNHUB"
@@ -31,8 +34,48 @@ _SUPPORTED_SEARCH_TYPES = frozenset({"common stock", "etf", "etp"})
 logger = logging.getLogger(__name__)
 
 
+class Httpx2JsonHttpTransport:
+    """使用项目已验证的 httpx2 执行同步 JSON GET 请求。
+
+    Transport 只返回 HTTP 状态和 JSON Payload；网络、TLS 与超时异常统一转换为
+    ``HttpTransportUnavailable``，由 Finnhub Adapter 映射为 Provider Failure。这样
+    Provider 不可用时不会被误判成 ticker 不存在。
+    """
+
+    def get_json(
+        self,
+        url: str,
+        *,
+        headers: Mapping[str, str],
+        timeout_seconds: float,
+    ) -> JsonHttpResponse:
+        try:
+            # 本地开发环境可能注入与 Finnhub TLS 不兼容的代理；该 Provider 使用已验证的直连。
+            with httpx2.Client(timeout=timeout_seconds, trust_env=False) as client:
+                response = client.get(url, headers=dict(headers))
+        except httpx2.TimeoutException as error:
+            raise HttpTransportUnavailable(HttpTransportFailureKind.TIMEOUT) from error
+        except httpx2.RequestError as error:
+            raise HttpTransportUnavailable(self._classify_request_failure(error)) from error
+
+        try:
+            payload = response.json()
+        except (UnicodeDecodeError, ValueError):
+            payload = None
+        return JsonHttpResponse(status_code=response.status_code, payload=payload)
+
+    @staticmethod
+    def _classify_request_failure(error: httpx2.RequestError) -> HttpTransportFailureKind:
+        """只保留对用户可操作的 Transport Failure 分类。"""
+
+        cause = error.__cause__
+        if isinstance(cause, ssl.SSLCertVerificationError):
+            return HttpTransportFailureKind.TLS_CERTIFICATE_ERROR
+        return HttpTransportFailureKind.NETWORK_ERROR
+
+
 class FinnhubAssetMetadataProvider(AssetMetadataProvider):
-    """将 Finnhub 搜索与 Profile 数据映射为最小 Provider-neutral Asset Contract。"""
+    """将 Finnhub Search 与候选 Profile 数据映射为最小 Asset Contract。"""
 
     def __init__(
         self,
@@ -45,7 +88,7 @@ class FinnhubAssetMetadataProvider(AssetMetadataProvider):
         self._api_key = api_key.strip() if api_key else None
         self._base_url = base_url.rstrip("/")
         self._timeout_seconds = timeout_seconds
-        self._transport = transport or UrllibJsonHttpTransport()
+        self._transport = transport or Httpx2JsonHttpTransport()
 
     def search(self, query: AssetSearchQuery) -> AssetSearchResult:
         """搜索美国普通股与 ETF，并将结果数量限制在 bounded query 内。"""
@@ -102,10 +145,17 @@ class FinnhubAssetMetadataProvider(AssetMetadataProvider):
                 "Finnhub 没有找到匹配 Asset",
             )
 
+        requested_symbol = query.query.upper()
+        ordered_results = sorted(
+            raw_results,
+            key=lambda item: (
+                not (isinstance(item, Mapping) and item.get("displaySymbol") == requested_symbol)
+            ),
+        )
         candidates: list[AssetIdentity] = []
         profile_attempts = 0
         try:
-            for raw_result in raw_results:
+            for raw_result in ordered_results:
                 if not isinstance(raw_result, Mapping):
                     return AssetSearchResult.failure(
                         AssetMetadataStatus.INVALID_PROVIDER_RESPONSE,
@@ -116,9 +166,9 @@ class FinnhubAssetMetadataProvider(AssetMetadataProvider):
                 if profile_attempts >= query.limit:
                     break
                 profile_attempts += 1
-                symbol = normalize_asset_symbol(
-                    self._required_text(raw_result, "displaySymbol")
-                )
+                symbol = normalize_asset_symbol(self._required_text(raw_result, "displaySymbol"))
+                if symbol == requested_symbol:
+                    return AssetSearchResult.success((self._search_identity(raw_result),))
                 profile_result = self._get_profile_identity(
                     symbol,
                     ticker_mismatch_status=AssetMetadataStatus.NO_MATCH,
@@ -150,7 +200,7 @@ class FinnhubAssetMetadataProvider(AssetMetadataProvider):
         return AssetSearchResult.success(tuple(candidates))
 
     def get_exact(self, query: AssetValidationQuery) -> AssetValidationResult:
-        """先确认 US search candidate，再用免费 Profile 2 获取 exact identity。"""
+        """使用 US-scoped Search 的精确 displaySymbol 确认 canonical identity。"""
 
         if not isinstance(query, AssetValidationQuery):
             return AssetValidationResult.failure(
@@ -233,9 +283,21 @@ class FinnhubAssetMetadataProvider(AssetMetadataProvider):
                 "Finnhub 没有找到对应 Asset",
             )
 
-        return self._get_profile_identity(
-            query.symbol,
-            ticker_mismatch_status=AssetMetadataStatus.INVALID_PROVIDER_RESPONSE,
+        try:
+            return AssetValidationResult.success(self._search_identity(exact_candidate))
+        except InvalidAssetMetadata as error:
+            return AssetValidationResult.failure(
+                AssetMetadataStatus.INVALID_PROVIDER_RESPONSE,
+                f"Finnhub exact search 字段格式无效: {error}",
+            )
+
+    def _search_identity(self, raw_result: Mapping[str, object]) -> AssetIdentity:
+        """从 US-scoped exact Search Result 生成最小 canonical identity。"""
+
+        return AssetIdentity(
+            canonical_symbol=self._required_text(raw_result, "displaySymbol"),
+            display_name=self._required_text(raw_result, "description"),
+            exchange=FINNHUB_EXCHANGE_SCOPE,
         )
 
     def _get_profile_identity(
@@ -345,7 +407,7 @@ class FinnhubAssetMetadataProvider(AssetMetadataProvider):
         if status_code in {401, 403}:
             return AssetMetadataStatus.AUTHENTICATION_FAILED, "Finnhub credential 无效或无权访问"
         if status_code == 404:
-            return AssetMetadataStatus.NO_MATCH, "Finnhub 没有找到对应 Asset"
+            return AssetMetadataStatus.PROVIDER_UNAVAILABLE, "Finnhub Asset endpoint 当前不可用"
         if status_code == 429:
             return AssetMetadataStatus.RATE_LIMITED, "Finnhub 请求达到限流"
         if status_code >= 500:

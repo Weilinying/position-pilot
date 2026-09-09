@@ -33,7 +33,9 @@ from position_pilot.application.portfolio_service import (
     CashAdjustmentResult,
     CreateUserCommand,
     InitializeOpeningPositionsCommand,
+    PositionReconciliationsResult,
     RecordCashEventCommand,
+    RecordPositionReconciliationsCommand,
     RecordTransactionCommand,
 )
 from position_pilot.application.recognition_service import (
@@ -62,6 +64,7 @@ from position_pilot.domain.portfolio import (
     OpeningPosition,
     PortfolioState,
     Position,
+    PositionReconciliation,
     PositionType,
     Transaction,
     User,
@@ -142,6 +145,7 @@ class BrowserSmokePortfolioService:
         self._transactions: dict[UUID, list[Transaction]] = {}
         self._cash_events: dict[UUID, list[CashEvent]] = {}
         self._opening_positions: dict[UUID, list[OpeningPosition]] = {}
+        self._reconciliations: dict[UUID, list[PositionReconciliation]] = {}
         self._lock = RLock()
 
     def create_user(self, command: CreateUserCommand) -> User:
@@ -156,6 +160,7 @@ class BrowserSmokePortfolioService:
             self._transactions[user.id] = []
             self._cash_events[user.id] = []
             self._opening_positions[user.id] = []
+            self._reconciliations[user.id] = []
             return user
 
     def add_auth_user(self, user: User) -> None:
@@ -166,6 +171,7 @@ class BrowserSmokePortfolioService:
             self._transactions[user.id] = []
             self._cash_events[user.id] = []
             self._opening_positions[user.id] = []
+            self._reconciliations[user.id] = []
 
     def add_auth_opening_positions(self, opening_positions: list[OpeningPosition]) -> None:
         """保存 Auth Portfolio Setup 已验证的 Opening Positions。"""
@@ -188,6 +194,7 @@ class BrowserSmokePortfolioService:
                 self._opening_positions[user.id]
                 or self._transactions[user.id]
                 or self._cash_events[user.id]
+                or self._reconciliations[user.id]
             ):
                 raise OpeningStateSealed()
             recorded_at = datetime.now(UTC)
@@ -202,7 +209,7 @@ class BrowserSmokePortfolioService:
                 )
                 for item in command.positions
             ]
-            rebuild_portfolio(user, [], [], positions)
+            rebuild_portfolio(user, [], [], positions, [])
             self._opening_positions[user.id] = positions
             return tuple(
                 sorted(positions, key=lambda item: (item.ticker, item.position_type.value))
@@ -231,7 +238,13 @@ class BrowserSmokePortfolioService:
                 reason=command.reason,
             )
             ordered = resequence_transactions([*transactions, transaction])
-            rebuild_portfolio(user, ordered, cash_events, self._opening_positions[user.id])
+            rebuild_portfolio(
+                user,
+                ordered,
+                cash_events,
+                self._opening_positions[user.id],
+                self._reconciliations[user.id],
+            )
             self._transactions[user.id] = ordered
             return next(candidate for candidate in ordered if candidate.id == transaction.id)
 
@@ -260,6 +273,7 @@ class BrowserSmokePortfolioService:
                 transactions,
                 ordered,
                 self._opening_positions[user.id],
+                self._reconciliations[user.id],
             )
             self._cash_events[user.id] = ordered
             persisted = next(candidate for candidate in ordered if candidate.id == cash_event.id)
@@ -274,6 +288,7 @@ class BrowserSmokePortfolioService:
                     self._transactions[user_id],
                     self._cash_events[user_id],
                     self._opening_positions[user_id],
+                    self._reconciliations[user_id],
                 )
         if user_id == EMPTY_USER:
             return PortfolioState(
@@ -331,6 +346,52 @@ class BrowserSmokePortfolioService:
         with self._lock:
             if user_id in self._users:
                 return tuple(self._transactions[user_id])
+        if user_id in {USER_A, USER_B, SLOW_USER, EMPTY_USER}:
+            return ()
+        raise UserNotFound(user_id)
+
+    def record_position_reconciliations(
+        self,
+        command: RecordPositionReconciliationsCommand,
+    ) -> PositionReconciliationsResult:
+        """追加 Engineering Smoke 使用的不可变持仓校准事实。"""
+
+        with self._lock:
+            user = self._require_mutable_user(command.user_id)
+            confirmed_at = datetime.now(UTC)
+            reconciliations = tuple(
+                PositionReconciliation.create(
+                    user_id=user.id,
+                    ticker=item.ticker,
+                    target_shares=item.target_shares,
+                    target_average_cost=item.target_average_cost,
+                    position_type=item.position_type,
+                    source=command.source,
+                    confirmed_at=confirmed_at,
+                    broker=command.broker,
+                    source_info=command.source_info,
+                )
+                for item in command.positions
+            )
+            self._reconciliations[user.id].extend(reconciliations)
+            portfolio = rebuild_portfolio(
+                user,
+                self._transactions[user.id],
+                self._cash_events[user.id],
+                self._opening_positions[user.id],
+                self._reconciliations[user.id],
+            )
+            return PositionReconciliationsResult(reconciliations, portfolio)
+
+    def list_position_reconciliations(
+        self,
+        user_id: UUID,
+    ) -> tuple[PositionReconciliation, ...]:
+        """返回 Engineering Smoke 的完整持仓校准事实。"""
+
+        with self._lock:
+            if user_id in self._users:
+                return tuple(self._reconciliations[user_id])
         if user_id in {USER_A, USER_B, SLOW_USER, EMPTY_USER}:
             return ()
         raise UserNotFound(user_id)

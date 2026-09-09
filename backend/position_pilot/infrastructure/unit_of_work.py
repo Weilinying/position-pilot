@@ -14,6 +14,7 @@ from position_pilot.domain.portfolio import (
     CashEvent,
     CashEventType,
     OpeningPosition,
+    PositionReconciliation,
     PositionType,
     Transaction,
     TransactionAction,
@@ -24,6 +25,7 @@ from position_pilot.infrastructure.models import (
     AuthSessionModel,
     CashEventModel,
     OpeningPositionModel,
+    PositionReconciliationModel,
     TransactionModel,
     UserModel,
 )
@@ -110,6 +112,23 @@ def _to_cash_event(model: CashEventModel) -> CashEvent:
         amount=model.amount,
         occurred_at=model.occurred_at,
         reason=model.reason,
+    )
+
+
+def _to_position_reconciliation(model: PositionReconciliationModel) -> PositionReconciliation:
+    """将 ORM 持仓校准转换为经过领域校验的不可变事实。"""
+
+    return PositionReconciliation(
+        id=model.id,
+        user_id=model.user_id,
+        ticker=model.ticker,
+        target_shares=model.target_shares,
+        target_average_cost=model.target_average_cost,
+        position_type=PositionType(model.position_type),
+        source=model.source,
+        confirmed_at=model.confirmed_at,
+        broker=model.broker,
+        source_info=model.source_info,
     )
 
 
@@ -277,6 +296,37 @@ class SqlAlchemyPortfolioUnitOfWork:
                 )
                 for position in opening_positions
             ]
+        )
+
+    def list_position_reconciliations(self, user_id: UUID) -> list[PositionReconciliation]:
+        """按确认时间读取完整的不可变持仓校准事实。"""
+
+        statement = (
+            select(PositionReconciliationModel)
+            .where(PositionReconciliationModel.user_id == user_id)
+            .order_by(
+                PositionReconciliationModel.confirmed_at,
+                PositionReconciliationModel.id,
+            )
+        )
+        return [_to_position_reconciliation(model) for model in self.session.scalars(statement)]
+
+    def add_position_reconciliation(self, reconciliation: PositionReconciliation) -> None:
+        """追加领域层已校验的不可变持仓校准事实。"""
+
+        self.session.add(
+            PositionReconciliationModel(
+                id=reconciliation.id,
+                user_id=reconciliation.user_id,
+                ticker=reconciliation.ticker,
+                target_shares=reconciliation.target_shares,
+                target_average_cost=reconciliation.target_average_cost,
+                position_type=reconciliation.position_type.value,
+                source=reconciliation.source,
+                confirmed_at=reconciliation.confirmed_at,
+                broker=reconciliation.broker,
+                source_info=reconciliation.source_info,
+            )
         )
 
     def list_transactions(self, user_id: UUID) -> list[Transaction]:

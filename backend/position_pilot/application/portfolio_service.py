@@ -16,6 +16,7 @@ from position_pilot.domain.portfolio import (
     CashEventType,
     OpeningPosition,
     PortfolioState,
+    PositionReconciliation,
     PositionType,
     Transaction,
     TransactionAction,
@@ -46,6 +47,10 @@ class PortfolioUnitOfWork(Protocol):
     def list_opening_positions(self, user_id: UUID) -> list[OpeningPosition]: ...
 
     def add_opening_positions(self, opening_positions: list[OpeningPosition]) -> None: ...
+
+    def list_position_reconciliations(self, user_id: UUID) -> list[PositionReconciliation]: ...
+
+    def add_position_reconciliation(self, reconciliation: PositionReconciliation) -> None: ...
 
     def list_transactions(self, user_id: UUID) -> list[Transaction]: ...
 
@@ -117,10 +122,39 @@ class InitializeOpeningPositionsCommand:
 
 
 @dataclass(frozen=True, slots=True)
+class PositionReconciliationInput:
+    """一次 Screenshot Reconciliation 中的单行目标持仓。"""
+
+    ticker: str
+    target_shares: Decimal
+    target_average_cost: Decimal
+    position_type: PositionType | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class RecordPositionReconciliationsCommand:
+    """原子追加同一份已确认截图中的全部持仓校准事实。"""
+
+    user_id: UUID
+    positions: tuple[PositionReconciliationInput, ...]
+    source: str
+    broker: str | None = None
+    source_info: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class CashAdjustmentResult:
     """同一事务内产生的 Cash Event 与重建后 Portfolio。"""
 
     cash_event: CashEvent
+    portfolio: PortfolioState
+
+
+@dataclass(frozen=True, slots=True)
+class PositionReconciliationsResult:
+    """同一事务内追加的全部校准事件与重建后 Portfolio。"""
+
+    reconciliations: tuple[PositionReconciliation, ...]
     portfolio: PortfolioState
 
 
@@ -164,8 +198,15 @@ class PortfolioService:
             transactions = unit_of_work.list_transactions(user.id)
             cash_events = unit_of_work.list_cash_events(user.id)
             opening_positions = unit_of_work.list_opening_positions(user.id)
+            reconciliations = unit_of_work.list_position_reconciliations(user.id)
             # 重新派生顺序前先验证已持久化 Ledger，避免意外掩盖 sequence 损坏。
-            rebuild_portfolio(user, transactions, cash_events, opening_positions)
+            rebuild_portfolio(
+                user,
+                transactions,
+                cash_events,
+                opening_positions,
+                reconciliations,
+            )
             transaction = Transaction.create(
                 user_id=user.id,
                 sequence=len(transactions) + 1,
@@ -180,7 +221,13 @@ class PortfolioService:
 
             # sequence 是经济顺序的只读投影；历史补录会移动其后的派生序号。
             ordered_transactions = resequence_transactions([*transactions, transaction])
-            rebuild_portfolio(user, ordered_transactions, cash_events, opening_positions)
+            rebuild_portfolio(
+                user,
+                ordered_transactions,
+                cash_events,
+                opening_positions,
+                reconciliations,
+            )
             persisted_transaction = next(
                 candidate for candidate in ordered_transactions if candidate.id == transaction.id
             )
@@ -213,7 +260,14 @@ class PortfolioService:
             transactions = unit_of_work.list_transactions(user.id)
             cash_events = unit_of_work.list_cash_events(user.id)
             opening_positions = unit_of_work.list_opening_positions(user.id)
-            rebuild_portfolio(user, transactions, cash_events, opening_positions)
+            reconciliations = unit_of_work.list_position_reconciliations(user.id)
+            rebuild_portfolio(
+                user,
+                transactions,
+                cash_events,
+                opening_positions,
+                reconciliations,
+            )
             cash_event = CashEvent.create(
                 user_id=user.id,
                 sequence=len(cash_events) + 1,
@@ -228,6 +282,7 @@ class PortfolioService:
                 transactions,
                 ordered_cash_events,
                 opening_positions,
+                reconciliations,
             )
             persisted_cash_event = next(
                 candidate for candidate in ordered_cash_events if candidate.id == cash_event.id
@@ -248,6 +303,73 @@ class PortfolioService:
                 portfolio=portfolio,
             )
 
+    def record_position_reconciliations(
+        self,
+        command: RecordPositionReconciliationsCommand,
+        *,
+        confirmed_at: datetime | None = None,
+    ) -> PositionReconciliationsResult:
+        """锁定 User，并原子追加一份截图中已确认的全部持仓校准事实。"""
+
+        if not 1 <= len(command.positions) <= 100:
+            raise InvalidPortfolioValue("positions 数量必须在 1 到 100 之间")
+
+        with self._unit_of_work_factory() as unit_of_work:
+            user = unit_of_work.get_user(command.user_id, for_update=True)
+            if user is None:
+                raise UserNotFound(command.user_id)
+
+            current_time = normalize_timestamp(self._clock())
+            normalized_confirmed_at = normalize_timestamp(confirmed_at or current_time)
+            if normalized_confirmed_at > current_time:
+                raise FutureTimestamp("Position Reconciliation confirmed_at 不得晚于当前时间")
+
+            transactions = unit_of_work.list_transactions(user.id)
+            cash_events = unit_of_work.list_cash_events(user.id)
+            opening_positions = unit_of_work.list_opening_positions(user.id)
+            reconciliations = unit_of_work.list_position_reconciliations(user.id)
+            rebuild_portfolio(
+                user,
+                transactions,
+                cash_events,
+                opening_positions,
+                reconciliations,
+            )
+            new_reconciliations = [
+                PositionReconciliation.create(
+                    user_id=user.id,
+                    ticker=item.ticker,
+                    target_shares=item.target_shares,
+                    target_average_cost=item.target_average_cost,
+                    position_type=item.position_type,
+                    source=command.source,
+                    confirmed_at=normalized_confirmed_at,
+                    broker=command.broker,
+                    source_info=command.source_info,
+                )
+                for item in command.positions
+            ]
+            keys = {
+                (reconciliation.ticker, reconciliation.position_type)
+                for reconciliation in new_reconciliations
+            }
+            if len(keys) != len(new_reconciliations):
+                raise InvalidPortfolioValue("positions 不能包含重复的 ticker 与 position_type")
+            portfolio = rebuild_portfolio(
+                user,
+                transactions,
+                cash_events,
+                opening_positions,
+                [*reconciliations, *new_reconciliations],
+            )
+            for reconciliation in new_reconciliations:
+                unit_of_work.add_position_reconciliation(reconciliation)
+            unit_of_work.commit()
+            return PositionReconciliationsResult(
+                reconciliations=tuple(new_reconciliations),
+                portfolio=portfolio,
+            )
+
     def get_portfolio(self, user_id: UUID) -> PortfolioState:
         """从持久化 Ledger 恢复当前 Portfolio State。"""
 
@@ -258,7 +380,14 @@ class PortfolioService:
             transactions = unit_of_work.list_transactions(user.id)
             cash_events = unit_of_work.list_cash_events(user.id)
             opening_positions = unit_of_work.list_opening_positions(user.id)
-            return rebuild_portfolio(user, transactions, cash_events, opening_positions)
+            reconciliations = unit_of_work.list_position_reconciliations(user.id)
+            return rebuild_portfolio(
+                user,
+                transactions,
+                cash_events,
+                opening_positions,
+                reconciliations,
+            )
 
     def get_investment_context(self, user_id: UUID) -> InvestmentPortfolioContext:
         """用同一批 Ledger Facts 构造 Agent 所需 Portfolio Context。"""
@@ -270,7 +399,14 @@ class PortfolioService:
             transactions = unit_of_work.list_transactions(user.id)
             cash_events = unit_of_work.list_cash_events(user.id)
             opening_positions = unit_of_work.list_opening_positions(user.id)
-            portfolio = rebuild_portfolio(user, transactions, cash_events, opening_positions)
+            reconciliations = unit_of_work.list_position_reconciliations(user.id)
+            portfolio = rebuild_portfolio(
+                user,
+                transactions,
+                cash_events,
+                opening_positions,
+                reconciliations,
+            )
             return InvestmentPortfolioContext.from_ledger(portfolio, tuple(transactions))
 
     def initialize_opening_positions(
@@ -290,7 +426,8 @@ class PortfolioService:
             existing_opening_positions = unit_of_work.list_opening_positions(user.id)
             transactions = unit_of_work.list_transactions(user.id)
             cash_events = unit_of_work.list_cash_events(user.id)
-            if existing_opening_positions or transactions or cash_events:
+            reconciliations = unit_of_work.list_position_reconciliations(user.id)
+            if existing_opening_positions or transactions or cash_events or reconciliations:
                 raise OpeningStateSealed()
 
             recorded_at = normalize_timestamp(self._clock())
@@ -309,7 +446,7 @@ class PortfolioService:
             if len(keys) != len(opening_positions):
                 raise InvalidPortfolioValue("positions 不能包含重复的 ticker 与 position_type")
 
-            rebuild_portfolio(user, [], [], opening_positions)
+            rebuild_portfolio(user, [], [], opening_positions, [])
             ordered = sorted(
                 opening_positions,
                 key=lambda position: (position.ticker, position.position_type.value),
@@ -344,3 +481,15 @@ class PortfolioService:
             if user is None:
                 raise UserNotFound(user_id)
             return tuple(unit_of_work.list_cash_events(user.id))
+
+    def list_position_reconciliations(
+        self,
+        user_id: UUID,
+    ) -> tuple[PositionReconciliation, ...]:
+        """按确认时间返回完整的不可变持仓校准事实。"""
+
+        with self._unit_of_work_factory() as unit_of_work:
+            user = unit_of_work.get_user(user_id)
+            if user is None:
+                raise UserNotFound(user_id)
+            return tuple(unit_of_work.list_position_reconciliations(user.id))

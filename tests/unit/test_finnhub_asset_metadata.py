@@ -2,7 +2,10 @@
 
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from types import TracebackType
+from typing import Self
 
+import httpx2
 import pytest
 
 from position_pilot.domain.asset_metadata import (
@@ -17,6 +20,7 @@ from position_pilot.integrations.alpaca_market_data import (
 )
 from position_pilot.integrations.finnhub_asset_metadata import (
     FinnhubAssetMetadataProvider,
+    Httpx2JsonHttpTransport,
 )
 
 
@@ -63,6 +67,41 @@ class UnavailableTransport:
         raise HttpTransportUnavailable(self.kind)
 
 
+@dataclass(slots=True)
+class FakeHttpxResponse:
+    """提供 httpx2 Transport 单元测试所需的最小 Response。"""
+
+    status_code: int
+    payload: object
+
+    def json(self) -> object:
+        return self.payload
+
+
+class FakeHttpxClient:
+    """模拟 httpx2 Client，避免 Transport 单元测试访问网络。"""
+
+    def __init__(self, response: FakeHttpxResponse | BaseException) -> None:
+        self._response = response
+
+    def __enter__(self) -> Self:
+        return self
+
+    def __exit__(
+        self,
+        exception_type: type[BaseException] | None,
+        exception: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
+        return None
+
+    def get(self, url: str, *, headers: Mapping[str, str]) -> FakeHttpxResponse:
+        del url, headers
+        if isinstance(self._response, BaseException):
+            raise self._response
+        return self._response
+
+
 def make_provider(
     transport: FakeJsonTransport | UnavailableTransport,
     *,
@@ -76,6 +115,51 @@ def make_provider(
         timeout_seconds=3,
         transport=transport,
     )
+
+
+def test_provider_uses_httpx2_transport_by_default() -> None:
+    """Finnhub 默认必须使用可用的 httpx2 Transport，而不是 urllib。"""
+
+    provider = FinnhubAssetMetadataProvider(api_key="test-key")
+
+    assert isinstance(provider._transport, Httpx2JsonHttpTransport)
+
+
+def test_httpx2_transport_maps_response_and_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """httpx2 Transport 应保留 HTTP response，并把 timeout 映射为 Transport Failure。"""
+
+    response = FakeHttpxResponse(200, {"result": []})
+    client = FakeHttpxClient(response)
+    client_options: list[dict[str, object]] = []
+
+    def make_client(**kwargs: object) -> FakeHttpxClient:
+        client_options.append(kwargs)
+        return client
+
+    monkeypatch.setattr(httpx2, "Client", make_client)
+
+    transport = Httpx2JsonHttpTransport()
+    result = transport.get_json(
+        "https://api.example.test/search",
+        headers={"Accept": "application/json"},
+        timeout_seconds=3,
+    )
+
+    assert result == JsonHttpResponse(200, {"result": []})
+    assert client_options == [{"timeout": 3, "trust_env": False}]
+
+    timeout_client = FakeHttpxClient(httpx2.ReadTimeout("timeout"))
+    monkeypatch.setattr(httpx2, "Client", lambda **kwargs: timeout_client)
+
+    with pytest.raises(HttpTransportUnavailable) as error:
+        transport.get_json(
+            "https://api.example.test/search",
+            headers={},
+            timeout_seconds=3,
+        )
+    assert error.value.kind is HttpTransportFailureKind.TIMEOUT
 
 
 def search_candidate(
@@ -181,6 +265,30 @@ def test_search_empty_results_is_no_match() -> None:
     assert result.candidates == ()
 
 
+def test_search_returns_exact_symbol_without_profiling_later_candidates() -> None:
+    """精确 symbol 命中应优先返回，避免为无关候选增加 Provider Failure 面。"""
+
+    transport = FakeJsonTransport(
+        [
+            JsonHttpResponse(
+                200,
+                {
+                    "result": [
+                        search_candidate("AAOI", description="Applied Optoelectronics"),
+                        search_candidate("AAOX", description="Defiance Daily Target 2X"),
+                    ]
+                },
+            ),
+        ]
+    )
+
+    result = make_provider(transport).search(AssetSearchQuery("AAOX", limit=5))
+
+    assert result.status is AssetMetadataStatus.OK
+    assert [candidate.canonical_symbol for candidate in result.candidates] == ["AAOX"]
+    assert len(transport.requests) == 1
+
+
 def test_search_null_result_is_invalid_provider_response() -> None:
     """Finnhub 契约中的 result 应为数组，null 不能伪装成正常空结果。"""
 
@@ -216,13 +324,12 @@ def test_search_skips_candidate_when_profile_resolves_to_different_ticker() -> N
     assert [candidate.canonical_symbol for candidate in result.candidates] == ["GOOG"]
 
 
-def test_exact_validation_uses_exact_search_then_profile2() -> None:
-    """exact validation 必须先命中 displaySymbol，再以 profile ticker 严格确认。"""
+def test_exact_validation_uses_exact_us_search_candidate() -> None:
+    """exact validation 以 US-scoped Search 的精确 displaySymbol 建立 canonical identity。"""
 
     transport = FakeJsonTransport(
         [
             JsonHttpResponse(200, {"result": [search_candidate("GOOG")]}),
-            JsonHttpResponse(200, profile_payload()),
         ]
     )
 
@@ -232,10 +339,9 @@ def test_exact_validation_uses_exact_search_then_profile2() -> None:
     assert result.asset is not None
     assert result.asset.canonical_symbol == "GOOG"
     assert result.asset.display_name == "Alphabet Inc."
-    assert result.asset.exchange == "NASDAQ NMS - GLOBAL MARKET"
-    assert len(transport.requests) == 2
+    assert result.asset.exchange == "US"
+    assert len(transport.requests) == 1
     assert "/search?q=GOOG&exchange=US" in transport.requests[0].url
-    assert "/stock/profile2?symbol=GOOG" in transport.requests[1].url
     assert all("test-key" not in request.url for request in transport.requests)
 
 
@@ -259,61 +365,49 @@ def test_exact_validation_accepts_etp_search_candidate() -> None:
     assert result.asset.canonical_symbol == "BITO"
 
 
-def test_exact_empty_search_or_profile_is_no_match() -> None:
-    """空 search 与空 profile 都是明确的 NO_MATCH。"""
+def test_exact_empty_search_is_no_match() -> None:
+    """Provider 正常返回空 search 才能明确判为 NO_MATCH。"""
 
     no_search_match = make_provider(
         FakeJsonTransport([JsonHttpResponse(200, {"result": []})])
     ).get_exact(AssetValidationQuery("GOOG"))
-    no_profile_match = make_provider(
-        FakeJsonTransport(
-            [
-                JsonHttpResponse(200, {"result": [search_candidate("GOOG")]}),
-                JsonHttpResponse(200, {}),
-            ]
-        )
-    ).get_exact(AssetValidationQuery("GOOG"))
-
     assert no_search_match.status is AssetMetadataStatus.NO_MATCH
-    assert no_profile_match.status is AssetMetadataStatus.NO_MATCH
 
 
 def test_exact_null_search_result_is_invalid_provider_response() -> None:
     """Exact Lookup 的 null search result 也是 Provider 契约异常。"""
 
-    result = make_provider(
-        FakeJsonTransport([JsonHttpResponse(200, {"result": None})])
-    ).get_exact(AssetValidationQuery("GOOG"))
+    result = make_provider(FakeJsonTransport([JsonHttpResponse(200, {"result": None})])).get_exact(
+        AssetValidationQuery("GOOG")
+    )
 
     assert result.status is AssetMetadataStatus.INVALID_PROVIDER_RESPONSE
 
 
-def test_exact_requires_provider_ticker_to_match_requested_symbol() -> None:
-    """Profile ticker 不精确一致时不能返回未经确认的 identity。"""
+def test_exact_requires_search_symbol_to_match_requested_symbol() -> None:
+    """Search 没有精确 displaySymbol 时不能返回近似候选。"""
 
     result = make_provider(
         FakeJsonTransport(
             [
-                JsonHttpResponse(200, {"result": [search_candidate("GOOG")]}),
-                JsonHttpResponse(200, profile_payload("GOOGL")),
+                JsonHttpResponse(200, {"result": [search_candidate("GOOGL")]}),
             ]
         )
     ).get_exact(AssetValidationQuery("GOOG"))
 
-    assert result.status is AssetMetadataStatus.INVALID_PROVIDER_RESPONSE
+    assert result.status is AssetMetadataStatus.NO_MATCH
 
 
-@pytest.mark.parametrize("missing_field", ["ticker", "name", "exchange"])
-def test_exact_rejects_malformed_profile(missing_field: str) -> None:
-    """非空 profile 缺少必需字段时返回 malformed，而非 NO_MATCH。"""
+@pytest.mark.parametrize("missing_field", ["displaySymbol", "description"])
+def test_exact_rejects_malformed_search_identity(missing_field: str) -> None:
+    """精确 Search Candidate 缺少身份字段时返回 malformed，而非 INVALID。"""
 
-    payload = profile_payload()
+    payload = search_candidate("GOOG")
     payload.pop(missing_field)
     result = make_provider(
         FakeJsonTransport(
             [
-                JsonHttpResponse(200, {"result": [search_candidate("GOOG")]}),
-                JsonHttpResponse(200, payload),
+                JsonHttpResponse(200, {"result": [payload]}),
             ]
         )
     ).get_exact(AssetValidationQuery("GOOG"))
@@ -327,7 +421,7 @@ def test_exact_rejects_malformed_profile(missing_field: str) -> None:
         (400, AssetMetadataStatus.INVALID_REQUEST),
         (401, AssetMetadataStatus.AUTHENTICATION_FAILED),
         (403, AssetMetadataStatus.AUTHENTICATION_FAILED),
-        (404, AssetMetadataStatus.NO_MATCH),
+        (404, AssetMetadataStatus.PROVIDER_UNAVAILABLE),
         (429, AssetMetadataStatus.RATE_LIMITED),
         (500, AssetMetadataStatus.PROVIDER_UNAVAILABLE),
         (503, AssetMetadataStatus.PROVIDER_UNAVAILABLE),
