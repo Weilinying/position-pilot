@@ -44,9 +44,10 @@ Provider 请求和 Domain 语义。
 ## 决策
 
 - Asset Metadata Provider 使用 Finnhub。
-- 通过 Finnhub `/search?q=...&exchange=US` 取得 bounded Selector Candidate，再对返回候选调用
-  免费版 `/stock/profile2?symbol=...` 补齐真实 listed exchange；exact validation 同样先做精确
-  symbol 匹配，再由 Profile 2 确认最小元数据。Provider-specific Payload 只存在于 Adapter。
+- 通过 Finnhub `/search?q=...&exchange=US` 取得 bounded Selector Candidate。US-scoped Search
+  已精确命中 `displaySymbol` 时直接确认 canonical identity，并以 `US` 表示 Provider 的市场范围；
+  非精确候选才调用免费版 `/stock/profile2?symbol=...` 补齐真实 listed exchange。
+  Provider-specific Payload 只存在于 Adapter。
 - Provider-neutral Asset Identity 只包含 `canonical_symbol`、`display_name` 与 `exchange`；
   删除 `ACTIVE / INACTIVE` status，不把 Provider 是否返回记录解释为 Domain 的存续状态。
 - Validation Result 的 `OK`、`NO_MATCH`、`PROVIDER_UNAVAILABLE`、`RATE_LIMITED` 等请求结果
@@ -67,9 +68,10 @@ Provider 请求和 Domain 语义。
 
 ## 理由
 
-- Finnhub 的 `/search` 与免费 `/stock/profile2` 覆盖 M9 Selector 和 exact validation 所需的
-  最小调用；即使 Search Candidate 需要 bounded Profile enrichment，仍比 Massive 的 5 calls/min
-  免费额度更适合交互式搜索与多持仓导入，实际额度由 Online Smoke 验证。
+- Finnhub 的 `/search` 与免费 `/stock/profile2` 覆盖 M9 Selector 所需的最小调用；精确 symbol
+  由 US-scoped `/search` 的 exact `displaySymbol` 确认，非精确 Search Candidate 才进行 bounded
+  Profile enrichment。该组合仍比 Massive 的 5 calls/min 免费额度更适合交互式搜索与多持仓
+  导入，实际额度由 Online Smoke 验证。
 - 删除 Asset Identity status 使 Boundary 只表达当前 UI 和写入校验真正需要的元数据；`OK` 等
   Validation Result 仍能明确表达请求结果，不制造“当前可交易 / 未退市”的错误事实。
 - Qwen3-VL 可复用现有 Model Studio 运维条件，减少个人项目的 Provider 和 Credential 数量。
@@ -81,10 +83,10 @@ Provider 请求和 Domain 语义。
 
 ## Trade-off
 
-- Finnhub 的 Symbol Lookup 不返回真实 listed exchange，Adapter 必须对 bounded Candidate 调用
-  Company Profile 2 enrichment，并为 exact validation 做精确 symbol 匹配、US 过滤、最小字段
-  映射和空结果 / 429 / Provider Failure 映射。具体可用额度以 Finnhub 账户方案为准，不能把额度
-  假设写入 Domain。
+- Finnhub 的 Symbol Lookup 不返回真实 listed exchange；非精确 Search Candidate 通过 Company
+  Profile 2 enrichment 获取 venue，US-scoped exact symbol validation 只返回 `US` scope。Adapter
+  仍负责精确 symbol 匹配、类型过滤、最小字段映射和空结果 / 429 / Provider Failure 映射。具体
+  可用额度以 Finnhub 账户方案为准，不能把额度假设写入 Domain。
 - 不再提供 `ACTIVE / INACTIVE` 语义，意味着 M9 exact validation 只证明 Provider 能规范化并
   返回所需身份元数据，不证明交易可用性或当前存续状态。若未来 UI 需要 tradable / lifecycle
   语义，必须重新定义字段和 Review 边界。

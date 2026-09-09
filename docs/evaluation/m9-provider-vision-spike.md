@@ -14,8 +14,8 @@
 
 | 最小问题 | 结论 |
 |---|---|
-| 能否按 symbol / company name 搜索 | 可以。`GET /search?q=...&exchange=US` 支持按 symbol 或 security name 查询，并返回 `symbol`、`displaySymbol`、`description` 等候选字段；Adapter 对 bounded Candidate 调用 Profile 2 补齐真实 listed exchange。 |
-| 能否 exact validate | 可以。Adapter 对 `/search` 结果执行精确 symbol 匹配，并使用免费版 `GET /stock/profile2?symbol=...` 获取或确认 `ticker`、`name`、`exchange`；空结果或无精确匹配返回 `NO_MATCH`。 |
+| 能否按 symbol / company name 搜索 | 可以。`GET /search?q=...&exchange=US` 支持按 symbol 或 security name 查询，并返回 `symbol`、`displaySymbol`、`description` 等候选字段；非精确 Candidate 可用 Profile 2 补齐真实 listed exchange。 |
+| 能否 exact validate | 可以。Adapter 对 US-scoped `/search` 结果执行精确 `displaySymbol` 匹配；命中即返回 canonical symbol、description 与 `US` scope，正常空结果或无精确匹配返回 `NO_MATCH`。 |
 | 美股 + ETF 是否够用 | 以 M9 固定 Fixture 验证为准；Provider 选择要求覆盖 `AAPL`、`GOOG`、`SPY`、`QQQ`、`VOO`、`IBIT`，并正确拒绝无效 symbol。 |
 | 稳定性与成本是否可接受 | 相比原选型 Massive 免费版 5 calls/min，Finnhub 的两个最小 Endpoint 更适合交互式搜索与多持仓 exact validation。具体配额以账户方案为准；429 必须映射为 `RATE_LIMITED`，不能伪装成 `NO_MATCH`。 |
 
@@ -36,7 +36,7 @@ Review 删除 `ACTIVE / INACTIVE`，因为 M9 当前只需要规范化和验证�
 2026-09-01 Human Review 曾选择 Massive，理由是其搜索与单 ticker overview 能覆盖低频 Selector。
 2026-09-02 重新按真实请求路径评估后改选 Finnhub：交互式 Selector 可能连续查询，多持仓 Import
 还需要在短时间内逐个 exact validation，Massive 免费 5 calls/min 过于紧张。Finnhub 的
-`/search` 与免费 `/stock/profile2` 足以满足当前最小 Boundary；不为已退市股票的低频场景增加
+`/search` 与非精确候选所需的免费 `/stock/profile2` 足以满足当前最小 Boundary；不为已退市股票的低频场景增加
 `ACTIVE / INACTIVE` Domain 字段。
 
 ## 3. Vision / OCR Capability
@@ -80,7 +80,7 @@ Credential。Human Review 继续选择优先复用当前 Model Studio，并接�
 
 2026-09-02 Human Review 批准以下组合，M9 进入实现：
 
-1. Asset Metadata：Finnhub，使用 `/search` 与免费 `/stock/profile2`；
+1. Asset Metadata：Finnhub，exact validation 使用 US-scoped `/search`，非精确候选 enrichment 使用免费 `/stock/profile2`；
 2. Asset Identity：只包含 `canonical_symbol`、`display_name`、`exchange`，删除 `ACTIVE / INACTIVE`；
 3. Validation Result：保留 `OK`、`NO_MATCH`、`PROVIDER_UNAVAILABLE`、`RATE_LIMITED` 等明确请求结果；
 4. Vision：Alibaba Model Studio `qwen3-vl-flash`；

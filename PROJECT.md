@@ -56,6 +56,8 @@ V1 优先实现 Structured Memory。总可投资资金、剩余现金、Portfoli
 
 系统开始跟踪前已经存在的持仓使用独立、不可变的 Opening State 表达，只记录 ticker、shares、average cost、可选 Position Type 与后端记录时间。Opening Position 不是经济 Ledger Event，不伪造成 BUY、不扣减现金、没有交易 sequence 或手续费；当前 State 由 Opening State 与 Cash / Transaction Ledger 共同确定性重建。
 
+已有 Portfolio 的截图校准使用独立、不可变的 Position Reconciliation 事件，保存对应 `(ticker, position_type)` 的 `target_shares`、`target_average_cost`、确认时间、来源及可选 broker / source info。Replay 在确认时间将该仓位直接校准到目标状态，之后的 Transaction 继续生效；它不生成 BUY / SELL、不改变 Cash，也不删除截图中未出现的持仓或修改任何历史事实。
+
 从 M9 开始，Opening State 中的 Asset Identity 以 Asset Metadata Provider 验证后的 canonical symbol 表示；现有 `ticker` 字段承载该 canonical symbol，而不是未经验证的用户输入或公司名称。每一条可提交的 Opening Position Draft 都必须绑定 Provider 验证后的 Asset Identity：自由输入必须由用户从真实候选中明确选择；Recognition `suggested_symbol` 经后端 exact validation 成功后可以自动绑定，验证失败或存在歧义时才要求用户选择。修改已绑定的 ticker 后必须重新选择或重新验证。V1 不建立、复制或持续同步完整的本地 Asset Master；M9 只通过 Provider-neutral Asset Metadata Boundary 规范化前端 Asset Selector 与写入校验所需的 canonical symbol、display name 和 exchange，Provider-specific Payload 不进入 Portfolio Domain。Provider exact validation 成功只表示当前能够识别并规范化该 symbol，不把 Provider 未明确提供的 active / inactive 状态推断为 Portfolio Domain Truth。只有当前界面出现真实需求时才增加其他 Metadata 字段，不建设通用证券主数据模型。
 
 V1 的 Email / Password 账户只为本地产品闭环提供稳定身份与 Portfolio Ownership。Account 与现有单一 `User → Portfolio State` 之间保持一对一关系；Browser 不再把 UUID 当作正常用户身份或恢复方式。密码明文不得持久化，认证后由 HttpOnly Session Cookie 识别当前 Account，Portfolio 与 Investment API 的 User Identity 必须由 Session 在 Server 端确定。
@@ -159,7 +161,7 @@ V1 也暂不实现自动投资复盘、行为偏差分析、复杂 Semantic Memo
 
 V1.x 保持本地、受控环境与单 Account / 单 Portfolio Context。V1 只实现基础 Email / Password 注册、登录、退出和持久 Session，不实现 Email Verification、Password Reset、OAuth、MFA、Organization、Role / Permission、Cloud Account、Broker Sync、Multiple Portfolio Management、完整 Portfolio Performance History、Dividend 或 Corporate Action；这些 Account Platform、connected product 与 accounting 边界留到 V2。
 
-M9 Import 只辅助 Portfolio Opening State 初始化。它不把已经初始化的 Portfolio 与外部账户状态做增量合并，不提供 Broker / Account Sync、Diff、Reconciliation、Conflict Resolution 或持续同步；Recognition Draft 也不得绕过用户确认直接写入。
+M9 Import 辅助 Portfolio Opening State 初始化，并允许用户用当前截图对已有 Portfolio 追加一次明确确认的 Position Reconciliation。它不提供 Broker / Account Connection、自动 Sync、自动 Diff、Conflict Resolution 或持续同步；Recognition Draft 也不得绕过用户确认直接写入。
 
 复杂度必须由真实需求证明。
 

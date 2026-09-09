@@ -13,7 +13,7 @@
 **Current Milestone:** M9 — Asset Identity & Portfolio Import
 **Status:** IN PROGRESS — Provider / Vision selection Human Approved; implementation started (2026-09-01)
 **Current Release State:** `v1.0.0` 是当前稳定基线；M8.1 已 Human Accepted 并进入 `main`，但仍记录在 Changelog `Unreleased`，未单独发布 `v1.0.1`
-**Next Planned Work:** M9 Provider-neutral Asset Metadata / Recognition Boundaries 与 Adapters
+**Next Planned Work:** M9 正式页面 Human Acceptance 与 `v1.1.0` Release Gate
 
 Milestone 状态统一使用 `NOT STARTED`、`IN PROGRESS`、`DONE`，不维护百分比进度。
 
@@ -311,13 +311,13 @@ Question Textarea 使用 Enter 提交，Shift+Enter 插入换行。中文等输�
 
 建立 `Text / Screenshot → Structured Import Draft → Asset Validation / Binding → Missing / Invalid / Confidence Review Signal → Human Confirmation → Deterministic Validation → Opening State Write` 流程。Recognition Confidence 只帮助用户定位需要复核的字段，不是 Portfolio Domain Truth，也不是独立 Write Gate；最终写入只接受用户确认后的确定字段。Confidence 高低均不能绕过或替代 Asset Binding、必填字段检查与 deterministic Domain Validation。原始图片默认不持久化，识别错误、缺失字段与 Provider Failure 必须可解释。
 
-M9 只服务 Portfolio Opening State 初始化，并复用 M8 已批准的一次性初始化 Command 与 Gate：只有尚无 Opening Position、Transaction 或 Cash Event 时才允许最终写入。它不负责已初始化 Portfolio 与外部账户状态的增量合并、同步或 Reconciliation。截图中的 symbol、shares 与 broker-reported average cost 不能伪造成真实历史 BUY。短 Spike 最终选择 Finnhub 与 Alibaba Model Studio `qwen3-vl-flash`，两者只通过各自的 Provider-neutral Boundary 接入；PositionPilot 不持久化图片，Model Studio 官方声明数据不用于训练，但未公开固定原图保留时长，UI 必须披露该限制。未经 Provider 验证或候选选择的 Browser Suggestion 以及 Recognition Confidence 均不能建立 Asset Binding。
+Opening Import 复用 M8 已批准的一次性初始化 Command 与 Gate：只有尚无 Opening Position、Transaction、Cash Event 或 Reconciliation 时才允许最终写入。已有 Portfolio 的当前截图走独立 Position Reconciliation：用户确认后追加 immutable event，Replay 直接校准对应 `(canonical_symbol, position_type)` 的 Shares / Average Cost，不生成 BUY / SELL、不修改 Cash，截图中未出现的持仓保持不变。它不是 Broker Sync、自动 Diff 或持续同步。短 Spike 最终选择 Finnhub 与 Alibaba Model Studio `qwen3-vl-flash`，两者只通过各自的 Provider-neutral Boundary 接入；PositionPilot 不持久化图片，Model Studio 官方声明数据不用于训练，但未公开固定原图保留时长，UI 必须披露该限制。未经 Provider 验证或候选选择的 Browser Suggestion 以及 Recognition Confidence 均不能建立 Asset Binding。
 
 **Non-goals**
 
 - 识别结果绕过确认直接写入；
 - 默认持久化原始图片，或把图片内容写入普通日志；
-- 已初始化 Portfolio 的增量 Import、外部账户状态合并、Broker Sync、自动 Reconciliation、Conflict Resolution 或覆盖所有券商截图格式；
+- Broker Connection、外部账户持续同步、自动 Diff / Reconciliation、Conflict Resolution 或覆盖所有券商截图格式；
 - 从不完整图片推测缺失的 Ticker、Position Type、Shares 或 Cost Basis；
 - Transaction Screenshot Import；该能力依赖 M10 的 Transaction Cost 语义。
 
@@ -327,7 +327,9 @@ M9 只服务 Portfolio Opening State 初始化，并复用 M8 已批准的一次
 * Ticker / 公司名称搜索只返回 Provider 确认的 canonical symbol 与受支持 Asset，精确提交由后端再次校验，且没有建立本地完整 Asset Master；
 * Text 与受支持 Screenshot 均只能生成可审查的 Structured Import Draft；
 * Recognition Confidence 只作为 Human Review Signal；缺失与非法字段必须修正，用户确认后的确定字段仍须通过 Asset Validation 与 deterministic Domain Validation；
-* Human Confirmation 后只复用一次性 Opening State 写入；已有 Opening Position、Transaction 或 Cash Event 时拒绝 Import，失败不产生部分 Portfolio State；
+* Human Confirmation 后，未初始化 Portfolio 复用一次性 Opening State 写入；已有 Portfolio 可原子追加 Position Reconciliation，确定性校准目标 Shares / Average Cost，且不修改 Cash 或未出现的持仓；
+* Asset exact validation 明确区分 `VALID / INVALID / PROVIDER_UNAVAILABLE`；网络、timeout、429、5xx 与 Provider 异常不会误判为 invalid ticker，Provider 恢复后的 canonical match 仍需用户明确选择；
+* Screenshot Attachment Composer 支持选择文件、拖放、Cmd/Ctrl+V 粘贴、本地预览与移除；只有点击“开始识别”才上传；
 * Imported Opening Position 语义不冒充已知历史交易；Position Type 可缺省为 `UNSPECIFIED`，并保留 `LONG_TERM / SWING` 的独立语义；
 * 图片隐私、大小 / 类型限制与 Provider Failure 有明确测试和文档；Recognition 输出只作为 Structured Draft 数据，不进入 PositionPilot Agent 指令链路；
 * Human Acceptance 通过，并形成 `v1.1.0` Release。

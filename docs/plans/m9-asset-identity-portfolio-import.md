@@ -3,7 +3,7 @@
 ## 1. Milestone 目标
 
 M9 通过 Provider 验证的 Asset Identity 与可人工确认的 Text / Screenshot Import，降低用户
-录入 Portfolio Opening State 的成本，目标 Release 为 `v1.1.0`。
+录入 Portfolio Opening State 并校准已有持仓的成本，目标 Release 为 `v1.1.0`。
 
 唯一允许的产品闭环是：
 
@@ -21,8 +21,11 @@ M8 one-time Opening State Command
 Portfolio Opening State
 ```
 
+已初始化 Portfolio 的 Screenshot 复用 Recognition / Asset Binding，但最终写入追加
+`PositionReconciliation` 事件，不重新初始化 Opening State。
+
 M9 不建设本地完整 Asset Master，不把 Recognition Confidence 当作 Domain Truth，也不实现
-已初始化 Portfolio 与外部账户之间的增量 Import、Sync 或 Reconciliation。
+外部账户持续同步；已确认的截图行只通过不可变 Position Reconciliation 事件校准本地状态。
 
 ## 2. 已批准的产品与真实性边界
 
@@ -38,13 +41,20 @@ M9 不建设本地完整 Asset Master，不把 Recognition Confidence 当作 Dom
 - 不创建完整本地 Asset Master、Security Master 同步任务或 Symbol Mapping Database。
 - Provider-specific JSON、枚举和错误只存在于 Integration Adapter。
 
-### D2 — Import 只初始化 Opening State
+### D2 — Opening Import 与已有持仓校准分开
 
 - 最终写入复用 M8 `InitializeOpeningPositionsCommand` 与同一 User Row Lock。
 - 只有 Opening Position、Transaction 与 Cash Event 全部为空时允许提交 Import。
 - Portfolio 创建后但仍满足上述 Gate 时，可以继续完成尚未写入的 Opening State；一旦 Gate
-  封闭，Import 必须明确失败，不能尝试 merge、overwrite、diff 或 reconcile。
+  封闭，Opening Import 必须明确失败，不能尝试 merge、overwrite 或 diff。
 - Import 不创建 Transaction，不影响 Cash，不产生经济 sequence，也不伪造历史 BUY。
+- 已初始化 Portfolio 的 Screenshot 校准走独立 `PositionReconciliation` Command；每一行追加
+  immutable event，保存 `(ticker, position_type)`、`target_shares`、`target_average_cost`、
+  `source`、`confirmed_at` 与可选 `broker/source_info`。
+- Replay 按 `confirmed_at` 与 Transaction `occurred_at` 合并排序；校准直接替换对应 Position
+  的 Shares / Cost Basis，校准之后的 Transaction 继续生效。
+- Screenshot 未出现的 Position Key 保持不变；Reconciliation 不生成 BUY / SELL、不修改 Cash，
+  也不覆盖或删除历史 Opening / Transaction / Cash Facts。
 
 ### D3 — Confidence 只服务 Human Review
 
@@ -79,17 +89,17 @@ M9 不建设本地完整 Asset Master，不把 Recognition Confidence 当作 Dom
 - Market / News / LLM Integration 已示范 Provider-neutral Domain/Application Contract、Adapter
   Mapping、明确 Failure Status 与 Fake Provider Unit Tests。
 
-### 主要差距
+### 当前实现状态
 
-- 当前 `normalize_ticker()` 只做字符串格式规范化，不证明 Asset 真实存在，也不支持公司名称搜索
-  或非唯一输入的候选选择。
-- 尚无 Asset Metadata Domain Result、Application Service、Provider Protocol、Adapter、Config、
-  API 或 UI Search / Exact Validation。
-- 尚无 Text / Screenshot Recognition Contract、Upload Boundary、Draft Schema、Provider Adapter
-  或图片隐私边界。
-- 当前 Opening Position 写入不执行 Provider-backed Asset Validation。
-- 当前 Browser Draft 没有 raw input、field status、review signal、candidate selection 与 explicit
-  confirmation state。
+- Provider-neutral Asset Metadata / Recognition Contracts、Finnhub / Qwen Adapters、Config、API 与
+  Browser Draft Review Flow 已完成。
+- Opening Import 继续使用一次性 Gate；已有 Portfolio 使用独立 Position Reconciliation 账本，
+  两条写入路径都只接受 Browser 已明确绑定的 canonical symbol。
+- Screenshot 已统一为 Attachment Composer，支持 Choose、Drag & Drop、Paste 与本地 Preview，
+  只有点击“开始识别”才读取并上传附件。
+- Finnhub exact validation 对外明确为 `VALID / INVALID / PROVIDER_UNAVAILABLE`；AAOX 已在正式本地
+  页面返回 canonical match，长期自动测试不扩展真实 ticker matrix。
+- 剩余工作只有 Automated Review 收口与正式应用 Human Acceptance / Release Gate。
 
 ## 4. Phase 0 — Short Capability Spike
 
@@ -285,6 +295,14 @@ Portfolio Setup / still-open Opening State
 - invalid symbol format、duplicate 或 sealed Gate 全部原子失败。
 - 保持 Opening Position 无现金影响、无 sequence、无历史 BUY 和 immutable 语义。
 
+### T6b — Existing Portfolio Position Reconciliation
+
+- Screenshot 行在已初始化 Portfolio 上追加 immutable `PositionReconciliation`，不修改 Opening、
+  Transaction 或 Cash Event 历史。
+- Replay 按确认时间与交易发生时间合并排序，直接校准对应 `(ticker, position_type)` 的目标 Shares /
+  Average Cost；未出现的 Position Key 保持不变，校准后的后续交易继续生效。
+- 校准事件不产生 BUY / SELL、Cash 变化或经济 sequence；保存来源、确认时间及可选 broker / source info。
+
 ### T7 — Frontend Import Review Flow
 
 - 在现有 Setup / Opening State UI 增加 Manual、Text、Screenshot 三种输入入口。
@@ -326,8 +344,9 @@ Portfolio Setup / still-open Opening State
 | Recognition | Text / Screenshot 只产生 Draft，没有直接 Write Capability |
 | Confidence | low confidence + corrected valid fields 可写；high confidence + invalid fields 不可写 |
 | Human Confirmation | 未确认 Draft 不能写入；确认 Payload 不携带 Domain-authoritative Confidence |
-| Opening Gate | 仅无 Opening / Transaction / Cash Event 时原子写入 |
-| No Reconciliation | sealed Portfolio 不 merge / overwrite / diff external state |
+| Opening Gate | Opening Import 仅在无 Opening / Transaction / Cash Event / Reconciliation 时原子写入 |
+| Position Reconciliation | 已有 Portfolio 只追加校准事件；目标 Position 确定性更新，未出现 Position 保持 |
+| No External Sync | 不做 Broker Connection、持续同步、外部 diff 或自动删除 |
 | Validation | Confirm 信任本地 Browser Asset Binding，并执行 ticker format / Decimal / duplicate / Domain replay |
 | Failures | no match 与 Provider / invalid response / unsupported input Failure 可区分 |
 | Privacy | 原图默认不持久化、不写普通日志、不进入未授权 Provider |
@@ -338,7 +357,7 @@ Portfolio Setup / still-open Opening State
 ## 9. Non-Goals
 
 - 本地完整 Asset Master、全市场 Security Master、Symbol History 或 Corporate Action Mapping；
-- 已初始化 Portfolio 的增量 Import、merge、overwrite、sync、diff 或 Reconciliation；
+- 已初始化 Portfolio 与外部账户的持续同步、merge、overwrite、diff、自动删除或 Broker Connection；
 - Broker Connection、Account Linking、自动定期同步或外部 Position Source of Truth；
 - Recognition 自动写入、Confidence Threshold 自动批准 / 否决或把 Confidence 持久化为 Domain Fact；
 - Transaction Text / Screenshot Import、Fee / Execution Cost 识别或历史交易重建；
@@ -359,13 +378,14 @@ T0 Evaluation + Human Review
 → T2 Asset Adapter / T4 Recognition Adapter
 → T5 API
 → T6 Confirmed Deterministic Write
+→ T6b Existing Portfolio Reconciliation
 → T7 Frontend
 → T8 Verification
 → T9 Review / Human Acceptance
 ```
 
 - T1 与 T3 在 Human Review 后可并行；T2 与 T4 只在 Contract 稳定后可并行。
-- T5、T6、T7 共享 Public Schema 与 Opening State 核心路径，默认串行整合。
+- T5、T6、T6b、T7 共享 Public Schema 与 Portfolio Replay 核心路径，默认串行整合。
 - Subagent 不执行 git add / commit；主线程负责 Contract 决策、整合、Automated Review 与 Atomic
   Commits。
 - 开始实现 M9 时创建 `codex/m9-asset-identity-import` Milestone Branch；每个通过验证的 Logical
@@ -388,7 +408,9 @@ API、Confirmed Deterministic Write、Frontend Import Flow、默认 Regression�
 Engineering Browser Smoke 已完成；Review 发现的 FileReader Session Race、malformed Draft 提示、
 Provider malformed response mapping 与 detached pending row 已修复并重新验证。
 
-当前等待第三个 Human Review Gate：正式 Finnhub / `qwen3-vl-flash` Online Smoke、可清理
-PostgreSQL Integration 与用户在正式 `position_pilot.main:app` 上的 Human Acceptance。缺少显式
-导出的 Provider Credential 与 `TEST_DATABASE_URL` 时，这三项不会由默认 Test Suite 假装通过。
-Human Acceptance 前保持 `IN PROGRESS`，不 merge `main`、不 Push、不 Tag，也不创建 Release。
+2026-09-09 扩展已实现：新增 immutable Position Reconciliation、统一 Attachment Composer、
+Finnhub `httpx2` transport、`VALID / INVALID / PROVIDER_UNAVAILABLE` exact-validation contract 与
+全量重新验证交互，并修复 optional Position Type 的 Draft 提示。当前进入最终 Integration、
+Automated Review 与正式应用 Human Acceptance；AAOX 等真实 ticker 只作为 Human Acceptance
+验证，不进入长期 Provider smoke matrix。Human Acceptance 前保持 `IN PROGRESS`，不 merge
+`main`、不 Push、不 Tag，也不创建 Release。

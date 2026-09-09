@@ -2,7 +2,7 @@
 
 ## 1. 当前范围
 
-本文档描述 M8 Local Portfolio Management / `v1.0.0` 稳定基线，以及当前 M9 Branch 已实现、等待正式 Provider Smoke 与 Human Acceptance 的 Asset Identity / Opening Import 结构。系统包含最小本地 Account / Session、immutable Opening State、Transaction / Cash Event Ledgers、Provider-neutral Asset / Recognition / Market / News Data，以及可按问题选择 Current Quote、固定近期 Daily Price History、attributed Recent News 或 SPY Market Context 的 Single Investment Agent。同源静态 Web Interface 提供 Public Home、注册 / 登录、Portfolio Setup、Manual / Text / Screenshot Opening Import、Ledger Entry 与真实 Agent 闭环；Browser Identity 由 HttpOnly Session 恢复，金融事实仍由后端确定性 Ledger Replay 产生。
+本文档描述 M8 Local Portfolio Management / `v1.0.0` 稳定基线，以及当前 M9 Branch 已实现、等待 Human Acceptance 的 Asset Identity、Opening Import 与 Position Reconciliation 结构。系统包含最小本地 Account / Session、immutable Opening State / Position Reconciliation、Transaction / Cash Event Ledgers、Provider-neutral Asset / Recognition / Market / News Data，以及可按问题选择 Current Quote、固定近期 Daily Price History、attributed Recent News 或 SPY Market Context 的 Single Investment Agent。同源静态 Web Interface 提供 Public Home、注册 / 登录、Portfolio Setup、Manual / Text / Screenshot Import、已有持仓校准、Ledger Entry 与真实 Agent 闭环；Browser Identity 由 HttpOnly Session 恢复，金融事实仍由后端确定性 Replay 产生。
 
 ## 2. 依赖方向
 
@@ -16,6 +16,7 @@ Vanilla HTML / CSS / ES Modules
   ├── GET /v1/auth/session
   ├── POST + GET /v1/portfolio
   ├── POST + GET /v1/portfolio/opening-positions
+  ├── POST + GET /v1/portfolio/reconciliations
   ├── POST + GET /v1/portfolio/transactions
   ├── POST + GET /v1/portfolio/cash-events
   ├── GET /v1/assets/search
@@ -238,9 +239,9 @@ stale / refresh_required; never automatic retry
 - Password 使用随机 Salt 的 scrypt Hash；Session Token 是随机 Opaque Secret，Browser 只通过 `HttpOnly + SameSite=Lax` Cookie 持有，Database 只保存 SHA-256 Digest 与过期时间。Login 轮换当前 Browser Session，Logout / Expiry 会清空 Account、Portfolio、草稿、Question History 和写入状态。
 - Decision Questions 将当前浏览器标签页内的多个 Question / Answer 作为纯 Presentation State 依次追加，并提供 Question History 跳转列表。刷新、Logout 或 Account 变化即清空；每个 Question 仍是独立的真实 `InvestmentAgent` Request，不携带先前问答，因此不构成 Conversation Memory 或多轮模型上下文。
 - Ask Composer 的 Question Textarea 通过 `compositionstart` / `compositionend` 维护短生命周期的 composing state。非 Shift 的 Enter 只有在非 composing、非 repeat、非 pending 时调用 `questionForm.requestSubmit()`，再由 `handleQuestion` 统一执行 Trim、空问题校验和 Request；Shift+Enter 保留浏览器换行，`event.isComposing`、composing state 或 `keyCode === 229` 会直接放过输入法，repeat / pending 只阻止默认 Enter 行为且不产生第二次 Request。
-- Portfolio Workspace 将 deterministic Snapshot、Opening State Setup、Trade Entry 与 Cash Entry 分成 Positions / Transactions / Cash Activity 三个 Panel。Positions 在三个 Record List 都为空时提供一次性 Existing Positions Draft；Skip 只隐藏当前 UI，不持久化或封闭 Opening State。三个 Panel 同时展示完整只读记录。Initial Cash 的 UI 默认值为 `0`，表单示例带 `e.g.` / “例如”前缀；逐字段错误只负责输入可用性，最终 Ledger Validation 仍以后端为准。
+- Portfolio Workspace 将 deterministic Snapshot、Opening State Setup、Position Reconciliation、Trade Entry 与 Cash Entry 分成 Positions / Transactions / Cash Activity 三个 Panel。Positions 在四类 Record 都为空时提供一次性 Existing Positions Draft；Skip 只隐藏当前 UI，不持久化或封闭 Opening State。已有 Portfolio 仍可使用 Screenshot Reconciliation，且不会重新打开 Opening State。Initial Cash 的 UI 默认值为 `0`，表单示例带 `e.g.` / “例如”前缀；逐字段错误只负责输入可用性，最终 Ledger Validation 仍以后端为准。
 - 正常产品 Flow 使用 Session-derived singular API：`GET /v1/portfolio` 映射 `PortfolioService.get_portfolio()`；`POST /v1/portfolio` 原子创建唯一 User 与可选 Opening State；Opening Position、Transaction 与 Cash Event 使用对应 singular 子资源。原 UUID 路由只为现有工程兼容保留，并同样要求当前 Session 对目标 User 具有 Ownership，不构成匿名绕过入口。
-- `POST /v1/portfolio/opening-positions` 在 User Row Lock 下执行一次性 1～100 行批量写入；只有 Opening Position、Transaction 与 Cash Event 都为空时才允许，并在一个事务中全部成功或全部失败。三个对应 GET List API 返回完整只读记录；Opening Position 按 `(ticker, position_type)`，经济记录按 sequence 升序。
+- `POST /v1/portfolio/opening-positions` 在 User Row Lock 下执行一次性 1～100 行批量写入；只有 Opening Position、Transaction、Cash Event 与 Position Reconciliation 都为空时才允许，并在一个事务中全部成功或全部失败。`POST /v1/portfolio/reconciliations` 原子追加同一份已确认截图中的目标仓位事件；对应 GET 返回完整不可变记录。
 - M8 API 中的“Portfolio”仍是现有单一 `User → Portfolio State` 模型的产品呈现，Account 只是一对一 Owner；不新增独立 Portfolio Entity。Multiple Portfolios 的 Ownership / Resource Boundary 留到 V2 重新评估。
 - `POST /transactions` 与 `POST /cash-events` 都只追加不可变记录。Mutation 期间 Logout、导航和重复提交被禁用；成功 Response 不用于前端推算金融状态，而是立即重新 GET Snapshot。
 - Mutation Failure、连接中断或 POST 后 GET Failure 会进入 `refresh_required`，旧 Snapshot 立即禁止 Question 与后续 Mutation。Browser 不自动 Retry；Reload 只能重新取得当前 State 与只读 Records，无法在没有 Mutation ID 或 Idempotency 的 M8 中精确证明某一次不确定 POST 是否执行。
@@ -250,7 +251,7 @@ stale / refresh_required; never automatic retry
 - 正式 `position_pilot.main:app` 装配真实 `InvestmentAgent`。确定性 Fake Agent 只存在于 Engineering Browser Smoke Fixture；Fixture URL 强制显示醒目的 Fake Agent / Fixture Data 警告，不能作为真实 Agent Human Acceptance Evidence。
 - M8 使用固定 Checklist 的 Human Browser Smoke 作为界面 Evidence，不把它描述为自动化 E2E，也不将其纳入默认 Regression Gate。Network Ambiguity、POST 后 GET Failure、XSS Payload 与 delayed stale read 属于定向 Engineering Verification / Automated Review。
 
-## 9. Asset Metadata 与 Opening Import Boundary
+## 9. Asset Metadata、Attachment Composer 与 Position Import Boundary
 
 ```text
 symbol / company name
@@ -259,15 +260,14 @@ AssetMetadataService → FinnhubAssetMetadataProvider
         ↓ canonical_symbol + display_name + exchange
 Browser candidate selection
 
-Text / Screenshot
+Text / staged Attachment
         ↓ RecognitionService → AliyunVisionProvider(qwen3-vl-flash)
 Provider-neutral editable Draft + field status + confidence review signal
         ↓ exact Asset resolution / Browser binding → Human edit / confirmation
-OpeningImportService → trusted local canonical symbol
-        ↓ deterministic validation only
-AuthService / PortfolioService → User row lock → recheck one-time Gate
-        ↓ deterministic validation + atomic write
-OpeningPosition facts
+Opening State still open? ── yes → OpeningImportService → OpeningPosition facts
+                          └─ no  → PortfolioService → PositionReconciliation facts
+                                      ↓ deterministic Replay
+                         replace only target Position state; Cash unchanged
 ```
 
 - Asset Metadata Provider JSON、Credential 与 HTTP Error 只存在于 Finnhub Adapter；Domain 只认识
@@ -276,17 +276,25 @@ OpeningPosition facts
 - Recognition 不是 `InvestmentAgent` Tool，也不进入 Agent 的 Message / Instruction 链路。图片与
   OCR 文本全部作为待提取数据，输出必须通过严格 Provider-neutral Draft Schema；Confidence 只在
   Browser 显示，不进入 Portfolio Command 或 Database。
-- Screenshot 只接受单张 JPEG / PNG / WebP，Backend 上限为 10 MB；Browser 使用 Base64 JSON
-  传输，Request 完成、取消、Logout 或刷新后不保留原图。普通日志只记录 Provider、Model、
+- Attachment Composer 当前只接受单张 JPEG / PNG / WebP，Backend 上限为 10 MB；Browser 支持
+  Choose、Drag & Drop 与 Cmd/Ctrl+V，在内存中预览并只在用户点击“开始识别”后以 Base64 JSON
+  传输。Request 完成、取消、Logout 或刷新后不保留原图。附件状态以 `kind` 表达，允许未来扩展
+  其他附件类型，但 M9 不提前实现。普通日志只记录 Provider、Model、
   Failure Kind、HTTP Status 与 Latency，不记录图片、识别文本、Credential 或原始 Payload。
 - Human Confirmation 复用现有 Save；缺失 `average_cost` 等必填字段必须由用户补全。M9 接受
   loopback 本地受信任 Browser 边界，Confirm 不重复调用 Provider；既有 ticker format、Decimal、
   duplicate、replay 与 User Row Lock Gate 决定是否原子提交。若未来开放到不受控客户端，必须
   恢复写入时验证或引入后端签名的短期 Asset Receipt。
-- API 的 sealed 预检查避免无意义 Provider 调用；它不是最终真实性 Gate。最终 Gate 仍在锁内
-  检查 Opening Position、Transaction 与 Cash Event 全空，避免并发状态变化绕过一次性语义。
-- Import 不创建 Transaction、不影响 Cash、不持久化 Draft，也不对已初始化 Portfolio 执行
-  merge、sync、diff 或 Reconciliation。
+- Opening State 最终 Gate 仍在锁内检查 Opening Position、Transaction、Cash Event 与
+  Reconciliation 全空，避免并发状态变化绕过一次性语义。Screenshot Recognition 本身允许已有
+  Portfolio 使用，因为它也服务后续 Reconciliation Draft。
+- Position Reconciliation 按 `confirmed_at` 与经济事件时间合并 Replay；同一时间稳定采用
+  Cash Event → Reconciliation → Transaction 的顺序。事件直接替换目标 `(ticker, position_type)`
+  的 Shares / Cost Basis，后续 Transaction 继续生效；它不创建 BUY / SELL、不影响 Cash，也不
+  删除未出现 Position 或修改历史事实。
+- Finnhub exact validation 对外归一为 `VALID / INVALID / PROVIDER_UNAVAILABLE`。只有 Provider
+  正常响应且明确无匹配时才是 `INVALID`；网络、timeout、429、5xx 或异常响应保持为 Provider
+  Failure。重新验证返回 canonical candidate，Browser 必须等待用户点击后才更新绑定。
 
 ## 10. Market Data Boundary
 

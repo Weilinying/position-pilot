@@ -5,7 +5,7 @@
 Text / Screenshot Recognition、Asset Search 与 Portfolio Write 会同时产生“识别建议、外部
 Asset Fact、用户确认和 Domain Fact”四种不同可信度的信息。如果不明确边界，系统容易把高
 Confidence 识别结果直接当作 Portfolio Truth，或把一次性 Opening Import 扩大成需要持续
-同步、冲突处理和 Reconciliation 的外部账户集成。
+同步、冲突处理和外部账户持续对账集成。
 
 ## Decision
 
@@ -21,8 +21,11 @@ Confidence 识别结果直接当作 Portfolio Truth，或把一次性 Opening Im
 - 最终写入只接受用户确认、在本地 Browser Draft 中已绑定 Provider-validated Asset Identity 的
   确定字段，并执行 deterministic Domain Validation。M9 接受 loopback 本地应用的受信任
   Browser 边界，Confirm 不重复调用 Asset Provider；识别建议或高 Confidence 不能自行建立绑定。
-- Import 只复用 M8 一次性 Opening State Gate，不支持已初始化 Portfolio 的增量 Import、外部
-  Account Sync、Diff、Conflict Resolution 或 Reconciliation。
+- Opening Import 仍复用 M8 一次性 Opening State Gate；已初始化 Portfolio 的截图校准走独立
+  Position Reconciliation 事件，不把它当作外部 Account Sync、Diff 或持续同步。
+- Position Reconciliation 是 immutable event，保存目标 Shares / Average Cost 与来源事实；Replay
+  在其确认时间直接校准对应 `(ticker, position_type)`，不生成 BUY / SELL、不修改 Cash；截图未出现
+  的 Position Key 保持不变。
 - Asset Metadata Provider 与 Vision / OCR Capability 先通过短 Spike 回答 M9 的最小可行性问题，
   经 Human Review 批准选型与图片隐私边界后立即实现，不扩展成长期 Provider 研究。
 - Recognition 输出始终是 Structured Draft 数据，不进入 PositionPilot Agent 的 System / User
@@ -34,8 +37,9 @@ Confidence 识别结果直接当作 Portfolio Truth，或把一次性 Opening Im
   Action 与 Identifier Mapping 责任，当前 M9 不需要。
 - Confidence Threshold 自动阻止或自动写入实现简单，但把 Provider-specific 概率误当作业务
   真实性，且不同 Recognition Provider 的分数不可直接比较。
-- 增量 Import / Reconciliation 对已存在 Portfolio 更便利，但需要外部账户身份、幂等、冲突、
-  删除 / 更正和 Accounting 语义，显著超出 Opening State 初始化闭环。
+- 直接修改 Opening Position 或 Transaction 会破坏历史可追溯性；Position Reconciliation 事件保留
+  原事实并允许确定性 Replay，代价是需要明确确认时间排序和同一 Position Key 的多次校准语义。
+- 外部账户持续 Sync / Diff 仍需要账户身份、幂等、冲突、删除 / 更正和 Accounting 语义，当前不做。
 - Confirm 时重新调用 Asset Provider 可强化不受控客户端边界，但会使多持仓 Import 的查询量
   翻倍。当前本地个人产品接受 Browser Selection State；未来开放公网时必须恢复写入时验证，
   或使用后端签名且短期有效的 Asset Validation Receipt。
