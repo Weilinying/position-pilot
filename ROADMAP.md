@@ -25,9 +25,19 @@ Milestone 表示内部开发阶段；Version / Release 表示用户可感知的�
 |---|---|---|
 | Demo Core（pre-`v1.0.0`） | M0～M7 | 核心 Ledger、Market / News Context、Single Agent、Evaluation 与需预置 User ID 的 Demo Interface |
 | `v1.0.0` | M8 | 本地用户从产品主页注册 / 登录、初始化并持续维护 Portfolio，完成真实 Agent Self-Service MVP |
+<<<<<<< Updated upstream
 | `v1.1.0` | M9 | 通过 Text / Screenshot Draft 与人工确认降低 Portfolio 初始化成本 |
 | `v1.2.0` | M10 | Broker-neutral Fee Policy 基础与语义明确的第一阶段 Accounting / P&L |
 | `v1.3.0` | M11 | 按需路由的确定性 Technical Context |
+=======
+| Unreleased | M8.1 | Ask Composer 使用 Enter 提交、Shift+Enter 换行，并正确处理 IME 与重复提交；暂不单独发布 |
+| `v1.1.0` | M9 | Asset Identity、Ticker 搜索 / 校验与可人工确认的 Text / Screenshot Portfolio Import |
+| `v1.2.0` | M10 | 真实 Transaction Cost 语义与可人工确认的 Transaction Import |
+| `v1.3.0` | M11 | 基于稳定成本语义的第一阶段 Accounting / P&L |
+| `v1.4.0` | M12 | 按需路由的确定性 Technical Context |
+| `v1.5.0` | M13 | 基于 PositionPilot 自有 Market / Portfolio Data 的交互式行情图表，展示 K 线、Technical Context 与实际 Portfolio 买卖位置 |
+| Answer Quality Evolution | Discovery，尚未映射 Release | Conversation / Investment Memory、开放 Web Search、Context Policy 与新质量 Evaluation 共同评估 |
+>>>>>>> Stashed changes
 | V2 | 后续另行规划 | Connected Product：完整 Account Platform、Broker Sync、多 Portfolio 与完整绩效历史 |
 
 ## 4. V1 Engineering Milestones
@@ -42,12 +52,24 @@ M0 Project Foundation
 → M6 Evaluation & V1 Hardening
 → M7 Minimal Product Interface
 → M8 Local Portfolio Management (`v1.0.0`)
+<<<<<<< Updated upstream
 → M9 Portfolio Import (`v1.1.0`)
 → M10 Accounting & P&L (`v1.2.0`)
 → M11 Technical Context (`v1.3.0`)
 ```
 
 M0～M7 是构建 PositionPilot V1 Core 与 Demo Interface 的内部 Engineering Milestones，不直接等同于正式 `v1.0.0`。M8 完成 Local Self-Service 闭环后才形成 `v1.0.0`；M9～M11 在保持本地、单用户上下文与现有核心架构的前提下形成后续 V1.x Release。
+=======
+→ M8.1 Ask Composer UX（Unreleased）
+→ M9 Asset Identity & Portfolio Import (`v1.1.0`)
+→ M10 Transaction Cost & Import (`v1.2.0`)
+→ M11 Accounting & P&L (`v1.3.0`)
+→ M12 Technical Context (`v1.4.0`)
+→ M13 Position-Aware Market Chart (`v1.5.0`)
+```
+
+M0～M7 是构建 PositionPilot V1 Core 与 Demo Interface 的内部 Engineering Milestones，不直接等同于正式 `v1.0.0`。M8 完成 Local Self-Service 闭环后形成 `v1.0.0`；M8.1 已进入 `main` 但暂存于 Changelog `Unreleased`，不因 Milestone 完成自动产生 `v1.0.1`。M9～M13 在保持本地、单用户上下文与现有核心架构的前提下形成后续 V1.x Release。Answer Quality Evolution 不因列入 Discovery 就自动成为 Milestone；只有 Memory、开放 Web Search、Context Policy 与 Evaluation Contract 形成经 Human Review 批准的最小闭环后，才映射到具体 Release。
+>>>>>>> Stashed changes
 
 ## M0 — Project Foundation
 
@@ -352,7 +374,8 @@ M9 复用 M8 已批准的 immutable Opening State 与一次性初始化 Command�
 - 把 Technical Context 定义为 BUY / SELL Signal；
 - 机械注入所有问题，或让 LLM 从原始 Bars 自行计算指标；
 - RSI、MACD、Support / Resistance、Candlestick Pattern 或通用 Technical Analysis Engine；
-- 分钟级 / 实时指标流、WebSocket、缓存或图表平台。
+- 分钟级 / 实时指标流、WebSocket 或缓存；
+- 图表展示与 Portfolio 交易位置可视化属于 M13，不在 M12 中同时建设。
 
 **Done**
 
@@ -361,7 +384,71 @@ M9 复用 M8 已批准的 immutable Opening State 与一次性初始化 Command�
 * 与技术趋势无关的问题不机械调用 Price History，相关问题能够取得并解释 Structured Derived Facts；
 * Source Grounding 保留 Provider、Feed、Adjustment、Market Timestamp 与 Fetched At；
 * 指标不被表示为自动 BUY / SELL Signal；
+<<<<<<< Updated upstream
 * Human Acceptance 通过，并形成 `v1.3.0` Release。
+=======
+* Human Acceptance 通过，并形成 `v1.4.0` Release。
+
+## M13 — Position-Aware Market Chart
+
+**Status:** NOT STARTED
+
+**Goal**
+
+基于 PositionPilot 已有 Market、Portfolio 与 Technical Context 数据提供交互式行情图表，让用户能够直观看到价格走势、技术指标以及自己的实际买卖位置，形成 `v1.5.0`。
+
+**Scope**
+
+前端使用 TradingView Lightweight Charts 等轻量图表库渲染 PositionPilot 自有数据，不将 TradingView Widget 或其他第三方图表页面作为 Agent Market Data Source。Historical OHLCV、Technical Context、Transaction Ledger 与 Position State 继续由现有 Backend 提供，图表只负责展示，不在前端重新计算金融事实。
+
+第一阶段支持 Daily Candlestick、Volume、已批准的 SMA20 / SMA50 等 Technical Overlay，以及真实 BUY / SELL Transaction Marker。Transaction Marker 应区分 `LONG_TERM / SWING / UNSPECIFIED`，并能够结合当前 Position 展示 Average Cost 等已有确定性 Portfolio Fact。
+
+Agent 与 Chart 应尽可能消费同一套 Backend Market / Technical Data，避免回答中的 Market Fact 与图表数据来自不同来源。
+
+TradingView Lightweight Charts 作为 Frontend Library 使用；其官方 Agent Skill 可以作为 Codex Development Harness 辅助当前 API 集成，但不进入 PositionPilot Runtime Tool Registry。
+
+**Non-goals**
+
+- 使用 TradingView Widget、网页或非公开接口抓取 TradingView Market Data；
+- 在前端重新计算 SMA、P&L、Average Cost 或其他确定性金融事实；
+- 把图表升级为完整 Trading Terminal、TradingView Clone 或通用 Technical Analysis Platform；
+- Drawing Tools、Pine Script、Strategy Backtesting、WebSocket 实时行情或分钟级指标；
+- 从历史价格自动推导 BUY / SELL Signal；
+- 尚未成为 Structured State 的计划买入区间、止损、止盈或 Investment Thesis 可视化；这些能力依赖后续 Strategy / Memory Contract。
+
+**Done**
+
+* 用户可以在 Asset / Position 相关页面查看基于 Backend Historical OHLCV 的交互式 Daily Candlestick Chart；
+* Volume 与 M12 已批准的 Technical Context 可以作为图表 Overlay 展示，且前端不重复计算指标；
+* BUY / SELL Transaction 可以按实际发生时间和价格显示在图表上，并区分 `LONG_TERM / SWING / UNSPECIFIED`；
+* 当前 Average Cost 等已有确定性 Portfolio Fact 可以在适用场景中显示；
+* Chart 与 Agent 使用的数据来源和时间语义保持一致，不通过 TradingView Widget 或页面数据建立第二套 Market Truth；
+* Zoom、Pan、Crosshair、Responsive Resize 等核心图表交互稳定可用；
+* TradingView Lightweight Charts 等第三方 Library 与 PositionPilot Domain / Market Data Boundary 保持解耦；
+* 相关 Frontend Integration Test、Browser Smoke 与 Human Acceptance 通过；
+* Human Acceptance 通过，并形成 `v1.5.0` Release。
+
+## Answer Quality / Memory / Open Web Research Discovery
+
+**Status:** DISCOVERY — NO RELEASE COMMITMENT
+
+当前真实使用已经证明，Answer Quality 不是单独修改 Prompt 或增加一个 Context Tool 就能闭环的问题。用户策略会影响同一市场事实应如何解释；Conversation Continuity 与长期 Investment Memory 具有不同生命周期；开放 Web Search 可以扩大当前信息覆盖，但也会引入来源选择、时效、冲突、引用、延迟、成本与 Prompt Injection 边界。Technical Context 只是其中一类输入，不能代表完整解决方案。
+
+开放 Web Search 不与 Tool 设计冲突：对 Product Agent 而言，Web Search 本身应作为受授权、可观测、可限制的 Tool / Provider Boundary，由 Agent 按问题调用；模型不得在 Application 不知情的情况下访问外部网络。专用 Quote / Asset / News / Financial Data Tool 继续提供高结构化、可确定验证的事实，Web Search 更适合发现当前事件、宏观信息和需要跨来源综合的开放问题，两者不互相替代。
+
+进入实现前至少需要完成以下 Decision Proposal：
+
+- Conversation Memory 与跨 Session Investment Memory 的职责、存储和 Retrieval Boundary；
+- Memory Candidate、Human Confirmation、编辑 / 删除、冲突、过期与来源追溯；
+- Structured Strategy Memory 是否覆盖 Thesis、Holding Horizon、Risk Budget、Accumulation Plan 与 Exit Conditions；
+- Dedicated Financial Provider、News Provider 与开放 Web Search 的 Routing / Source Authority；
+- Web 来源域、时效、Citation、冲突处理、全文边界、Prompt Injection 与 Provider Failure；
+- Answer Contract 如何允许条件式 Decision Support，同时防止把推断、模型建议或用户前提写成金融事实；
+- 新 Evaluation Dataset 如何衡量 Usefulness、Strategy Awareness、Memory Correctness、Research Quality、Groundedness、Latency 与 Cost；
+- 是否需要更换 Model / Provider，且比较必须在相同 Memory、Tool 与 Answer Contract 下进行。
+
+只有上述范围通过 Human Review，并由固定 Evaluation 或真实 Failure Mode 证明最小方案后，才新增对应 Milestone、Plan、ADR 与 Release Mapping。Discovery 不预设 Vector Database、LangGraph、Multi-Agent 或不受控 General Browser。
+>>>>>>> Stashed changes
 
 ## 5. V2 — Connected Product
 
