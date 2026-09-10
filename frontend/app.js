@@ -348,7 +348,7 @@ const state = {
   loadedUserId: null,
   snapshot: null,
   valuation: null,
-  valuationPending: false,
+  valuationController: null,
   openingRecords: [],
   reconciliationRecords: [],
   reconciliationSource: "SCREENSHOT",
@@ -1357,6 +1357,8 @@ function resetSensitiveState() {
   state.loadedUserId = null;
   state.snapshot = null;
   state.valuation = null;
+  state.valuationController?.abort();
+  state.valuationController = null;
   state.openingRecords = [];
   state.reconciliationRecords = [];
   state.reconciliationSource = "SCREENSHOT";
@@ -1910,14 +1912,15 @@ function renderPortfolio() {
 }
 
 async function refreshValuation() {
-  if (!state.snapshot || state.valuationPending || state.portfolioReadState !== "idle" || state.writeState !== "idle" || state.authTransition !== "idle") return;
+  if (!state.snapshot || state.valuationController || state.portfolioReadState !== "idle" || state.writeState !== "idle" || state.authTransition !== "idle") return;
   const snapshot = state.snapshot;
   const generation = state.portfolioGeneration;
-  state.valuationPending = true;
+  const controller = new AbortController();
+  state.valuationController = controller;
   try {
     let valuation;
     try {
-      valuation = await requestJson("/v1/portfolio/valuation");
+      valuation = await requestJson("/v1/portfolio/valuation", { signal: controller.signal });
     } catch (error) {
       if (state.snapshot !== snapshot || state.portfolioGeneration !== generation) return;
       if (error instanceof ApiError && error.status === 401) { enterHome("session_expired"); return; }
@@ -1938,7 +1941,7 @@ async function refreshValuation() {
       }
     }
   } finally {
-    state.valuationPending = false;
+    if (state.valuationController === controller) state.valuationController = null;
   }
 }
 

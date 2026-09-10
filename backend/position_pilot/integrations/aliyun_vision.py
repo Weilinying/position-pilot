@@ -186,8 +186,26 @@ class AliyunVisionProvider:
             return RecognitionResult.failure(*failure)
         try:
             content = self._parse_completion_content(response.payload)
+        except (TypeError, ValueError, json.JSONDecodeError):
+            self._log_invalid_response(
+                response.payload,
+                stage="completion_parse",
+                failure_kind="INVALID_COMPLETION_RESPONSE",
+                started_at=started_at,
+            )
+            return RecognitionResult.failure(
+                RecognitionStatus.INVALID_PROVIDER_RESPONSE,
+                "Vision Provider response 格式无效",
+            )
+        try:
             draft = parse_provider_draft(content, input_kind=request.kind)
         except (TypeError, ValueError, json.JSONDecodeError):
+            self._log_invalid_response(
+                response.payload,
+                stage="draft_schema",
+                failure_kind="INVALID_DRAFT_SCHEMA",
+                started_at=started_at,
+            )
             return RecognitionResult.failure(
                 RecognitionStatus.INVALID_PROVIDER_RESPONSE,
                 "Vision Provider response 格式无效",
@@ -272,6 +290,54 @@ class AliyunVisionProvider:
         if not all(isinstance(key, str) for key in parsed):
             raise ValueError("Vision response content object key 无效")
         return parsed
+
+    @staticmethod
+    def _payload_shape(payload: object) -> dict[str, object]:
+        """返回无敏感的 Provider Payload 形状，便于诊断兼容性问题。"""
+
+        if not isinstance(payload, Mapping):
+            return {"payload_type": type(payload).__name__}
+        choices = payload.get("choices")
+        shape: dict[str, object] = {
+            "payload_type": "object",
+            "payload_keys": sorted(key for key in payload if isinstance(key, str)),
+            "choices_type": type(choices).__name__,
+        }
+        if isinstance(choices, list):
+            shape["choices_length"] = len(choices)
+            if choices and isinstance(choices[0], Mapping):
+                message = choices[0].get("message")
+                shape["message_type"] = type(message).__name__
+                if isinstance(message, Mapping):
+                    shape["message_keys"] = sorted(key for key in message if isinstance(key, str))
+                    shape["content_type"] = type(message.get("content")).__name__
+        return shape
+
+    def _log_invalid_response(
+        self,
+        payload: object,
+        *,
+        stage: str,
+        failure_kind: str,
+        started_at: float,
+    ) -> None:
+        """记录可用于现场定位的安全类别，不记录 Provider 内容。"""
+
+        shape = self._payload_shape(payload)
+        logger.warning(
+            "vision_provider_invalid_response stage=%s failure_kind=%s payload_shape=%s",
+            stage,
+            failure_kind,
+            shape,
+            extra={
+                "provider": "ALIBABA_MODEL_STUDIO",
+                "model": self._model,
+                "failure_kind": failure_kind,
+                "payload_shape": shape,
+                "stage": stage,
+                "latency_ms": round((monotonic() - started_at) * 1000, 2),
+            },
+        )
 
     @staticmethod
     def _response_failure(

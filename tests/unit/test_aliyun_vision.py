@@ -142,6 +142,55 @@ def test_screenshot_uses_qwen_multimodal_json_request_and_preserves_missing_cost
     assert "test-secret" not in str(result)
 
 
+def test_invalid_response_warning_contains_shape_only(caplog: pytest.LogCaptureFixture) -> None:
+    """非法 Provider Response 的诊断不得记录原始内容。"""
+
+    caplog.set_level("WARNING")
+    payload = {"choices": [{"message": {"role": "assistant", "content": "secret text"}}]}
+    result = make_provider(FakeVisionTransport([VisionJsonHttpResponse(200, payload)])).recognize(
+        RecognitionInput.from_text("ADBE")
+    )
+
+    assert result.status is RecognitionStatus.INVALID_PROVIDER_RESPONSE
+    record = next(
+        record
+        for record in caplog.records
+        if record.name == "position_pilot.integrations.aliyun_vision"
+    )
+    assert "secret text" not in str(record.__dict__)
+    assert record.payload_shape["content_type"] == "str"
+    assert record.stage == "completion_parse"
+    assert record.failure_kind == "INVALID_COMPLETION_RESPONSE"
+
+
+def test_invalid_draft_warning_uses_schema_stage(caplog: pytest.LogCaptureFixture) -> None:
+    """合法 Completion JSON 但不符合 Draft Contract 时标记 Schema 阶段。"""
+
+    caplog.set_level("WARNING")
+    payload = {
+        "choices": [
+            {
+                "message": {
+                    "role": "assistant",
+                    "content": '{"rows":[{"unexpected":1}],"warnings":[]}',
+                }
+            }
+        ]
+    }
+    result = make_provider(FakeVisionTransport([VisionJsonHttpResponse(200, payload)])).recognize(
+        RecognitionInput.from_text("ADBE")
+    )
+
+    assert result.status is RecognitionStatus.INVALID_PROVIDER_RESPONSE
+    record = next(
+        record
+        for record in caplog.records
+        if record.name == "position_pilot.integrations.aliyun_vision"
+    )
+    assert record.stage == "draft_schema"
+    assert record.failure_kind == "INVALID_DRAFT_SCHEMA"
+
+
 def test_text_uses_data_only_instruction_and_never_enters_agent_contract() -> None:
     """文本和图片文字都被当作数据，Adapter 不暴露 Agent 或工具调用。"""
 

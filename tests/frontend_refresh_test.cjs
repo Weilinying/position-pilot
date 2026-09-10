@@ -9,8 +9,8 @@ async function main() {
   const requests = [];
   const cell = {textContent: 'old', dataset: {tone: 'positive'}};
   const group = {dataset: {ticker: 'TSLA'}, querySelectorAll: () => [cell]};
-  const state = {snapshot: {}, valuationPending: false, portfolioReadState: 'idle', writeState: 'idle', authTransition: 'idle', portfolioGeneration: 1};
-  const context = vm.createContext({state, ApiError: class extends Error {}, requestJson: (url) => { requests.push(url); return new Promise(r => {resolve = r;}); }, elements: {positionList: {querySelectorAll: () => [group]}}, createHoldingTree: () => ({querySelectorAll: () => [{textContent: 'new', dataset: {}}]})});
+  const state = {snapshot: {}, valuationController: null, portfolioReadState: 'idle', writeState: 'idle', authTransition: 'idle', portfolioGeneration: 1};
+  const context = vm.createContext({state, AbortController, ApiError: class extends Error {}, requestJson: (url) => { requests.push(url); return new Promise(r => {resolve = r;}); }, elements: {positionList: {querySelectorAll: () => [group]}}, createHoldingTree: () => ({querySelectorAll: () => [{textContent: 'new', dataset: {}}]})});
   vm.runInContext(refresh, context);
   const pending = context.refreshValuation();
   assert.equal(state.portfolioReadState, 'idle');
@@ -21,7 +21,7 @@ async function main() {
   await pending;
   assert.equal(cell.textContent, 'new');
   assert.equal(cell.dataset.tone, undefined);
-  assert.equal(state.valuationPending, false);
+  assert.equal(state.valuationController, null);
   const stale = context.refreshValuation();
   state.portfolioGeneration++;
   cell.textContent = 'edited';
