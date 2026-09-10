@@ -95,8 +95,11 @@ M9 不建设本地完整 Asset Master，不把 Recognition Confidence 当作 Dom
   Browser Draft Review Flow 已完成。
 - Opening Import 继续使用一次性 Gate；已有 Portfolio 使用独立 Position Reconciliation 账本，
   两条写入路径都只接受 Browser 已明确绑定的 canonical symbol。
-- Screenshot 已统一为 Attachment Composer，支持 Choose、Drag & Drop、Paste 与本地 Preview，
-  只有点击“开始识别”才读取并上传附件。
+- Screenshot 已统一为紧凑 Attachment Composer，支持 Choose、Drag & Drop、Paste、最多两张图片
+  与本地缩略图 Preview；只有点击“开始识别”才逐张读取、上传并合并 Draft。
+- Vision 只返回明确 ticker 而遗漏 `suggested_symbol` 时，后端以该 ticker 执行 exact validation；
+  Browser 保存未绑定 Draft 时也会为 canonical symbol 完全一致的结果自动补充绑定，不再暴露
+  无意义的候选选择错误。代码不同或结果有歧义时仍要求用户明确确认。
 - Finnhub exact validation 对外明确为 `VALID / INVALID / PROVIDER_UNAVAILABLE`；AAOX 已在正式本地
   页面返回 canonical match，长期自动测试不扩展真实 ticker matrix。
 - 剩余工作只有 Automated Review 收口与正式应用 Human Acceptance / Release Gate。

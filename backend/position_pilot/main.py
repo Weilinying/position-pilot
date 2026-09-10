@@ -1658,8 +1658,13 @@ def _recognition_asset_resolution_response(
 
     if row.ticker.status is not RecognitionFieldStatus.PRESENT:
         return None
-    field = row.suggested_symbol
-    if field.status is not RecognitionFieldStatus.PRESENT or not isinstance(field.value, str):
+    if row.suggested_symbol.status is RecognitionFieldStatus.PRESENT:
+        field = row.suggested_symbol
+    elif row.suggested_symbol.status is RecognitionFieldStatus.MISSING:
+        field = row.ticker
+    else:
+        return None
+    if not isinstance(field.value, str):
         return None
     symbol = field.value
     if not symbol.strip():

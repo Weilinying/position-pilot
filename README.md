@@ -64,8 +64,8 @@ curl http://127.0.0.1:8000/health
 
 - 通过 HttpOnly Session 恢复当前 Account 与唯一 Portfolio；
 - 通过 Finnhub 按 symbol / company name 搜索并选择 Provider 验证的 canonical symbol；
-- 从 Text 或单张 JPEG / PNG / WebP Screenshot 生成当前 Browser 生命周期内的可编辑 Opening Position Draft；
-- 通过统一 Attachment Composer 选择、拖放或直接粘贴截图，在本地预览后点击“开始识别”才上传；
+- 从 Text 或最多两张 JPEG / PNG / WebP Screenshot 生成当前 Browser 生命周期内的可编辑 Opening Position Draft；
+- 通过统一 Attachment Composer 选择、拖放或直接粘贴截图，以紧凑缩略图预览后点击“开始识别”才上传；
 - 对已有 Portfolio 追加 immutable Position Reconciliation，校准截图中明确确认的 Shares / Average Cost，不影响 Cash 或未出现的持仓；
 - 追加 BUY / SELL；Position Type 可留空并归一为 `UNSPECIFIED`，与 `LONG_TERM`、`SWING` 独立维护；
 - 追加 DEPOSIT / WITHDRAWAL；

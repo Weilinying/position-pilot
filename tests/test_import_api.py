@@ -374,6 +374,58 @@ def test_recognition_asset_resolution_failure_keeps_editable_draft(
     }
 
 
+def test_recognition_validates_present_ticker_when_suggested_symbol_is_missing(
+    client: TestClient,
+) -> None:
+    """Vision 只返回明确 ticker 时仍应完成 exact validation。"""
+
+    override_account()
+    draft = make_draft()
+    row = draft.rows[0]
+    recognition = FakeRecognitionService(
+        RecognitionResult.success(
+            RecognitionDraft(
+                rows=(
+                    RecognitionDraftRow(
+                        ticker=row.ticker,
+                        suggested_symbol=DraftField(None, RecognitionFieldStatus.MISSING),
+                        shares=row.shares,
+                        average_cost=row.average_cost,
+                        position_type=row.position_type,
+                        confidence=row.confidence,
+                    ),
+                ),
+                input_kind=RecognitionInputKind.SCREENSHOT,
+            )
+        )
+    )
+    asset_validator = FakeAssetValidator(
+        {"ADBE": AssetValidationResult.success(AssetIdentity("ADBE", "Adobe Inc.", "NASDAQ"))}
+    )
+    app.dependency_overrides[get_recognition_service_dependency] = lambda: recognition
+    app.dependency_overrides[get_asset_metadata_service_dependency] = lambda: asset_validator
+    app.dependency_overrides[get_portfolio_service_dependency] = lambda: FakePortfolioReader()
+
+    response = client.post(
+        "/v1/portfolio/import/recognize-screenshot",
+        json={
+            "mime_type": "image/jpeg",
+            "image_base64": base64.b64encode(b"broker-image").decode("ascii"),
+        },
+    )
+
+    assert response.status_code == 200
+    assert asset_validator.queries == ["ADBE"]
+    assert response.json()["draft"]["rows"][0]["asset_resolution"] == {
+        "status": "OK",
+        "candidate": {
+            "canonical_symbol": "ADBE",
+            "display_name": "Adobe Inc.",
+            "exchange": "NASDAQ",
+        },
+    }
+
+
 def test_recognition_only_resolves_present_symbols_and_deduplicates_validation(
     client: TestClient,
 ) -> None:

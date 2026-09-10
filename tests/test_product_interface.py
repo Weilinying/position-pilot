@@ -87,7 +87,6 @@ def test_attachment_composer_and_reconciliation_contract() -> None:
             f"{prefix}-attachment-dropzone",
             f"{prefix}-attachment-choose",
             f"{prefix}-attachment-preview",
-            f"{prefix}-attachment-remove",
             f"{prefix}-import-screenshot-submit",
         ):
             assert f'id="{element_id}"' in page
@@ -106,15 +105,20 @@ def test_attachment_composer_and_reconciliation_contract() -> None:
     for marker in (
         "data-attachment-composer",
         "data-attachment-dropzone",
-        "stageAttachment",
+        "stageAttachments",
         "pastedImageFile",
         "event.clipboardData",
         "dragover",
         "dataTransfer?.files",
-        "attachment: { kind: null",
-        "readFileAsDataUrl(file, task.controller.signal)",
+        "attachments: []",
+        "readFileAsDataUrl(attachment.file, task.controller.signal)",
+        "MAX_IMPORT_IMAGES = 2",
+        "combinedDraft.rows.push",
         "start_recognition",
         "revalidateReconciliationAssets",
+        "validateUnboundDraftAssets",
+        "canonical === ticker",
+        "canonical === visibleTicker",
         "requestJson(`/v1/assets/validate?${params.toString()}`",
         'url: "/v1/portfolio/reconciliations"',
         'source: "SCREENSHOT"',
@@ -123,6 +127,17 @@ def test_attachment_composer_and_reconciliation_contract() -> None:
         "optionalPositionType",
     ):
         assert marker in script or marker in page
+    assert ".attachment-preview-card" in stylesheet
+    assert 'data-attachment-dropzone role="button"' not in page
+    assert page.count('type="file" accept="image/jpeg,image/png,image/webp" multiple') == 3
+    assert 'aria-labelledby="reconciliation-import-title"' in page
+    revalidation = script[
+        script.index("async function revalidateReconciliationAssets") : script.index(
+            "async function handleReconciliation"
+        )
+    ]
+    assert "delete row.dataset.assetSymbol" not in revalidation
+    assert 'error.code === "INVALID_ASSET_SYMBOL"' in script
 
     assert ".attachment-dropzone" in stylesheet
     assert ".attachment-preview" in stylesheet
@@ -194,7 +209,7 @@ def test_client_script_preserves_session_identity_safe_text_and_question_boundar
         assert script.count(f"{label}:") >= 2
 
     assert 'ERROR_LABELS[error.code] ?? "unexpected_server_error"' in script
-    assert "20260909-m9-attachment-1" in page
+    assert "20260910-m9-attachment-2" in page
 
     assert "innerHTML" not in script
     assert "outerHTML" not in script
@@ -263,14 +278,22 @@ def test_opening_import_review_contract_is_provider_neutral_and_explicit() -> No
         "clearSelectedAsset(row)",
         "asset_selection_required",
         "asset_auto_selected",
-        "readFileAsDataUrl(file, task.controller.signal)",
-        "if (renderRecognitionDraft(config, payload",
+        "readFileAsDataUrl(attachment.file, task.controller.signal)",
+        "renderRecognitionDraft(config, { draft: combinedDraft }",
         "recognition_draft_ready",
         "screenshot_privacy_notice",
+        "MAX_IMPORT_IMAGES = 2",
+        "controls.attachments",
+        "stageAttachments(config",
+        "for (const attachment of attachments)",
+        "combinedDraft.rows.push",
+        "validateUnboundDraftAssets",
+        "canonical === ticker",
     ):
         assert marker in script or marker in page
 
     assert 'accept="image/jpeg,image/png,image/webp"' in page
+    assert "multiple" in page
     assert "Alibaba Model Studio" in page
     assert "PositionPilot does not save" in page
     assert "Provider's fixed retention period is not publicly disclosed" in page

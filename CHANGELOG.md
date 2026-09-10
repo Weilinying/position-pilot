@@ -16,8 +16,8 @@
   Provider Smoke Tests。
 - 增加已有 Portfolio 的 immutable Position Reconciliation；Replay 直接校准目标仓位的 Shares 与
   Average Cost，不生成交易、不修改 Cash，未出现在截图中的持仓保持不变。
-- Screenshot Attachment Composer 支持选择文件、拖放、Cmd/Ctrl+V 粘贴与本地预览，只有用户
-  点击“开始识别”后才上传。
+- Screenshot Attachment Composer 支持一次选择、拖放或连续粘贴最多两张图片，以本地缩略图预览；
+  只有用户点击“开始识别”后才依次上传并合并 Draft。
 
 ### Changed
 
@@ -38,6 +38,8 @@
 - 保留既有 Question Failure、Cancellation 与恢复行为。
 - 修复 Provider 网络 / timeout / 429 / 5xx 异常被误判为 invalid ticker，以及可选 Position Type
   被错误显示为必填缺失的问题。
+- 修复 Vision 已识别出明确 ticker、但缺少 `suggested_symbol` 时没有执行 exact validation，导致
+  TSLA 等有效标的仍被错误要求手工选择候选的问题。
 
 ## [1.0.0] - 2026-09-01
 

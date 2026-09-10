@@ -163,7 +163,7 @@ const translations = {
     import_starting_positions: "Import starting positions",
     import_review_title: "Review before saving",
     draft_only_note: "Draft only · nothing is saved yet",
-    import_review_hint: "Use a manual search, pasted text, or one screenshot to prepare an editable draft. Confirm the fields below before saving.",
+    import_review_hint: "Use a manual search, pasted text, or up to two screenshots to prepare an editable draft. Confirm the fields below before saving.",
     import_methods: "Import methods",
     manual_import: "Manual search",
     text_import: "Text import",
@@ -185,17 +185,18 @@ const translations = {
     text_import_placeholder: "Paste rows from your broker statement",
     prepare_text_draft: "Prepare editable draft",
     preparing_text_draft: "Preparing text draft…",
-    screenshot_import_label: "Choose one broker screenshot",
+    screenshot_import_label: "Choose up to two broker screenshots",
     prepare_screenshot_draft: "Prepare editable draft",
     preparing_screenshot_draft: "Preparing screenshot draft…",
     start_recognition: "Start recognition",
-    attachment_choose_file: "Choose file",
-    attachment_drop_prompt: "Drop an image here or paste a screenshot",
-    attachment_drop_hint: "JPEG, PNG, or WebP · up to 10 MB",
-    attachment_ready: "Attachment ready. Nothing is uploaded until you start recognition.",
+    attachment_choose_file: "Browse images",
+    attachment_drop_prompt: "Add portfolio screenshots",
+    attachment_drop_hint: "Drop, paste, or browse · up to 2 images · 10 MB each",
+    attachment_ready: "Images ready. Nothing is uploaded until you start recognition.",
+    attachment_limit: "You can attach up to two images at a time.",
     attachment_remove: "Remove",
     attachment_file_required: "Choose, drop, or paste an image first.",
-    screenshot_privacy_notice: "The screenshot is sent to Alibaba Model Studio for recognition. PositionPilot does not save it; the Provider's fixed retention period is not publicly disclosed.",
+    screenshot_privacy_notice: "Selected screenshots are sent to Alibaba Model Studio only after you start recognition. PositionPilot does not save them; the Provider's fixed retention period is not publicly disclosed.",
     screenshot_file_required: "Choose a JPEG, PNG, or WebP screenshot first.",
     screenshot_file_invalid: "Choose a supported JPEG, PNG, or WebP screenshot.",
     screenshot_file_too_large: "That screenshot is too large. Choose an image no larger than 10 MB.",
@@ -213,15 +214,16 @@ const translations = {
     confidence_signal: "Recognition confidence",
     confidence_unavailable: "not provided",
     find_matching_assets: "Find matching assets",
-    recognition_draft_ready: "Draft ready. Review every field, then confirm with Save.",
+    recognition_draft_ready: "Draft ready. Verified symbols are ready to save; review the remaining fields.",
     recognition_input_text: "Text import",
     recognition_input_screenshot: "Screenshot import",
     imported_warning: "Provider warning",
+    asset_verified_exact: "Verified",
     reconciliation_title: "Reconcile from a broker screenshot",
     reconciliation_summary: "Update selected positions from a current screenshot. Unlisted positions stay unchanged, and no trade or cash record is created.",
     reconciliation_broker_label: "Broker or source (optional)",
     reconciliation_broker_placeholder: "e.g. Fidelity, Schwab, IBKR",
-    reconciliation_screenshot_label: "Attach a current positions screenshot",
+    reconciliation_screenshot_label: "Attach current positions screenshots",
     reconciliation_revalidate: "Revalidate all assets",
     reconciliation_revalidate_running: "Revalidating assets…",
     reconciliation_save: "Save reconciliation",
@@ -280,6 +282,20 @@ const translations = {
   },
 };
 
+Object.assign(translations.zh, {
+  import_review_hint: "可以手动搜索、粘贴文本，或一次添加最多两张截图来生成可编辑 Draft。保存前请复核字段。",
+  screenshot_import_label: "选择最多两张券商持仓截图",
+  attachment_choose_file: "浏览图片",
+  attachment_drop_prompt: "添加持仓截图",
+  attachment_drop_hint: "拖入、粘贴或浏览 · 最多 2 张 · 每张不超过 10 MB",
+  attachment_ready: "图片已准备好。点击“开始识别”前不会上传。",
+  attachment_limit: "一次最多添加两张图片。",
+  screenshot_privacy_notice: "只有点击“开始识别”后，所选截图才会发送至 Alibaba Model Studio。PositionPilot 不保存图片；Provider 的固定保留时长尚未公开。",
+  recognition_draft_ready: "Draft 已生成。已验证标的可直接保存，请复核其余字段。",
+  asset_verified_exact: "已验证",
+  reconciliation_screenshot_label: "添加当前持仓截图",
+});
+
 const state = {
   language: "en",
   account: null,
@@ -311,6 +327,7 @@ const state = {
 const DECIMAL_PATTERN = /^(?:0|[1-9]\d*)(?:\.\d{1,8})?$/;
 const IMPORT_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 const MAX_IMPORT_IMAGE_BYTES = 10 * 1024 * 1024;
+const MAX_IMPORT_IMAGES = 2;
 const SOURCE_LABELS = {
   PORTFOLIO_SNAPSHOT: "source_portfolio",
   CURRENT_QUOTE: "source_quote",
@@ -374,12 +391,8 @@ function importElements(prefix) {
     attachmentComposer: byId(`${prefix}-attachment-composer`),
     attachmentDropzone: byId(`${prefix}-attachment-dropzone`),
     attachmentChoose: byId(`${prefix}-attachment-choose`),
-    attachmentRemove: byId(`${prefix}-attachment-remove`),
     attachmentPreview: byId(`${prefix}-attachment-preview`),
-    attachmentPreviewImage: byId(`${prefix}-attachment-preview-image`),
-    attachmentPreviewName: byId(`${prefix}-attachment-preview-name`),
-    attachmentPreviewSize: byId(`${prefix}-attachment-preview-size`),
-    attachment: { kind: null, file: null, previewUrl: null, dataUrl: null },
+    attachments: [],
     defaultMode: document.querySelector(`#${prefix}-import-tools [data-import-mode]`)?.dataset.importMode ?? "manual",
     draftFeedback: byId(`${prefix}-import-draft-feedback`),
   };
@@ -573,15 +586,15 @@ const RECOGNITION_STATUS_MESSAGES = {
   INVALID_PROVIDER_RESPONSE: "recognition_invalid_response",
 };
 
-function clearAttachment(config) {
+function clearAttachments(config) {
   const controls = config.controls;
-  if (controls.attachment?.previewUrl) URL.revokeObjectURL(controls.attachment.previewUrl);
-  controls.attachment = { kind: null, file: null, previewUrl: null, dataUrl: null };
+  for (const attachment of controls.attachments) URL.revokeObjectURL(attachment.previewUrl);
+  controls.attachments = [];
   if (controls.screenshotInput) controls.screenshotInput.value = "";
-  if (controls.attachmentPreview) controls.attachmentPreview.hidden = true;
-  if (controls.attachmentPreviewImage) controls.attachmentPreviewImage.removeAttribute("src");
-  if (controls.attachmentPreviewName) controls.attachmentPreviewName.textContent = "";
-  if (controls.attachmentPreviewSize) controls.attachmentPreviewSize.textContent = "";
+  if (controls.attachmentPreview) {
+    clearElement(controls.attachmentPreview);
+    controls.attachmentPreview.hidden = true;
+  }
   controls.attachmentDropzone?.classList.remove("is-dragging");
 }
 
@@ -590,37 +603,76 @@ function formatAttachmentSize(bytes) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function stageAttachment(config, file) {
+function renderAttachmentPreviews(config) {
   const controls = config.controls;
+  clearElement(controls.attachmentPreview);
+  for (const attachment of controls.attachments) {
+    const card = makeElement("article", "attachment-preview-card");
+    const image = makeElement("img");
+    image.src = attachment.previewUrl;
+    image.alt = "";
+    const copy = makeElement("div", "attachment-preview-copy");
+    copy.append(
+      makeElement("strong", "", attachment.file.name || "Pasted image"),
+      makeElement(
+        "span",
+        "",
+        `${attachment.file.type} · ${formatAttachmentSize(attachment.file.size)}`,
+      ),
+    );
+    const remove = makeElement("button", "attachment-remove", "×");
+    remove.type = "button";
+    remove.setAttribute("aria-label", `${translate("attachment_remove")} ${attachment.file.name || "image"}`);
+    remove.addEventListener("click", () => {
+      URL.revokeObjectURL(attachment.previewUrl);
+      controls.attachments = controls.attachments.filter((item) => item.id !== attachment.id);
+      renderAttachmentPreviews(config);
+    });
+    card.append(image, copy, remove);
+    controls.attachmentPreview.append(card);
+  }
+  controls.attachmentPreview.hidden = controls.attachments.length === 0;
+  if (controls.attachments.length) {
+    setMessage(controls.screenshotMessage, "attachment_ready", "success");
+  } else {
+    clearMessage(controls.screenshotMessage);
+  }
+}
+
+function stageAttachments(config, files) {
+  const controls = config.controls;
+  const pendingFiles = [...files].filter(Boolean);
   clearMessage(controls.screenshotMessage);
-  if (!file) {
+  if (!pendingFiles.length) {
     setMessage(controls.screenshotMessage, "attachment_file_required", "neutral");
     return false;
   }
-  const mimeType = String(file.type || "").toLowerCase();
-  if (!IMPORT_IMAGE_TYPES.has(mimeType)) {
-    clearAttachment(config);
-    setMessage(controls.screenshotMessage, "screenshot_file_invalid");
+  if (controls.attachments.length + pendingFiles.length > MAX_IMPORT_IMAGES) {
+    setMessage(controls.screenshotMessage, "attachment_limit", "neutral");
     return false;
   }
-  if (file.size > MAX_IMPORT_IMAGE_BYTES) {
-    clearAttachment(config);
-    setMessage(controls.screenshotMessage, "screenshot_file_too_large");
-    return false;
+  for (const file of pendingFiles) {
+    const mimeType = String(file.type || "").toLowerCase();
+    if (!IMPORT_IMAGE_TYPES.has(mimeType)) {
+      setMessage(controls.screenshotMessage, "screenshot_file_invalid");
+      return false;
+    }
+    if (file.size > MAX_IMPORT_IMAGE_BYTES) {
+      setMessage(controls.screenshotMessage, "screenshot_file_too_large");
+      return false;
+    }
   }
-  clearAttachment(config);
-  controls.attachment = {
-    kind: "image",
-    file,
-    previewUrl: URL.createObjectURL(file),
-    dataUrl: null,
-  };
-  if (controls.attachmentPreviewImage) controls.attachmentPreviewImage.src = controls.attachment.previewUrl;
-  if (controls.attachmentPreviewName) controls.attachmentPreviewName.textContent = file.name || "Pasted image";
-  if (controls.attachmentPreviewSize) controls.attachmentPreviewSize.textContent = `${mimeType} · ${formatAttachmentSize(file.size)}`;
-  if (controls.attachmentPreview) controls.attachmentPreview.hidden = false;
+  controls.attachments.push(
+    ...pendingFiles.map((file) => ({
+      id: crypto.randomUUID(),
+      kind: "image",
+      file,
+      previewUrl: URL.createObjectURL(file),
+      dataUrl: null,
+    })),
+  );
   if (controls.screenshotInput) controls.screenshotInput.value = "";
-  setMessage(controls.screenshotMessage, "attachment_ready", "success");
+  renderAttachmentPreviews(config);
   return true;
 }
 
@@ -636,18 +688,18 @@ function pastedImageFile(event) {
 function bindAttachmentComposer(config) {
   const controls = config.controls;
   if (!controls.attachmentComposer || !controls.screenshotInput) return;
+  controls.screenshotInput.multiple = true;
+  if (controls.attachmentDropzone && !controls.attachmentDropzone.querySelector(".attachment-add-icon")) {
+    const icon = makeElement("span", "attachment-add-icon", "＋");
+    icon.setAttribute("aria-hidden", "true");
+    controls.attachmentDropzone.prepend(icon);
+  }
   controls.attachmentChoose?.addEventListener("click", (event) => {
     event.stopPropagation();
     controls.screenshotInput.click();
   });
-  controls.attachmentRemove?.addEventListener("click", () => clearAttachment(config));
-  controls.screenshotInput.addEventListener("change", () => stageAttachment(config, controls.screenshotInput.files?.[0]));
+  controls.screenshotInput.addEventListener("change", () => stageAttachments(config, controls.screenshotInput.files ?? []));
   controls.attachmentDropzone?.addEventListener("click", () => controls.screenshotInput.click());
-  controls.attachmentDropzone?.addEventListener("keydown", (event) => {
-    if (event.key !== "Enter" && event.key !== " ") return;
-    event.preventDefault();
-    controls.screenshotInput.click();
-  });
   controls.attachmentComposer.addEventListener("dragenter", (event) => {
     event.preventDefault();
     controls.attachmentDropzone?.classList.add("is-dragging");
@@ -663,13 +715,13 @@ function bindAttachmentComposer(config) {
   controls.attachmentComposer.addEventListener("drop", (event) => {
     event.preventDefault();
     controls.attachmentDropzone?.classList.remove("is-dragging");
-    stageAttachment(config, event.dataTransfer?.files?.[0]);
+    stageAttachments(config, event.dataTransfer?.files ?? []);
   });
   controls.attachmentComposer.addEventListener("paste", (event) => {
     const file = pastedImageFile(event);
     if (!file) return;
     event.preventDefault();
-    stageAttachment(config, file);
+    stageAttachments(config, [file]);
   });
 }
 
@@ -686,7 +738,7 @@ function resetImportControls(config) {
   if (controls.assetQuery) controls.assetQuery.value = "";
   if (controls.textInput) controls.textInput.value = "";
   if (controls.screenshotInput) controls.screenshotInput.value = "";
-  clearAttachment(config);
+  clearAttachments(config);
   clearElement(controls.assetCandidates);
   clearElement(controls.draftFeedback);
   clearMessage(controls.assetMessage);
@@ -904,10 +956,16 @@ function renderRecognitionDraft(config, payload, messageElement) {
   }
   for (const rowData of draft.rows) {
     const row = createOpeningRow(config.rows);
-    setTickerDraftFields(row, rowData.ticker, rowData.suggested_symbol);
+    const tickerDraft = setTickerDraftFields(row, rowData.ticker, rowData.suggested_symbol);
     const resolution = rowData.asset_resolution;
+    const canonical = String(resolution?.candidate?.canonical_symbol ?? "").trim().toUpperCase();
+    const visibleTicker = tickerDraft.value.trim().toUpperCase();
     const automaticallySelected = resolution?.status === "OK"
+      && canonical === visibleTicker
       && applySelectedAsset(row, resolution.candidate);
+    if (resolution?.status === "OK" && resolution.candidate && !automaticallySelected) {
+      renderRevalidationCandidate(row, resolution.candidate);
+    }
     setDraftField(row, "shares", rowData.shares);
     setDraftField(row, "average_cost", rowData.average_cost);
     const positionType = normalizeDraftField(rowData.position_type);
@@ -1059,42 +1117,40 @@ async function handleTextImport(event, config) {
 async function handleScreenshotImport(event, config) {
   event?.preventDefault();
   if (state.importPending) return;
-  const file = config.controls.attachment?.file;
+  const attachments = [...config.controls.attachments];
   clearMessage(config.controls.screenshotMessage);
-  if (!file) {
+  if (!attachments.length) {
     setMessage(config.controls.screenshotMessage, "attachment_file_required", "neutral");
     config.controls.attachmentDropzone?.focus();
-    return;
-  }
-  const mimeType = String(file.type || "").toLowerCase();
-  if (!IMPORT_IMAGE_TYPES.has(mimeType)) {
-    setMessage(config.controls.screenshotMessage, "screenshot_file_invalid");
-    config.controls.screenshotInput.value = "";
-    return;
-  }
-  if (file.size > MAX_IMPORT_IMAGE_BYTES) {
-    setMessage(config.controls.screenshotMessage, "screenshot_file_too_large");
-    config.controls.screenshotInput.value = "";
     return;
   }
   const task = beginImportRequest();
   setLocalizedText(config.controls.screenshotSubmit, "preparing_screenshot_draft");
   try {
-    const dataUrl = await readFileAsDataUrl(file, task.controller.signal);
-    if (task.generation !== state.importGeneration) return;
-    const separator = dataUrl.indexOf(",");
-    const imageBase64 = separator >= 0 ? dataUrl.slice(separator + 1) : "";
-    if (!imageBase64) {
-      setMessage(config.controls.screenshotMessage, "screenshot_file_invalid");
-      return;
+    const combinedDraft = { rows: [], warnings: [], input_kind: "SCREENSHOT" };
+    for (const attachment of attachments) {
+      const dataUrl = await readFileAsDataUrl(attachment.file, task.controller.signal);
+      if (task.generation !== state.importGeneration) return;
+      const separator = dataUrl.indexOf(",");
+      const imageBase64 = separator >= 0 ? dataUrl.slice(separator + 1) : "";
+      if (!imageBase64) {
+        setMessage(config.controls.screenshotMessage, "screenshot_file_invalid");
+        return;
+      }
+      const payload = await requestJson("/v1/portfolio/import/recognize-screenshot", {
+        method: "POST",
+        body: JSON.stringify({ mime_type: attachment.file.type, image_base64: imageBase64 }),
+        signal: task.controller.signal,
+      });
+      if (task.generation !== state.importGeneration) return;
+      if (payload?.status !== "OK" || !payload.draft) {
+        importStatusMessage(config.controls.screenshotMessage, payload?.status, RECOGNITION_STATUS_MESSAGES);
+        return;
+      }
+      combinedDraft.rows.push(...(payload.draft.rows ?? []));
+      combinedDraft.warnings.push(...(payload.draft.warnings ?? []));
     }
-    const payload = await requestJson("/v1/portfolio/import/recognize-screenshot", { method: "POST", body: JSON.stringify({ mime_type: mimeType, image_base64: imageBase64 }), signal: task.controller.signal });
-    if (task.generation !== state.importGeneration) return;
-    if (payload?.status !== "OK") {
-      importStatusMessage(config.controls.screenshotMessage, payload?.status, RECOGNITION_STATUS_MESSAGES);
-      return;
-    }
-    if (renderRecognitionDraft(config, payload, config.controls.screenshotMessage)) {
+    if (renderRecognitionDraft(config, { draft: combinedDraft }, config.controls.screenshotMessage)) {
       setMessage(config.controls.screenshotMessage, "recognition_draft_ready", "success");
     }
   } catch (error) {
@@ -1470,6 +1526,10 @@ async function handleSetup(event, forceEmpty = false) {
   clearMessage(elements.setupMessage);
   const cash = forceEmpty ? "0" : (elements.setupCash.value.trim() || "0");
   if (!DECIMAL_PATTERN.test(cash)) { showFieldError(elements.setupCash, "invalid_cash"); setMessage(elements.setupMessage, "invalid_form"); return; }
+  if (!forceEmpty && !(await validateUnboundDraftAssets(elements.setupRows))) {
+    setMessage(elements.setupMessage, "asset_selection_required", "neutral");
+    return;
+  }
   const positions = forceEmpty ? [] : collectOpeningPositions(elements.setupRows);
   if (positions === null) { setMessage(elements.setupMessage, "invalid_form"); return; }
   state.writeState = "submitting";
@@ -1699,6 +1759,10 @@ async function handleCash(event) {
 async function handleOpening(event) {
   event.preventDefault();
   if (state.importPending) return;
+  if (!(await validateUnboundDraftAssets(elements.openingRows))) {
+    setMessage(elements.openingMessage, "asset_selection_required", "neutral");
+    return;
+  }
   const positions = collectOpeningPositions(elements.openingRows);
   if (!positions || positions.length === 0) { setMessage(elements.openingMessage, "invalid_form"); return; }
   const saved = await runMutation({ url: "/v1/portfolio/opening-positions", payload: { positions }, messageElement: elements.openingMessage, successKey: "opening_saved", recordId: (result) => result.opening_positions?.[0]?.id });
@@ -1770,6 +1834,62 @@ function renderRevalidationCandidate(row, candidate) {
   row.append(options);
 }
 
+async function validateUnboundDraftAssets(container) {
+  const rows = [...container.querySelectorAll(".opening-draft-row")].filter((row) => {
+    const ticker = row.querySelector("[data-field='ticker']")?.value.trim().toUpperCase();
+    return ticker && row.dataset.assetSymbol !== ticker;
+  });
+  if (!rows.length) return true;
+
+  const task = beginImportRequest();
+  let allValid = true;
+  try {
+    for (const row of rows) {
+      if (task.generation !== state.importGeneration) return false;
+      const ticker = row.querySelector("[data-field='ticker']").value.trim().toUpperCase();
+      const params = new URLSearchParams({ symbol: ticker });
+      let payload;
+      try {
+        payload = await requestJson(`/v1/assets/validate?${params.toString()}`, {
+          signal: task.controller.signal,
+        });
+      } catch (error) {
+        if (error?.name === "AbortError" || task.generation !== state.importGeneration) {
+          return false;
+        }
+        if (error instanceof ApiError && error.status === 401) {
+          enterHome("session_expired");
+          return false;
+        }
+        const statusKey = error instanceof ApiError && error.code === "INVALID_ASSET_SYMBOL"
+          ? "reconciliation_invalid_asset"
+          : "reconciliation_provider_unavailable";
+        appendRevalidationStatus(row, statusKey, "danger");
+        allValid = false;
+        continue;
+      }
+      if (task.generation !== state.importGeneration) return false;
+      const canonical = String(payload?.candidate?.canonical_symbol ?? "").trim().toUpperCase();
+      if (payload?.status === "VALID" && canonical === ticker) {
+        applySelectedAsset(row, payload.candidate);
+        appendRevalidationStatus(row, "asset_verified_exact", "success");
+      } else if (payload?.status === "VALID" && payload.candidate) {
+        renderRevalidationCandidate(row, payload.candidate);
+        allValid = false;
+      } else if (payload?.status === "PROVIDER_UNAVAILABLE") {
+        appendRevalidationStatus(row, "reconciliation_provider_unavailable", "danger");
+        allValid = false;
+      } else {
+        appendRevalidationStatus(row, "reconciliation_invalid_asset", "danger");
+        allValid = false;
+      }
+    }
+  } finally {
+    if (task.generation === state.importGeneration) finishImportRequest(task.generation);
+  }
+  return allValid;
+}
+
 async function revalidateReconciliationAssets(event) {
   event?.preventDefault();
   if (state.importPending) return;
@@ -1782,7 +1902,6 @@ async function revalidateReconciliationAssets(event) {
   setLocalizedText(elements.reconciliationRevalidate, "reconciliation_revalidate_running");
   clearMessage(elements.reconciliationMessage);
   for (const row of rows) {
-    delete row.dataset.assetSymbol;
     clearRevalidationFeedback(row);
   }
   try {
@@ -1814,6 +1933,10 @@ async function revalidateReconciliationAssets(event) {
 async function handleReconciliation(event) {
   event.preventDefault();
   if (state.importPending) return;
+  if (!(await validateUnboundDraftAssets(elements.reconciliationRows))) {
+    setMessage(elements.reconciliationMessage, "reconciliation_not_validated", "neutral");
+    return;
+  }
   const positions = collectReconciliationPositions(elements.reconciliationRows);
   if (!positions || positions.length === 0) {
     setMessage(elements.reconciliationMessage, "reconciliation_no_positions", "neutral");
