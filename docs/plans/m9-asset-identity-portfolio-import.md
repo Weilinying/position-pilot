@@ -1,11 +1,16 @@
 # M9 Asset Identity & Portfolio Import 执行计划
 
+> 2026-09-10：M9 已追加当前持仓层级、批次维护和录入交互工作，见
+> [M9 后续执行计划](m9-current-holdings-and-batch-editing.md)。下文 T0–T9 保留原导入实现记录；
+> 新增工作按后续计划 T10–T14 执行。产品方向已确认，新增实现尚未完成，不新建 M9.1。
+
 ## 1. Milestone 目标
 
 M9 通过 Provider 验证的 Asset Identity 与可人工确认的 Text / Screenshot Import，降低用户
 录入 Portfolio Opening State 并校准已有持仓的成本，目标 Release 为 `v1.1.0`。
+2026-09-10 扩展包含紧凑持仓树、可调整类型的批次、交易更正与未实现估值。
 
-唯一允许的产品闭环是：
+原导入能力的产品闭环是：
 
 ```text
 Text / Screenshot
@@ -102,7 +107,7 @@ M9 不建设本地完整 Asset Master，不把 Recognition Confidence 当作 Dom
   无意义的候选选择错误。代码不同或结果有歧义时仍要求用户明确确认。
 - Finnhub exact validation 对外明确为 `VALID / INVALID / PROVIDER_UNAVAILABLE`；AAOX 已在正式本地
   页面返回 canonical match，长期自动测试不扩展真实 ticker matrix。
-- 剩余工作只有 Automated Review 收口与正式应用 Human Acceptance / Release Gate。
+- 原导入工作待最终 Acceptance；当前另需完成后续计划 T10–T14，不能将本次新增需求视为已实现。
 
 ## 4. Phase 0 — Short Capability Spike
 
@@ -238,7 +243,7 @@ Portfolio Setup / still-open Opening State
 → show missing / invalid fields and confidence review cues
 → user explicitly confirms
 → backend performs deterministic validation and writes once
-→ refresh deterministic Snapshot + read-only Opening Records
+→ refresh current holdings（主页面不并列展示 Opening / Reconciliation Records）
 ```
 
 - 用户可以忽略 Confidence 并直接修正字段；UI 不显示“Confidence 通过所以可安全写入”。
@@ -417,3 +422,9 @@ Finnhub `httpx2` transport、`VALID / INVALID / PROVIDER_UNAVAILABLE` exact-vali
 Automated Review 与正式应用 Human Acceptance；AAOX 等真实 ticker 只作为 Human Acceptance
 验证，不进入长期 Provider smoke matrix。Human Acceptance 前保持 `IN PROGRESS`，不 merge
 `main`、不 Push、不 Tag，也不创建 Release。
+
+## 12. 当前执行入口
+
+2026-09-10 用户确认保留交易历史，允许逐批修改策略类型；成交事实通过更正保留历史。
+新增需求均归属 M9，按 [后续执行计划](m9-current-holdings-and-batch-editing.md) 实施。
+不进行旧测试数据兼容或历史批次回填，尚未执行数据库重置。
