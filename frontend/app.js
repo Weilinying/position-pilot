@@ -348,6 +348,7 @@ const state = {
   loadedUserId: null,
   snapshot: null,
   valuation: null,
+  valuationPending: false,
   openingRecords: [],
   reconciliationRecords: [],
   reconciliationSource: "SCREENSHOT",
@@ -1052,7 +1053,7 @@ function renderAutocompleteCandidates(input, payload) {
   clearElement(autocomplete.list);
   autocomplete.activeIndex = -1;
   const candidates = payload?.status === "OK" && Array.isArray(payload.candidates)
-    ? payload.candidates.filter((candidate) => candidate && typeof candidate === "object")
+    ? payload.candidates.filter((candidate) => candidate && typeof candidate === "object").slice(0, 3)
     : [];
   for (const [index, candidate] of candidates.entries()) {
     const option = makeElement("button", "asset-autocomplete-option");
@@ -1081,7 +1082,7 @@ async function searchAssetAutocomplete(input, query, generation) {
   const controller = new AbortController();
   autocomplete.controller = controller;
   try {
-    const params = new URLSearchParams({ query, limit: "5" });
+    const params = new URLSearchParams({ query, limit: "3" });
     const payload = await requestJson(`/v1/assets/search?${params.toString()}`, { signal: controller.signal });
     const current = assetAutocompleteStates.get(input);
     if (!current || current.generation !== generation || input.value.trim() !== query) return;
@@ -1818,6 +1819,7 @@ function createHoldingTree(ticker) {
       / lots.reduce((total, lot) => total + Number(lot.remaining_shares), 0),
   };
   const group = makeElement("section", "holding-group");
+  group.dataset.ticker = ticker;
   const details = makeElement("div", "holding-details");
   details.hidden = true;
   const quoteNote = valuation?.current_price
@@ -1905,6 +1907,39 @@ function renderPortfolio() {
   renderOpeningAvailability();
   renderSellLotAllocation();
   updateControls();
+}
+
+async function refreshValuation() {
+  if (!state.snapshot || state.valuationPending || state.portfolioReadState !== "idle" || state.writeState !== "idle" || state.authTransition !== "idle") return;
+  const snapshot = state.snapshot;
+  const generation = state.portfolioGeneration;
+  state.valuationPending = true;
+  try {
+    let valuation;
+    try {
+      valuation = await requestJson("/v1/portfolio/valuation");
+    } catch (error) {
+      if (state.snapshot !== snapshot || state.portfolioGeneration !== generation) return;
+      if (error instanceof ApiError && error.status === 401) { enterHome("session_expired"); return; }
+      valuation = null;
+    }
+    if (state.snapshot !== snapshot || state.portfolioGeneration !== generation || state.writeState !== "idle") return;
+    state.valuation = valuation;
+    // 仅替换展示数字，保留正在操作的控件、焦点和展开状态。
+    for (const group of elements.positionList.querySelectorAll(".holding-group")) {
+      const fresh = createHoldingTree(group.dataset.ticker);
+      for (const selector of [".holding-number", ".holding-note"]) {
+        const current = group.querySelectorAll(selector);
+        fresh.querySelectorAll(selector).forEach((value, index) => {
+          current[index].textContent = value.textContent;
+          if (value.dataset.tone) current[index].dataset.tone = value.dataset.tone;
+          else delete current[index].dataset.tone;
+        });
+      }
+    }
+  } finally {
+    state.valuationPending = false;
+  }
 }
 
 async function refreshPortfolio({ afterMutation = false } = {}) {
@@ -2287,8 +2322,25 @@ function loadCurrentReconciliationDraft(event) {
     row.querySelector("[data-field='average_cost']").value = position.average_cost;
     row.querySelector("[data-field='position_type']").value = position.position_type === "UNSPECIFIED" ? "" : position.position_type;
   }
+  for (const position of state.snapshot.positions ?? []) {
+    if (editablePositions.includes(position)) continue;
+    const section = makeElement("div", "manual-purchase-records");
+    section.append(makeElement("strong", "", `${position.ticker} · ${position.position_type}`));
+    for (const lot of state.snapshot.lots ?? []) {
+      if (lot.ticker !== position.ticker || lot.position_type !== position.position_type) continue;
+      if (lot.source === "BUY") {
+        const edit = makeElement("button", "secondary-button compact-button", `${translate("edit_purchase")} · ${formatTimestamp(lot.purchased_at)}`);
+        edit.type = "button";
+        edit.addEventListener("click", () => openBuyCorrection(lot));
+        section.append(edit);
+      } else {
+        section.append(makeElement("p", "field-note", translate("no_aggregate_holdings_to_calibrate")));
+      }
+    }
+    elements.reconciliationRows.append(section);
+  }
   state.reconciliationSource = "MANUAL";
-  if (editablePositions.length) clearMessage(elements.reconciliationMessage);
+  if (elements.reconciliationRows.childElementCount) clearMessage(elements.reconciliationMessage);
   else setMessage(elements.reconciliationMessage, "no_aggregate_holdings_to_calibrate", "neutral");
   elements.reconciliationRows.querySelector("input")?.focus();
 }
@@ -2516,6 +2568,6 @@ updateControls();
 restoreSession();
 setInterval(() => {
   if (!document.hidden && state.activeView === "portfolio" && state.account?.portfolio_ready) {
-    refreshPortfolio();
+    refreshValuation();
   }
 }, 30000);

@@ -217,7 +217,7 @@ def test_client_script_preserves_session_identity_safe_text_and_question_boundar
         assert script.count(f"{label}:") >= 2
 
     assert 'ERROR_LABELS[error.code] ?? "unexpected_server_error"' in script
-    assert "20260910-m9-attachment-2" in page
+    assert "20260910-m9-feedback-1" in page
 
     assert "innerHTML" not in script
     assert "outerHTML" not in script
