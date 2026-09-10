@@ -1,6 +1,6 @@
 # PositionPilot
 
-当前稳定基线为 [`v1.0.0`](https://github.com/Weilinying/position-pilot/tree/v1.0.0) Local Self-Service MVP。M8.1 Ask Composer UX 已通过 Human Acceptance 并进入 `main`，但暂不单独发布 `v1.0.1`；M9 Asset Identity & Portfolio Import 正在 `codex/m9-asset-identity-import` 分支等待正式 Provider Smoke 与 Human Acceptance。相关改动记录在 [`CHANGELOG.md`](CHANGELOG.md) 的 `Unreleased` 部分。
+当前稳定基线为 [`v1.0.0`](https://github.com/Weilinying/position-pilot/tree/v1.0.0) Local Self-Service MVP。M8.1 Ask Composer UX 已通过 Human Acceptance 并进入 `main`，但暂不单独发布 `v1.0.1`；M9 Asset Identity、Portfolio Import、批次持仓与当前估值已在 `codex/m9-asset-identity-import` 分支完成实现，等待 Human Acceptance。相关改动记录在 [`CHANGELOG.md`](CHANGELOG.md) 的 `Unreleased` 部分。
 
 ## 前置条件
 
@@ -63,13 +63,15 @@ curl http://127.0.0.1:8000/health
 页面支持：
 
 - 通过 HttpOnly Session 恢复当前 Account 与唯一 Portfolio；
-- 通过 Finnhub 按 symbol / company name 搜索并选择 Provider 验证的 canonical symbol；
+- 在 ticker 输入框中通过 Finnhub 按 symbol / company name 获得联想候选，并选择 Provider 验证的 canonical symbol；
 - 从 Text 或最多两张 JPEG / PNG / WebP Screenshot 生成当前 Browser 生命周期内的可编辑 Opening Position Draft；
-- 通过统一 Attachment Composer 选择、拖放或直接粘贴截图，以紧凑缩略图预览后点击“开始识别”才上传；
-- 对已有 Portfolio 追加 immutable Position Reconciliation，校准截图中明确确认的 Shares / Average Cost，不影响 Cash 或未出现的持仓；
-- 追加 BUY / SELL；Position Type 可留空并归一为 `UNSPECIFIED`，与 `LONG_TERM`、`SWING` 独立维护；
+- 通过统一 Attachment Composer 点击上传区、拖放或直接粘贴截图；缩略图可打开大图，点击“开始识别”后才上传；
+- 对已有导入汇总持仓追加 immutable Position Reconciliation，可直接手工校准 Shares / Average Cost，不要求再次上传，也不影响 Cash 或未出现的持仓；
+- 按 ticker 总体、UNSPECIFIED 批次、SWING 与 LONG_TERM 分组查看当前股数、均价、未实现盈亏、百分比和市场价值；
+- 追加 BUY / SELL；BUY 建立批次，SELL 明确分配批次，整个批次的 Position Type 可直接调整；
+- 通过不可变 BUY Correction 修正购买价格、原成交股数和时间，并保留原始交易记录；
 - 追加 DEPOSIT / WITHDRAWAL；
-- 分别查看完整的 Opening Position、Position Reconciliation、Transaction 与 Cash Event 只读记录；
+- 查看完整 Transaction、BUY Correction 与 Cash Event 历史；
 - 在独立 Decision Questions 页面连续提交多个 Investment Question，并分别展示 Answer、`OK` / `DEGRADED` 和本轮 Context Sources；
 - 中文与英文一键切换；切换只改变本地展示文案与时间格式，不改写 Agent Answer 或 Provider Metadata。
 
@@ -91,7 +93,7 @@ M8 Authentication 只服务本地 Self-Service 闭环，不是完整公网 Accou
 
 ## Market Data
 
-M2 使用 Alpaca Market Data API v2 REST。Current Quote 来自实时 IEX feed，Historical Daily OHLCV 来自至少延迟 15 分钟的 SIP feed。调用方通过 Application Service 获取结构化结果；当前没有 Market Data REST endpoint。
+M2 使用 Alpaca Market Data API v2 REST。Current Quote 来自实时 IEX feed，Historical Daily OHLCV 来自至少延迟 15 分钟的 SIP feed。M9 通过 `GET /v1/portfolio/valuation` 返回当前 Portfolio 的 ticker、类型与批次估值；不暴露通用原始 Market Data REST endpoint。
 
 在本地 `.env` 配置 `ALPACA_API_KEY_ID` 与 `ALPACA_API_SECRET_KEY` 后，可显式运行真实 Provider smoke test：
 
