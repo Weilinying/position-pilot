@@ -163,7 +163,7 @@ const translations = {
     import_starting_positions: "Import starting positions",
     import_review_title: "Review before saving",
     draft_only_note: "Draft only · nothing is saved yet",
-    import_review_hint: "Use a manual search, pasted text, or up to two screenshots to prepare an editable draft. Confirm the fields below before saving.",
+    import_review_hint: "Type a ticker in the position row, paste text, or add screenshots to prepare an editable draft.",
     import_methods: "Import methods",
     manual_import: "Manual search",
     text_import: "Text import",
@@ -191,10 +191,12 @@ const translations = {
     start_recognition: "Start recognition",
     attachment_choose_file: "Browse images",
     attachment_drop_prompt: "Add portfolio screenshots",
-    attachment_drop_hint: "Drop, paste, or browse · up to 2 images · 10 MB each",
+    attachment_drop_hint: "Click, drop, or paste · up to 2 images · 10 MB each",
     attachment_ready: "Images ready. Nothing is uploaded until you start recognition.",
     attachment_limit: "You can attach up to two images at a time.",
     attachment_remove: "Remove",
+    attachment_preview_open: "View full image",
+    attachment_preview_image: "Uploaded image",
     attachment_file_required: "Choose, drop, or paste an image first.",
     screenshot_privacy_notice: "Selected screenshots are sent to Alibaba Model Studio only after you start recognition. PositionPilot does not save them; the Provider's fixed retention period is not publicly disclosed.",
     screenshot_file_required: "Choose a JPEG, PNG, or WebP screenshot first.",
@@ -283,13 +285,15 @@ const translations = {
 };
 
 Object.assign(translations.zh, {
-  import_review_hint: "可以手动搜索、粘贴文本，或一次添加最多两张截图来生成可编辑 Draft。保存前请复核字段。",
+  import_review_hint: "在持仓行输入 ticker、粘贴文本，或添加截图来生成可编辑 Draft。",
   screenshot_import_label: "选择最多两张券商持仓截图",
   attachment_choose_file: "浏览图片",
   attachment_drop_prompt: "添加持仓截图",
-  attachment_drop_hint: "拖入、粘贴或浏览 · 最多 2 张 · 每张不超过 10 MB",
+  attachment_drop_hint: "点击、拖入或粘贴 · 最多 2 张 · 每张不超过 10 MB",
   attachment_ready: "图片已准备好。点击“开始识别”前不会上传。",
   attachment_limit: "一次最多添加两张图片。",
+  attachment_preview_open: "查看大图",
+  attachment_preview_image: "已上传图片",
   screenshot_privacy_notice: "只有点击“开始识别”后，所选截图才会发送至 Alibaba Model Studio。PositionPilot 不保存图片；Provider 的固定保留时长尚未公开。",
   recognition_draft_ready: "Draft 已生成。已验证标的可直接保存，请复核其余字段。",
   asset_verified_exact: "已验证",
@@ -328,6 +332,8 @@ const DECIMAL_PATTERN = /^(?:0|[1-9]\d*)(?:\.\d{1,8})?$/;
 const IMPORT_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 const MAX_IMPORT_IMAGE_BYTES = 10 * 1024 * 1024;
 const MAX_IMPORT_IMAGES = 2;
+const ASSET_AUTOCOMPLETE_DELAY_MS = 250;
+const assetAutocompleteStates = new WeakMap();
 const SOURCE_LABELS = {
   PORTFOLIO_SNAPSHOT: "source_portfolio",
   CURRENT_QUOTE: "source_quote",
@@ -378,10 +384,6 @@ function importElements(prefix) {
       text: byId(`${prefix}-import-text-panel`),
       screenshot: byId(`${prefix}-import-screenshot-panel`),
     },
-    assetQuery: byId(`${prefix}-asset-query`),
-    assetSearch: byId(`${prefix}-asset-search`),
-    assetCandidates: byId(`${prefix}-asset-candidates`),
-    assetMessage: byId(`${prefix}-asset-message`),
     textInput: byId(`${prefix}-import-text`),
     textSubmit: byId(`${prefix}-import-text-submit`),
     textMessage: byId(`${prefix}-import-text-message`),
@@ -390,10 +392,10 @@ function importElements(prefix) {
     screenshotMessage: byId(`${prefix}-import-screenshot-message`),
     attachmentComposer: byId(`${prefix}-attachment-composer`),
     attachmentDropzone: byId(`${prefix}-attachment-dropzone`),
-    attachmentChoose: byId(`${prefix}-attachment-choose`),
     attachmentPreview: byId(`${prefix}-attachment-preview`),
     attachments: [],
-    defaultMode: document.querySelector(`#${prefix}-import-tools [data-import-mode]`)?.dataset.importMode ?? "manual",
+    defaultMode: document.querySelector(`#${prefix}-import-tools [data-import-mode]`)?.dataset.importMode
+      ?? (byId(`${prefix}-import-text-panel`) ? "text" : "screenshot"),
     draftFeedback: byId(`${prefix}-import-draft-feedback`),
   };
 }
@@ -409,6 +411,7 @@ const elements = {
   openingSetup: byId("opening-setup"), reopenOpening: byId("reopen-opening-setup"), openingForm: byId("opening-form"), openingFields: byId("opening-fields"), openingRows: byId("opening-draft-rows"), addOpeningRow: byId("add-opening-row"), skipOpening: byId("skip-opening-setup"), openingMessage: byId("opening-message"), openingRecordCount: byId("opening-record-count"), openingRecordsEmpty: byId("opening-records-empty"), openingRecordList: byId("opening-record-list"), openingImport: importElements("opening"), reconciliationCard: byId("position-reconciliation"), reconciliationForm: byId("reconciliation-form"), reconciliationFields: byId("reconciliation-fields"), reconciliationRows: byId("reconciliation-draft-rows"), reconciliationBroker: byId("reconciliation-broker"), reconciliationRevalidate: byId("reconciliation-revalidate"), reconciliationSubmit: byId("reconciliation-submit"), reconciliationMessage: byId("reconciliation-message"), reconciliationImport: importElements("reconciliation"), reconciliationRecordCount: byId("reconciliation-record-count"), reconciliationRecordsEmpty: byId("reconciliation-records-empty"), reconciliationRecordList: byId("reconciliation-record-list"),
   tradeForm: byId("trade-form"), tradeFields: byId("trade-fields"), tradeAction: byId("trade-action"), tradeType: byId("trade-position-type"), tradeTicker: byId("trade-ticker"), tradePrice: byId("trade-price"), tradeShares: byId("trade-shares"), tradeTime: byId("trade-occurred-at"), tradeReason: byId("trade-reason"), tradeMessage: byId("trade-message"), transactionCount: byId("transaction-count"), transactionsEmpty: byId("transactions-empty"), transactionList: byId("transaction-list"),
   cashForm: byId("cash-form"), cashFields: byId("cash-fields"), cashType: byId("cash-event-type"), cashAmount: byId("cash-amount"), cashTime: byId("cash-occurred-at"), cashReason: byId("cash-reason"), cashMessage: byId("cash-message"), cashCount: byId("cash-event-count"), cashEmpty: byId("cash-events-empty"), cashList: byId("cash-event-list"),
+  imagePreviewDialog: byId("image-preview-dialog"), imagePreviewClose: byId("image-preview-close"), imagePreviewFull: byId("image-preview-full"), imagePreviewCaption: byId("image-preview-caption"),
 };
 
 const importConfigs = [
@@ -603,14 +606,32 @@ function formatAttachmentSize(bytes) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+function openImagePreview(attachment, opener) {
+  elements.imagePreviewFull.src = attachment.previewUrl;
+  elements.imagePreviewFull.alt = attachment.file.name || translate("attachment_preview_image");
+  elements.imagePreviewCaption.textContent = attachment.file.name || translate("attachment_preview_image");
+  elements.imagePreviewDialog.dataset.openerId = opener.id;
+  elements.imagePreviewDialog.showModal();
+}
+
+function closeImagePreview() {
+  if (elements.imagePreviewDialog.open) elements.imagePreviewDialog.close();
+}
+
 function renderAttachmentPreviews(config) {
   const controls = config.controls;
   clearElement(controls.attachmentPreview);
   for (const attachment of controls.attachments) {
     const card = makeElement("article", "attachment-preview-card");
+    const preview = makeElement("button", "attachment-preview-open");
+    preview.type = "button";
+    preview.id = `attachment-preview-${attachment.id}`;
+    preview.setAttribute("aria-label", `${translate("attachment_preview_open")} ${attachment.file.name || translate("attachment_preview_image")}`);
     const image = makeElement("img");
     image.src = attachment.previewUrl;
     image.alt = "";
+    preview.append(image);
+    preview.addEventListener("click", () => openImagePreview(attachment, preview));
     const copy = makeElement("div", "attachment-preview-copy");
     copy.append(
       makeElement("strong", "", attachment.file.name || "Pasted image"),
@@ -628,7 +649,7 @@ function renderAttachmentPreviews(config) {
       controls.attachments = controls.attachments.filter((item) => item.id !== attachment.id);
       renderAttachmentPreviews(config);
     });
-    card.append(image, copy, remove);
+    card.append(preview, copy, remove);
     controls.attachmentPreview.append(card);
   }
   controls.attachmentPreview.hidden = controls.attachments.length === 0;
@@ -694,12 +715,13 @@ function bindAttachmentComposer(config) {
     icon.setAttribute("aria-hidden", "true");
     controls.attachmentDropzone.prepend(icon);
   }
-  controls.attachmentChoose?.addEventListener("click", (event) => {
-    event.stopPropagation();
-    controls.screenshotInput.click();
-  });
   controls.screenshotInput.addEventListener("change", () => stageAttachments(config, controls.screenshotInput.files ?? []));
   controls.attachmentDropzone?.addEventListener("click", () => controls.screenshotInput.click());
+  controls.attachmentDropzone?.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    event.preventDefault();
+    controls.screenshotInput.click();
+  });
   controls.attachmentComposer.addEventListener("dragenter", (event) => {
     event.preventDefault();
     controls.attachmentDropzone?.classList.add("is-dragging");
@@ -726,7 +748,6 @@ function bindAttachmentComposer(config) {
 }
 
 function resetImportControls(config) {
-  config.pendingRow = null;
   const controls = config.controls;
   controls.mode = controls.defaultMode;
   controls.tabs.forEach((tab, index) => {
@@ -735,19 +756,16 @@ function resetImportControls(config) {
     tab.setAttribute("aria-selected", String(active));
   });
   for (const [panelMode, panel] of Object.entries(controls.panels)) if (panel) panel.hidden = panelMode !== controls.defaultMode;
-  if (controls.assetQuery) controls.assetQuery.value = "";
   if (controls.textInput) controls.textInput.value = "";
   if (controls.screenshotInput) controls.screenshotInput.value = "";
   clearAttachments(config);
-  clearElement(controls.assetCandidates);
   clearElement(controls.draftFeedback);
-  clearMessage(controls.assetMessage);
   clearMessage(controls.textMessage);
   clearMessage(controls.screenshotMessage);
 }
 
 function switchImportMode(config, mode) {
-  if (!["manual", "text", "screenshot"].includes(mode)) return;
+  if (!["text", "screenshot"].includes(mode)) return;
   config.controls.mode = mode;
   config.controls.tabs.forEach((tab) => {
     const active = tab.dataset.importMode === mode;
@@ -755,7 +773,7 @@ function switchImportMode(config, mode) {
     tab.setAttribute("aria-selected", String(active));
   });
   for (const [panelMode, panel] of Object.entries(config.controls.panels)) if (panel) panel.hidden = panelMode !== mode;
-  const focusTarget = mode === "manual" ? config.controls.assetQuery : mode === "text" ? config.controls.textInput : config.controls.attachmentDropzone ?? config.controls.screenshotInput;
+  const focusTarget = mode === "text" ? config.controls.textInput : config.controls.attachmentDropzone ?? config.controls.screenshotInput;
   focusTarget?.focus();
 }
 
@@ -763,7 +781,6 @@ function beginImportRequest() {
   state.importGeneration += 1;
   state.importController?.abort();
   for (const config of importConfigs) {
-    setLocalizedText(config.controls.assetSearch, "search_assets");
     setLocalizedText(config.controls.textSubmit, "prepare_text_draft");
     setLocalizedText(config.controls.screenshotSubmit, "start_recognition");
   }
@@ -798,7 +815,6 @@ function importFailureMessage(config, messageElement, error, messages) {
     return;
   }
   setMessage(messageElement, messages.PROVIDER_UNAVAILABLE ?? "unexpected_server_error");
-  if (config?.controls) clearElement(config.controls.assetCandidates);
 }
 
 function normalizeDraftField(field) {
@@ -850,26 +866,6 @@ function setDraftField(row, fieldName, draftField, valueOverride = null) {
   return parsed;
 }
 
-function ensureDraftSymbolSearch(row) {
-  if (row.querySelector(".draft-symbol-search")) return;
-  const config = importConfigs.find((candidate) => candidate.rows.contains(row));
-  if (!config?.controls.assetQuery) return;
-  const findButton = makeElement("button", "text-button draft-symbol-search", translate("find_matching_assets"));
-  findButton.type = "button";
-  findButton.dataset.i18n = "find_matching_assets";
-  findButton.addEventListener("click", () => {
-    const config = importConfigs.find((candidate) => candidate.rows.contains(row));
-    if (!config) return;
-    const ticker = row.querySelector("[data-field='ticker']");
-    if (!config.controls.assetQuery) return;
-    config.pendingRow = row;
-    config.controls.assetQuery.value = ticker?.value.trim() ?? "";
-    switchImportMode(config, "manual");
-    config.controls.assetQuery.focus();
-  });
-  row.append(findButton);
-}
-
 function clearSelectedAsset(row) {
   delete row.dataset.assetSymbol;
   delete row.dataset.assetDisplayName;
@@ -878,7 +874,6 @@ function clearSelectedAsset(row) {
   row.querySelector(".reconciliation-asset-options")?.remove();
   row.querySelector(".reconciliation-asset-status")?.remove();
   delete row.dataset.revalidationStatus;
-  ensureDraftSymbolSearch(row);
 }
 
 function applySelectedAsset(row, candidate) {
@@ -892,7 +887,6 @@ function applySelectedAsset(row, candidate) {
   row.querySelector(".draft-asset-resolution")?.remove();
   clearFieldReviewCue(ticker);
   ticker.dataset.fieldName = "ticker";
-  row.querySelector(".draft-symbol-search")?.remove();
   return true;
 }
 
@@ -985,43 +979,138 @@ function renderRecognitionDraft(config, payload, messageElement) {
   return true;
 }
 
-function renderAssetCandidates(config, payload) {
-  clearElement(config.controls.assetCandidates);
-  if (payload?.status !== "OK" || !Array.isArray(payload.candidates) || payload.candidates.length === 0) {
-    importStatusMessage(config.controls.assetMessage, payload?.status ?? "NO_MATCH", ASSET_STATUS_MESSAGES);
-    return;
+function closeAssetAutocomplete(input) {
+  const autocomplete = assetAutocompleteStates.get(input);
+  if (!autocomplete) return;
+  clearTimeout(autocomplete.timer);
+  autocomplete.timer = null;
+  autocomplete.generation += 1;
+  autocomplete.controller?.abort();
+  autocomplete.controller = null;
+  autocomplete.activeIndex = -1;
+  clearElement(autocomplete.list);
+  autocomplete.list.hidden = true;
+  input.removeAttribute("aria-activedescendant");
+  input.setAttribute("aria-expanded", "false");
+}
+
+function selectAutocompleteCandidate(input, candidate) {
+  const autocomplete = assetAutocompleteStates.get(input);
+  if (!autocomplete) return;
+  autocomplete.onSelect(candidate);
+  closeAssetAutocomplete(input);
+}
+
+function renderAutocompleteCandidates(input, payload) {
+  const autocomplete = assetAutocompleteStates.get(input);
+  if (!autocomplete) return;
+  clearElement(autocomplete.list);
+  autocomplete.activeIndex = -1;
+  const candidates = payload?.status === "OK" && Array.isArray(payload.candidates)
+    ? payload.candidates.filter((candidate) => candidate && typeof candidate === "object")
+    : [];
+  for (const [index, candidate] of candidates.entries()) {
+    const option = makeElement("button", "asset-autocomplete-option");
+    option.type = "button";
+    option.id = `${input.id}-asset-option-${index}`;
+    option.setAttribute("role", "option");
+    option.dataset.index = String(index);
+    option.append(
+      makeElement("strong", "asset-candidate-symbol", String(candidate.canonical_symbol ?? "")),
+      makeElement("span", "asset-candidate-name", String(candidate.display_name ?? "")),
+      makeElement("span", "asset-candidate-exchange", String(candidate.exchange ?? "")),
+    );
+    option.addEventListener("mousedown", (event) => event.preventDefault());
+    option.addEventListener("click", () => selectAutocompleteCandidate(input, candidate));
+    autocomplete.list.append(option);
   }
-  clearMessage(config.controls.assetMessage);
-  const heading = makeElement("p", "asset-candidate-heading", translate("asset_candidate_heading"));
-  config.controls.assetCandidates.append(heading);
-  let candidateCount = 0;
-  for (const candidate of payload.candidates) {
-    if (!candidate || typeof candidate !== "object") continue;
-    const card = makeElement("button", "asset-candidate");
-    card.type = "button";
-    const title = makeElement("strong", "asset-candidate-symbol", String(candidate.canonical_symbol ?? ""));
-    const name = makeElement("span", "asset-candidate-name", String(candidate.display_name ?? ""));
-    const exchange = makeElement("span", "asset-candidate-exchange", String(candidate.exchange ?? ""));
-    card.append(title, name, exchange);
-    candidateCount += 1;
-    card.addEventListener("click", () => selectAssetCandidate(config, candidate));
-    config.controls.assetCandidates.append(card);
-  }
-  if (candidateCount === 0) {
-    importStatusMessage(config.controls.assetMessage, "NO_MATCH", ASSET_STATUS_MESSAGES);
+  autocomplete.candidates = candidates;
+  autocomplete.list.hidden = candidates.length === 0;
+  input.setAttribute("aria-expanded", String(candidates.length > 0));
+}
+
+async function searchAssetAutocomplete(input, query, generation) {
+  const autocomplete = assetAutocompleteStates.get(input);
+  if (!autocomplete || generation !== autocomplete.generation) return;
+  autocomplete.controller?.abort();
+  const controller = new AbortController();
+  autocomplete.controller = controller;
+  try {
+    const params = new URLSearchParams({ query, limit: "5" });
+    const payload = await requestJson(`/v1/assets/search?${params.toString()}`, { signal: controller.signal });
+    const current = assetAutocompleteStates.get(input);
+    if (!current || current.generation !== generation || input.value.trim() !== query) return;
+    renderAutocompleteCandidates(input, payload);
+  } catch (error) {
+    if (error?.name === "AbortError") return;
+    if (error instanceof ApiError && error.status === 401) enterHome("session_expired");
+    closeAssetAutocomplete(input);
   }
 }
 
-function selectAssetCandidate(config, candidate) {
-  const pendingRow = config.pendingRow && config.rows.contains(config.pendingRow) ? config.pendingRow : null;
-  const target = pendingRow || [...config.rows.querySelectorAll(".opening-draft-row")].find((row) => {
-    return !row.querySelector("[data-field='ticker']")?.value.trim();
-  }) || createOpeningRow(config.rows);
-  if (!applySelectedAsset(target, candidate)) return;
-  config.pendingRow = null;
-  clearElement(config.controls.assetCandidates);
-  setMessage(config.controls.assetMessage, "asset_selected", "success");
-  target.querySelector("[data-field='shares']")?.focus();
+function moveAutocompleteSelection(input, direction) {
+  const autocomplete = assetAutocompleteStates.get(input);
+  if (!autocomplete || autocomplete.list.hidden || autocomplete.candidates.length === 0) return false;
+  const count = autocomplete.candidates.length;
+  autocomplete.activeIndex = (autocomplete.activeIndex + direction + count) % count;
+  const options = [...autocomplete.list.querySelectorAll("[role='option']")];
+  options.forEach((option, index) => option.classList.toggle("is-active", index === autocomplete.activeIndex));
+  const active = options[autocomplete.activeIndex];
+  input.setAttribute("aria-activedescendant", active.id);
+  active.scrollIntoView({ block: "nearest" });
+  return true;
+}
+
+function bindAssetAutocomplete(input, onSelect) {
+  if (!input || assetAutocompleteStates.has(input)) return;
+  const wrapper = makeElement("div", "asset-autocomplete-field");
+  const list = makeElement("div", "asset-autocomplete-list");
+  list.id = `${input.id}-asset-options`;
+  list.hidden = true;
+  list.setAttribute("role", "listbox");
+  input.parentNode.insertBefore(wrapper, input);
+  wrapper.append(input, list);
+  input.setAttribute("role", "combobox");
+  input.setAttribute("aria-autocomplete", "list");
+  input.setAttribute("aria-controls", list.id);
+  input.setAttribute("aria-expanded", "false");
+  assetAutocompleteStates.set(input, {
+    activeIndex: -1,
+    candidates: [],
+    controller: null,
+    generation: 0,
+    list,
+    onSelect,
+    timer: null,
+  });
+  input.addEventListener("input", () => {
+    const autocomplete = assetAutocompleteStates.get(input);
+    autocomplete.generation += 1;
+    autocomplete.controller?.abort();
+    clearTimeout(autocomplete.timer);
+    const query = input.value.trim();
+    if (!query) {
+      closeAssetAutocomplete(input);
+      return;
+    }
+    const generation = autocomplete.generation;
+    autocomplete.timer = setTimeout(
+      () => searchAssetAutocomplete(input, query, generation),
+      ASSET_AUTOCOMPLETE_DELAY_MS,
+    );
+  });
+  input.addEventListener("keydown", (event) => {
+    if (event.key === "ArrowDown" && moveAutocompleteSelection(input, 1)) event.preventDefault();
+    else if (event.key === "ArrowUp" && moveAutocompleteSelection(input, -1)) event.preventDefault();
+    else if (event.key === "Enter") {
+      const autocomplete = assetAutocompleteStates.get(input);
+      if (autocomplete?.activeIndex >= 0) {
+        event.preventDefault();
+        selectAutocompleteCandidate(input, autocomplete.candidates[autocomplete.activeIndex]);
+      }
+    } else if (event.key === "Escape") closeAssetAutocomplete(input);
+  });
+  input.addEventListener("blur", () => setTimeout(() => closeAssetAutocomplete(input), 0));
 }
 
 function readFileAsDataUrl(file, signal) {
@@ -1052,34 +1141,6 @@ function readFileAsDataUrl(file, signal) {
     signal?.addEventListener("abort", abortRead, { once: true });
     reader.readAsDataURL(file);
   });
-}
-
-async function handleAssetSearch(event, config) {
-  event?.preventDefault();
-  if (state.importPending) return;
-  const query = config.controls.assetQuery.value.trim();
-  clearMessage(config.controls.assetMessage);
-  if (!query) {
-    setMessage(config.controls.assetMessage, "asset_search_empty", "neutral");
-    config.controls.assetQuery.focus();
-    return;
-  }
-  const task = beginImportRequest();
-  clearElement(config.controls.assetCandidates);
-  setLocalizedText(config.controls.assetSearch, "searching_assets");
-  try {
-    const params = new URLSearchParams({ query, limit: "5" });
-    const payload = await requestJson(`/v1/assets/search?${params.toString()}`, { signal: task.controller.signal });
-    if (task.generation !== state.importGeneration) return;
-    renderAssetCandidates(config, payload);
-  } catch (error) {
-    if (task.generation === state.importGeneration) importFailureMessage(config, config.controls.assetMessage, error, ASSET_STATUS_MESSAGES);
-  } finally {
-    if (task.generation === state.importGeneration) {
-      setLocalizedText(config.controls.assetSearch, "search_assets");
-      finishImportRequest(task.generation);
-    }
-  }
 }
 
 async function handleTextImport(event, config) {
@@ -1171,12 +1232,6 @@ async function handleScreenshotImport(event, config) {
 
 function bindImportEvents(config) {
   config.controls.tabs.forEach((tab) => tab.addEventListener("click", () => switchImportMode(config, tab.dataset.importMode)));
-  config.controls.assetSearch?.addEventListener("click", () => handleAssetSearch(null, config));
-  config.controls.assetQuery?.addEventListener("keydown", (event) => {
-    if (event.key !== "Enter" || event.isComposing || event.keyCode === 229) return;
-    event.preventDefault();
-    handleAssetSearch(event, config);
-  });
   config.controls.textSubmit?.addEventListener("click", () => handleTextImport(null, config));
   config.controls.screenshotSubmit?.addEventListener("click", () => handleScreenshotImport(null, config));
   bindAttachmentComposer(config);
@@ -1194,6 +1249,10 @@ function createOpeningRow(container) {
     ticker.addEventListener(eventName, () => clearSelectedAsset(row));
   }
   tickerWrap.append(tickerLabel, ticker);
+  bindAssetAutocomplete(ticker, (candidate) => {
+    if (!applySelectedAsset(row, candidate)) return;
+    row.querySelector("[data-field='shares']")?.focus();
+  });
   const sharesWrap = makeElement("div");
   const sharesLabel = makeElement("label"); setLocalizedText(sharesLabel, "shares");
   const shares = makeElement("input"); shares.id = `opening-${rowId}-shares`; shares.type = "text"; shares.inputMode = "decimal"; shares.autocomplete = "off"; shares.dataset.field = "shares"; sharesLabel.htmlFor = shares.id;
@@ -2111,6 +2170,26 @@ function bindEvents() {
   elements.reconciliationForm.addEventListener("submit", handleReconciliation);
   elements.tradeForm.addEventListener("submit", handleTrade);
   elements.cashForm.addEventListener("submit", handleCash);
+  elements.tradeTicker.addEventListener("input", () => {
+    delete elements.tradeTicker.dataset.assetSymbol;
+  });
+  bindAssetAutocomplete(elements.tradeTicker, (candidate) => {
+    const symbol = String(candidate?.canonical_symbol ?? "").trim().toUpperCase();
+    if (!symbol) return;
+    elements.tradeTicker.value = symbol;
+    elements.tradeTicker.dataset.assetSymbol = symbol;
+    elements.tradePrice.focus();
+  });
+  elements.imagePreviewClose.addEventListener("click", closeImagePreview);
+  elements.imagePreviewDialog.addEventListener("click", (event) => {
+    if (event.target === elements.imagePreviewDialog) closeImagePreview();
+  });
+  elements.imagePreviewDialog.addEventListener("close", () => {
+    elements.imagePreviewFull.removeAttribute("src");
+    const opener = byId(elements.imagePreviewDialog.dataset.openerId);
+    delete elements.imagePreviewDialog.dataset.openerId;
+    opener?.focus();
+  });
   elements.question.addEventListener("compositionstart", () => { state.questionComposing = true; });
   elements.question.addEventListener("compositionend", () => { state.questionComposing = false; });
   elements.question.addEventListener("keydown", handleQuestionKeydown);

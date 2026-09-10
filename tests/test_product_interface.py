@@ -85,11 +85,11 @@ def test_attachment_composer_and_reconciliation_contract() -> None:
         for element_id in (
             f"{prefix}-attachment-composer",
             f"{prefix}-attachment-dropzone",
-            f"{prefix}-attachment-choose",
             f"{prefix}-attachment-preview",
             f"{prefix}-import-screenshot-submit",
         ):
             assert f'id="{element_id}"' in page
+        assert f'id="{prefix}-attachment-choose"' not in page
     for element_id in (
         "position-reconciliation",
         "reconciliation-form",
@@ -106,6 +106,9 @@ def test_attachment_composer_and_reconciliation_contract() -> None:
         "data-attachment-composer",
         "data-attachment-dropzone",
         "stageAttachments",
+        "openImagePreview",
+        'id="image-preview-dialog"',
+        "attachment-preview-open",
         "pastedImageFile",
         "event.clipboardData",
         "dragover",
@@ -128,7 +131,9 @@ def test_attachment_composer_and_reconciliation_contract() -> None:
     ):
         assert marker in script or marker in page
     assert ".attachment-preview-card" in stylesheet
-    assert 'data-attachment-dropzone role="button"' not in page
+    assert ".image-preview-dialog" in stylesheet
+    assert page.count('data-attachment-dropzone role="button" tabindex="0"') == 3
+    assert 'event.key !== "Enter" && event.key !== " "' in script
     assert page.count('type="file" accept="image/jpeg,image/png,image/webp" multiple') == 3
     assert 'aria-labelledby="reconciliation-import-title"' in page
     revalidation = script[
@@ -239,12 +244,8 @@ def test_opening_import_review_contract_is_provider_neutral_and_explicit() -> No
     for prefix in ("setup", "opening"):
         for element_id in (
             f"{prefix}-import-tools",
-            f"{prefix}-import-manual-tab",
             f"{prefix}-import-text-tab",
             f"{prefix}-import-screenshot-tab",
-            f"{prefix}-asset-query",
-            f"{prefix}-asset-search",
-            f"{prefix}-asset-candidates",
             f"{prefix}-import-text",
             f"{prefix}-import-text-submit",
             f"{prefix}-import-screenshot",
@@ -252,6 +253,13 @@ def test_opening_import_review_contract_is_provider_neutral_and_explicit() -> No
             f"{prefix}-import-draft-feedback",
         ):
             assert f'id="{element_id}"' in page
+        for removed_id in (
+            f"{prefix}-import-manual-tab",
+            f"{prefix}-asset-query",
+            f"{prefix}-asset-search",
+            f"{prefix}-asset-candidates",
+        ):
+            assert f'id="{removed_id}"' not in page
 
     for endpoint in (
         "/v1/assets/search",
@@ -271,7 +279,6 @@ def test_opening_import_review_contract_is_provider_neutral_and_explicit() -> No
         "state.importController?.abort()",
         "state.importGeneration",
         "state.importPending",
-        "config.rows.contains(config.pendingRow)",
         "row.dataset.assetSymbol",
         "rowData.asset_resolution",
         "applySelectedAsset(row, resolution.candidate)",
@@ -289,6 +296,11 @@ def test_opening_import_review_contract_is_provider_neutral_and_explicit() -> No
         "combinedDraft.rows.push",
         "validateUnboundDraftAssets",
         "canonical === ticker",
+        "bindAssetAutocomplete",
+        "ASSET_AUTOCOMPLETE_DELAY_MS",
+        'event.key === "ArrowDown"',
+        'event.key === "Escape"',
+        "current.generation !== generation",
     ):
         assert marker in script or marker in page
 
@@ -302,6 +314,8 @@ def test_opening_import_review_contract_is_provider_neutral_and_explicit() -> No
     assert "row.dataset.assetSymbol !== normalizedTicker" in script
     assert "data-review-status" in stylesheet
     assert "draft-row-review" in stylesheet
+    assert ".asset-autocomplete-list" in stylesheet
+    assert ".asset-autocomplete-option" in stylesheet
 
 
 def test_question_composer_keyboard_contract() -> None:

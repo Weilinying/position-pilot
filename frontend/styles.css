@@ -2248,7 +2248,7 @@ footer {
 .attachment-dropzone {
   display: grid;
   min-height: 86px;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
   gap: 13px;
   padding: 14px 16px;
@@ -2316,12 +2316,75 @@ footer {
   background: rgba(27, 107, 84, 0.055);
 }
 
-.attachment-preview-card img {
+.attachment-preview-open {
+  display: block;
   width: 58px;
   height: 44px;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
   border-radius: 7px;
+  background: #fffefa;
+  cursor: zoom-in;
+}
+
+.attachment-preview-open:focus-visible {
+  outline: 3px solid rgba(27, 107, 84, 0.24);
+  outline-offset: 2px;
+}
+
+.attachment-preview-open img {
+  width: 58px;
+  height: 44px;
   object-fit: cover;
   background: #fffefa;
+}
+
+.image-preview-dialog {
+  width: min(92vw, 1080px);
+  max-width: none;
+  padding: 42px 16px 14px;
+  border: 0;
+  border-radius: 16px;
+  color: var(--ink);
+  background: var(--panel);
+  box-shadow: 0 26px 80px rgba(16, 35, 29, 0.28);
+}
+
+.image-preview-dialog::backdrop {
+  background: rgba(8, 22, 18, 0.72);
+}
+
+.image-preview-dialog img {
+  display: block;
+  max-width: 100%;
+  max-height: 78vh;
+  margin: auto;
+  border-radius: 10px;
+  object-fit: contain;
+}
+
+.image-preview-dialog p {
+  margin: 10px 4px 0;
+  color: var(--ink-soft);
+  font-size: 12px;
+  text-align: center;
+}
+
+.image-preview-close {
+  position: absolute;
+  top: 9px;
+  right: 10px;
+  display: grid;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  place-items: center;
+  color: var(--ink);
+  background: rgba(27, 107, 84, 0.09);
+  font-size: 20px;
 }
 
 .attachment-preview-copy {
@@ -2428,6 +2491,48 @@ footer {
   font-size: 11px;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.asset-autocomplete-field {
+  position: relative;
+}
+
+.asset-autocomplete-list {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 5px);
+  left: 0;
+  display: grid;
+  width: min(460px, 90vw);
+  max-height: 240px;
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: var(--panel);
+  box-shadow: 0 14px 34px rgba(16, 35, 29, 0.17);
+}
+
+.asset-autocomplete-option {
+  display: grid;
+  grid-template-columns: minmax(66px, auto) minmax(0, 1fr) auto;
+  gap: 9px;
+  align-items: center;
+  width: 100%;
+  padding: 9px 11px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  color: var(--ink);
+  background: transparent;
+  text-align: left;
+}
+
+.asset-autocomplete-option:last-child {
+  border-bottom: 0;
+}
+
+.asset-autocomplete-option:hover,
+.asset-autocomplete-option.is-active {
+  background: rgba(215, 255, 67, 0.16);
 }
 
 .asset-candidate-status {
