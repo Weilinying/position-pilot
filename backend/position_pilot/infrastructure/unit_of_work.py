@@ -11,8 +11,11 @@ from sqlalchemy.orm import Session, sessionmaker
 from position_pilot.application.auth_service import Account, AuthSession
 from position_pilot.application.errors import EmailAlreadyRegistered
 from position_pilot.domain.portfolio import (
+    BuyTransactionCorrection,
     CashEvent,
     CashEventType,
+    LotAllocation,
+    LotClassificationChange,
     OpeningPosition,
     PositionReconciliation,
     PositionType,
@@ -23,7 +26,10 @@ from position_pilot.domain.portfolio import (
 from position_pilot.infrastructure.models import (
     AccountModel,
     AuthSessionModel,
+    BuyTransactionCorrectionModel,
     CashEventModel,
+    LotAllocationModel,
+    LotClassificationChangeModel,
     OpeningPositionModel,
     PositionReconciliationModel,
     TransactionModel,
@@ -129,6 +135,49 @@ def _to_position_reconciliation(model: PositionReconciliationModel) -> PositionR
         confirmed_at=model.confirmed_at,
         broker=model.broker,
         source_info=model.source_info,
+    )
+
+
+def _to_lot_allocation(model: LotAllocationModel) -> LotAllocation:
+    """将 ORM 卖出分配转换为领域事实。"""
+
+    return LotAllocation(
+        id=model.id,
+        user_id=model.user_id,
+        sell_transaction_id=model.sell_transaction_id,
+        lot_id=model.lot_id,
+        shares=model.shares,
+    )
+
+
+def _to_lot_classification_change(
+    model: LotClassificationChangeModel,
+) -> LotClassificationChange:
+    """将 ORM 批次类型变更转换为领域事实。"""
+
+    return LotClassificationChange(
+        id=model.id,
+        user_id=model.user_id,
+        lot_id=model.lot_id,
+        position_type=PositionType(model.position_type),
+        effective_at=model.effective_at,
+    )
+
+
+def _to_buy_transaction_correction(
+    model: BuyTransactionCorrectionModel,
+) -> BuyTransactionCorrection:
+    """将 ORM BUY 更正转换为领域事实。"""
+
+    return BuyTransactionCorrection(
+        id=model.id,
+        user_id=model.user_id,
+        transaction_id=model.transaction_id,
+        price=model.price,
+        shares=model.shares,
+        occurred_at=model.occurred_at,
+        reason=model.reason,
+        corrected_at=model.corrected_at,
     )
 
 
@@ -326,6 +375,93 @@ class SqlAlchemyPortfolioUnitOfWork:
                 confirmed_at=reconciliation.confirmed_at,
                 broker=reconciliation.broker,
                 source_info=reconciliation.source_info,
+            )
+        )
+
+    def list_lot_allocations(self, user_id: UUID) -> list[LotAllocation]:
+        """读取用户完整的卖出批次分配。"""
+
+        statement = (
+            select(LotAllocationModel)
+            .where(LotAllocationModel.user_id == user_id)
+            .order_by(LotAllocationModel.sell_transaction_id, LotAllocationModel.id)
+        )
+        return [_to_lot_allocation(model) for model in self.session.scalars(statement)]
+
+    def add_lot_allocations(self, allocations: list[LotAllocation]) -> None:
+        """原子追加一笔 SELL 的全部批次分配。"""
+
+        self.session.add_all(
+            [
+                LotAllocationModel(
+                    id=allocation.id,
+                    user_id=allocation.user_id,
+                    sell_transaction_id=allocation.sell_transaction_id,
+                    lot_id=allocation.lot_id,
+                    shares=allocation.shares,
+                )
+                for allocation in allocations
+            ]
+        )
+
+    def list_lot_classification_changes(
+        self,
+        user_id: UUID,
+    ) -> list[LotClassificationChange]:
+        """按生效时间读取用户完整的批次类型变更。"""
+
+        statement = (
+            select(LotClassificationChangeModel)
+            .where(LotClassificationChangeModel.user_id == user_id)
+            .order_by(
+                LotClassificationChangeModel.effective_at,
+                LotClassificationChangeModel.id,
+            )
+        )
+        return [_to_lot_classification_change(model) for model in self.session.scalars(statement)]
+
+    def add_lot_classification_change(self, change: LotClassificationChange) -> None:
+        """追加领域层已校验的批次类型变更。"""
+
+        self.session.add(
+            LotClassificationChangeModel(
+                id=change.id,
+                user_id=change.user_id,
+                lot_id=change.lot_id,
+                position_type=change.position_type.value,
+                effective_at=change.effective_at,
+            )
+        )
+
+    def list_buy_transaction_corrections(
+        self,
+        user_id: UUID,
+    ) -> list[BuyTransactionCorrection]:
+        """按更正时间读取全部 BUY 更正。"""
+
+        statement = (
+            select(BuyTransactionCorrectionModel)
+            .where(BuyTransactionCorrectionModel.user_id == user_id)
+            .order_by(
+                BuyTransactionCorrectionModel.corrected_at,
+                BuyTransactionCorrectionModel.id,
+            )
+        )
+        return [_to_buy_transaction_correction(model) for model in self.session.scalars(statement)]
+
+    def add_buy_transaction_correction(self, correction: BuyTransactionCorrection) -> None:
+        """追加一版领域层已校验的 BUY 更正。"""
+
+        self.session.add(
+            BuyTransactionCorrectionModel(
+                id=correction.id,
+                user_id=correction.user_id,
+                transaction_id=correction.transaction_id,
+                price=correction.price,
+                shares=correction.shares,
+                occurred_at=correction.occurred_at,
+                reason=correction.reason,
+                corrected_at=correction.corrected_at,
             )
         )
 

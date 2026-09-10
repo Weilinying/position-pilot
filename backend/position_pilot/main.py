@@ -42,7 +42,10 @@ from position_pilot.application.investment_agent import (
 )
 from position_pilot.application.opening_import_service import OpeningImportService
 from position_pilot.application.portfolio_service import (
+    ChangeLotClassificationCommand,
+    CorrectBuyTransactionCommand,
     InitializeOpeningPositionsCommand,
+    LotAllocationInput,
     OpeningPositionInput,
     PortfolioService,
     PositionReconciliationInput,
@@ -50,6 +53,7 @@ from position_pilot.application.portfolio_service import (
     RecordPositionReconciliationsCommand,
     RecordTransactionCommand,
 )
+from position_pilot.application.portfolio_valuation_service import PortfolioValuationService
 from position_pilot.application.recognition_service import (
     MAX_RECOGNITION_IMAGE_BYTES,
     MAX_RECOGNITION_TEXT_LENGTH,
@@ -68,6 +72,7 @@ from position_pilot.bootstrap import (
     get_investment_agent,
     get_opening_import_service,
     get_portfolio_service,
+    get_portfolio_valuation_service,
     get_recognition_service,
 )
 from position_pilot.domain.asset_metadata import (
@@ -80,17 +85,25 @@ from position_pilot.domain.errors import (
     FutureTimestamp,
     InsufficientCash,
     InsufficientShares,
+    InvalidLedger,
     InvalidPortfolioValue,
 )
+from position_pilot.domain.market_data import MarketDataCoverage, MarketDataStatus
 from position_pilot.domain.portfolio import (
     CashEvent,
     CashEventType,
     OpeningPosition,
     PortfolioState,
+    PositionLot,
     PositionReconciliation,
     PositionType,
     Transaction,
     TransactionAction,
+)
+from position_pilot.domain.portfolio_valuation import (
+    PortfolioValuation,
+    TickerValuation,
+    ValuationMetrics,
 )
 
 FRONTEND_DIR = Path(__file__).resolve().parents[2] / "frontend"
@@ -251,6 +264,15 @@ class CashAdjustmentResponse(BaseModel):
     available_cash: Decimal
 
 
+class LotAllocationRequest(BaseModel):
+    """SELL 对当前批次的明确股数分配。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    lot_id: UUID
+    shares: Decimal = Field(gt=0, max_digits=28, decimal_places=8)
+
+
 class TransactionRequest(BaseModel):
     """追加不可变 Transaction 的显式用户输入。"""
 
@@ -263,6 +285,7 @@ class TransactionRequest(BaseModel):
     position_type: PositionType | None = None
     occurred_at: datetime | None = None
     reason: str | None = Field(default=None, max_length=1000)
+    allocations: tuple[LotAllocationRequest, ...] = Field(default=(), max_length=100)
 
     @field_validator("occurred_at")
     @classmethod
@@ -437,6 +460,85 @@ class PositionResponse(BaseModel):
     cost_basis: Decimal
 
 
+class PositionLotResponse(BaseModel):
+    """当前仍有余额的来源批次。"""
+
+    id: UUID
+    ticker: str
+    position_type: PositionType
+    source: str
+    acquired_shares: Decimal
+    remaining_shares: Decimal
+    average_cost: Decimal
+    cost_basis: Decimal
+    entry_price: Decimal | None
+    purchased_at: datetime | None
+
+
+class LotClassificationRequest(BaseModel):
+    """把整个剩余批次移动到另一种持仓类型。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    position_type: PositionType
+
+
+class LotClassificationResponse(BaseModel):
+    """批次类型变更后的最新 Portfolio Snapshot。"""
+
+    lot_id: UUID
+    position_type: PositionType
+    effective_at: datetime
+    portfolio: "PortfolioSnapshotResponse"
+
+
+class BuyTransactionCorrectionRequest(BaseModel):
+    """当前 BUY 批次的新一版成交字段。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    price: Decimal = Field(gt=0, max_digits=28, decimal_places=8)
+    shares: Decimal = Field(gt=0, max_digits=28, decimal_places=8)
+    occurred_at: datetime
+    reason: str | None = Field(default=None, max_length=1000)
+
+    @field_validator("occurred_at")
+    @classmethod
+    def require_timezone(cls, value: datetime) -> datetime:
+        """更正后的购买时间必须带时区。"""
+
+        if value.tzinfo is None or value.utcoffset() is None:
+            raise ValueError("occurred_at 必须包含时区")
+        return value
+
+
+class BuyTransactionCorrectionResponse(BaseModel):
+    """BUY 更正及重建后的最新 Portfolio。"""
+
+    correction_id: UUID
+    transaction_id: UUID
+    portfolio: "PortfolioSnapshotResponse"
+
+
+class BuyTransactionCorrectionRecordResponse(BaseModel):
+    """交易历史中可追溯的一版 BUY 更正事实。"""
+
+    id: UUID
+    transaction_id: UUID
+    price: Decimal
+    shares: Decimal
+    occurred_at: datetime
+    reason: str | None
+    corrected_at: datetime
+
+
+class BuyTransactionCorrectionListResponse(BaseModel):
+    """当前 Portfolio 的完整 BUY 更正列表。"""
+
+    items: tuple[BuyTransactionCorrectionRecordResponse, ...]
+    items_are_complete: bool = True
+
+
 class PortfolioSnapshotResponse(BaseModel):
     """从完整 Ledger 确定性重建的当前 Portfolio Snapshot。"""
 
@@ -444,6 +546,59 @@ class PortfolioSnapshotResponse(BaseModel):
     available_cash: Decimal
     positions_are_complete: bool
     positions: tuple[PositionResponse, ...]
+    lots: tuple[PositionLotResponse, ...]
+
+
+class ValuationMetricsResponse(BaseModel):
+    """同一持仓层级的确定性行情估值。"""
+
+    shares: Decimal
+    average_cost: Decimal
+    cost_basis: Decimal
+    market_value: Decimal | None
+    unrealized_pnl: Decimal | None
+    unrealized_pnl_percent: Decimal | None
+
+
+class LotValuationResponse(BaseModel):
+    """单个批次的行情估值。"""
+
+    lot_id: UUID
+    position_type: PositionType
+    metrics: ValuationMetricsResponse
+
+
+class PositionTypeValuationResponse(BaseModel):
+    """一种持仓类型的小计估值。"""
+
+    position_type: PositionType
+    metrics: ValuationMetricsResponse
+
+
+class TickerValuationResponse(BaseModel):
+    """单一 ticker 的报价状态与各层估值。"""
+
+    ticker: str
+    status: MarketDataStatus
+    message: str | None
+    current_price: Decimal | None
+    last_trade_at: datetime | None
+    source: str | None
+    feed: str | None
+    coverage: MarketDataCoverage | None
+    currency: str | None
+    is_delayed: bool | None
+    fetched_at: datetime | None
+    metrics: ValuationMetricsResponse | None
+    position_types: tuple[PositionTypeValuationResponse, ...]
+    lots: tuple[LotValuationResponse, ...]
+
+
+class PortfolioValuationResponse(BaseModel):
+    """当前 Portfolio 的完整逐 ticker 估值。"""
+
+    user_id: UUID
+    tickers: tuple[TickerValuationResponse, ...]
 
 
 class AssetCandidateResponse(BaseModel):
@@ -566,6 +721,12 @@ def get_portfolio_service_dependency() -> PortfolioService:
     """延迟装配 Portfolio Service，允许 API Contract Test 替换。"""
 
     return get_portfolio_service()
+
+
+def get_portfolio_valuation_service_dependency() -> PortfolioValuationService:
+    """延迟装配 Portfolio Valuation Service，允许测试替换行情。"""
+
+    return get_portfolio_valuation_service()
 
 
 def get_auth_service_dependency() -> AuthService:
@@ -1158,6 +1319,10 @@ def record_transaction(
                 position_type=request.position_type,
                 occurred_at=request.occurred_at,
                 reason=request.reason,
+                allocations=tuple(
+                    LotAllocationInput(lot_id=item.lot_id, shares=item.shares)
+                    for item in request.allocations
+                ),
             )
         )
     except UserNotFound:
@@ -1315,6 +1480,26 @@ def get_current_portfolio_snapshot(
     )
 
 
+@app.get("/v1/portfolio/valuation", response_model=PortfolioValuationResponse)
+def get_current_portfolio_valuation(
+    account: Annotated[Account, Depends(get_current_account_dependency)],
+    valuation_service: Annotated[
+        PortfolioValuationService,
+        Depends(get_portfolio_valuation_service_dependency),
+    ],
+) -> PortfolioValuationResponse:
+    """返回当前持仓的批次、类型和 ticker 估值。"""
+
+    try:
+        valuation = valuation_service.get_current_valuation(_require_portfolio_user(account))
+    except UserNotFound:
+        _raise_api_error(
+            status.HTTP_404_NOT_FOUND,
+            ApiErrorDetail(code="USER_NOT_FOUND", message="Portfolio User 不存在"),
+        )
+    return _portfolio_valuation_response(valuation)
+
+
 @app.post(
     "/v1/portfolio/opening-positions",
     response_model=OpeningPositionsWriteResponse,
@@ -1467,6 +1652,129 @@ def list_current_transactions(
 
 
 @app.post(
+    "/v1/portfolio/lots/{lot_id}/classification",
+    response_model=LotClassificationResponse,
+)
+def change_current_lot_classification(
+    lot_id: UUID,
+    request: LotClassificationRequest,
+    account: Annotated[Account, Depends(get_current_account_dependency)],
+    portfolio_service: Annotated[PortfolioService, Depends(get_portfolio_service_dependency)],
+) -> LotClassificationResponse:
+    """调整当前剩余批次类型，并返回重建后的最新持仓。"""
+
+    try:
+        result = portfolio_service.change_lot_classification(
+            ChangeLotClassificationCommand(
+                user_id=_require_portfolio_user(account),
+                lot_id=lot_id,
+                position_type=request.position_type,
+            )
+        )
+    except UserNotFound:
+        _raise_api_error(
+            status.HTTP_404_NOT_FOUND,
+            ApiErrorDetail(code="USER_NOT_FOUND", message="Portfolio User 不存在"),
+        )
+    except InvalidPortfolioValue as error:
+        _raise_api_error(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            ApiErrorDetail(code="INVALID_LOT_CLASSIFICATION", message=str(error)),
+        )
+    return LotClassificationResponse(
+        lot_id=result.change.lot_id,
+        position_type=result.change.position_type,
+        effective_at=result.change.effective_at,
+        portfolio=_portfolio_snapshot_response(result.portfolio),
+    )
+
+
+@app.post(
+    "/v1/portfolio/lots/{lot_id}/correction",
+    response_model=BuyTransactionCorrectionResponse,
+)
+def correct_current_buy_lot(
+    lot_id: UUID,
+    request: BuyTransactionCorrectionRequest,
+    account: Annotated[Account, Depends(get_current_account_dependency)],
+    portfolio_service: Annotated[PortfolioService, Depends(get_portfolio_service_dependency)],
+) -> BuyTransactionCorrectionResponse:
+    """为当前 BUY 批次追加成交字段更正记录。"""
+
+    try:
+        result = portfolio_service.correct_buy_transaction(
+            CorrectBuyTransactionCommand(
+                user_id=_require_portfolio_user(account),
+                transaction_id=lot_id,
+                price=request.price,
+                shares=request.shares,
+                occurred_at=request.occurred_at,
+                reason=request.reason,
+            )
+        )
+    except UserNotFound:
+        _raise_api_error(
+            status.HTTP_404_NOT_FOUND,
+            ApiErrorDetail(code="USER_NOT_FOUND", message="Portfolio User 不存在"),
+        )
+    except (InsufficientCash, InsufficientShares, InvalidLedger) as error:
+        _raise_api_error(
+            status.HTTP_409_CONFLICT,
+            ApiErrorDetail(code="BUY_CORRECTION_CONFLICT", message=str(error)),
+        )
+    except FutureTimestamp as error:
+        _raise_api_error(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            ApiErrorDetail(code="FUTURE_TIMESTAMP", message=str(error)),
+        )
+    except InvalidPortfolioValue as error:
+        _raise_api_error(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            ApiErrorDetail(code="INVALID_BUY_CORRECTION", message=str(error)),
+        )
+    return BuyTransactionCorrectionResponse(
+        correction_id=result.correction.id,
+        transaction_id=result.correction.transaction_id,
+        portfolio=_portfolio_snapshot_response(result.portfolio),
+    )
+
+
+@app.get(
+    "/v1/portfolio/buy-corrections",
+    response_model=BuyTransactionCorrectionListResponse,
+)
+def list_current_buy_corrections(
+    account: Annotated[Account, Depends(get_current_account_dependency)],
+    portfolio_service: Annotated[PortfolioService, Depends(get_portfolio_service_dependency)],
+) -> BuyTransactionCorrectionListResponse:
+    """返回当前 Portfolio 的完整 BUY 更正历史。"""
+
+    try:
+        corrections = portfolio_service.list_buy_transaction_corrections(
+            _require_portfolio_user(account)
+        )
+    except UserNotFound:
+        _raise_api_error(
+            status.HTTP_404_NOT_FOUND,
+            ApiErrorDetail(code="USER_NOT_FOUND", message="Portfolio User 不存在"),
+        )
+    return BuyTransactionCorrectionListResponse(
+        items=tuple(
+            BuyTransactionCorrectionRecordResponse(
+                id=item.id,
+                transaction_id=item.transaction_id,
+                price=item.price,
+                shares=item.shares,
+                occurred_at=item.occurred_at,
+                reason=item.reason,
+                corrected_at=item.corrected_at,
+            )
+            for item in corrections
+        )
+    )
+
+
+@app.post(
     "/v1/portfolio/cash-events",
     response_model=CashAdjustmentResponse,
     status_code=status.HTTP_201_CREATED,
@@ -1588,6 +1896,87 @@ def _portfolio_snapshot_response(portfolio: PortfolioState) -> PortfolioSnapshot
         available_cash=portfolio.cash.available_cash,
         positions_are_complete=True,
         positions=positions,
+        lots=tuple(_position_lot_response(lot) for lot in portfolio.lots),
+    )
+
+
+def _position_lot_response(lot: PositionLot) -> PositionLotResponse:
+    """把当前批次投影映射为稳定 Public Response。"""
+
+    return PositionLotResponse(
+        id=lot.id,
+        ticker=lot.ticker,
+        position_type=lot.position_type,
+        source=lot.source.value,
+        acquired_shares=lot.acquired_shares,
+        remaining_shares=lot.remaining_shares,
+        average_cost=lot.average_cost,
+        cost_basis=lot.cost_basis,
+        entry_price=lot.entry_price,
+        purchased_at=lot.purchased_at,
+    )
+
+
+def _valuation_metrics_response(metrics: ValuationMetrics) -> ValuationMetricsResponse:
+    """把确定性估值映射为 Public Response。"""
+
+    return ValuationMetricsResponse(
+        shares=metrics.shares,
+        average_cost=metrics.average_cost,
+        cost_basis=metrics.cost_basis,
+        market_value=metrics.market_value,
+        unrealized_pnl=metrics.unrealized_pnl,
+        unrealized_pnl_percent=metrics.unrealized_pnl_percent,
+    )
+
+
+def _ticker_valuation_response(valuation: TickerValuation) -> TickerValuationResponse:
+    """保留行情失败状态，并在成功时返回全部估值层级。"""
+
+    quote = valuation.quote
+    return TickerValuationResponse(
+        ticker=valuation.ticker,
+        status=valuation.status,
+        message=valuation.message,
+        current_price=quote.last_price if quote is not None else None,
+        last_trade_at=quote.last_trade_at if quote is not None else None,
+        source=quote.source if quote is not None else None,
+        feed=quote.feed if quote is not None else None,
+        coverage=quote.coverage if quote is not None else None,
+        currency=quote.currency if quote is not None else None,
+        is_delayed=quote.is_delayed if quote is not None else None,
+        fetched_at=quote.fetched_at if quote is not None else None,
+        metrics=(
+            _valuation_metrics_response(valuation.metrics)
+            if valuation.metrics is not None
+            else None
+        ),
+        position_types=tuple(
+            PositionTypeValuationResponse(
+                position_type=item.position_type,
+                metrics=_valuation_metrics_response(item.metrics),
+            )
+            for item in valuation.position_types
+        ),
+        lots=tuple(
+            LotValuationResponse(
+                lot_id=item.lot_id,
+                position_type=item.position_type,
+                metrics=_valuation_metrics_response(item.metrics),
+            )
+            for item in valuation.lots
+        ),
+    )
+
+
+def _portfolio_valuation_response(
+    valuation: PortfolioValuation,
+) -> PortfolioValuationResponse:
+    """映射完整 Portfolio 估值结果。"""
+
+    return PortfolioValuationResponse(
+        user_id=valuation.user_id,
+        tickers=tuple(_ticker_valuation_response(item) for item in valuation.tickers),
     )
 
 

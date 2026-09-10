@@ -555,6 +555,174 @@ button:disabled {
   gap: 10px;
 }
 
+.holdings-table-header,
+.holding-row {
+  display: grid;
+  grid-template-columns: minmax(210px, 1.7fr) repeat(5, minmax(105px, 1fr));
+  align-items: center;
+  gap: 12px;
+  min-width: 860px;
+}
+
+.positions-section {
+  overflow-x: auto;
+}
+
+.holdings-table-header {
+  padding: 0 14px 8px;
+  color: var(--muted);
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.holdings-table-header span:not(:first-child),
+.holding-number {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.holding-group {
+  border-top: 1px solid var(--line);
+}
+
+.holding-row {
+  width: 100%;
+  padding: 10px 14px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+}
+
+.holding-toggle {
+  cursor: pointer;
+}
+
+.holding-toggle:hover,
+.holding-toggle:focus-visible {
+  background: rgba(20, 37, 31, 0.045);
+}
+
+.holding-identity {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 8px;
+  text-align: left;
+}
+
+.holding-note {
+  overflow: hidden;
+  color: var(--ink-soft);
+  font-size: 0.7rem;
+  font-weight: 400;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.holding-caret {
+  display: inline-block;
+  transition: transform 160ms ease;
+}
+
+.holding-toggle[aria-expanded="true"] .holding-caret {
+  transform: rotate(90deg);
+}
+
+.holding-level-1 {
+  background: rgba(20, 37, 31, 0.035);
+  font-weight: 650;
+}
+
+.holding-level-1 .holding-identity {
+  padding-left: 24px;
+}
+
+.holding-level-2 .holding-identity {
+  padding-left: 48px;
+  font-size: 0.84rem;
+}
+
+.holding-number[data-tone="positive"] {
+  color: var(--teal);
+}
+
+.holding-number[data-tone="negative"] {
+  color: var(--danger);
+}
+
+.lot-type-select {
+  max-width: 112px;
+  margin-left: auto;
+  padding: 5px 7px;
+  font-size: 0.75rem;
+}
+
+.lot-edit-button {
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: var(--panel);
+  color: var(--teal);
+  cursor: pointer;
+}
+
+.correction-dialog {
+  width: min(460px, calc(100vw - 32px));
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--panel);
+  color: var(--ink);
+  box-shadow: var(--shadow);
+}
+
+.correction-dialog::backdrop {
+  background: rgba(20, 37, 31, 0.48);
+}
+
+.correction-dialog form {
+  display: grid;
+  gap: 10px;
+  padding: 22px;
+}
+
+.trade-lot-allocation {
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(20, 37, 31, 0.035);
+}
+
+.allocation-heading,
+.trade-lot-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.allocation-heading small,
+.trade-lot-copy small {
+  color: var(--muted);
+}
+
+.trade-lot-row {
+  display: grid;
+  grid-template-columns: 1fr 110px;
+  align-items: center;
+  gap: 12px;
+  margin-top: 9px;
+}
+
+.trade-lot-row input {
+  text-align: right;
+}
+
 .position-card,
 .source-card {
   border: 1px solid var(--line);

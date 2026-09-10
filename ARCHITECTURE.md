@@ -2,7 +2,7 @@
 
 ## 1. 当前范围
 
-本文档描述 M8 Local Portfolio Management / `v1.0.0` 稳定基线，以及当前 M9 Branch 已实现、等待 Human Acceptance 的 Asset Identity、Opening Import 与 Position Reconciliation 结构。系统包含最小本地 Account / Session、immutable Opening State / Position Reconciliation、Transaction / Cash Event Ledgers、Provider-neutral Asset / Recognition / Market / News Data，以及可按问题选择 Current Quote、固定近期 Daily Price History、attributed Recent News 或 SPY Market Context 的 Single Investment Agent。同源静态 Web Interface 提供 Public Home、注册 / 登录、Portfolio Setup、Manual / Text / Screenshot Import、已有持仓校准、Ledger Entry 与真实 Agent 闭环；Browser Identity 由 HttpOnly Session 恢复，金融事实仍由后端确定性 Replay 产生。
+本文档描述 M8 Local Portfolio Management / `v1.0.0` 稳定基线，以及当前 M9 Branch 已实现、等待 Human Acceptance 的 Asset Identity、Position Import、派生 Lot 与当前持仓估值。系统包含最小本地 Account / Session、immutable Opening / Reconciliation / Transaction / Cash Facts、BUY Correction、SELL Lot Allocation、Lot Classification Change、Provider-neutral Asset / Recognition / Market / News Data，以及 Single Investment Agent。同源静态 Web Interface 提供 ticker 联想、截图缩略图预览、保存后手工校准、紧凑持仓层级、购买批次更正、交易与资金录入；Browser Identity 由 HttpOnly Session 恢复，金融事实仍由后端确定性 Replay 产生。
 
 ## 2. 依赖方向
 
@@ -18,6 +18,10 @@ Vanilla HTML / CSS / ES Modules
   ├── POST + GET /v1/portfolio/opening-positions
   ├── POST + GET /v1/portfolio/reconciliations
   ├── POST + GET /v1/portfolio/transactions
+  ├── POST /v1/portfolio/lots/{lot_id}/classification
+  ├── POST /v1/portfolio/lots/{lot_id}/correction
+  ├── GET /v1/portfolio/buy-corrections
+  ├── GET /v1/portfolio/valuation
   ├── POST + GET /v1/portfolio/cash-events
   ├── GET /v1/assets/search
   ├── POST /v1/portfolio/import/recognize-text
@@ -59,7 +63,7 @@ Domain / deterministic Portfolio replay
       ↑
 Infrastructure / SQLAlchemy Unit of Work
       ↓
-PostgreSQL Account + Auth Session + User + Opening State + Transaction Ledger + Cash Event Ledger
+PostgreSQL Account + Auth Session + Portfolio Fact Ledger
 
 POST /v1/portfolios/{user_id}/cash-events
       ↓
@@ -89,22 +93,26 @@ Alpaca `/v1beta1/news` → attributed Benzinga reporting
 - `infrastructure/` 实现 SQLAlchemy Model、映射与 Unit of Work，依赖 Application Contract 所需的 Domain 类型。
 - `integrations/` 实现外部 Provider Adapter，只向 Application 返回稳定 Market Data 或 LLM Schema。
 - `alembic/` 是唯一正常 Database Schema 变更路径。
-- `main.py` 暴露独立的 `GET /health`、本地 Authentication、Session-derived Portfolio 管理 API 与投资问答 API；外部 Provider 只在投资请求发生时延迟装配。
+- `main.py` 暴露独立的 `GET /health`、本地 Authentication、Session-derived Portfolio 管理、当前持仓估值与投资问答 API；行情 Provider 在估值或投资请求发生时延迟装配。
 
 ## 3. Portfolio Source of Truth
 
-M4 在 M1 Transaction Ledger 基础上使用以下持久化事实：
+M9 使用以下持久化事实：
 
 ```text
 User.initial_cash
         + Opening Position Starting Facts
         + ordered Transaction Ledger
         + ordered Cash Event Ledger
+        + Position Reconciliation
+        + SELL Lot Allocation
+        + Lot Classification Change
+        + BUY Transaction Correction
         ↓ combined deterministic replay
-CashBalance + Position[]
+CashBalance + PositionLot[] + Position[]
 ```
 
-PostgreSQL 保存 `users`、`opening_positions`、`transactions` 与 `cash_events`。Opening Position 是系统开始跟踪时的 immutable Starting Fact，只有 `(ticker, shares, average_cost, position_type, recorded_at)`，没有经济 sequence、手续费或现金影响。Cash、当前 Position、Shares、Cost Basis 和 Average Cost 不保存冗余投影，而是在读取时合并重建。Transaction 与 Cash Event 各自维护由 `occurred_at` 派生的连续 sequence；历史补录会在同一事务内重新编号同类后续记录。跨表按 `occurred_at` 排序，同一时间固定先处理 Cash Event，再处理 Transaction。
+PostgreSQL 保存 `users`、`opening_positions`、`position_reconciliations`、`transactions`、`cash_events`、`lot_allocations`、`lot_classification_changes` 与 `buy_transaction_corrections`。Lot、当前 Position、Shares、Cost Basis 和 Average Cost 不保存冗余投影，而是在读取时合并重建。BUY / Opening / Reconciliation 的来源 ID 是稳定 Lot ID；SELL 必须明确分配当前 Lot。原始 BUY 不覆盖，更正记录提供有效成交字段并触发完整重放。
 
 同一 Ticker 的 `UNSPECIFIED`、`LONG_TERM` 与 `SWING` 使用独立 Position Key；`UNSPECIFIED` 只表示用户尚未提供策略分类，Agent 不得把它推断成长期仓或波段仓。BUY / SELL、DEPOSIT / WITHDRAWAL、Available Cash、Oversell 与 Average Cost 都由普通 Python / Decimal 代码计算，不依赖 LLM。Cash Event 只改变 CashBalance，不改变 Position。
 
@@ -150,12 +158,14 @@ Cash Event amount 必须为正数且最多 8 位小数。Transaction 与 Cash Ev
 
 ## 6. 主要模块
 
-- `backend/position_pilot/domain/portfolio.py`：领域实体、枚举、Decimal 规则以及 Transaction / Cash Event combined replay。
+- `backend/position_pilot/domain/portfolio.py`：领域实体、Lot 事件、Decimal 规则以及完整 Portfolio replay。
+- `backend/position_pilot/domain/portfolio_valuation.py`：Lot、类型与 ticker 级的确定性当前估值。
 - `backend/position_pilot/domain/asset_metadata.py`：Selector 使用的最小 Asset Identity、Search / exact Validation 与 Failure Status。
 - `backend/position_pilot/domain/market_context.py`：SPY Daily Price Stress 指标、确定性 Market Regime 与 V1 Heuristic 元数据。
 - `backend/position_pilot/domain/news.py`：Provider-neutral News Article、归因、时间、稳定排序与 Failure Status。
 - `backend/position_pilot/domain/errors.py`：明确的领域失败状态。
-- `backend/position_pilot/application/portfolio_service.py`：Opening State、Transaction / Cash Event Use Case、写入 Command、Unit of Work Contract，以及同一 State Read 的 Agent Portfolio Context。
+- `backend/position_pilot/application/portfolio_service.py`：Opening、Reconciliation、Transaction、Cash、Lot 分类与 BUY 更正 Use Case。
+- `backend/position_pilot/application/portfolio_valuation_service.py`：每个 ticker 共享一次报价并组合三层估值。
 - `backend/position_pilot/application/auth_service.py`：本地 Account 注册 / 登录 / 退出、scrypt Password Verification、Opaque Session 与一对一 Portfolio Ownership。
 - `backend/position_pilot/application/asset_metadata_service.py`：Provider-neutral Asset Search / exact Validation Boundary。
 - `backend/position_pilot/application/recognition_service.py`：Text / Screenshot 临时 Structured Draft、Field Status、Confidence Review Signal 与输入边界。
@@ -166,7 +176,7 @@ Cash Event amount 必须为正数且最多 8 位小数。Transaction 与 Cash Ev
 - `backend/position_pilot/application/investment_context.py`：Portfolio、Quote 与 Recent Price History 的确定性事实和响应边界。
 - `backend/position_pilot/application/market_context_service.py`：固定 SPY Daily 查询、completed-bar 过滤、Provider 语义校验与 Regime 计算入口。
 - `backend/position_pilot/application/news_service.py`：Recent News Query 校验与 NewsProvider Contract。
-- `backend/position_pilot/infrastructure/models.py`：Account / Auth Session / User / Opening Position / Transaction / Cash Event SQLAlchemy Model 与数据库约束。
+- `backend/position_pilot/infrastructure/models.py`：Account / Session 与完整 Portfolio Fact Ledger 的 SQLAlchemy Model 和数据库约束。
 - `backend/position_pilot/infrastructure/unit_of_work.py`：同步 SQLAlchemy 持久化实现和领域映射。
 - `backend/position_pilot/integrations/aliyun_llm.py`：阿里云 Model Studio OpenAI-compatible Adapter。
 - `backend/position_pilot/integrations/aliyun_vision.py`：`qwen3-vl-flash` Recognition Adapter；图片文字只作为数据处理。
@@ -175,7 +185,7 @@ Cash Event amount 必须为正数且最多 8 位小数。Transaction 与 Cash Ev
 - `backend/position_pilot/bootstrap.py`：Portfolio、Market Data 与 LLM Provider 的依赖装配。
 - `backend/position_pilot/demo_seed.py`：通过正式 Application Service 创建隔离本地 Demo Portfolio 的显式命令。
 - `frontend/`：由 FastAPI 同源托管的无构建静态产品界面，只负责输入、状态协调和安全展示。
-- `alembic/versions/`：M1 Schema、金额舍入、手续费约束、M4 Cash Event、M8 Opening State 与 `20260830_0006` Local Account / Session Migration。
+- `alembic/versions/`：从 M1 Ledger 到 M9 Lot Allocation、Classification 与 BUY Correction 的全部 Schema Migration。
 
 ## 7. 当前限制
 
@@ -185,7 +195,9 @@ Cash Event amount 必须为正数且最多 8 位小数。Transaction 与 Cash Ev
 - Transaction 与 Cash Event 还没有跨表全局 sequence；相同 `occurred_at` 使用 Cash Event 优先的固定重放顺序。只有后续现金流类型或对账需求证明必要时才重新评估全局 Event Store。
 - 手续费只实现 `IBKR_PRO_TIERED_US_2026_08` 第一档基础佣金，不模拟月累计量跨档、执行场所、清算、监管或 pass-through fees。
 - 不处理税费、多币种、拆股、公司行动、转仓或外部券商同步。
-- M9 Import 只初始化仍为空的 Opening State；不 merge、overwrite、sync 或 reconcile 已初始化 Portfolio。
+- Reconciliation 只校准目标为空或仅含一条 Opening / Reconciliation Lot 的汇总持仓；它不能覆盖详细 BUY Lot。M9 只支持 BUY 更正，不提供 SELL 更正或批次内部分转类型。
+- 当前持仓估值在页面可见时每 30 秒轮询，并可手工刷新；它不使用 WebSocket 或持久行情缓存。报价失败时仍返回股数、成本和均价，市场价值与未实现盈亏保持不可用。
+- 已实现盈亏和账户历史收益率尚未实现；其后续计算将使用保留的交易、批次分配、资金流与更正事实。
 - M9 不维护本地 Asset Master；搜索与最终写入依赖 Finnhub 可用性。`qwen3-vl-flash` 图片不会由 PositionPilot 持久化，但 Provider 未公开固定原图保留时长。
 - Current Quote 默认来自 Alpaca Basic 的实时 IEX feed，只代表单一交易所覆盖；Historical Daily OHLCV 来自至少延迟 15 分钟的 SIP feed。
 - 不包含 WebSocket、行情 / 新闻缓存或持久化、通用技术指标、VIX、市场宽度、宏观 Context、News 全文抓取、Earnings 或 Fundamentals；Market Regime 仅为已批准的 SPY Daily Price Stress V1 Heuristic。
@@ -239,9 +251,9 @@ stale / refresh_required; never automatic retry
 - Password 使用随机 Salt 的 scrypt Hash；Session Token 是随机 Opaque Secret，Browser 只通过 `HttpOnly + SameSite=Lax` Cookie 持有，Database 只保存 SHA-256 Digest 与过期时间。Login 轮换当前 Browser Session，Logout / Expiry 会清空 Account、Portfolio、草稿、Question History 和写入状态。
 - Decision Questions 将当前浏览器标签页内的多个 Question / Answer 作为纯 Presentation State 依次追加，并提供 Question History 跳转列表。刷新、Logout 或 Account 变化即清空；每个 Question 仍是独立的真实 `InvestmentAgent` Request，不携带先前问答，因此不构成 Conversation Memory 或多轮模型上下文。
 - Ask Composer 的 Question Textarea 通过 `compositionstart` / `compositionend` 维护短生命周期的 composing state。非 Shift 的 Enter 只有在非 composing、非 repeat、非 pending 时调用 `questionForm.requestSubmit()`，再由 `handleQuestion` 统一执行 Trim、空问题校验和 Request；Shift+Enter 保留浏览器换行，`event.isComposing`、composing state 或 `keyCode === 229` 会直接放过输入法，repeat / pending 只阻止默认 Enter 行为且不产生第二次 Request。
-- Portfolio Workspace 将 deterministic Snapshot、Opening State Setup、Position Reconciliation、Trade Entry 与 Cash Entry 分成 Positions / Transactions / Cash Activity 三个 Panel。Positions 在四类 Record 都为空时提供一次性 Existing Positions Draft；Skip 只隐藏当前 UI，不持久化或封闭 Opening State。已有 Portfolio 仍可使用 Screenshot Reconciliation，且不会重新打开 Opening State。Initial Cash 的 UI 默认值为 `0`，表单示例带 `e.g.` / “例如”前缀；逐字段错误只负责输入可用性，最终 Ledger Validation 仍以后端为准。
+- Portfolio Workspace 将当前持仓、Trade Entry 与 Cash Entry 分成 Positions / Transactions / Cash Activity 三个 Panel。持仓按 ticker 总体 → UNSPECIFIED Lot → SWING 小计 / Lot → LONG_TERM 小计 / Lot 展开；Opening 与 Reconciliation 历史不在主持仓页并列展示。导入汇总持仓可直接生成手工校准 Draft，BUY Lot 从批次行打开更正表单。
 - 正常产品 Flow 使用 Session-derived singular API：`GET /v1/portfolio` 映射 `PortfolioService.get_portfolio()`；`POST /v1/portfolio` 原子创建唯一 User 与可选 Opening State；Opening Position、Transaction 与 Cash Event 使用对应 singular 子资源。原 UUID 路由只为现有工程兼容保留，并同样要求当前 Session 对目标 User 具有 Ownership，不构成匿名绕过入口。
-- `POST /v1/portfolio/opening-positions` 在 User Row Lock 下执行一次性 1～100 行批量写入；只有 Opening Position、Transaction、Cash Event 与 Position Reconciliation 都为空时才允许，并在一个事务中全部成功或全部失败。`POST /v1/portfolio/reconciliations` 原子追加同一份已确认截图中的目标仓位事件；对应 GET 返回完整不可变记录。
+- `POST /v1/portfolio/opening-positions` 在 User Row Lock 下执行一次性 1～100 行批量写入。`POST /v1/portfolio/reconciliations` 追加截图或手工确认的汇总校准。Lot 类型与 BUY 成交字段修改都追加不可变事件；所有写入在锁内重放后原子提交。
 - M8 API 中的“Portfolio”仍是现有单一 `User → Portfolio State` 模型的产品呈现，Account 只是一对一 Owner；不新增独立 Portfolio Entity。Multiple Portfolios 的 Ownership / Resource Boundary 留到 V2 重新评估。
 - `POST /transactions` 与 `POST /cash-events` 都只追加不可变记录。Mutation 期间 Logout、导航和重复提交被禁用；成功 Response 不用于前端推算金融状态，而是立即重新 GET Snapshot。
 - Mutation Failure、连接中断或 POST 后 GET Failure 会进入 `refresh_required`，旧 Snapshot 立即禁止 Question 与后续 Mutation。Browser 不自动 Retry；Reload 只能重新取得当前 State 与只读 Records，无法在没有 Mutation ID 或 Idempotency 的 M8 中精确证明某一次不确定 POST 是否执行。
@@ -276,8 +288,8 @@ Opening State still open? ── yes → OpeningImportService → OpeningPositio
 - Recognition 不是 `InvestmentAgent` Tool，也不进入 Agent 的 Message / Instruction 链路。图片与
   OCR 文本全部作为待提取数据，输出必须通过严格 Provider-neutral Draft Schema；Confidence 只在
   Browser 显示，不进入 Portfolio Command 或 Database。
-- Attachment Composer 当前只接受单张 JPEG / PNG / WebP，Backend 上限为 10 MB；Browser 支持
-  Choose、Drag & Drop 与 Cmd/Ctrl+V，在内存中预览并只在用户点击“开始识别”后以 Base64 JSON
+- Attachment Composer 接受最多两张 JPEG / PNG / WebP，每张 Backend 上限为 10 MB；Browser 支持
+  点击上传区、Drag & Drop 与 Cmd/Ctrl+V，在内存中显示可点击放大的缩略图，并只在用户点击“开始识别”后以 Base64 JSON
   传输。Request 完成、取消、Logout 或刷新后不保留原图。附件状态以 `kind` 表达，允许未来扩展
   其他附件类型，但 M9 不提前实现。普通日志只记录 Provider、Model、
   Failure Kind、HTTP Status 与 Latency，不记录图片、识别文本、Credential 或原始 Payload。
@@ -290,8 +302,8 @@ Opening State still open? ── yes → OpeningImportService → OpeningPositio
   Portfolio 使用，因为它也服务后续 Reconciliation Draft。
 - Position Reconciliation 按 `confirmed_at` 与经济事件时间合并 Replay；同一时间稳定采用
   Cash Event → Reconciliation → Transaction 的顺序。事件直接替换目标 `(ticker, position_type)`
-  的 Shares / Cost Basis，后续 Transaction 继续生效；它不创建 BUY / SELL、不影响 Cash，也不
-  删除未出现 Position 或修改历史事实。
+  的单条导入汇总 Lot，后续 Transaction 继续生效；它不创建 BUY / SELL、不影响 Cash，也不
+  删除未出现 Position 或修改历史事实。已有 BUY 或多个详细 Lot 时拒绝汇总覆盖。
 - Finnhub exact validation 对外归一为 `VALID / INVALID / PROVIDER_UNAVAILABLE`。只有 Provider
   正常响应且明确无匹配时才是 `INVALID`；网络、timeout、429、5xx 或异常响应保持为 Provider
   Failure。重新验证返回 canonical candidate，Browser 必须等待用户点击后才更新绑定。

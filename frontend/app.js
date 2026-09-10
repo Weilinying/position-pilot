@@ -189,7 +189,6 @@ const translations = {
     prepare_screenshot_draft: "Prepare editable draft",
     preparing_screenshot_draft: "Preparing screenshot draft…",
     start_recognition: "Start recognition",
-    attachment_choose_file: "Browse images",
     attachment_drop_prompt: "Add portfolio screenshots",
     attachment_drop_hint: "Click, drop, or paste · up to 2 images · 10 MB each",
     attachment_ready: "Images ready. Nothing is uploaded until you start recognition.",
@@ -277,7 +276,7 @@ const translations = {
     setup_eyebrow: "起始状态", setup_title: "告诉 PositionPilot 你的起点。", setup_summary: "现金和已有持仓共同构成起始状态，不会被伪造成交易；也可以从零开始。", cash_balance: "现金余额", initial_cash: "初始现金", initial_cash_usd: "可用现金（USD）", cash_zero_hint: "未填写现金时，投资组合默认从 0 开始。", existing_holdings: "已有持仓", opening_positions: "起始持仓", opening_optional_hint: "可选。现在录入已持有股票，也可在第一笔交易或现金记录前稍后添加。", add_position: "添加一行持仓", start_empty: "从零开始", save_and_continue: "保存并继续 ↗", ticker: "标的", shares: "股数", average_cost: "平均成本", position_type_optional: "仓位类型（可选）", unspecified: "未分类", remove: "移除", invalid_cash: "现金必须是零或正数，且最多 8 位小数。", incomplete_position: "请完整填写标的、股数和平均成本，或移除此行。", invalid_positive_decimal: "请输入正数，且最多 8 位小数。", duplicate_position: "同一标的与仓位类型组合不能重复。", setup_saving: "正在保存起始状态…", setup_unknown: "投资组合设置结果未知。请勿自动重试；刷新页面以恢复当前状态。",
     workspace_navigation: "工作区导航", primary_navigation: "主要导航", new_question: "新问题", ask_nav: "提问", portfolio_nav: "投资组合", question_history: "问题记录", session_only: "仅当前标签页", no_questions: "还没有问题。", signed_in_as: "当前账户", context_aware: "上下文感知决策支持", chat_view_title: "投资问题", structured_state: "结构化状态", portfolio_manage_title: "投资组合工作区", portfolio_manage_summary: "查看确定性状态，或追加不可变交易与现金记录。", portfolio_ready: "投资组合已加载", portfolio_loading: "正在加载投资组合", portfolio_stale: "需要刷新", idle: "空闲", submitting: "正在保存", refresh_required: "需要刷新",
     chat_intro_eyebrow: "你的投资组合已连接", chat_intro_title: "你正在思考什么投资决策？", chat_intro_body: "提出一个具体问题。PositionPilot 会使用你的持仓及问题所需的当前信息。", no_memory_notice: "问题仅保留在当前浏览器标签页，不构成模型记忆。", investment_question: "投资问题", question_placeholder: "例如：GOOG 今天还能加一点吗？", question_ready: "将使用你的当前投资组合。Enter 提交 · Shift+Enter 换行。", ask: "询问 PositionPilot ↗", asking: "分析中…",
-    portfolio_reload: "刷新", portfolio_sections: "投资组合分区", overview_tab: "持仓", trade_tab: "交易", cash_tab: "现金记录", available_cash: "可用现金", ledger_derived: "账本计算 · USD", portfolio_context: "投资组合上下文", session_owned: "当前 Session 所属", session_owned_hint: "身份来自你的本地私有 Session。", opening_state: "起始状态", existing_positions_setup: "添加已有持仓", starting_facts: "一次性起始事实", opening_explainer: "记录开始跟踪前已经持有的仓位，不改变现金，也不创建虚假交易。", skip_for_now: "暂时跳过", save_opening_positions: "保存已有持仓", add_existing_positions: "添加已有持仓", open_positions: "当前持仓", portfolio_empty_loaded: "目前没有持仓。", opening_records: "起始持仓记录", records_empty: "暂无记录。", import_starting_positions: "导入起始持仓", import_review_title: "保存前请复核", draft_only_note: "仅为 Draft · 尚未保存", import_review_hint: "可以手动搜索、粘贴文本或选择一张截图，生成可编辑 Draft。请确认下面每个字段后再保存。", import_methods: "导入方式", manual_import: "手动搜索", text_import: "文本导入", screenshot_import: "截图识别", asset_search_label: "搜索标的或公司名称", asset_search_placeholder: "搜索标的或公司名称", search_assets: "搜索", asset_candidate_heading: "请选择已验证的标的", searching_assets: "搜索中…", use_asset: "使用此标的", asset_selected: "已选择标的。请补完其余字段，再点击保存完成确认。", asset_search_empty: "请输入标的或公司名称后搜索。", asset_no_match: "没有匹配的可用美国股票或 ETF。", asset_search_failed: "标的搜索暂时不可用。请稍后重试。", asset_provider_auth_failed: "标的搜索尚未配置，请先配置 Provider。", asset_rate_limited: "标的搜索已达到限流，请稍后重试。", asset_invalid_response: "标的搜索返回了无效响应。", text_import_label: "粘贴持仓文本", text_import_placeholder: "粘贴券商对账单中的持仓行", prepare_text_draft: "生成可编辑 Draft", preparing_text_draft: "正在生成文本 Draft…", screenshot_import_label: "选择一张券商持仓截图", prepare_screenshot_draft: "生成可编辑 Draft", preparing_screenshot_draft: "正在生成截图 Draft…", start_recognition: "开始识别", attachment_choose_file: "选择文件", attachment_drop_prompt: "将图片拖到这里，或直接粘贴截图", attachment_drop_hint: "JPEG、PNG 或 WebP · 最大 10 MB", attachment_ready: "附件已准备好。点击“开始识别”前不会上传。", attachment_remove: "移除", attachment_file_required: "请先选择、拖入或粘贴图片。", screenshot_privacy_notice: "截图会发送至 Alibaba Model Studio 进行识别。PositionPilot 不保存图片；Provider 的固定保留时长尚未公开。", screenshot_file_required: "请先选择 JPEG、PNG 或 WebP 截图。", screenshot_file_invalid: "请选择受支持的 JPEG、PNG 或 WebP 截图。", screenshot_file_too_large: "截图过大，请选择不超过 10 MB 的图片。", recognition_invalid_request: "导入输入无效。请检查文本或截图后重试。", recognition_auth_failed: "截图识别尚未配置。你也可以手动搜索并选择持仓。", recognition_rate_limited: "识别请求已达到限流，请稍后重试或手动搜索并选择持仓。", recognition_provider_failed: "识别暂时不可用，你可以手动搜索并选择持仓。", recognition_invalid_response: "识别返回了无效响应，请手动复核字段。", recognition_empty: "没有识别出持仓行。请手动添加一行后继续。", draft_review_signal: "复核提示", draft_status_present: "已识别", draft_status_missing: "缺失 — 请填写", draft_status_invalid: "需要修正", draft_status_ambiguous: "有歧义 — 请选择匹配标的", confidence_signal: "识别置信度", confidence_unavailable: "未提供", find_matching_assets: "查找匹配标的", asset_selection_required: "保存前必须从已验证的候选列表中选择此标的。", asset_auto_selected: "已自动选择经过验证的标的。", recognition_draft_ready: "Draft 已生成。请复核每个字段，再点击保存完成确认。", recognition_input_text: "文本导入", recognition_input_screenshot: "截图导入", imported_warning: "Provider 提示", reconciliation_title: "用券商截图校准持仓", reconciliation_summary: "根据当前截图更新选中的持仓。截图中未出现的持仓保持不变，也不会创建交易或现金记录。", reconciliation_broker_label: "券商或来源（可选）", reconciliation_broker_placeholder: "例如：Fidelity、Schwab、IBKR", reconciliation_screenshot_label: "附加当前持仓截图", reconciliation_revalidate: "重新验证全部标的", reconciliation_revalidate_running: "正在重新验证标的…", reconciliation_save: "保存持仓校准", reconciliation_saved: "持仓校准已保存", reconciliation_no_positions: "请先识别截图，并确认至少一条持仓。", reconciliation_not_validated: "请重新验证并明确选择已验证的标的后再保存。", reconciliation_canonical_match: "找到规范标的。点击确认绑定", reconciliation_provider_unavailable: "标的 Provider 暂时不可用，请稍后重试。", reconciliation_invalid_asset: "没有找到与该 ticker 匹配的已验证候选。",
+    portfolio_reload: "刷新", portfolio_sections: "投资组合分区", overview_tab: "持仓", trade_tab: "交易", cash_tab: "现金记录", available_cash: "可用现金", ledger_derived: "账本计算 · USD", portfolio_context: "投资组合上下文", session_owned: "当前 Session 所属", session_owned_hint: "身份来自你的本地私有 Session。", opening_state: "起始状态", existing_positions_setup: "添加已有持仓", starting_facts: "一次性起始事实", opening_explainer: "记录开始跟踪前已经持有的仓位，不改变现金，也不创建虚假交易。", skip_for_now: "暂时跳过", save_opening_positions: "保存已有持仓", add_existing_positions: "添加已有持仓", open_positions: "当前持仓", portfolio_empty_loaded: "目前没有持仓。", opening_records: "起始持仓记录", records_empty: "暂无记录。", import_starting_positions: "导入起始持仓", import_review_title: "保存前请复核", draft_only_note: "仅为 Draft · 尚未保存", import_review_hint: "可以手动搜索、粘贴文本或选择一张截图，生成可编辑 Draft。请确认下面每个字段后再保存。", import_methods: "导入方式", manual_import: "手动搜索", text_import: "文本导入", screenshot_import: "截图识别", asset_search_label: "搜索标的或公司名称", asset_search_placeholder: "搜索标的或公司名称", search_assets: "搜索", asset_candidate_heading: "请选择已验证的标的", searching_assets: "搜索中…", use_asset: "使用此标的", asset_selected: "已选择标的。请补完其余字段，再点击保存完成确认。", asset_search_empty: "请输入标的或公司名称后搜索。", asset_no_match: "没有匹配的可用美国股票或 ETF。", asset_search_failed: "标的搜索暂时不可用。请稍后重试。", asset_provider_auth_failed: "标的搜索尚未配置，请先配置 Provider。", asset_rate_limited: "标的搜索已达到限流，请稍后重试。", asset_invalid_response: "标的搜索返回了无效响应。", text_import_label: "粘贴持仓文本", text_import_placeholder: "粘贴券商对账单中的持仓行", prepare_text_draft: "生成可编辑 Draft", preparing_text_draft: "正在生成文本 Draft…", screenshot_import_label: "选择一张券商持仓截图", prepare_screenshot_draft: "生成可编辑 Draft", preparing_screenshot_draft: "正在生成截图 Draft…", start_recognition: "开始识别", attachment_drop_prompt: "将图片拖到这里，或直接粘贴截图", attachment_drop_hint: "JPEG、PNG 或 WebP · 最大 10 MB", attachment_ready: "附件已准备好。点击“开始识别”前不会上传。", attachment_remove: "移除", attachment_file_required: "请先选择、拖入或粘贴图片。", screenshot_privacy_notice: "截图会发送至 Alibaba Model Studio 进行识别。PositionPilot 不保存图片；Provider 的固定保留时长尚未公开。", screenshot_file_required: "请先选择 JPEG、PNG 或 WebP 截图。", screenshot_file_invalid: "请选择受支持的 JPEG、PNG 或 WebP 截图。", screenshot_file_too_large: "截图过大，请选择不超过 10 MB 的图片。", recognition_invalid_request: "导入输入无效。请检查文本或截图后重试。", recognition_auth_failed: "截图识别尚未配置。你也可以手动搜索并选择持仓。", recognition_rate_limited: "识别请求已达到限流，请稍后重试或手动搜索并选择持仓。", recognition_provider_failed: "识别暂时不可用，你可以手动搜索并选择持仓。", recognition_invalid_response: "识别返回了无效响应，请手动复核字段。", recognition_empty: "没有识别出持仓行。请手动添加一行后继续。", draft_review_signal: "复核提示", draft_status_present: "已识别", draft_status_missing: "缺失 — 请填写", draft_status_invalid: "需要修正", draft_status_ambiguous: "有歧义 — 请选择匹配标的", confidence_signal: "识别置信度", confidence_unavailable: "未提供", find_matching_assets: "查找匹配标的", asset_selection_required: "保存前必须从已验证的候选列表中选择此标的。", asset_auto_selected: "已自动选择经过验证的标的。", recognition_draft_ready: "Draft 已生成。请复核每个字段，再点击保存完成确认。", recognition_input_text: "文本导入", recognition_input_screenshot: "截图导入", imported_warning: "Provider 提示", reconciliation_title: "用券商截图校准持仓", reconciliation_summary: "根据当前截图更新选中的持仓。截图中未出现的持仓保持不变，也不会创建交易或现金记录。", reconciliation_broker_label: "券商或来源（可选）", reconciliation_broker_placeholder: "例如：Fidelity、Schwab、IBKR", reconciliation_screenshot_label: "附加当前持仓截图", reconciliation_revalidate: "重新验证全部标的", reconciliation_revalidate_running: "正在重新验证标的…", reconciliation_save: "保存持仓校准", reconciliation_saved: "持仓校准已保存", reconciliation_no_positions: "请先识别截图，并确认至少一条持仓。", reconciliation_not_validated: "请重新验证并明确选择已验证的标的后再保存。", reconciliation_canonical_match: "找到规范标的。点击确认绑定", reconciliation_provider_unavailable: "标的 Provider 暂时不可用，请稍后重试。", reconciliation_invalid_asset: "没有找到与该 ticker 匹配的已验证候选。",
     reconciliation_records: "持仓校准记录", source: "来源", broker: "券商", source_info: "来源详情", confirmed_at: "确认时间",
     transaction_entry: "交易", trade_entry: "交易记录", immutable_entry: "追加不可变记录", action: "操作", price: "价格", occurred_at_optional: "发生时间（可选）", occurred_at_hint: "留空使用后端应用时间。", reason_optional: "原因（可选）", save_trade: "保存交易", transaction_history: "交易历史", cash_activity: "现金活动", cash_entry: "现金记录", cash_event_type: "现金类型", amount: "金额", save_cash: "保存现金记录", cash_history: "现金历史", cost_basis: "成本基础", commission: "手续费", fee_schedule: "费用规则", occurred_at: "发生时间", reason: "原因", sequence: "序号", recorded_at: "记录时间", not_provided: "未填写", trade_saved: "交易已保存", cash_saved: "现金记录已保存", opening_saved: "已有持仓已保存", mutation_unknown: "结果未知。请勿自动重试，请刷新并检查最新投资组合状态。", refresh_failed: "写入可能已成功，但最新投资组合加载失败。继续前请先刷新。", invalid_form: "请检查标记的字段后再提交。", insufficient_cash: "可用现金不足以覆盖本次买入及后端计算的费用。", insufficient_shares: "该仓位类型下的股数不足。", opening_sealed: "已有持仓只能在第一笔交易、现金记录或持仓校准前添加。", future_time: "发生时间不能晚于当前时间。", session_expired: "本地 Session 已过期，请重新登录。",
     working_title: "正在整理决策上下文", working_answer: "正在读取你的投资组合并选择当前信息。", answer_label: "回答", sources_used: "使用的来源", source_explainer: "支持本次回答的上下文。", answer_ready: "基于投资组合的回答", answer_degraded: "上下文有限的回答", answer_failed: "暂时无法回答", source_ticker: "标的", source_provider: "数据提供方", source_feed: "数据源", source_market_time: "市场时间", source_fetched: "获取时间", source_portfolio: "投资组合持仓与现金", source_quote: "当前市场报价", source_history: "价格历史", source_news: "近期新闻", source_market: "市场环境", no_sources: "本次未返回支持来源。", question_required: "请输入一个具体的投资问题。", question_failed: "PositionPilot 未能完成本次问题，请查看状态后重试。",
@@ -287,7 +286,6 @@ const translations = {
 Object.assign(translations.zh, {
   import_review_hint: "在持仓行输入 ticker、粘贴文本，或添加截图来生成可编辑 Draft。",
   screenshot_import_label: "选择最多两张券商持仓截图",
-  attachment_choose_file: "浏览图片",
   attachment_drop_prompt: "添加持仓截图",
   attachment_drop_hint: "点击、拖入或粘贴 · 最多 2 张 · 每张不超过 10 MB",
   attachment_ready: "图片已准备好。点击“开始识别”前不会上传。",
@@ -300,14 +298,61 @@ Object.assign(translations.zh, {
   reconciliation_screenshot_label: "添加当前持仓截图",
 });
 
+Object.assign(translations.en, {
+  holding_name: "Holding",
+  unrealized_pnl: "Unrealized P&L",
+  unrealized_pnl_percent: "P&L %",
+  market_value: "Market value",
+  purchase_time: "Purchased",
+  imported_holding: "Imported holding",
+  strategy_swing: "Swing",
+  strategy_long_term: "Long term",
+  manual_calibration: "Edit current holdings manually",
+  select_sell_lots: "Select lots to sell",
+  allocation_total_hint: "Allocated shares must equal the trade shares.",
+  valuation_unavailable: "Valuation unavailable",
+  lot_type_saved: "Lot type updated",
+  transaction_correction: "Transaction correction",
+  correct_purchase: "Correct purchase lot",
+  save_correction: "Save correction",
+  correction_saved: "Purchase correction saved",
+  edit_purchase: "Edit purchase",
+  no_aggregate_holdings_to_calibrate: "No imported aggregate holdings can be edited here. Edit purchase lots from the holdings list.",
+});
+
+Object.assign(translations.zh, {
+  holding_name: "持仓",
+  unrealized_pnl: "未实现盈亏",
+  unrealized_pnl_percent: "盈亏 %",
+  market_value: "市场价值",
+  purchase_time: "购买时间",
+  imported_holding: "导入持仓",
+  strategy_swing: "波段仓",
+  strategy_long_term: "长期仓",
+  manual_calibration: "手工校准当前持仓",
+  select_sell_lots: "选择卖出批次",
+  allocation_total_hint: "分配股数之和必须等于成交股数。",
+  valuation_unavailable: "估值不可用",
+  lot_type_saved: "批次类型已更新",
+  transaction_correction: "交易更正",
+  correct_purchase: "修正购买批次",
+  save_correction: "保存更正",
+  correction_saved: "购买批次更正已保存",
+  edit_purchase: "修改购买记录",
+  no_aggregate_holdings_to_calibrate: "没有可在这里修改的导入汇总持仓；请在持仓列表中修改购买批次。",
+});
+
 const state = {
   language: "en",
   account: null,
   loadedUserId: null,
   snapshot: null,
+  valuation: null,
   openingRecords: [],
   reconciliationRecords: [],
+  reconciliationSource: "SCREENSHOT",
   transactionRecords: [],
+  buyCorrectionRecords: [],
   cashRecords: [],
   openingDismissed: false,
   writeState: "idle",
@@ -380,7 +425,6 @@ function importElements(prefix) {
     root: byId(`${prefix}-import-tools`),
     tabs: [...document.querySelectorAll(`#${prefix}-import-tools [data-import-mode]`)],
     panels: {
-      manual: byId(`${prefix}-import-manual-panel`),
       text: byId(`${prefix}-import-text-panel`),
       screenshot: byId(`${prefix}-import-screenshot-panel`),
     },
@@ -408,10 +452,11 @@ const elements = {
   navChat: byId("nav-chat"), navPortfolio: byId("nav-portfolio"), newQuestion: byId("new-question-button"), chatView: byId("chat-view"), portfolioView: byId("portfolio-view"), viewTitle: byId("view-title"), viewEyebrow: byId("view-eyebrow"), portfolioState: byId("portfolio-state"), writeState: byId("write-state"), reloadPortfolio: byId("reload-portfolio-button"), accountName: byId("account-display-name"), accountEmail: byId("account-email"), headerAccountName: byId("header-account-name"), headerAccountInitial: byId("header-account-initial"), accountMessage: byId("account-message"), logout: byId("logout-button"), headerLogout: byId("header-logout-button"),
   chatIntro: byId("chat-intro"), conversationScroll: byId("conversation-scroll"), conversationList: byId("conversation-list"), sessionEmpty: byId("session-empty"), sessionList: byId("session-list"), questionForm: byId("question-form"), question: byId("question"), questionHint: byId("question-hint"), ask: byId("ask-button"), responseTemplate: byId("assistant-response-template"),
   portfolioTabs: [byId("portfolio-tab-overview"), byId("portfolio-tab-trade"), byId("portfolio-tab-cash")], portfolioPanels: [byId("portfolio-overview-panel"), byId("portfolio-trade-panel"), byId("portfolio-cash-panel")], availableCash: byId("available-cash"), positionCount: byId("position-count"), positionsEmpty: byId("positions-empty"), positionList: byId("position-list"),
-  openingSetup: byId("opening-setup"), reopenOpening: byId("reopen-opening-setup"), openingForm: byId("opening-form"), openingFields: byId("opening-fields"), openingRows: byId("opening-draft-rows"), addOpeningRow: byId("add-opening-row"), skipOpening: byId("skip-opening-setup"), openingMessage: byId("opening-message"), openingRecordCount: byId("opening-record-count"), openingRecordsEmpty: byId("opening-records-empty"), openingRecordList: byId("opening-record-list"), openingImport: importElements("opening"), reconciliationCard: byId("position-reconciliation"), reconciliationForm: byId("reconciliation-form"), reconciliationFields: byId("reconciliation-fields"), reconciliationRows: byId("reconciliation-draft-rows"), reconciliationBroker: byId("reconciliation-broker"), reconciliationRevalidate: byId("reconciliation-revalidate"), reconciliationSubmit: byId("reconciliation-submit"), reconciliationMessage: byId("reconciliation-message"), reconciliationImport: importElements("reconciliation"), reconciliationRecordCount: byId("reconciliation-record-count"), reconciliationRecordsEmpty: byId("reconciliation-records-empty"), reconciliationRecordList: byId("reconciliation-record-list"),
-  tradeForm: byId("trade-form"), tradeFields: byId("trade-fields"), tradeAction: byId("trade-action"), tradeType: byId("trade-position-type"), tradeTicker: byId("trade-ticker"), tradePrice: byId("trade-price"), tradeShares: byId("trade-shares"), tradeTime: byId("trade-occurred-at"), tradeReason: byId("trade-reason"), tradeMessage: byId("trade-message"), transactionCount: byId("transaction-count"), transactionsEmpty: byId("transactions-empty"), transactionList: byId("transaction-list"),
+  openingSetup: byId("opening-setup"), reopenOpening: byId("reopen-opening-setup"), openingForm: byId("opening-form"), openingFields: byId("opening-fields"), openingRows: byId("opening-draft-rows"), addOpeningRow: byId("add-opening-row"), skipOpening: byId("skip-opening-setup"), openingMessage: byId("opening-message"), openingImport: importElements("opening"), reconciliationCard: byId("position-reconciliation"), reconciliationForm: byId("reconciliation-form"), reconciliationFields: byId("reconciliation-fields"), reconciliationRows: byId("reconciliation-draft-rows"), reconciliationBroker: byId("reconciliation-broker"), reconciliationLoadCurrent: byId("reconciliation-load-current"), reconciliationRevalidate: byId("reconciliation-revalidate"), reconciliationSubmit: byId("reconciliation-submit"), reconciliationMessage: byId("reconciliation-message"), reconciliationImport: importElements("reconciliation"),
+  tradeForm: byId("trade-form"), tradeFields: byId("trade-fields"), tradeAction: byId("trade-action"), tradeType: byId("trade-position-type"), tradeTicker: byId("trade-ticker"), tradePrice: byId("trade-price"), tradeShares: byId("trade-shares"), tradeTime: byId("trade-occurred-at"), tradeReason: byId("trade-reason"), tradeMessage: byId("trade-message"), tradeLotAllocation: byId("trade-lot-allocation"), tradeLotList: byId("trade-lot-list"), transactionCount: byId("transaction-count"), transactionsEmpty: byId("transactions-empty"), transactionList: byId("transaction-list"),
   cashForm: byId("cash-form"), cashFields: byId("cash-fields"), cashType: byId("cash-event-type"), cashAmount: byId("cash-amount"), cashTime: byId("cash-occurred-at"), cashReason: byId("cash-reason"), cashMessage: byId("cash-message"), cashCount: byId("cash-event-count"), cashEmpty: byId("cash-events-empty"), cashList: byId("cash-event-list"),
   imagePreviewDialog: byId("image-preview-dialog"), imagePreviewClose: byId("image-preview-close"), imagePreviewFull: byId("image-preview-full"), imagePreviewCaption: byId("image-preview-caption"),
+  correctionDialog: byId("buy-correction-dialog"), correctionForm: byId("buy-correction-form"), correctionClose: byId("buy-correction-close"), correctionLotId: byId("buy-correction-lot-id"), correctionPrice: byId("buy-correction-price"), correctionShares: byId("buy-correction-shares"), correctionTime: byId("buy-correction-time"), correctionReason: byId("buy-correction-reason"), correctionMessage: byId("buy-correction-message"),
 };
 
 const importConfigs = [
@@ -1212,6 +1257,7 @@ async function handleScreenshotImport(event, config) {
       combinedDraft.warnings.push(...(payload.draft.warnings ?? []));
     }
     if (renderRecognitionDraft(config, { draft: combinedDraft }, config.controls.screenshotMessage)) {
+      if (config.key === "reconciliation") state.reconciliationSource = "SCREENSHOT";
       setMessage(config.controls.screenshotMessage, "recognition_draft_ready", "success");
     }
   } catch (error) {
@@ -1309,9 +1355,12 @@ function resetSensitiveState() {
   state.account = null;
   state.loadedUserId = null;
   state.snapshot = null;
+  state.valuation = null;
   state.openingRecords = [];
   state.reconciliationRecords = [];
+  state.reconciliationSource = "SCREENSHOT";
   state.transactionRecords = [];
+  state.buyCorrectionRecords = [];
   state.cashRecords = [];
   state.openingDismissed = false;
   state.writeState = "idle";
@@ -1621,7 +1670,7 @@ function renderPortfolioEmpty() {
   elements.positionCount.textContent = "0";
   clearElement(elements.positionList);
   elements.positionsEmpty.hidden = false;
-  for (const [list, count, empty] of [[elements.openingRecordList, elements.openingRecordCount, elements.openingRecordsEmpty], [elements.reconciliationRecordList, elements.reconciliationRecordCount, elements.reconciliationRecordsEmpty], [elements.transactionList, elements.transactionCount, elements.transactionsEmpty], [elements.cashList, elements.cashCount, elements.cashEmpty]]) {
+  for (const [list, count, empty] of [[elements.transactionList, elements.transactionCount, elements.transactionsEmpty], [elements.cashList, elements.cashCount, elements.cashEmpty]]) {
     clearElement(list); count.textContent = "0"; empty.hidden = false;
   }
 }
@@ -1640,15 +1689,174 @@ function createFactList(facts) {
   return list;
 }
 
-function createPositionCard(position) {
-  const card = makeElement("article", "position-card");
-  const heading = makeElement("div", "position-card-heading");
-  const ticker = makeElement("strong", "", position.ticker);
-  const badge = makeElement("span", "position-type", position.position_type === "UNSPECIFIED" ? translate("unspecified") : position.position_type);
-  if (position.position_type === "UNSPECIFIED") badge.dataset.i18n = "unspecified";
-  heading.append(ticker, badge);
-  card.append(heading, createFactList([["shares", position.shares, "decimal"], ["average_cost", position.average_cost, "decimal"], ["cost_basis", position.cost_basis, "decimal"]]));
-  return card;
+function metricText(metrics, field, fallback = null) {
+  const value = metrics?.[field] ?? fallback;
+  if (value === null || value === undefined) return "—";
+  if (field === "unrealized_pnl_percent") return `${formatDecimal(value)}%`;
+  if (["average_cost", "unrealized_pnl", "market_value"].includes(field)) return formatMoney(value);
+  return formatDecimal(value);
+}
+
+function createHoldingRow({ label, note = null, metrics, fallback, level, toggle = null, lot = null }) {
+  const row = makeElement(toggle ? "button" : "div", `holding-row holding-level-${level}`);
+  if (toggle) {
+    row.type = "button";
+    row.classList.add("holding-toggle");
+    row.setAttribute("aria-expanded", "false");
+  }
+  const identity = makeElement("span", "holding-identity");
+  if (toggle) identity.append(makeElement("span", "holding-caret", "›"));
+  identity.append(makeElement("strong", "", label));
+  if (note) identity.append(makeElement("small", "holding-note", note));
+  if (lot) {
+    const selector = makeElement("select", "lot-type-select");
+    selector.setAttribute("aria-label", translate("position_type_optional"));
+    for (const [value, key] of [["UNSPECIFIED", "unspecified"], ["SWING", "strategy_swing"], ["LONG_TERM", "strategy_long_term"]]) {
+      const option = makeElement("option", "", translate(key));
+      option.value = value;
+      option.selected = lot.position_type === value;
+      selector.append(option);
+    }
+    selector.addEventListener("click", (event) => event.stopPropagation());
+    selector.addEventListener("dblclick", (event) => event.stopPropagation());
+    selector.addEventListener("change", (event) => {
+      event.stopPropagation();
+      changeLotType(lot.id, selector.value, selector);
+    });
+    identity.append(selector);
+    if (lot.source === "BUY") {
+      const edit = makeElement("button", "lot-edit-button", "✎");
+      edit.type = "button";
+      edit.setAttribute("aria-label", translate("edit_purchase"));
+      edit.title = translate("edit_purchase");
+      edit.addEventListener("click", () => openBuyCorrection(lot));
+      identity.append(edit);
+      row.addEventListener("dblclick", () => openBuyCorrection(lot));
+    }
+  }
+  const values = [
+    metricText(metrics, "shares", fallback?.shares),
+    metricText(metrics, "average_cost", fallback?.average_cost),
+    metricText(metrics, "unrealized_pnl"),
+    metricText(metrics, "unrealized_pnl_percent"),
+    metricText(metrics, "market_value"),
+  ];
+  row.append(identity, ...values.map((value) => makeElement("span", "holding-number", value)));
+  if (metrics?.unrealized_pnl !== undefined) {
+    const tone = Number(metrics.unrealized_pnl) > 0 ? "positive" : Number(metrics.unrealized_pnl) < 0 ? "negative" : "neutral";
+    row.children[3].dataset.tone = tone;
+    row.children[4].dataset.tone = tone;
+  }
+  return row;
+}
+
+async function changeLotType(lotId, positionType, selector) {
+  selector.disabled = true;
+  const saved = await runMutation({
+    url: `/v1/portfolio/lots/${lotId}/classification`,
+    payload: { position_type: positionType },
+    messageElement: elements.accountMessage,
+    successKey: "lot_type_saved",
+    recordId: (result) => result.lot_id,
+  });
+  if (!saved) selector.disabled = false;
+}
+
+function toLocalDateTimeValue(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const pad = (part) => String(part).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function openBuyCorrection(lot) {
+  elements.correctionLotId.value = lot.id;
+  elements.correctionPrice.value = lot.entry_price ?? "";
+  elements.correctionShares.value = lot.acquired_shares;
+  const localTime = toLocalDateTimeValue(lot.purchased_at);
+  elements.correctionTime.value = localTime;
+  elements.correctionTime.dataset.originalIso = lot.purchased_at;
+  elements.correctionTime.dataset.originalLocalValue = localTime;
+  elements.correctionReason.value = "";
+  clearMessage(elements.correctionMessage);
+  elements.correctionDialog.showModal();
+  elements.correctionPrice.focus();
+}
+
+async function handleBuyCorrection(event) {
+  event.preventDefault();
+  clearFieldErrors(elements.correctionForm);
+  const price = validateRequiredPositive(elements.correctionPrice);
+  const shares = validateRequiredPositive(elements.correctionShares);
+  const occurredAt = elements.correctionTime.value === elements.correctionTime.dataset.originalLocalValue
+    ? elements.correctionTime.dataset.originalIso
+    : localDateTimeToIso(elements.correctionTime);
+  if (!price || !shares || !occurredAt) {
+    if (!occurredAt) showFieldError(elements.correctionTime, "invalid_form");
+    setMessage(elements.correctionMessage, "invalid_form");
+    return;
+  }
+  const payload = { price, shares, occurred_at: occurredAt };
+  if (elements.correctionReason.value.trim()) payload.reason = elements.correctionReason.value.trim();
+  const saved = await runMutation({
+    url: `/v1/portfolio/lots/${elements.correctionLotId.value}/correction`,
+    payload,
+    messageElement: elements.correctionMessage,
+    successKey: "correction_saved",
+    recordId: (result) => result.correction_id,
+  });
+  if (saved) elements.correctionDialog.close();
+}
+
+function createHoldingTree(ticker) {
+  const valuation = state.valuation?.tickers?.find((item) => item.ticker === ticker) ?? null;
+  const lots = (state.snapshot?.lots ?? []).filter((lot) => lot.ticker === ticker);
+  const positions = (state.snapshot?.positions ?? []).filter((position) => position.ticker === ticker);
+  const fallback = {
+    shares: lots.reduce((total, lot) => total + Number(lot.remaining_shares), 0),
+    average_cost: positions.reduce((total, position) => total + Number(position.cost_basis), 0)
+      / lots.reduce((total, lot) => total + Number(lot.remaining_shares), 0),
+  };
+  const group = makeElement("section", "holding-group");
+  const details = makeElement("div", "holding-details");
+  details.hidden = true;
+  const quoteNote = valuation?.current_price
+    ? `${formatMoney(valuation.current_price)} · ${valuation.source}/${valuation.feed} · ${formatTimestamp(valuation.last_trade_at)}${valuation.is_delayed ? " · delayed" : ""}`
+    : valuation?.message ?? translate("valuation_unavailable");
+  const header = createHoldingRow({ label: ticker, note: quoteNote, metrics: valuation?.metrics, fallback, level: 0, toggle: true });
+  header.addEventListener("click", () => {
+    const expanded = header.getAttribute("aria-expanded") !== "true";
+    header.setAttribute("aria-expanded", String(expanded));
+    details.hidden = !expanded;
+  });
+  const lotValuations = new Map((valuation?.lots ?? []).map((item) => [item.lot_id, item.metrics]));
+  const typeValuations = new Map((valuation?.position_types ?? []).map((item) => [item.position_type, item.metrics]));
+  const appendLot = (lot) => {
+    const time = lot.purchased_at ? formatTimestamp(lot.purchased_at) : translate("not_provided");
+    const source = lot.source === "BUY" ? time : `${translate("imported_holding")} · ${time}`;
+    details.append(createHoldingRow({
+      label: source,
+      metrics: lotValuations.get(lot.id),
+      fallback: { shares: lot.remaining_shares, average_cost: lot.average_cost },
+      level: 2,
+      lot,
+    }));
+  };
+  const sortedLots = [...lots].sort((left, right) => {
+    if (!left.purchased_at && right.purchased_at) return 1;
+    if (left.purchased_at && !right.purchased_at) return -1;
+    return String(left.purchased_at ?? left.id).localeCompare(String(right.purchased_at ?? right.id));
+  });
+  sortedLots.filter((lot) => lot.position_type === "UNSPECIFIED").forEach(appendLot);
+  for (const [type, key] of [["SWING", "strategy_swing"], ["LONG_TERM", "strategy_long_term"]]) {
+    const typeLots = sortedLots.filter((lot) => lot.position_type === type);
+    if (!typeLots.length) continue;
+    const position = positions.find((item) => item.position_type === type);
+    details.append(createHoldingRow({ label: translate(key), metrics: typeValuations.get(type), fallback: position, level: 1 }));
+    typeLots.forEach(appendLot);
+  }
+  group.append(header, details);
+  return group;
 }
 
 function createRecordCard(title, badgeText, facts) {
@@ -1682,15 +1890,20 @@ function renderPortfolio() {
   const snapshot = state.snapshot;
   if (!snapshot) { renderPortfolioEmpty(); updateControls(); return; }
   elements.availableCash.textContent = formatMoney(snapshot.available_cash);
-  elements.positionCount.textContent = String(snapshot.positions.length);
+  const tickers = [...new Set((snapshot.lots ?? []).map((lot) => lot.ticker))].sort();
+  elements.positionCount.textContent = String(tickers.length);
   clearElement(elements.positionList);
-  elements.positionsEmpty.hidden = snapshot.positions.length > 0;
-  for (const position of snapshot.positions) elements.positionList.append(createPositionCard(position));
-  renderRecordCollection(elements.openingRecordList, elements.openingRecordsEmpty, elements.openingRecordCount, state.openingRecords, (record) => createRecordCard(record.ticker, record.position_type, [["shares", record.shares, "decimal"], ["average_cost", record.average_cost, "decimal"], ["cost_basis", record.cost_basis, "decimal"], ["recorded_at", record.recorded_at, "timestamp"]]));
-  renderRecordCollection(elements.reconciliationRecordList, elements.reconciliationRecordsEmpty, elements.reconciliationRecordCount, state.reconciliationRecords, (record) => createRecordCard(record.ticker, record.position_type, [["shares", record.target_shares, "decimal"], ["average_cost", record.target_average_cost, "decimal"], ["cost_basis", record.target_cost_basis, "decimal"], ["source", record.source], ["broker", record.broker], ["source_info", record.source_info], ["confirmed_at", record.confirmed_at, "timestamp"]]));
+  elements.positionsEmpty.hidden = tickers.length > 0;
+  for (const ticker of tickers) elements.positionList.append(createHoldingTree(ticker));
   renderRecordCollection(elements.transactionList, elements.transactionsEmpty, elements.transactionCount, state.transactionRecords, (record) => createRecordCard(`${record.action} · ${record.ticker}`, record.position_type, [["sequence", record.sequence], ["price", record.price, "decimal"], ["shares", record.shares, "decimal"], ["amount", record.amount, "decimal"], ["commission", record.commission, "decimal"], ["fee_schedule", record.fee_schedule], ["occurred_at", record.occurred_at, "timestamp"], ["reason", record.reason]]));
+  for (const correction of state.buyCorrectionRecords) {
+    elements.transactionList.append(createRecordCard(`CORRECTION · ${correction.transaction_id}`, null, [["price", correction.price, "decimal"], ["shares", correction.shares, "decimal"], ["occurred_at", correction.occurred_at, "timestamp"], ["reason", correction.reason], ["confirmed_at", correction.corrected_at, "timestamp"]]));
+  }
+  elements.transactionCount.textContent = String(state.transactionRecords.length + state.buyCorrectionRecords.length);
+  elements.transactionsEmpty.hidden = state.transactionRecords.length + state.buyCorrectionRecords.length > 0;
   renderRecordCollection(elements.cashList, elements.cashEmpty, elements.cashCount, state.cashRecords, (record) => createRecordCard(record.event_type, null, [["sequence", record.sequence], ["amount", record.amount, "decimal"], ["occurred_at", record.occurred_at, "timestamp"], ["reason", record.reason]]));
   renderOpeningAvailability();
+  renderSellLotAllocation();
   updateControls();
 }
 
@@ -1703,19 +1916,26 @@ async function refreshPortfolio({ afterMutation = false } = {}) {
   state.portfolioReadState = "loading";
   updateControls();
   try {
-    const [snapshot, openings, reconciliations, transactions, cash] = await Promise.all([
+    const [snapshot, valuation, openings, reconciliations, transactions, corrections, cash] = await Promise.all([
       requestJson("/v1/portfolio", { signal: controller.signal }),
+      requestJson("/v1/portfolio/valuation", { signal: controller.signal }).catch((error) => {
+        if (error?.name === "AbortError") throw error;
+        return null;
+      }),
       requestJson("/v1/portfolio/opening-positions", { signal: controller.signal }),
       requestJson("/v1/portfolio/reconciliations", { signal: controller.signal }),
       requestJson("/v1/portfolio/transactions", { signal: controller.signal }),
+      requestJson("/v1/portfolio/buy-corrections", { signal: controller.signal }),
       requestJson("/v1/portfolio/cash-events", { signal: controller.signal }),
     ]);
     if (generation !== state.portfolioGeneration) return false;
     state.snapshot = snapshot;
+    state.valuation = valuation;
     state.loadedUserId = snapshot.user_id;
     state.openingRecords = openings.items;
     state.reconciliationRecords = reconciliations.items;
     state.transactionRecords = transactions.items;
+    state.buyCorrectionRecords = corrections.items;
     state.cashRecords = cash.items;
     if (!afterMutation) state.writeState = "idle";
     renderPortfolio();
@@ -1781,6 +2001,61 @@ function validateRequiredPositive(field) {
   return value;
 }
 
+function decimalUnits(value) {
+  if (!DECIMAL_PATTERN.test(value)) return null;
+  const [whole, fraction = ""] = value.split(".");
+  return BigInt(whole) * 100000000n + BigInt(fraction.padEnd(8, "0"));
+}
+
+function renderSellLotAllocation() {
+  const isSell = elements.tradeAction.value === "SELL";
+  elements.tradeType.disabled = isSell;
+  if (isSell) elements.tradeType.value = "";
+  elements.tradeLotAllocation.hidden = !isSell;
+  clearElement(elements.tradeLotList);
+  if (!isSell) return;
+  const ticker = elements.tradeTicker.value.trim().toUpperCase();
+  const lots = (state.snapshot?.lots ?? []).filter((lot) => lot.ticker === ticker);
+  for (const lot of lots) {
+    const row = makeElement("label", "trade-lot-row");
+    const copy = makeElement("span", "trade-lot-copy");
+    copy.append(
+      makeElement("strong", "", lot.position_type === "UNSPECIFIED" ? translate("unspecified") : lot.position_type),
+      makeElement("small", "", `${lot.purchased_at ? formatTimestamp(lot.purchased_at) : translate("not_provided")} · ${formatDecimal(lot.remaining_shares)}`),
+    );
+    const input = makeElement("input");
+    input.type = "text";
+    input.inputMode = "decimal";
+    input.placeholder = "0";
+    input.dataset.lotId = lot.id;
+    input.dataset.maxShares = lot.remaining_shares;
+    row.append(copy, input);
+    elements.tradeLotList.append(row);
+  }
+}
+
+function collectSellAllocations(shares) {
+  const allocations = [];
+  let total = 0n;
+  for (const input of elements.tradeLotList.querySelectorAll("[data-lot-id]")) {
+    const value = input.value.trim();
+    if (!value) continue;
+    const units = decimalUnits(value);
+    const maximum = decimalUnits(input.dataset.maxShares);
+    if (units === null || units <= 0n || units > maximum) {
+      showFieldError(input, "invalid_positive_decimal");
+      return null;
+    }
+    total += units;
+    allocations.push({ lot_id: input.dataset.lotId, shares: value });
+  }
+  if (!allocations.length || total !== decimalUnits(shares)) {
+    setMessage(elements.tradeMessage, "allocation_total_hint", "neutral");
+    return null;
+  }
+  return allocations;
+}
+
 async function handleTrade(event) {
   event.preventDefault();
   clearFieldErrors(elements.tradeForm);
@@ -1791,13 +2066,18 @@ async function handleTrade(event) {
   const shares = validateRequiredPositive(elements.tradeShares);
   if (!ticker || !price || !shares) { setMessage(elements.tradeMessage, "invalid_form"); return; }
   const payload = { ticker, action: elements.tradeAction.value, price, shares };
-  if (elements.tradeType.value) payload.position_type = elements.tradeType.value;
+  if (payload.action === "SELL") {
+    const allocations = collectSellAllocations(shares);
+    if (!allocations) return;
+    payload.allocations = allocations;
+  }
+  if (payload.action === "BUY" && elements.tradeType.value) payload.position_type = elements.tradeType.value;
   const occurredAt = localDateTimeToIso(elements.tradeTime);
   if (elements.tradeTime.value && !occurredAt) { showFieldError(elements.tradeTime, "invalid_form"); setMessage(elements.tradeMessage, "invalid_form"); return; }
   if (occurredAt) payload.occurred_at = occurredAt;
   if (elements.tradeReason.value.trim()) payload.reason = elements.tradeReason.value.trim();
   const saved = await runMutation({ url: "/v1/portfolio/transactions", payload, messageElement: elements.tradeMessage, successKey: "trade_saved", recordId: (result) => result.transaction?.id });
-  if (saved) { elements.tradeTicker.value = ""; elements.tradePrice.value = ""; elements.tradeShares.value = ""; elements.tradeTime.value = ""; elements.tradeReason.value = ""; }
+  if (saved) { elements.tradeTicker.value = ""; elements.tradePrice.value = ""; elements.tradeShares.value = ""; elements.tradeTime.value = ""; elements.tradeReason.value = ""; renderSellLotAllocation(); }
 }
 
 async function handleCash(event) {
@@ -1989,6 +2269,30 @@ async function revalidateReconciliationAssets(event) {
   }
 }
 
+function loadCurrentReconciliationDraft(event) {
+  event?.preventDefault();
+  if (!state.snapshot) return;
+  clearElement(elements.reconciliationRows);
+  const editablePositions = (state.snapshot.positions ?? []).filter((position) => {
+    const matchingLots = (state.snapshot.lots ?? []).filter((lot) => lot.ticker === position.ticker && lot.position_type === position.position_type);
+    return matchingLots.length === 1 && matchingLots[0].source !== "BUY";
+  });
+  for (const position of editablePositions) {
+    const row = createOpeningRow(elements.reconciliationRows);
+    const ticker = row.querySelector("[data-field='ticker']");
+    ticker.value = position.ticker;
+    row.dataset.assetSymbol = position.ticker;
+    ticker.dataset.assetSymbol = position.ticker;
+    row.querySelector("[data-field='shares']").value = position.shares;
+    row.querySelector("[data-field='average_cost']").value = position.average_cost;
+    row.querySelector("[data-field='position_type']").value = position.position_type === "UNSPECIFIED" ? "" : position.position_type;
+  }
+  state.reconciliationSource = "MANUAL";
+  if (editablePositions.length) clearMessage(elements.reconciliationMessage);
+  else setMessage(elements.reconciliationMessage, "no_aggregate_holdings_to_calibrate", "neutral");
+  elements.reconciliationRows.querySelector("input")?.focus();
+}
+
 async function handleReconciliation(event) {
   event.preventDefault();
   if (state.importPending) return;
@@ -2001,13 +2305,14 @@ async function handleReconciliation(event) {
     setMessage(elements.reconciliationMessage, "reconciliation_no_positions", "neutral");
     return;
   }
-  const payload = { source: "SCREENSHOT", positions };
+  const payload = { source: state.reconciliationSource, positions };
   const broker = elements.reconciliationBroker.value.trim();
   if (broker) payload.broker = broker;
   const saved = await runMutation({ url: "/v1/portfolio/reconciliations", payload, messageElement: elements.reconciliationMessage, successKey: "reconciliation_saved", recordId: (result) => result.reconciliations?.[0]?.id });
   if (saved) {
     clearElement(elements.reconciliationRows);
     elements.reconciliationBroker.value = "";
+    state.reconciliationSource = "SCREENSHOT";
     resetImportControls(elements.reconciliationImport);
   }
 }
@@ -2166,18 +2471,22 @@ function bindEvents() {
   elements.skipOpening.addEventListener("click", () => { state.openingDismissed = true; renderOpeningAvailability(); });
   elements.reopenOpening.addEventListener("click", () => { state.openingDismissed = false; renderOpeningAvailability(); });
   elements.openingForm.addEventListener("submit", handleOpening);
+  elements.reconciliationLoadCurrent.addEventListener("click", loadCurrentReconciliationDraft);
   elements.reconciliationRevalidate.addEventListener("click", revalidateReconciliationAssets);
   elements.reconciliationForm.addEventListener("submit", handleReconciliation);
   elements.tradeForm.addEventListener("submit", handleTrade);
+  elements.tradeAction.addEventListener("change", renderSellLotAllocation);
   elements.cashForm.addEventListener("submit", handleCash);
   elements.tradeTicker.addEventListener("input", () => {
     delete elements.tradeTicker.dataset.assetSymbol;
+    renderSellLotAllocation();
   });
   bindAssetAutocomplete(elements.tradeTicker, (candidate) => {
     const symbol = String(candidate?.canonical_symbol ?? "").trim().toUpperCase();
     if (!symbol) return;
     elements.tradeTicker.value = symbol;
     elements.tradeTicker.dataset.assetSymbol = symbol;
+    renderSellLotAllocation();
     elements.tradePrice.focus();
   });
   elements.imagePreviewClose.addEventListener("click", closeImagePreview);
@@ -2190,6 +2499,8 @@ function bindEvents() {
     delete elements.imagePreviewDialog.dataset.openerId;
     opener?.focus();
   });
+  elements.correctionClose.addEventListener("click", () => elements.correctionDialog.close());
+  elements.correctionForm.addEventListener("submit", handleBuyCorrection);
   elements.question.addEventListener("compositionstart", () => { state.questionComposing = true; });
   elements.question.addEventListener("compositionend", () => { state.questionComposing = false; });
   elements.question.addEventListener("keydown", handleQuestionKeydown);
@@ -2203,3 +2514,8 @@ applyTranslations();
 renderPortfolioEmpty();
 updateControls();
 restoreSession();
+setInterval(() => {
+  if (!document.hidden && state.activeView === "portfolio" && state.account?.portfolio_ready) {
+    refreshPortfolio();
+  }
+}, 30000);

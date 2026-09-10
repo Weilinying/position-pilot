@@ -13,6 +13,7 @@ from position_pilot.application.market_data_service import MarketDataService
 from position_pilot.application.news_service import NewsService
 from position_pilot.application.opening_import_service import OpeningImportService
 from position_pilot.application.portfolio_service import PortfolioService
+from position_pilot.application.portfolio_valuation_service import PortfolioValuationService
 from position_pilot.application.recognition_service import RecognitionService
 from position_pilot.config import get_settings
 from position_pilot.database import create_database_engine, create_session_factory
@@ -61,6 +62,20 @@ def get_asset_metadata_service() -> AssetMetadataService:
 
 
 @lru_cache
+def get_market_data_service() -> MarketDataService:
+    """装配 Portfolio 估值与 Agent 共用的行情边界。"""
+
+    return MarketDataService(create_alpaca_market_data_provider(get_settings()))
+
+
+@lru_cache
+def get_portfolio_valuation_service() -> PortfolioValuationService:
+    """装配当前 Portfolio 的确定性估值服务。"""
+
+    return PortfolioValuationService(get_portfolio_service(), get_market_data_service())
+
+
+@lru_cache
 def get_recognition_service() -> RecognitionService:
     """装配进程内共享的 qwen3-vl-flash Recognition Application Service。"""
 
@@ -91,7 +106,7 @@ def get_investment_agent() -> InvestmentAgent:
     """按已批准依赖方向装配进程内共享 InvestmentAgent。"""
 
     settings = get_settings()
-    market_data_service = MarketDataService(create_alpaca_market_data_provider(settings))
+    market_data_service = get_market_data_service()
     news_service = NewsService(create_alpaca_news_provider(settings))
     llm_provider = create_aliyun_llm_provider(settings)
     return InvestmentAgent(

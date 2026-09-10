@@ -12,8 +12,10 @@ from fastapi.testclient import TestClient
 from position_pilot.application.auth_service import Account, SetupPortfolioCommand
 from position_pilot.application.errors import OpeningStateSealed, UserNotFound
 from position_pilot.application.portfolio_service import (
+    BuyTransactionCorrectionResult,
     CashAdjustmentResult,
     InitializeOpeningPositionsCommand,
+    LotClassificationResult,
     PositionReconciliationsResult,
     RecordCashEventCommand,
     RecordPositionReconciliationsCommand,
@@ -25,10 +27,13 @@ from position_pilot.domain.errors import (
     InsufficientShares,
     InvalidPortfolioValue,
 )
+from position_pilot.domain.market_data import MarketDataCoverage, MarketDataStatus, MarketQuote
 from position_pilot.domain.portfolio import (
+    BuyTransactionCorrection,
     CashBalance,
     CashEvent,
     CashEventType,
+    LotClassificationChange,
     OpeningPosition,
     PortfolioState,
     Position,
@@ -39,12 +44,18 @@ from position_pilot.domain.portfolio import (
     User,
     rebuild_portfolio,
 )
+from position_pilot.domain.portfolio_valuation import (
+    PortfolioValuation,
+    TickerValuation,
+    calculate_valuation_metrics,
+)
 from position_pilot.main import (
     app,
     get_auth_service_dependency,
     get_current_account_dependency,
     get_opening_import_service_dependency,
     get_portfolio_service_dependency,
+    get_portfolio_valuation_service_dependency,
 )
 
 USER_ID = UUID("00000000-0000-0000-0000-000000000001")
@@ -126,6 +137,18 @@ class FakePortfolioReader:
 
 
 @dataclass(slots=True)
+class FakePortfolioValuationService:
+    """返回固定当前估值并记录 Portfolio 身份。"""
+
+    result: PortfolioValuation
+    user_ids: list[UUID] = field(default_factory=list)
+
+    def get_current_valuation(self, user_id: UUID) -> PortfolioValuation:
+        self.user_ids.append(user_id)
+        return self.result
+
+
+@dataclass(slots=True)
 class FakeOpeningPositionService:
     """返回固定 Opening Positions，并记录初始化 Command 或查询。"""
 
@@ -187,6 +210,26 @@ class FakeTransactionListReader:
         if isinstance(self.result, Exception):
             raise self.result
         return self.result
+
+
+@dataclass(slots=True)
+class FakeLotMutationService:
+    """记录批次类型与 BUY 更正 Command。"""
+
+    classification_result: LotClassificationResult | None = None
+    correction_result: BuyTransactionCorrectionResult | None = None
+    classification_commands: list[object] = field(default_factory=list)
+    correction_commands: list[object] = field(default_factory=list)
+
+    def change_lot_classification(self, command):
+        self.classification_commands.append(command)
+        assert self.classification_result is not None
+        return self.classification_result
+
+    def correct_buy_transaction(self, command):
+        self.correction_commands.append(command)
+        assert self.correction_result is not None
+        return self.correction_result
 
 
 @dataclass(slots=True)
@@ -455,6 +498,7 @@ def test_returns_complete_portfolio_snapshot_with_stable_position_order(
                 "cost_basis": "120.35000000",
             },
         ],
+        "lots": [],
     }
     assert service.user_ids == [USER_ID]
 
@@ -469,6 +513,123 @@ def test_returns_empty_portfolio_as_complete_snapshot(client: TestClient) -> Non
     assert response.status_code == 200
     assert response.json()["positions_are_complete"] is True
     assert response.json()["positions"] == []
+
+
+def test_returns_current_portfolio_valuation_with_quote_metadata(client: TestClient) -> None:
+    """当前估值 API 应保留行情来源并序列化确定性汇总。"""
+
+    quote = MarketQuote(
+        ticker="GOOG",
+        last_price=Decimal("250"),
+        bid_price=None,
+        ask_price=None,
+        last_trade_at=OCCURRED_AT,
+        quote_at=None,
+        source="alpaca",
+        feed="iex",
+        coverage=MarketDataCoverage.SINGLE_EXCHANGE,
+        currency="USD",
+        is_delayed=False,
+        fetched_at=OCCURRED_AT,
+    )
+    metrics = calculate_valuation_metrics(
+        shares=Decimal("2"),
+        cost_basis=Decimal("200"),
+        current_price=quote.last_price,
+    )
+    service = FakePortfolioValuationService(
+        PortfolioValuation(
+            user_id=USER_ID,
+            tickers=(
+                TickerValuation(
+                    ticker="GOOG",
+                    status=MarketDataStatus.OK,
+                    quote=quote,
+                    message=None,
+                    metrics=metrics,
+                    position_types=(),
+                    lots=(),
+                ),
+            ),
+        )
+    )
+    app.dependency_overrides[get_portfolio_valuation_service_dependency] = lambda: service
+
+    response = client.get("/v1/portfolio/valuation")
+
+    assert response.status_code == 200
+    payload = response.json()["tickers"][0]
+    assert payload["current_price"] == "250"
+    assert payload["source"] == "ALPACA"
+    assert payload["feed"] == "IEX"
+    assert payload["metrics"]["market_value"] == "500.00000000"
+    assert payload["metrics"]["unrealized_pnl_percent"] == "150.00"
+    assert service.user_ids == [USER_ID]
+
+
+def test_updates_lot_classification_and_corrects_buy_through_current_routes(
+    client: TestClient,
+) -> None:
+    """批次类型和 BUY 字段修改应使用独立事件接口并返回最新 Snapshot。"""
+
+    user = User.create(
+        user_id=USER_ID,
+        display_name="API User",
+        initial_cash=Decimal("1000"),
+        created_at=OCCURRED_AT,
+    )
+    purchase = Transaction.create(
+        user_id=USER_ID,
+        sequence=1,
+        ticker="GOOG",
+        action=TransactionAction.BUY,
+        price=Decimal("100"),
+        shares=Decimal("2"),
+        occurred_at=OCCURRED_AT,
+        transaction_id=TRANSACTION_ID,
+    )
+    portfolio = rebuild_portfolio(user, [purchase])
+    classification = LotClassificationChange.create(
+        user_id=USER_ID,
+        lot_id=TRANSACTION_ID,
+        position_type=PositionType.SWING,
+        effective_at=OCCURRED_AT,
+    )
+    correction = BuyTransactionCorrection.create(
+        user_id=USER_ID,
+        transaction_id=TRANSACTION_ID,
+        price=Decimal("110"),
+        shares=Decimal("3"),
+        occurred_at=OCCURRED_AT,
+        reason="修正",
+        corrected_at=OCCURRED_AT,
+    )
+    service = FakeLotMutationService(
+        classification_result=LotClassificationResult(classification, portfolio),
+        correction_result=BuyTransactionCorrectionResult(correction, portfolio),
+    )
+    override_service(service)
+
+    classification_response = client.post(
+        f"/v1/portfolio/lots/{TRANSACTION_ID}/classification",
+        json={"position_type": "SWING"},
+    )
+    correction_response = client.post(
+        f"/v1/portfolio/lots/{TRANSACTION_ID}/correction",
+        json={
+            "price": "110",
+            "shares": "3",
+            "occurred_at": "2026-08-25T08:30:00Z",
+            "reason": "修正",
+        },
+    )
+
+    assert classification_response.status_code == 200
+    assert classification_response.json()["lot_id"] == str(TRANSACTION_ID)
+    assert service.classification_commands[0].position_type is PositionType.SWING
+    assert correction_response.status_code == 200
+    assert correction_response.json()["transaction_id"] == str(TRANSACTION_ID)
+    assert service.correction_commands[0].shares == Decimal("3")
 
 
 def test_maps_missing_portfolio_snapshot_user_to_404(client: TestClient) -> None:

@@ -13,7 +13,7 @@
 **Current Milestone:** M9 — Asset Identity & Portfolio Import
 **Status:** IN PROGRESS — Provider / Vision selection Human Approved; implementation started (2026-09-01)
 **Current Release State:** `v1.0.0` 是当前稳定基线；M8.1 已 Human Accepted 并进入 `main`，但仍记录在 Changelog `Unreleased`，未单独发布 `v1.0.1`
-**Next Planned Work:** M9 当前持仓层级、批次维护与录入交互 T10–T14，完成后进入 Human Acceptance 与 `v1.1.0` Release Gate
+**Next Planned Work:** M9 Human Acceptance 与 `v1.1.0` Release Gate
 
 Milestone 状态统一使用 `NOT STARTED`、`IN PROGRESS`、`DONE`，不维护百分比进度。
 
@@ -313,7 +313,7 @@ Question Textarea 使用 Enter 提交，Shift+Enter 插入换行。中文等输�
 
 Opening Import 复用 M8 已批准的一次性初始化 Command 与 Gate：只有尚无 Opening Position、Transaction、Cash Event 或 Reconciliation 时才允许最终写入。已有 Portfolio 的当前截图走独立 Position Reconciliation：用户确认后追加 immutable event，Replay 直接校准对应 `(canonical_symbol, position_type)` 的 Shares / Average Cost，不生成 BUY / SELL、不修改 Cash，截图中未出现的持仓保持不变。它不是 Broker Sync、自动 Diff 或持续同步。短 Spike 最终选择 Finnhub 与 Alibaba Model Studio `qwen3-vl-flash`，两者只通过各自的 Provider-neutral Boundary 接入；PositionPilot 不持久化图片，Model Studio 官方声明数据不用于训练，但未公开固定原图保留时长，UI 必须披露该限制。未经 Provider 验证或候选选择的 Browser Suggestion 以及 Recognition Confidence 均不能建立 Asset Binding。
 
-2026-09-10 扩展（待实现）：删除“浏览图片”，缩略图打开大图；ticker 输入原位联想，取消独立搜索区；保存后可直接手工维护。当前持仓按 ticker 单行汇总，展开直接列 UNSPECIFIED 批次，其后为 SWING、LONG_TERM 分组，批次按购买时间排序。类型可逐批调整；成交事实通过更正记录修正；SELL 明确分配批次。保留交易和资金历史，清理旧测试数据后使用新模型，不实现兼容回填。M9 提供市值与未实现指标，按现有已记录费用计算并显示行情来源/时间；执行见 [M9 后续计划](docs/plans/m9-current-holdings-and-batch-editing.md)。
+2026-09-10 扩展（已在 M9 Branch 实现）：删除“浏览图片”，缩略图打开大图；ticker 输入原位联想，取消独立搜索区；保存后可直接手工维护。当前持仓按 ticker 单行汇总，展开直接列 UNSPECIFIED 批次，其后为 SWING、LONG_TERM 分组，批次按购买时间排序。类型可逐批调整；BUY 成交事实通过更正记录修正；SELL 明确分配批次。保留交易和资金历史，旧测试数据不做兼容回填。M9 提供市值与未实现指标，按现有已记录费用计算并显示行情来源/时间；执行见 [M9 后续计划](docs/plans/m9-current-holdings-and-batch-editing.md)。
 
 **Non-goals**
 

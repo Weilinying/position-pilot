@@ -24,6 +24,9 @@ def test_metadata_contains_only_approved_source_of_truth_tables() -> None:
     assert models.CashEventModel.__tablename__ == "cash_events"
     assert models.OpeningPositionModel.__tablename__ == "opening_positions"
     assert models.PositionReconciliationModel.__tablename__ == "position_reconciliations"
+    assert models.LotAllocationModel.__tablename__ == "lot_allocations"
+    assert models.LotClassificationChangeModel.__tablename__ == "lot_classification_changes"
+    assert models.BuyTransactionCorrectionModel.__tablename__ == "buy_transaction_corrections"
     assert models.AccountModel.__tablename__ == "accounts"
     assert models.AuthSessionModel.__tablename__ == "auth_sessions"
     assert set(Base.metadata.tables) == {
@@ -32,6 +35,9 @@ def test_metadata_contains_only_approved_source_of_truth_tables() -> None:
         "auth_sessions",
         "opening_positions",
         "position_reconciliations",
+        "lot_allocations",
+        "lot_classification_changes",
+        "buy_transaction_corrections",
         "transactions",
         "cash_events",
     }

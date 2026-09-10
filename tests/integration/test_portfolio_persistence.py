@@ -16,8 +16,11 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from position_pilot.application.errors import OpeningStateSealed
 from position_pilot.application.portfolio_service import (
+    ChangeLotClassificationCommand,
+    CorrectBuyTransactionCommand,
     CreateUserCommand,
     InitializeOpeningPositionsCommand,
+    LotAllocationInput,
     OpeningPositionInput,
     PortfolioService,
     PositionReconciliationInput,
@@ -35,7 +38,10 @@ from position_pilot.domain.portfolio import (
     User,
 )
 from position_pilot.infrastructure.models import (
+    BuyTransactionCorrectionModel,
     CashEventModel,
+    LotAllocationModel,
+    LotClassificationChangeModel,
     OpeningPositionModel,
     PositionReconciliationModel,
     TransactionModel,
@@ -148,6 +154,7 @@ def test_persists_and_recovers_portfolio_from_transaction_ledger() -> None:
                 price=Decimal("250"),
                 shares=Decimal("0.2"),
                 position_type=PositionType.LONG_TERM,
+                allocations=(LotAllocationInput(lot_id=first.id, shares=Decimal("0.2")),),
             )
         )
 
@@ -178,6 +185,9 @@ def test_persists_and_recovers_portfolio_from_transaction_ledger() -> None:
         ]
     finally:
         with engine.begin() as connection:
+            connection.execute(
+                delete(LotAllocationModel).where(LotAllocationModel.user_id == user.id)
+            )
             connection.execute(delete(TransactionModel).where(TransactionModel.user_id == user.id))
             connection.execute(delete(UserModel).where(UserModel.id == user.id))
         engine.dispose()
@@ -202,7 +212,7 @@ def test_persists_and_recovers_combined_cash_and_transaction_ledgers() -> None:
                 occurred_at=datetime(2026, 8, 20, 8, 0, tzinfo=UTC),
             )
         )
-        service.record_transaction(
+        purchase = service.record_transaction(
             RecordTransactionCommand(
                 user_id=user.id,
                 ticker="GOOG",
@@ -222,6 +232,7 @@ def test_persists_and_recovers_combined_cash_and_transaction_ledgers() -> None:
                 shares=Decimal("0.25"),
                 position_type=PositionType.LONG_TERM,
                 occurred_at=datetime(2026, 8, 22, 8, 0, tzinfo=UTC),
+                allocations=(LotAllocationInput(lot_id=purchase.id, shares=Decimal("0.25")),),
             )
         )
         service.record_cash_event(
@@ -254,6 +265,9 @@ def test_persists_and_recovers_combined_cash_and_transaction_ledgers() -> None:
     finally:
         with engine.begin() as connection:
             connection.execute(delete(CashEventModel).where(CashEventModel.user_id == user.id))
+            connection.execute(
+                delete(LotAllocationModel).where(LotAllocationModel.user_id == user.id)
+            )
             connection.execute(delete(TransactionModel).where(TransactionModel.user_id == user.id))
             connection.execute(delete(UserModel).where(UserModel.id == user.id))
         engine.dispose()
@@ -274,7 +288,7 @@ def test_persists_opening_state_and_seals_after_first_economic_mutation() -> Non
     )
 
     try:
-        service.initialize_opening_positions(
+        opening_positions = service.initialize_opening_positions(
             InitializeOpeningPositionsCommand(
                 user_id=user.id,
                 positions=(
@@ -299,6 +313,16 @@ def test_persists_opening_state_and_seals_after_first_economic_mutation() -> Non
                 action=TransactionAction.SELL,
                 price=Decimal("110"),
                 shares=Decimal("0.5"),
+                allocations=(
+                    LotAllocationInput(
+                        lot_id=next(
+                            position.id
+                            for position in opening_positions
+                            if position.position_type is PositionType.UNSPECIFIED
+                        ),
+                        shares=Decimal("0.5"),
+                    ),
+                ),
             )
         )
         service.record_cash_event(
@@ -342,6 +366,9 @@ def test_persists_opening_state_and_seals_after_first_economic_mutation() -> Non
     finally:
         with engine.begin() as connection:
             connection.execute(delete(CashEventModel).where(CashEventModel.user_id == user.id))
+            connection.execute(
+                delete(LotAllocationModel).where(LotAllocationModel.user_id == user.id)
+            )
             connection.execute(delete(TransactionModel).where(TransactionModel.user_id == user.id))
             connection.execute(
                 delete(OpeningPositionModel).where(OpeningPositionModel.user_id == user.id)
@@ -420,6 +447,74 @@ def test_persists_and_replays_position_reconciliation_without_cash_or_deletion()
             connection.execute(
                 delete(OpeningPositionModel).where(OpeningPositionModel.user_id == user.id)
             )
+            connection.execute(delete(UserModel).where(UserModel.id == user.id))
+        engine.dispose()
+
+
+def test_persists_lot_classification_and_buy_correction_events() -> None:
+    """新 Service 实例应恢复批次分类与 BUY 更正后的当前状态。"""
+
+    engine = create_database_engine(get_test_database_url())
+    session_factory = create_session_factory(engine)
+    service = PortfolioService(
+        SqlAlchemyPortfolioUnitOfWorkFactory(session_factory),
+        clock=lambda: datetime(2026, 9, 10, 8, 0, tzinfo=UTC),
+    )
+    user = service.create_user(
+        CreateUserCommand(display_name="Lot Event User", initial_cash=Decimal("1000"))
+    )
+
+    try:
+        purchase = service.record_transaction(
+            RecordTransactionCommand(
+                user_id=user.id,
+                ticker="GOOG",
+                action=TransactionAction.BUY,
+                price=Decimal("100"),
+                shares=Decimal("2"),
+                occurred_at=datetime(2026, 9, 9, 8, 0, tzinfo=UTC),
+            )
+        )
+        service.change_lot_classification(
+            ChangeLotClassificationCommand(
+                user_id=user.id,
+                lot_id=purchase.id,
+                position_type=PositionType.SWING,
+            )
+        )
+        service.correct_buy_transaction(
+            CorrectBuyTransactionCommand(
+                user_id=user.id,
+                transaction_id=purchase.id,
+                price=Decimal("120"),
+                shares=Decimal("3"),
+                occurred_at=datetime(2026, 9, 9, 9, 0, tzinfo=UTC),
+                reason="修正成交",
+            )
+        )
+
+        recovered = PortfolioService(SqlAlchemyPortfolioUnitOfWorkFactory(session_factory))
+        state = recovered.get_portfolio(user.id)
+
+        assert len(state.lots) == 1
+        assert state.lots[0].position_type is PositionType.SWING
+        assert state.lots[0].acquired_shares == Decimal("3.00000000")
+        assert state.lots[0].entry_price == Decimal("120.00000000")
+        assert state.cash.available_cash == Decimal("639.65000000")
+        assert len(recovered.list_buy_transaction_corrections(user.id)) == 1
+    finally:
+        with engine.begin() as connection:
+            connection.execute(
+                delete(BuyTransactionCorrectionModel).where(
+                    BuyTransactionCorrectionModel.user_id == user.id
+                )
+            )
+            connection.execute(
+                delete(LotClassificationChangeModel).where(
+                    LotClassificationChangeModel.user_id == user.id
+                )
+            )
+            connection.execute(delete(TransactionModel).where(TransactionModel.user_id == user.id))
             connection.execute(delete(UserModel).where(UserModel.id == user.id))
         engine.dispose()
 

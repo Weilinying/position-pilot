@@ -18,15 +18,16 @@ M9 需要在一个 ticker 下展示真实的剩余购买批次，并允许用户
 - BUY Transaction、Opening Position 和 Position Reconciliation 的 ID 同时作为其来源 Lot ID。
   BUY 的购买时间来自 `occurred_at`；Opening / Reconciliation 未提供真实时间时保持 `UNKNOWN`。
 - Reconciliation 在其生效时替换同一 `(ticker, position_type)` 的当前 Lot 集合，并生成一个新的
-  聚合来源 Lot。它继续不改变 Cash，也不伪造交易。
+  聚合来源 Lot。为了避免汇总值覆盖详细购买历史，写入只允许目标当前为空或只有一个
+  Opening / Reconciliation Lot；它继续不改变 Cash，也不伪造交易。
 - SELL 必须显式携带一个或多个 Lot Allocation；分配股数之和必须等于成交股数。Replay 按每个
   Lot 的单位成本释放成本，不再使用聚合仓位同比例扣减。
 - 用户可以调整整个剩余 Lot 的 `UNSPECIFIED / SWING / LONG_TERM` 类型。调整以不可变
   `LotClassificationChange` 记录，保留生效时间；它不改变 Cash、Ticker、股数、成本和来源交易。
 - 本次不增加“批次内部分转类型”。用户需要不同策略时，通过新的买入批次或后续明确的拆分能力
   表达；当前没有必要引入 parent / child Lot 图。
-- 原始成交记录保持不可变。录入错误通过引用原 Transaction 的 Correction 形成有效版本并完整
-  replay；Correction 不作为普通买卖重复记账。
+- 原始成交记录保持不可变。M9 的 BUY 录入错误通过 `BuyTransactionCorrection` 引用原
+  Transaction 形成有效版本并完整 replay；Correction 不作为普通买卖重复记账。SELL 更正暂不实现。
 - M9 实施时重置本地测试持仓数据，从新模型重新录入，不编写旧聚合状态到 Lot 的推断迁移。
 
 ## Consequences
@@ -38,6 +39,8 @@ M9 需要在一个 ticker 下展示真实的剩余购买批次，并允许用户
   分配，系统不猜 FIFO。
 - 本地开发数据库需要重建到新 Migration Head；正式发布前若出现不可清理的数据，再单独设计
   可验证的数据迁移。
+- 汇总校准不能直接调整已有详细 BUY Lot；用户需在购买批次上更正成交字段，或通过新的交易表达
+  持仓变化。
 
 ## Alternatives
 

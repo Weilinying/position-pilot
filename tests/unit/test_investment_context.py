@@ -14,6 +14,7 @@ from position_pilot.application.investment_context import (
 )
 from position_pilot.domain.market_data import HistoricalBars, MarketDataCoverage, OHLCVBar
 from position_pilot.domain.portfolio import (
+    LotAllocation,
     PositionType,
     Transaction,
     TransactionAction,
@@ -138,6 +139,20 @@ def test_historical_buy_facts_are_bounded_by_current_position_type() -> None:
         ),
         list(transactions),
         [],
+        lot_allocations=[
+            LotAllocation.create(
+                user_id=USER_ID,
+                sell_transaction_id=transactions[7].id,
+                lot_id=transactions[0].id,
+                shares=Decimal("1"),
+            ),
+            LotAllocation.create(
+                user_id=USER_ID,
+                sell_transaction_id=transactions[9].id,
+                lot_id=transactions[8].id,
+                shares=Decimal("1"),
+            ),
+        ],
     )
 
     facts = HistoricalBuyFacts.from_transactions(state, transactions)

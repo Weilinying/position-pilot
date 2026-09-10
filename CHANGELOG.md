@@ -8,6 +8,13 @@
 
 ### Added
 
+- 增加从 BUY、Opening 与 Reconciliation 事实派生的当前持仓批次；SELL 必须明确分配批次，批次
+  类型调整与 BUY 成交更正以不可变事件保存并参与完整重放。
+- 增加 ticker 总体、策略类型小计和购买批次三层当前估值；同一 ticker 共享一次行情读取，报价
+  失败时仍保留股数与成本事实。
+- 增加紧凑可展开的当前持仓层级，按 UNSPECIFIED、SWING、LONG_TERM 顺序展示并允许直接修改
+  整个批次的类型、打开购买批次更正。
+
 - 增加 Finnhub-backed Asset Search 与 Recognition symbol 自动验证；Opening Position 只使用本地
   Browser Draft 已绑定的 canonical symbol，不建立本地 Asset Master。
 - 增加仅用于 Portfolio Opening State 的 Manual、Text 与 Screenshot Import；Recognition Draft
@@ -20,6 +27,10 @@
   只有用户点击“开始识别”后才依次上传并合并 Draft。
 
 ### Changed
+
+- 图片录入移除独立“浏览图片”按钮，上传后的缩略图可直接打开大图；ticker 改为输入框内联想
+  下拉，保存后的导入汇总持仓无需再次上传即可生成手工校准 Draft。
+- Portfolio 主持仓页聚焦当前状态，不再并列显示起始持仓与校准事件记录。
 
 - Ask Composer 支持按 Enter 提交问题、按 Shift+Enter 插入换行；按钮继续复用同一标准
   Form Submit 路径。

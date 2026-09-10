@@ -239,6 +239,86 @@ class PositionReconciliationModel(Base):
     source_info: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
+class LotAllocationModel(Base):
+    """SELL Transaction 对来源批次的不可变股数分配。"""
+
+    __tablename__ = "lot_allocations"
+    __table_args__ = (
+        UniqueConstraint(
+            "sell_transaction_id",
+            "lot_id",
+            name="uq_lot_allocations_transaction_lot",
+        ),
+        CheckConstraint("shares > 0", name="ck_lot_allocations_shares_positive"),
+        Index("ix_lot_allocations_user_transaction", "user_id", "sell_transaction_id"),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    user_id: Mapped[UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    sell_transaction_id: Mapped[UUID] = mapped_column(
+        ForeignKey("transactions.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    lot_id: Mapped[UUID] = mapped_column(nullable=False)
+    shares: Mapped[Decimal] = mapped_column(Numeric(28, 8))
+
+
+class LotClassificationChangeModel(Base):
+    """来源批次策略类型的不可变变更记录。"""
+
+    __tablename__ = "lot_classification_changes"
+    __table_args__ = (
+        CheckConstraint(
+            "position_type IN ('LONG_TERM', 'SWING', 'UNSPECIFIED')",
+            name="lot_classification_position_type",
+        ),
+        Index("ix_lot_classification_user_lot_time", "user_id", "lot_id", "effective_at"),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    user_id: Mapped[UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    lot_id: Mapped[UUID] = mapped_column(nullable=False)
+    position_type: Mapped[str] = mapped_column(String(11))
+    effective_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class BuyTransactionCorrectionModel(Base):
+    """BUY Transaction 有效成交字段的不可变更正。"""
+
+    __tablename__ = "buy_transaction_corrections"
+    __table_args__ = (
+        CheckConstraint("price > 0", name="ck_buy_corrections_price_positive"),
+        CheckConstraint("shares > 0", name="ck_buy_corrections_shares_positive"),
+        Index(
+            "ix_buy_corrections_user_transaction_time",
+            "user_id",
+            "transaction_id",
+            "corrected_at",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    user_id: Mapped[UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    transaction_id: Mapped[UUID] = mapped_column(
+        ForeignKey("transactions.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    price: Mapped[Decimal] = mapped_column(Numeric(28, 8))
+    shares: Mapped[Decimal] = mapped_column(Numeric(28, 8))
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    corrected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
 class CashEventModel(Base):
     """Portfolio 创建后的不可变 Cash Event Ledger。"""
 

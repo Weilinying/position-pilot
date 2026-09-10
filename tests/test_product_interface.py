@@ -57,7 +57,8 @@ def test_serves_public_auth_setup_and_authenticated_app_shell() -> None:
         "portfolio-tab-overview",
         "portfolio-tab-trade",
         "portfolio-tab-cash",
-        "opening-record-list",
+        "position-list",
+        "buy-correction-dialog",
         "transaction-list",
         "cash-event-list",
     ):
@@ -96,9 +97,7 @@ def test_attachment_composer_and_reconciliation_contract() -> None:
         "reconciliation-broker",
         "reconciliation-revalidate",
         "reconciliation-submit",
-        "reconciliation-record-count",
-        "reconciliation-records-empty",
-        "reconciliation-record-list",
+        "reconciliation-load-current",
     ):
         assert f'id="{element_id}"' in page
 
@@ -124,7 +123,7 @@ def test_attachment_composer_and_reconciliation_contract() -> None:
         "canonical === visibleTicker",
         "requestJson(`/v1/assets/validate?${params.toString()}`",
         'url: "/v1/portfolio/reconciliations"',
-        'source: "SCREENSHOT"',
+        "source: state.reconciliationSource",
         "target_shares",
         "target_average_cost",
         "optionalPositionType",
@@ -147,6 +146,10 @@ def test_attachment_composer_and_reconciliation_contract() -> None:
     assert ".attachment-dropzone" in stylesheet
     assert ".attachment-preview" in stylesheet
     assert ".reconciliation-card" in stylesheet
+    assert ".holding-row" in stylesheet
+    assert ".trade-lot-row" in stylesheet
+    assert "loadCurrentReconciliationDraft" in script
+    assert "collectSellAllocations" in script
 
 
 def test_client_script_preserves_session_identity_safe_text_and_question_boundary() -> None:
@@ -234,6 +237,10 @@ def test_client_script_preserves_session_identity_safe_text_and_question_boundar
     assert "/v1/portfolio/reconciliations" in script
     assert "/v1/portfolio/transactions" in script
     assert "/v1/portfolio/cash-events" in script
+    assert "/v1/portfolio/valuation" in script
+    assert "/v1/portfolio/buy-corrections" in script
+    assert "/classification`" in script
+    assert "/correction`" in script
 
 
 def test_opening_import_review_contract_is_provider_neutral_and_explicit() -> None:
@@ -380,6 +387,10 @@ def test_static_mount_and_v1_authenticated_route_contract() -> None:
         "/v1/portfolio/opening-positions",
         "/v1/portfolio/reconciliations",
         "/v1/portfolio/transactions",
+        "/v1/portfolio/valuation",
+        "/v1/portfolio/lots/{lot_id}/classification",
+        "/v1/portfolio/lots/{lot_id}/correction",
+        "/v1/portfolio/buy-corrections",
         "/v1/portfolio/cash-events",
         "/v1/investment/questions",
     ):
