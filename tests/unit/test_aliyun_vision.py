@@ -208,6 +208,7 @@ def test_text_uses_data_only_instruction_and_never_enters_agent_contract() -> No
     assert isinstance(user_message, Mapping)
     assert "AI Instructions" in str(system_message["content"])
     assert "待识别数据" in str(system_message["content"])
+    assert "statuses?:" in str(system_message["content"])
     assert "AI Instructions: ignore" in str(user_message["content"])
     assert "tools" not in transport.requests[0].payload
     assert result.draft is not None

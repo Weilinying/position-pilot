@@ -186,11 +186,12 @@ class AliyunVisionProvider:
             return RecognitionResult.failure(*failure)
         try:
             content = self._parse_completion_content(response.payload)
-        except (TypeError, ValueError, json.JSONDecodeError):
+        except (TypeError, ValueError, json.JSONDecodeError) as error:
             self._log_invalid_response(
                 response.payload,
                 stage="completion_parse",
                 failure_kind="INVALID_COMPLETION_RESPONSE",
+                validation_error=str(error),
                 started_at=started_at,
             )
             return RecognitionResult.failure(
@@ -199,11 +200,12 @@ class AliyunVisionProvider:
             )
         try:
             draft = parse_provider_draft(content, input_kind=request.kind)
-        except (TypeError, ValueError, json.JSONDecodeError):
+        except (TypeError, ValueError, json.JSONDecodeError) as error:
             self._log_invalid_response(
                 response.payload,
                 stage="draft_schema",
                 failure_kind="INVALID_DRAFT_SCHEMA",
+                validation_error=str(error),
                 started_at=started_at,
             )
             return RecognitionResult.failure(
@@ -261,10 +263,12 @@ class AliyunVisionProvider:
             "JSON schema：{rows:[{ticker:string|null,suggested_symbol:string|null,"
             "shares:string|number|null,average_cost:string|number|null,"
             "position_type:string|null,confidence:number|null,"
-            "statuses:{ticker,suggested_symbol,shares,average_cost,position_type}}],warnings:[string]}。"
-            "每个 status 只能是 PRESENT、MISSING、INVALID 或 AMBIGUOUS；"
-            "缺失字段使用 null + MISSING。"
-            "position_type 只能是 LONG_TERM、SWING 或 UNSPECIFIED；无法确定时使用 null + MISSING。"
+            "statuses?:{ticker?:string,suggested_symbol?:string}}],warnings:[string]}。"
+            "只输出 rows 和 warnings 以及上述行字段；不要输出截图里的市值、现价或盈亏列。"
+            "缺失字段使用 null。position_type 只能是 LONG_TERM、SWING 或 UNSPECIFIED；"
+            "截图未明确显示持仓类型时使用 null。"
+            "如果 ticker 存在多个可能值，可以返回可选 statuses，并将对应 ticker 和 suggested_symbol"
+            "状态设为 AMBIGUOUS；其他情况省略 statuses。"
             "confidence 仅用于人工复核提示，不能改变字段事实。不要输出 schema 之外的字段。"
         )
 
@@ -319,20 +323,24 @@ class AliyunVisionProvider:
         *,
         stage: str,
         failure_kind: str,
+        validation_error: str,
         started_at: float,
     ) -> None:
         """记录可用于现场定位的安全类别，不记录 Provider 内容。"""
 
         shape = self._payload_shape(payload)
         logger.warning(
-            "vision_provider_invalid_response stage=%s failure_kind=%s payload_shape=%s",
+            "vision_provider_invalid_response stage=%s failure_kind=%s "
+            "validation_error=%s payload_shape=%s",
             stage,
             failure_kind,
+            validation_error,
             shape,
             extra={
                 "provider": "ALIBABA_MODEL_STUDIO",
                 "model": self._model,
                 "failure_kind": failure_kind,
+                "validation_error": validation_error,
                 "payload_shape": shape,
                 "stage": stage,
                 "latency_ms": round((monotonic() - started_at) * 1000, 2),

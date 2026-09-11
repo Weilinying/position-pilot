@@ -30,6 +30,10 @@ Confidence 识别结果直接当作 Portfolio Truth，或把一次性 Opening Im
   经 Human Review 批准选型与图片隐私边界后立即实现，不扩展成长期 Provider 研究。
 - Recognition 输出始终是 Structured Draft 数据，不进入 PositionPilot Agent 的 System / User
   Instruction；通过架构边界和定向测试保证，不为此建设独立安全框架。
+- Model Studio 的 JSON Object 模式只保证合法 JSON，不保证严格遵循提示中的字段集合。Recognition
+  Adapter 因此忽略根对象、持仓行和 statuses 中不参与 Draft 的额外字段，但仍严格解析已知字段；
+  无任何持仓字段的行继续拒绝，无法解析的股数或成本进入 `INVALID` Draft 供用户修改，不使整张
+  截图失效。明显包含多个 symbol 的 ticker 始终保持 `AMBIGUOUS`，不能被 Provider 的状态自动绑定。
 
 ## Alternatives / Trade-off
 

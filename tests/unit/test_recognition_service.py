@@ -184,16 +184,63 @@ def test_invalid_screenshot_mime_and_size_do_not_call_provider() -> None:
     assert provider.requests == []
 
 
-def test_provider_draft_rejects_unknown_fields_and_invalid_status_combinations() -> None:
-    """Provider JSON 超出 Contract 或与字段状态冲突时必须失败。"""
+def test_provider_draft_ignores_unneeded_screenshot_columns() -> None:
+    """JSON Object 模式多返回的行情列不得让整张可复核 Draft 失效。"""
 
-    with pytest.raises(ValueError):
-        parse_provider_draft(
-            {
-                "rows": [{"ticker": "ADBE", "unexpected": "instruction"}],
-                "warnings": [],
-            }
-        )
+    draft = parse_provider_draft(
+        {
+            "rows": [
+                {
+                    "ticker": "ADBE",
+                    "suggested_symbol": "ADBE",
+                    "shares": "2",
+                    "average_cost": "315",
+                    "position_type": None,
+                    "market_value": "630",
+                    "statuses": {
+                        "ticker": "PRESENT",
+                        "shares": "PRESENT",
+                        "average_cost": "PRESENT",
+                        "market_value": "PRESENT",
+                    },
+                }
+            ],
+            "warnings": [],
+            "summary": "ignored",
+        }
+    )
+
+    assert draft.rows[0].ticker.value == "ADBE"
+    assert draft.rows[0].shares.value == Decimal("2")
+    assert draft.rows[0].average_cost.value == Decimal("315")
+
+
+def test_unparseable_numeric_field_remains_editable_without_provider_status() -> None:
+    """模型返回 N/A 时应标记字段待修正，不能丢弃整张 Draft。"""
+
+    draft = parse_provider_draft(
+        {
+            "rows": [
+                {
+                    "ticker": "ADBE",
+                    "suggested_symbol": "ADBE",
+                    "shares": "N/A",
+                    "average_cost": "315",
+                    "position_type": None,
+                }
+            ],
+            "warnings": [],
+        }
+    )
+
+    assert draft.rows[0].shares.value is None
+    assert draft.rows[0].shares.status is RecognitionFieldStatus.INVALID
+    assert draft.rows[0].average_cost.value == Decimal("315")
+
+
+def test_provider_draft_rejects_invalid_status_combinations() -> None:
+    """已声明的字段状态与值冲突时仍必须失败。"""
+
     with pytest.raises(ValueError):
         parse_provider_draft(
             {
@@ -203,6 +250,14 @@ def test_provider_draft_rejects_unknown_fields_and_invalid_status_combinations()
                         "statuses": {"ticker": "PRESENT"},
                     }
                 ],
+                "warnings": [],
+            }
+        )
+
+    with pytest.raises(ValueError):
+        parse_provider_draft(
+            {
+                "rows": [{"confidence": 0.5, "market_value": "100"}],
                 "warnings": [],
             }
         )
@@ -238,5 +293,55 @@ def test_ambiguous_symbol_remains_reviewable_data() -> None:
     assert row.ticker.status is RecognitionFieldStatus.AMBIGUOUS
     assert row.suggested_symbol.status is RecognitionFieldStatus.AMBIGUOUS
     assert row.suggested_symbol.value == "GOOG"
+
+
+def test_ambiguous_symbol_is_inferred_when_provider_omits_statuses() -> None:
+    """Provider 省略 statuses 时，多候选 ticker 仍不得自动绑定。"""
+
+    draft = parse_provider_draft(
+        {
+            "rows": [
+                {
+                    "ticker": "GOOG/GOOGL",
+                    "suggested_symbol": "GOOG",
+                    "shares": "1",
+                    "average_cost": "100",
+                    "position_type": None,
+                }
+            ],
+            "warnings": [],
+        }
+    )
+
+    row = draft.rows[0]
+    assert row.ticker.status is RecognitionFieldStatus.AMBIGUOUS
+    assert row.suggested_symbol.status is RecognitionFieldStatus.AMBIGUOUS
+
+
+def test_obvious_symbol_ambiguity_overrides_provider_present_status() -> None:
+    """明显多候选文本不能被 Provider 的 PRESENT 状态提升为确定标的。"""
+
+    draft = parse_provider_draft(
+        {
+            "rows": [
+                {
+                    "ticker": "GOOG | GOOGL",
+                    "suggested_symbol": "GOOG",
+                    "shares": "1",
+                    "average_cost": "100",
+                    "position_type": None,
+                    "statuses": {
+                        "ticker": "PRESENT",
+                        "suggested_symbol": "PRESENT",
+                    },
+                }
+            ],
+            "warnings": [],
+        }
+    )
+
+    row = draft.rows[0]
+    assert row.ticker.status is RecognitionFieldStatus.AMBIGUOUS
+    assert row.suggested_symbol.status is RecognitionFieldStatus.AMBIGUOUS
     assert row.position_type.value is None
     assert PositionType.UNSPECIFIED not in {row.position_type.value}

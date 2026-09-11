@@ -319,7 +319,6 @@ def parse_provider_draft(
     """严格把 Provider Structured JSON 转换为 Provider-neutral Draft。"""
 
     root = _require_mapping(payload, "Recognition Provider draft")
-    _reject_unknown_keys(root, {"rows", "warnings"}, "Recognition Provider draft")
     raw_rows = root.get("rows")
     if not isinstance(raw_rows, list) or len(raw_rows) > MAX_RECOGNITION_ROWS:
         raise ValueError("Recognition Provider rows 格式无效")
@@ -330,17 +329,15 @@ def parse_provider_draft(
 
 def _parse_row(payload: object) -> RecognitionDraftRow:
     row = _require_mapping(payload, "Recognition Provider row")
-    allowed_keys = {
+    recognized_fields = {
         "ticker",
         "suggested_symbol",
         "shares",
         "average_cost",
         "position_type",
-        "confidence",
-        "statuses",
-        "field_status",
     }
-    _reject_unknown_keys(row, allowed_keys, "Recognition Provider row")
+    if not recognized_fields.intersection(row):
+        raise ValueError("Recognition Provider row 不包含持仓字段")
     if "statuses" in row and "field_status" in row:
         raise ValueError("Recognition Provider row 不能同时包含 statuses 与 field_status")
     raw_statuses = row.get("statuses", row.get("field_status"))
@@ -353,6 +350,13 @@ def _parse_row(payload: object) -> RecognitionDraftRow:
         "suggested_symbol",
         uppercase=True,
     )
+    if _contains_multiple_symbols(ticker.value):
+        ticker = DraftField(value=ticker.value, status=RecognitionFieldStatus.AMBIGUOUS)
+        if suggested_symbol.value is not None:
+            suggested_symbol = DraftField(
+                value=suggested_symbol.value,
+                status=RecognitionFieldStatus.AMBIGUOUS,
+            )
     shares = _parse_decimal_field(row.get("shares"), statuses.get("shares"), "shares")
     average_cost = _parse_decimal_field(
         row.get("average_cost"),
@@ -379,9 +383,10 @@ def _parse_statuses(value: object) -> dict[str, RecognitionFieldStatus]:
         return {}
     statuses = _require_mapping(value, "Recognition Provider statuses")
     field_names = {"ticker", "suggested_symbol", "shares", "average_cost", "position_type"}
-    _reject_unknown_keys(statuses, field_names, "Recognition Provider statuses")
     parsed: dict[str, RecognitionFieldStatus] = {}
     for field_name, raw_status in statuses.items():
+        if field_name not in field_names:
+            continue
         if not isinstance(raw_status, str):
             raise ValueError("Recognition Provider field status 必须是字符串")
         try:
@@ -437,13 +442,13 @@ def _parse_decimal_field(
             raise ValueError(f"{field_name} PRESENT 但缺少 value")
         return DraftField(value=None, status=status)
     if isinstance(value, bool) or not isinstance(value, (str, int, float, Decimal)):
-        if explicit_status is RecognitionFieldStatus.INVALID:
+        if explicit_status in {None, RecognitionFieldStatus.INVALID}:
             return DraftField(value=None, status=RecognitionFieldStatus.INVALID)
         raise ValueError(f"{field_name} value 格式无效")
     try:
         normalized = Decimal(str(value).strip()) if isinstance(value, str) else Decimal(str(value))
     except (DecimalException, ValueError):
-        if explicit_status is RecognitionFieldStatus.INVALID:
+        if explicit_status in {None, RecognitionFieldStatus.INVALID}:
             return DraftField(value=None, status=RecognitionFieldStatus.INVALID)
         raise ValueError(f"{field_name} value 不是有效 Decimal") from None
     if not normalized.is_finite() or normalized <= 0:
@@ -498,6 +503,15 @@ def _parse_optional_confidence(value: object) -> Decimal | None:
     return _normalize_confidence(value)
 
 
+def _contains_multiple_symbols(value: str | None) -> bool:
+    """识别常见多候选分隔符，避免在缺少 Provider 状态时自动绑定单一标的。"""
+
+    if value is None:
+        return False
+    normalized = f" {value.upper()} "
+    return any(separator in normalized for separator in ("/", ",", "|", " OR ", "或"))
+
+
 def _normalize_confidence(value: object) -> Decimal:
     if isinstance(value, bool) or not isinstance(value, (str, int, float, Decimal)):
         raise ValueError("confidence 必须是 0 到 1 之间的数值")
@@ -528,16 +542,6 @@ def _require_mapping(value: object, field_name: str) -> Mapping[str, object]:
     if not isinstance(value, Mapping) or not all(isinstance(key, str) for key in value):
         raise ValueError(f"{field_name} 必须是 JSON object")
     return value
-
-
-def _reject_unknown_keys(
-    value: Mapping[str, object],
-    allowed: set[str],
-    field_name: str,
-) -> None:
-    unknown = set(value).difference(allowed)
-    if unknown:
-        raise ValueError(f"{field_name} 包含未知字段")
 
 
 __all__ = [
