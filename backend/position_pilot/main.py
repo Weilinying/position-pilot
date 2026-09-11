@@ -12,7 +12,7 @@ from uuid import UUID
 from fastapi import Cookie, Depends, FastAPI, HTTPException, Query, Response, status
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from position_pilot.application.asset_metadata_service import AssetMetadataService
 from position_pilot.application.auth_service import (
@@ -282,10 +282,19 @@ class TransactionRequest(BaseModel):
     action: TransactionAction
     price: Decimal = Field(gt=0, max_digits=28, decimal_places=8)
     shares: Decimal = Field(gt=0, max_digits=28, decimal_places=8)
+    fee: Decimal = Field(default=Decimal("0"), ge=0, max_digits=28, decimal_places=8)
     position_type: PositionType | None = None
     occurred_at: datetime | None = None
     reason: str | None = Field(default=None, max_length=1000)
     allocations: tuple[LotAllocationRequest, ...] = Field(default=(), max_length=100)
+
+    @model_validator(mode="after")
+    def validate_fee_semantics(self) -> "TransactionRequest":
+        """BUY 的输入成本已经含费，只有 SELL 接受单独费用。"""
+
+        if self.action is TransactionAction.BUY and self.fee != 0:
+            raise ValueError("BUY price 已包含费用，不能再提交 fee")
+        return self
 
     @field_validator("occurred_at")
     @classmethod
@@ -1316,6 +1325,7 @@ def record_transaction(
                 action=request.action,
                 price=request.price,
                 shares=request.shares,
+                fee=request.fee,
                 position_type=request.position_type,
                 occurred_at=request.occurred_at,
                 reason=request.reason,

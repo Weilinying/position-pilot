@@ -26,6 +26,8 @@ from position_pilot.application.portfolio_service import (
 )
 from position_pilot.domain.errors import FutureTimestamp, InsufficientCash, InvalidPortfolioValue
 from position_pilot.domain.portfolio import (
+    BUY_COST_INCLUDED_FEE_SCHEDULE,
+    SELL_ACTUAL_FEE_SCHEDULE,
     BuyTransactionCorrection,
     CashEvent,
     CashEventType,
@@ -197,11 +199,12 @@ def make_service() -> tuple[PortfolioService, FakeStore]:
     return PortfolioService(FakeUnitOfWorkFactory(store), clock=lambda: NOW), store
 
 
-def test_record_command_does_not_accept_amount() -> None:
-    """用户写入 Command 必须从结构上排除所有只读派生字段。"""
+def test_record_command_accepts_fee_but_not_derived_fields() -> None:
+    """用户可提交实际费用，但不能提交只读金额或 commission。"""
 
     assert "amount" not in signature(RecordTransactionCommand).parameters
     assert "commission" not in signature(RecordTransactionCommand).parameters
+    assert "fee" in signature(RecordTransactionCommand).parameters
     assert "sequence" not in signature(RecordTransactionCommand).parameters
 
 
@@ -230,8 +233,8 @@ def test_creates_user_and_recovers_initial_cash() -> None:
     assert store.commit_count == 1
 
 
-def test_records_transactions_with_lock_and_derived_financial_fields() -> None:
-    """写入应锁定 User，并派生经济顺序、金额与佣金。"""
+def test_records_transactions_with_included_buy_cost() -> None:
+    """写入应锁定 User，并把新 BUY 价格直接作为含费平均成本。"""
 
     service, store = make_service()
     user = service.create_user(
@@ -266,12 +269,13 @@ def test_records_transactions_with_lock_and_derived_financial_fields() -> None:
 
     assert first.sequence == 1
     assert first.amount == Decimal("99.22500000")
-    assert first.commission == Decimal("0.99225000")
+    assert first.commission == Decimal("0E-8")
+    assert first.fee_schedule == BUY_COST_INCLUDED_FEE_SCHEDULE
     assert second.sequence == 2
     assert store.lock_requests == [user.id, user.id]
     assert recovered.transaction_count == 2
     assert len(recovered.positions) == 2
-    assert recovered.cash.available_cash == Decimal("799.43275000")
+    assert recovered.cash.available_cash == Decimal("800.77500000")
 
 
 def test_transaction_without_occurred_at_uses_application_clock() -> None:
@@ -879,13 +883,17 @@ def test_unspecified_transaction_replays_against_unspecified_opening_position() 
             action=TransactionAction.SELL,
             price=Decimal("120"),
             shares=Decimal("1"),
+            fee=Decimal("1.25"),
             allocations=(LotAllocationInput(lot_id=opening_positions[0].id, shares=Decimal("1")),),
         )
     )
 
     position = service.get_portfolio(user.id).get_position("GOOG", PositionType.UNSPECIFIED)
     assert transaction.position_type is PositionType.UNSPECIFIED
+    assert transaction.fee_schedule == SELL_ACTUAL_FEE_SCHEDULE
+    assert transaction.commission == Decimal("1.25000000")
     assert position is not None and position.shares == Decimal("1.00000000")
+    assert service.get_portfolio(user.id).cash.available_cash == Decimal("118.75000000")
 
 
 def test_changes_current_lot_type_without_changing_cash_or_cost() -> None:
@@ -959,4 +967,4 @@ def test_corrects_buy_by_appending_fact_and_replaying_current_lot() -> None:
     assert len(store.buy_corrections[user.id]) == 1
     assert result.portfolio.lots[0].remaining_shares == Decimal("3.00000000")
     assert result.portfolio.lots[0].purchased_at == corrected_time
-    assert result.portfolio.cash.available_cash == Decimal("639.65000000")
+    assert result.portfolio.cash.available_cash == Decimal("640.00000000")

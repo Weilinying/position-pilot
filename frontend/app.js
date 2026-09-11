@@ -150,7 +150,7 @@ const translations = {
     save_cash: "Save cash event",
     cash_history: "Cash history",
     cost_basis: "Cost basis",
-    commission: "Commission",
+    commission: "Fee",
     fee_schedule: "Fee schedule",
     occurred_at: "Occurred at",
     reason: "Reason",
@@ -242,7 +242,7 @@ const translations = {
     mutation_unknown: "Result unknown. Do not retry automatically. Reload and inspect the latest portfolio state.",
     refresh_failed: "The write may have succeeded, but the latest portfolio could not be loaded. Reload before continuing.",
     invalid_form: "Check the highlighted fields and try again.",
-    insufficient_cash: "Insufficient cash for this purchase and backend-calculated fees.",
+    insufficient_cash: "Insufficient cash for this purchase.",
     insufficient_shares: "Insufficient shares in this position type.",
     opening_sealed: "Existing positions can only be added before the first trade, cash entry, or position reconciliation.",
     future_time: "Occurred at cannot be in the future.",
@@ -278,7 +278,7 @@ const translations = {
     chat_intro_eyebrow: "你的投资组合已连接", chat_intro_title: "你正在思考什么投资决策？", chat_intro_body: "提出一个具体问题。PositionPilot 会使用你的持仓及问题所需的当前信息。", no_memory_notice: "问题仅保留在当前浏览器标签页，不构成模型记忆。", investment_question: "投资问题", question_placeholder: "例如：GOOG 今天还能加一点吗？", question_ready: "将使用你的当前投资组合。Enter 提交 · Shift+Enter 换行。", ask: "询问 PositionPilot ↗", asking: "分析中…",
     portfolio_reload: "刷新", portfolio_sections: "投资组合分区", overview_tab: "持仓", trade_tab: "交易", cash_tab: "现金记录", available_cash: "可用现金", ledger_derived: "账本计算 · USD", portfolio_context: "投资组合上下文", session_owned: "当前 Session 所属", session_owned_hint: "身份来自你的本地私有 Session。", opening_state: "起始状态", existing_positions_setup: "添加已有持仓", starting_facts: "一次性起始事实", opening_explainer: "记录开始跟踪前已经持有的仓位，不改变现金，也不创建虚假交易。", skip_for_now: "暂时跳过", save_opening_positions: "保存已有持仓", add_existing_positions: "添加已有持仓", open_positions: "当前持仓", portfolio_empty_loaded: "目前没有持仓。", opening_records: "起始持仓记录", records_empty: "暂无记录。", import_starting_positions: "导入起始持仓", import_review_title: "保存前请复核", draft_only_note: "仅为 Draft · 尚未保存", import_review_hint: "可以手动搜索、粘贴文本或选择一张截图，生成可编辑 Draft。请确认下面每个字段后再保存。", import_methods: "导入方式", manual_import: "手动搜索", text_import: "文本导入", screenshot_import: "截图识别", asset_search_label: "搜索标的或公司名称", asset_search_placeholder: "搜索标的或公司名称", search_assets: "搜索", asset_candidate_heading: "请选择已验证的标的", searching_assets: "搜索中…", use_asset: "使用此标的", asset_selected: "已选择标的。请补完其余字段，再点击保存完成确认。", asset_search_empty: "请输入标的或公司名称后搜索。", asset_no_match: "没有匹配的可用美国股票或 ETF。", asset_search_failed: "标的搜索暂时不可用。请稍后重试。", asset_provider_auth_failed: "标的搜索尚未配置，请先配置 Provider。", asset_rate_limited: "标的搜索已达到限流，请稍后重试。", asset_invalid_response: "标的搜索返回了无效响应。", text_import_label: "粘贴持仓文本", text_import_placeholder: "粘贴券商对账单中的持仓行", prepare_text_draft: "生成可编辑 Draft", preparing_text_draft: "正在生成文本 Draft…", screenshot_import_label: "选择一张券商持仓截图", prepare_screenshot_draft: "生成可编辑 Draft", preparing_screenshot_draft: "正在生成截图 Draft…", start_recognition: "开始识别", attachment_drop_prompt: "将图片拖到这里，或直接粘贴截图", attachment_drop_hint: "JPEG、PNG 或 WebP · 最大 10 MB", attachment_ready: "附件已准备好。点击“开始识别”前不会上传。", attachment_remove: "移除", attachment_file_required: "请先选择、拖入或粘贴图片。", screenshot_privacy_notice: "截图会发送至 Alibaba Model Studio 进行识别。PositionPilot 不保存图片；Provider 的固定保留时长尚未公开。", screenshot_file_required: "请先选择 JPEG、PNG 或 WebP 截图。", screenshot_file_invalid: "请选择受支持的 JPEG、PNG 或 WebP 截图。", screenshot_file_too_large: "截图过大，请选择不超过 10 MB 的图片。", recognition_invalid_request: "导入输入无效。请检查文本或截图后重试。", recognition_auth_failed: "截图识别尚未配置。你也可以手动搜索并选择持仓。", recognition_rate_limited: "识别请求已达到限流，请稍后重试或手动搜索并选择持仓。", recognition_provider_failed: "识别暂时不可用，你可以手动搜索并选择持仓。", recognition_invalid_response: "识别返回了无效响应，请手动复核字段。", recognition_empty: "没有识别出持仓行。请手动添加一行后继续。", draft_review_signal: "复核提示", draft_status_present: "已识别", draft_status_missing: "缺失 — 请填写", draft_status_invalid: "需要修正", draft_status_ambiguous: "有歧义 — 请选择匹配标的", confidence_signal: "识别置信度", confidence_unavailable: "未提供", find_matching_assets: "查找匹配标的", asset_selection_required: "保存前必须从已验证的候选列表中选择此标的。", asset_auto_selected: "已自动选择经过验证的标的。", recognition_draft_ready: "Draft 已生成。请复核每个字段，再点击保存完成确认。", recognition_input_text: "文本导入", recognition_input_screenshot: "截图导入", imported_warning: "Provider 提示", reconciliation_title: "用券商截图校准持仓", reconciliation_summary: "根据当前截图更新选中的持仓。截图中未出现的持仓保持不变，也不会创建交易或现金记录。", reconciliation_broker_label: "券商或来源（可选）", reconciliation_broker_placeholder: "例如：Fidelity、Schwab、IBKR", reconciliation_screenshot_label: "附加当前持仓截图", reconciliation_revalidate: "重新验证全部标的", reconciliation_revalidate_running: "正在重新验证标的…", reconciliation_save: "保存持仓校准", reconciliation_saved: "持仓校准已保存", reconciliation_no_positions: "请先识别截图，并确认至少一条持仓。", reconciliation_not_validated: "请重新验证并明确选择已验证的标的后再保存。", reconciliation_canonical_match: "找到规范标的。点击确认绑定", reconciliation_provider_unavailable: "标的 Provider 暂时不可用，请稍后重试。", reconciliation_invalid_asset: "没有找到与该 ticker 匹配的已验证候选。",
     reconciliation_records: "持仓校准记录", source: "来源", broker: "券商", source_info: "来源详情", confirmed_at: "确认时间",
-    transaction_entry: "交易", trade_entry: "交易记录", immutable_entry: "追加不可变记录", action: "操作", price: "价格", occurred_at_optional: "发生时间（可选）", occurred_at_hint: "留空使用后端应用时间。", reason_optional: "原因（可选）", save_trade: "保存交易", transaction_history: "交易历史", cash_activity: "现金活动", cash_entry: "现金记录", cash_event_type: "现金类型", amount: "金额", save_cash: "保存现金记录", cash_history: "现金历史", cost_basis: "成本基础", commission: "手续费", fee_schedule: "费用规则", occurred_at: "发生时间", reason: "原因", sequence: "序号", recorded_at: "记录时间", not_provided: "未填写", trade_saved: "交易已保存", cash_saved: "现金记录已保存", opening_saved: "已有持仓已保存", mutation_unknown: "结果未知。请勿自动重试，请刷新并检查最新投资组合状态。", refresh_failed: "写入可能已成功，但最新投资组合加载失败。继续前请先刷新。", invalid_form: "请检查标记的字段后再提交。", insufficient_cash: "可用现金不足以覆盖本次买入及后端计算的费用。", insufficient_shares: "该仓位类型下的股数不足。", opening_sealed: "已有持仓只能在第一笔交易、现金记录或持仓校准前添加。", future_time: "发生时间不能晚于当前时间。", session_expired: "本地 Session 已过期，请重新登录。",
+    transaction_entry: "交易", trade_entry: "交易记录", immutable_entry: "追加不可变记录", action: "操作", price: "价格", occurred_at_optional: "发生时间（可选）", occurred_at_hint: "留空使用后端应用时间。", reason_optional: "原因（可选）", save_trade: "保存交易", transaction_history: "交易历史", cash_activity: "现金活动", cash_entry: "现金记录", cash_event_type: "现金类型", amount: "金额", save_cash: "保存现金记录", cash_history: "现金历史", cost_basis: "成本基础", commission: "手续费", fee_schedule: "费用规则", occurred_at: "发生时间", reason: "原因", sequence: "序号", recorded_at: "记录时间", not_provided: "未填写", trade_saved: "交易已保存", cash_saved: "现金记录已保存", opening_saved: "已有持仓已保存", mutation_unknown: "结果未知。请勿自动重试，请刷新并检查最新投资组合状态。", refresh_failed: "写入可能已成功，但最新投资组合加载失败。继续前请先刷新。", invalid_form: "请检查标记的字段后再提交。", insufficient_cash: "可用现金不足以覆盖本次买入。", insufficient_shares: "该仓位类型下的股数不足。", opening_sealed: "已有持仓只能在第一笔交易、现金记录或持仓校准前添加。", future_time: "发生时间不能晚于当前时间。", session_expired: "本地 Session 已过期，请重新登录。",
     working_title: "正在整理决策上下文", working_answer: "正在读取你的投资组合并选择当前信息。", answer_label: "回答", sources_used: "使用的来源", source_explainer: "支持本次回答的上下文。", answer_ready: "基于投资组合的回答", answer_degraded: "上下文有限的回答", answer_failed: "暂时无法回答", source_ticker: "标的", source_provider: "数据提供方", source_feed: "数据源", source_market_time: "市场时间", source_fetched: "获取时间", source_portfolio: "投资组合持仓与现金", source_quote: "当前市场报价", source_history: "价格历史", source_news: "近期新闻", source_market: "市场环境", no_sources: "本次未返回支持来源。", question_required: "请输入一个具体的投资问题。", question_failed: "PositionPilot 未能完成本次问题，请查看状态后重试。",
   },
 };
@@ -331,7 +331,10 @@ Object.assign(translations.en, {
   add_holding: "Add holding",
   save: "Save",
   sell_from: "Sell from",
-  fee_calculated: "Fee is calculated automatically.",
+  average_cost_fee_included: "Average cost (fee included)",
+  actual_fee: "Actual fee",
+  fee_included: "Included",
+  invalid_non_negative_decimal: "Use zero or a positive decimal with at most 8 decimal places.",
   buy_first_stock: "Buy your first stock",
   edit_lot: "Edit lot",
   price_cost: "Price / Cost",
@@ -400,7 +403,10 @@ Object.assign(translations.zh, {
   add_holding: "添加持仓",
   save: "保存",
   sell_from: "从以下批次卖出",
-  fee_calculated: "手续费由系统自动计算。",
+  average_cost_fee_included: "平均成本（含手续费）",
+  actual_fee: "实际手续费",
+  fee_included: "已包含",
+  invalid_non_negative_decimal: "请输入零或最多 8 位小数的正数。",
   buy_first_stock: "买入第一只股票",
   edit_lot: "编辑批次",
   price_cost: "价格 / 成本",
@@ -549,11 +555,11 @@ const elements = {
   chatIntro: byId("chat-intro"), conversationScroll: byId("conversation-scroll"), conversationList: byId("conversation-list"), sessionEmpty: byId("session-empty"), sessionList: byId("session-list"), questionForm: byId("question-form"), question: byId("question"), questionHint: byId("question-hint"), ask: byId("ask-button"), responseTemplate: byId("assistant-response-template"),
   portfolioTabs: [], portfolioPanels: [], availableCash: byId("available-cash"), positionCount: byId("position-count"), positionsEmpty: byId("positions-empty"), positionList: byId("position-list"), emptyBuy: byId("empty-buy-button"), openBuy: byId("open-buy-dialog"), openImport: byId("open-import-dialog"), openCash: byId("open-cash-dialog"),
   openingSetup: byId("opening-setup"), reopenOpening: byId("reopen-opening-setup"), openingForm: byId("opening-form"), openingFields: byId("opening-fields"), openingRows: byId("opening-draft-rows"), addOpeningRow: byId("add-opening-row"), skipOpening: byId("skip-opening-setup"), openingMessage: byId("opening-message"), openingImport: importElements("opening"), reconciliationCard: byId("position-reconciliation"), reconciliationForm: byId("reconciliation-form"), reconciliationFields: byId("reconciliation-fields"), reconciliationRows: byId("reconciliation-draft-rows"), reconciliationBroker: byId("reconciliation-broker"), reconciliationAddRow: byId("reconciliation-add-row"), reconciliationLoadCurrent: byId("reconciliation-load-current"), reconciliationRevalidate: byId("reconciliation-revalidate"), reconciliationSubmit: byId("reconciliation-submit"), reconciliationMessage: byId("reconciliation-message"), reconciliationImport: importElements("reconciliation"),
-  tradeDialog: byId("trade-dialog"), tradeDialogTitle: byId("trade-dialog-title"), tradeDialogClose: byId("trade-dialog-close"), tradeBuyMode: byId("trade-buy-mode"), tradeSellMode: byId("trade-sell-mode"), tradeForm: byId("trade-form"), tradeFields: byId("trade-fields"), tradeAction: byId("trade-action"), tradeType: byId("trade-position-type"), tradeTicker: byId("trade-ticker"), tradePrice: byId("trade-price"), tradeShares: byId("trade-shares"), tradeTime: byId("trade-occurred-at"), tradeReason: byId("trade-reason"), tradeMessage: byId("trade-message"), tradeLotAllocation: byId("trade-lot-allocation"), tradeLotList: byId("trade-lot-list"), transactionCount: byId("transaction-count"), transactionsEmpty: byId("transactions-empty"), transactionList: byId("transaction-list"),
+  tradeDialog: byId("trade-dialog"), tradeDialogTitle: byId("trade-dialog-title"), tradeDialogClose: byId("trade-dialog-close"), tradeBuyMode: byId("trade-buy-mode"), tradeSellMode: byId("trade-sell-mode"), tradeForm: byId("trade-form"), tradeFields: byId("trade-fields"), tradeAction: byId("trade-action"), tradeType: byId("trade-position-type"), tradeTicker: byId("trade-ticker"), tradePrice: byId("trade-price"), tradePriceLabel: byId("trade-price-label"), tradeShares: byId("trade-shares"), tradeFee: byId("trade-fee"), tradeFeeField: byId("trade-fee-field"), tradeTime: byId("trade-occurred-at"), tradeReason: byId("trade-reason"), tradeMessage: byId("trade-message"), tradeLotAllocation: byId("trade-lot-allocation"), tradeLotList: byId("trade-lot-list"), transactionCount: byId("transaction-count"), transactionsEmpty: byId("transactions-empty"), transactionList: byId("transaction-list"),
   cashDialog: byId("cash-dialog"), cashDialogClose: byId("cash-dialog-close"), cashForm: byId("cash-form"), cashFields: byId("cash-fields"), cashType: byId("cash-event-type"), cashAmount: byId("cash-amount"), cashTime: byId("cash-occurred-at"), cashReason: byId("cash-reason"), cashMessage: byId("cash-message"), cashCount: byId("cash-event-count"), cashEmpty: byId("cash-events-empty"), cashList: byId("cash-event-list"),
   importDialog: byId("import-dialog"), importDialogClose: byId("import-dialog-close"),
   imagePreviewDialog: byId("image-preview-dialog"), imagePreviewClose: byId("image-preview-close"), imagePreviewFull: byId("image-preview-full"), imagePreviewCaption: byId("image-preview-caption"),
-  correctionDialog: byId("buy-correction-dialog"), correctionForm: byId("buy-correction-form"), correctionClose: byId("buy-correction-close"), correctionLotId: byId("buy-correction-lot-id"), correctionSymbol: byId("buy-correction-symbol"), correctionPrice: byId("buy-correction-price"), correctionShares: byId("buy-correction-shares"), correctionTime: byId("buy-correction-time"), correctionType: byId("buy-correction-type"), correctionReason: byId("buy-correction-reason"), correctionMessage: byId("buy-correction-message"),
+  correctionDialog: byId("buy-correction-dialog"), correctionForm: byId("buy-correction-form"), correctionClose: byId("buy-correction-close"), correctionLotId: byId("buy-correction-lot-id"), correctionSymbol: byId("buy-correction-symbol"), correctionPrice: byId("buy-correction-price"), correctionPriceLabel: byId("buy-correction-price-label"), correctionShares: byId("buy-correction-shares"), correctionTime: byId("buy-correction-time"), correctionType: byId("buy-correction-type"), correctionReason: byId("buy-correction-reason"), correctionMessage: byId("buy-correction-message"),
   transactionDetailDialog: byId("transaction-detail-dialog"), transactionDetailTitle: byId("transaction-detail-title"), transactionDetailSubtitle: byId("transaction-detail-subtitle"), transactionDetailContent: byId("transaction-detail-content"), transactionDetailActions: byId("transaction-detail-actions"), transactionDetailClose: byId("transaction-detail-close"),
 };
 
@@ -1894,6 +1900,13 @@ function openBuyCorrection(lot) {
   elements.correctionLotId.value = lot.id;
   elements.correctionSymbol.textContent = lot.ticker;
   elements.correctionPrice.value = lot.entry_price ?? lot.average_cost;
+  const sourceTransaction = state.transactionRecords.find((item) => item.id === lot.id);
+  setLocalizedText(
+    elements.correctionPriceLabel,
+    sourceTransaction?.fee_schedule === "BUY_COST_INCLUDED"
+      ? "average_cost_fee_included"
+      : "price_cost",
+  );
   elements.correctionShares.value = lot.source === "BUY" ? lot.acquired_shares : lot.remaining_shares;
   const localTime = toLocalDateTimeValue(lot.purchased_at);
   elements.correctionTime.value = localTime;
@@ -2026,8 +2039,9 @@ function openTransactionDetail(record, kind) {
   elements.transactionDetailTitle.textContent = isTrade ? `${effective.ticker} · ${effective.action}` : translate(record.event_type === "DEPOSIT" ? "deposit" : "withdrawal");
   elements.transactionDetailSubtitle.textContent = formatTimestamp(effective.occurred_at);
   clearElement(elements.transactionDetailContent);
+  const priceLabel = effective.fee_schedule === "BUY_COST_INCLUDED" ? "average_cost_fee_included" : "price";
   const facts = isTrade
-    ? [["shares", effective.shares, "decimal"], ["price", effective.price, "decimal"], ["commission", effective.commission, "decimal"], ["position_type", effective.position_type === "UNSPECIFIED" ? translate("unspecified") : effective.position_type], ["reason", effective.reason]]
+    ? [["shares", effective.shares, "decimal"], [priceLabel, effective.price, "decimal"], ["commission", transactionFeeText(effective)], ["position_type", effective.position_type === "UNSPECIFIED" ? translate("unspecified") : effective.position_type], ["reason", effective.reason]]
     : [["amount", effective.amount, "decimal"], ["reason", effective.reason]];
   elements.transactionDetailContent.append(createFactList(facts));
   if (isTrade && effective.edited) {
@@ -2070,12 +2084,18 @@ function createHistoryRow(record, kind) {
     makeElement("span", `history-side ${isTrade ? effective.action.toLowerCase() : effective.event_type.toLowerCase()}`, side),
     makeElement("span", "history-number", isTrade ? formatDecimal(effective.shares) : "—"),
     makeElement("span", "history-number", formatMoney(isTrade ? effective.price : effective.amount)),
-    makeElement("span", "history-number", isTrade ? formatMoney(effective.commission) : "—"),
+    makeElement("span", "history-number", isTrade ? transactionFeeText(effective) : "—"),
     makeElement("span", "history-type", isTrade ? (effective.position_type === "UNSPECIFIED" ? translate("unspecified") : effective.position_type) : "CASH"),
     makeElement("span", `history-status ${effective.edited ? "is-edited" : ""}`, status),
   );
   row.addEventListener("click", () => openTransactionDetail(record, kind));
   return row;
+}
+
+function transactionFeeText(transaction) {
+  return transaction.fee_schedule === "BUY_COST_INCLUDED"
+    ? translate("fee_included")
+    : formatMoney(transaction.commission);
 }
 
 function renderOpeningAvailability() {
@@ -2131,14 +2151,17 @@ async function refreshValuation() {
     // 仅替换展示数字，保留正在操作的控件、焦点和展开状态。
     for (const group of elements.positionList.querySelectorAll(".holding-group")) {
       const fresh = createHoldingTree(group.dataset.ticker);
-      for (const selector of [".holding-number", ".holding-note"]) {
-        const current = group.querySelectorAll(selector);
-        fresh.querySelectorAll(selector).forEach((value, index) => {
-          current[index].textContent = value.textContent;
-          if (value.dataset.tone) current[index].dataset.tone = value.dataset.tone;
-          else delete current[index].dataset.tone;
-        });
-      }
+      const currentNumbers = group.querySelectorAll(".holding-number");
+      fresh.querySelectorAll(".holding-number").forEach((value, index) => {
+        currentNumbers[index].textContent = value.textContent;
+        if (value.dataset.tone) currentNumbers[index].dataset.tone = value.dataset.tone;
+        else delete currentNumbers[index].dataset.tone;
+      });
+      const currentNote = group.querySelector(".holding-note");
+      const freshNote = fresh.querySelector(".holding-note");
+      if (currentNote && freshNote) currentNote.textContent = freshNote.textContent;
+      else if (currentNote) currentNote.remove();
+      else if (freshNote) group.querySelector(".holding-identity").append(freshNote.cloneNode(true));
     }
   } finally {
     if (state.valuationController === controller) state.valuationController = null;
@@ -2251,6 +2274,9 @@ function setTradeAction(action) {
   elements.tradeBuyMode.classList.toggle("is-active", isBuy);
   elements.tradeSellMode.classList.toggle("is-active", !isBuy);
   setLocalizedText(elements.tradeDialogTitle, isBuy ? "buy_stock" : "sell_stock");
+  setLocalizedText(elements.tradePriceLabel, isBuy ? "average_cost_fee_included" : "price");
+  elements.tradeFeeField.hidden = isBuy;
+  elements.tradeFee.disabled = isBuy;
   renderSellLotAllocation();
 }
 
@@ -2338,6 +2364,9 @@ async function handleTrade(event) {
   if (!ticker || !price || !shares) { setMessage(elements.tradeMessage, "invalid_form"); return; }
   const payload = { ticker, action: elements.tradeAction.value, price, shares };
   if (payload.action === "SELL") {
+    const fee = elements.tradeFee.value.trim() || "0";
+    if (!DECIMAL_PATTERN.test(fee)) { showFieldError(elements.tradeFee, "invalid_non_negative_decimal"); setMessage(elements.tradeMessage, "invalid_form"); return; }
+    payload.fee = fee;
     const allocations = collectSellAllocations(shares);
     if (!allocations) return;
     payload.allocations = allocations;

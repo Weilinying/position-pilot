@@ -103,13 +103,14 @@ class CreateUserCommand:
 
 @dataclass(frozen=True, slots=True)
 class RecordTransactionCommand:
-    """追加 Ledger Transaction 的输入，amount 不属于用户输入。"""
+    """追加交易的输入；BUY 价格含费，SELL fee 为实际费用。"""
 
     user_id: UUID
     ticker: str
     action: TransactionAction
     price: Decimal
     shares: Decimal
+    fee: Decimal = Decimal("0")
     position_type: PositionType | None = None
     occurred_at: datetime | None = None
     reason: str | None = None
@@ -289,6 +290,7 @@ class PortfolioService:
                 action=command.action,
                 price=command.price,
                 shares=command.shares,
+                fee=command.fee,
                 position_type=command.position_type,
                 occurred_at=occurred_at,
                 reason=command.reason,

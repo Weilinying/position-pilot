@@ -289,6 +289,7 @@ def make_transaction() -> Transaction:
         action=TransactionAction.BUY,
         price=Decimal("180.25"),
         shares=Decimal("2"),
+        fee=None,
         position_type=PositionType.LONG_TERM,
         occurred_at=OCCURRED_AT,
         reason="Initial long-term position",
@@ -917,8 +918,44 @@ def test_records_transaction_and_returns_backend_derived_fields(client: TestClie
     assert command.action is TransactionAction.BUY
     assert command.price == Decimal("180.25")
     assert command.shares == Decimal("2")
+    assert command.fee == Decimal("0")
     assert command.position_type is PositionType.LONG_TERM
     assert command.occurred_at is None
+
+
+def test_passes_actual_sell_fee_to_application_service(client: TestClient) -> None:
+    """SELL API 应把用户录入的实际费用交给统一交易服务。"""
+
+    sell = Transaction.create(
+        transaction_id=TRANSACTION_ID,
+        user_id=USER_ID,
+        sequence=1,
+        ticker="GOOG",
+        action=TransactionAction.SELL,
+        price=Decimal("200"),
+        shares=Decimal("1"),
+        fee=Decimal("1.25"),
+        occurred_at=OCCURRED_AT,
+    )
+    service = FakeTransactionWriter(sell)
+    override_service(service)
+
+    response = client.post(
+        f"/v1/portfolios/{USER_ID}/transactions",
+        json={
+            "ticker": "GOOG",
+            "action": "SELL",
+            "price": "200",
+            "shares": "1",
+            "fee": "1.25",
+            "allocations": [{"lot_id": str(OPENING_ID), "shares": "1"}],
+        },
+    )
+
+    assert response.status_code == 201
+    assert response.json()["transaction"]["commission"] == "1.25000000"
+    assert response.json()["transaction"]["fee_schedule"] == "SELL_ACTUAL_FEE"
+    assert service.commands[0].fee == Decimal("1.25")
 
 
 @pytest.mark.parametrize(
@@ -1012,6 +1049,13 @@ def test_maps_transaction_application_errors(
             "amount": "10",
             "commission": "0.35",
             "fee_schedule": "CLIENT_VALUE",
+        },
+        {
+            "ticker": "GOOG",
+            "action": "BUY",
+            "price": "10",
+            "shares": "1",
+            "fee": "0.35",
         },
     ],
 )

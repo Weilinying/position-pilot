@@ -207,6 +207,11 @@ class AlpacaMarketDataProvider:
                 MarketDataStatus.INVALID_PROVIDER_RESPONSE,
                 str(error),
             )
+        if market_quote.last_trade_at > fetched_at:
+            return MarketDataResult.failure(
+                MarketDataStatus.INVALID_PROVIDER_RESPONSE,
+                "Alpaca latest trade 时间晚于读取时间",
+            )
         if not is_current_quote_fresh(market_quote, at=fetched_at):
             return MarketDataResult.failure(
                 MarketDataStatus.STALE,

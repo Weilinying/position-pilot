@@ -372,6 +372,8 @@ def test_portfolio_uses_compact_tables_and_dialog_actions() -> None:
         'id="cash-dialog"',
         'id="import-dialog"',
         'id="transaction-detail-dialog"',
+        'id="trade-fee"',
+        'data-i18n="average_cost_fee_included"',
     ):
         assert marker in page
     for removed_copy in (
@@ -380,6 +382,7 @@ def test_portfolio_uses_compact_tables_and_dialog_actions() -> None:
         "Session-owned",
         "Ledger-derived",
         "Reconcile from a broker screenshot",
+        "Fee is calculated automatically.",
     ):
         assert removed_copy not in portfolio
     for marker in (
@@ -388,6 +391,10 @@ def test_portfolio_uses_compact_tables_and_dialog_actions() -> None:
         "createHistoryRow",
         "openTransactionDetail",
         "effectiveTransaction",
+        "transactionFeeText",
+        'payload.fee = fee',
+        "currentNote && freshNote",
+        "freshNote.cloneNode(true)",
         'elements.tradeBuyMode.addEventListener("click"',
         'elements.tradeSellMode.addEventListener("click"',
         'url: "/v1/portfolio/reconciliations"',

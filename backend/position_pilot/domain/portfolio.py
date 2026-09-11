@@ -23,6 +23,8 @@ MAX_REASON_LENGTH = 1000
 MAX_SOURCE_LENGTH = 100
 MAX_SOURCE_INFO_LENGTH = 1000
 COMMISSION_SCHEDULE = "IBKR_PRO_TIERED_US_2026_08"
+BUY_COST_INCLUDED_FEE_SCHEDULE = "BUY_COST_INCLUDED"
+SELL_ACTUAL_FEE_SCHEDULE = "SELL_ACTUAL_FEE"
 IBKR_TIERED_PER_SHARE = Decimal("0.0035")
 IBKR_TIERED_MINIMUM = Decimal("0.35")
 IBKR_TIERED_MAXIMUM_RATE = Decimal("0.01")
@@ -217,7 +219,7 @@ class User:
 
 @dataclass(frozen=True, slots=True)
 class Transaction:
-    """不可变 Ledger Record，金额、佣金与经济顺序均由系统派生。"""
+    """不可变交易记录，保存金额、费用口径与经济顺序。"""
 
     id: UUID
     user_id: UUID
@@ -247,12 +249,25 @@ class Transaction:
         if self.amount != derived_amount:
             raise InvalidPortfolioValue("amount 必须等于 price × shares 的派生结果")
         object.__setattr__(self, "amount", derived_amount)
-        derived_commission = calculate_commission(derived_amount, self.shares)
-        if self.commission != derived_commission:
-            raise InvalidPortfolioValue("commission 必须由已批准费率派生")
-        if self.fee_schedule != COMMISSION_SCHEDULE:
+        normalized_commission = normalize_decimal(
+            self.commission,
+            field_name="commission",
+            allow_zero=True,
+        )
+        if self.fee_schedule == COMMISSION_SCHEDULE:
+            derived_commission = calculate_commission(derived_amount, self.shares)
+            if normalized_commission != derived_commission:
+                raise InvalidPortfolioValue("旧版 commission 必须由已批准费率派生")
+            normalized_commission = derived_commission
+        elif self.fee_schedule == BUY_COST_INCLUDED_FEE_SCHEDULE:
+            if self.action is not TransactionAction.BUY or normalized_commission != 0:
+                raise InvalidPortfolioValue("含费买入成本只能用于 commission 为零的 BUY")
+        elif self.fee_schedule == SELL_ACTUAL_FEE_SCHEDULE:
+            if self.action is not TransactionAction.SELL:
+                raise InvalidPortfolioValue("实际卖出费用只能用于 SELL")
+        else:
             raise InvalidPortfolioValue("fee_schedule 不受支持")
-        object.__setattr__(self, "commission", derived_commission)
+        object.__setattr__(self, "commission", normalized_commission)
         object.__setattr__(self, "occurred_at", normalize_timestamp(self.occurred_at))
 
         object.__setattr__(self, "reason", normalize_reason(self.reason))
@@ -267,14 +282,28 @@ class Transaction:
         action: TransactionAction,
         price: Decimal,
         shares: Decimal,
+        fee: Decimal | None = Decimal("0"),
         position_type: PositionType | None = None,
         occurred_at: datetime | None = None,
         reason: str | None = None,
         transaction_id: UUID | None = None,
     ) -> Self:
-        """从写入字段创建 Transaction，调用方无法传入派生金额或佣金。"""
+        """创建交易；新录入 BUY 使用含费成本，SELL 保存实际费用。
+
+        `fee=None` 仅用于恢复旧版自动估算手续费的内部调用。
+        """
 
         amount = calculate_amount(price, shares)
+        if fee is None:
+            commission = calculate_commission(amount, shares)
+            fee_schedule = COMMISSION_SCHEDULE
+        else:
+            commission = normalize_decimal(fee, field_name="fee", allow_zero=True)
+            fee_schedule = (
+                BUY_COST_INCLUDED_FEE_SCHEDULE
+                if action is TransactionAction.BUY
+                else SELL_ACTUAL_FEE_SCHEDULE
+            )
 
         return cls(
             id=transaction_id or uuid4(),
@@ -285,8 +314,8 @@ class Transaction:
             price=price,
             shares=shares,
             amount=amount,
-            commission=calculate_commission(amount, shares),
-            fee_schedule=COMMISSION_SCHEDULE,
+            commission=commission,
+            fee_schedule=fee_schedule,
             position_type=(
                 position_type if position_type is not None else PositionType.UNSPECIFIED
             ),
@@ -725,23 +754,29 @@ def apply_buy_transaction_corrections(
         if transaction is None or transaction.action is not TransactionAction.BUY:
             raise InvalidLedger("BUY Correction 引用了不存在或非 BUY 的 Transaction")
         latest_corrections[correction_record.transaction_id] = correction_record
-    effective_transactions = [
-        Transaction.create(
-            user_id=transaction.user_id,
-            sequence=transaction.sequence,
-            ticker=transaction.ticker,
-            action=transaction.action,
-            price=effective_correction.price,
-            shares=effective_correction.shares,
-            position_type=transaction.position_type,
-            occurred_at=effective_correction.occurred_at,
-            reason=effective_correction.reason,
-            transaction_id=transaction.id,
+    effective_transactions = []
+    for transaction in transactions:
+        effective_correction = latest_corrections.get(transaction.id)
+        if effective_correction is None:
+            effective_transactions.append(transaction)
+            continue
+        amount = calculate_amount(effective_correction.price, effective_correction.shares)
+        commission = (
+            calculate_commission(amount, effective_correction.shares)
+            if transaction.fee_schedule == COMMISSION_SCHEDULE
+            else Decimal("0")
         )
-        if (effective_correction := latest_corrections.get(transaction.id)) is not None
-        else transaction
-        for transaction in transactions
-    ]
+        effective_transactions.append(
+            replace(
+                transaction,
+                price=effective_correction.price,
+                shares=effective_correction.shares,
+                amount=amount,
+                commission=commission,
+                occurred_at=effective_correction.occurred_at,
+                reason=effective_correction.reason,
+            )
+        )
     return resequence_transactions(effective_transactions)
 
 

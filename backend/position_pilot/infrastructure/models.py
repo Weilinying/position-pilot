@@ -35,8 +35,8 @@ CASE
     ELSE GREATEST(amount * 0.01, 0.01)
 END
 """
-COMMISSION_DERIVATION_CHECK = f"""
-commission = round(({COMMISSION_RAW_SQL}), 8) -
+COMMISSION_DERIVATION_SQL = f"""
+round(({COMMISSION_RAW_SQL}), 8) -
     CASE
         WHEN ({COMMISSION_RAW_SQL}) * 100000000
             - trunc(({COMMISSION_RAW_SQL}) * 100000000) = 0.5
@@ -121,11 +121,17 @@ class TransactionModel(Base):
             name="ck_transactions_amount_derived",
         ),
         CheckConstraint(
-            COMMISSION_DERIVATION_CHECK,
+            f"""
+            (fee_schedule = 'IBKR_PRO_TIERED_US_2026_08'
+                AND commission = {COMMISSION_DERIVATION_SQL})
+            OR (fee_schedule = 'BUY_COST_INCLUDED' AND action = 'BUY' AND commission = 0)
+            OR (fee_schedule = 'SELL_ACTUAL_FEE' AND action = 'SELL')
+            """,
             name="ck_transactions_commission_derived",
         ),
         CheckConstraint(
-            "fee_schedule = 'IBKR_PRO_TIERED_US_2026_08'",
+            "fee_schedule IN ('IBKR_PRO_TIERED_US_2026_08', "
+            "'BUY_COST_INCLUDED', 'SELL_ACTUAL_FEE')",
             name="ck_transactions_fee_schedule_supported",
         ),
         Index(

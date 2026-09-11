@@ -476,7 +476,7 @@ class SqlAlchemyPortfolioUnitOfWork:
         return [_to_transaction(model) for model in self.session.scalars(statement)]
 
     def add_transaction(self, transaction: Transaction) -> None:
-        """追加由领域层生成的只读金额与佣金 Ledger Record。"""
+        """追加领域层生成的交易记录，并先建立批次分配所需的外键。"""
 
         self.session.add(
             TransactionModel(
@@ -495,6 +495,8 @@ class SqlAlchemyPortfolioUnitOfWork:
                 reason=transaction.reason,
             )
         )
+        # SELL 与对应批次分配在同一事务写入；先落交易以满足 allocation 外键顺序。
+        self.session.flush()
 
     def list_cash_events(self, user_id: UUID) -> list[CashEvent]:
         """按稳定 sequence 读取 User 的完整 Cash Event Ledger。"""

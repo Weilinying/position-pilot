@@ -6,7 +6,6 @@ from typing import Protocol
 from uuid import UUID
 
 from position_pilot.domain.market_data import (
-    CURRENT_QUOTE_MAX_AGE,
     MarketDataResult,
     MarketDataStatus,
     MarketQuote,
@@ -60,7 +59,7 @@ class PortfolioValuationService:
             ):
                 result = MarketDataResult.failure(
                     MarketDataStatus.STALE,
-                    f"最新成交已超过 {CURRENT_QUOTE_MAX_AGE.days} 天",
+                    "最新成交时间不可用于当前估值",
                 )
             results.append(
                 value_portfolio_ticker(

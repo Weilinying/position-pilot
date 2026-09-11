@@ -108,8 +108,8 @@ def test_values_ticker_types_and_lots_with_one_quote() -> None:
     assert ticker.metrics is not None
     assert ticker.metrics.shares == Decimal("3.00000000")
     assert ticker.metrics.market_value == Decimal("750.00000000")
-    assert ticker.metrics.unrealized_pnl == Decimal("249.30000000")
-    assert ticker.metrics.unrealized_pnl_percent == Decimal("49.79")
+    assert ticker.metrics.unrealized_pnl == Decimal("250.00000000")
+    assert ticker.metrics.unrealized_pnl_percent == Decimal("50.00")
     assert [item.position_type for item in ticker.position_types] == [
         PositionType.SWING,
         PositionType.LONG_TERM,

@@ -163,7 +163,8 @@ def is_current_quote_fresh(
     """按市场成交时间判断当前报价是否仍可用于持仓估值。"""
 
     checked_at = normalize_market_timestamp(at, field_name="quote freshness time")
-    return checked_at - quote.last_trade_at <= max_age
+    age = checked_at - quote.last_trade_at
+    return timedelta(0) <= age <= max_age
 
 
 @dataclass(frozen=True, slots=True)

@@ -285,6 +285,7 @@ class BrowserSmokePortfolioService:
                 action=command.action,
                 price=command.price,
                 shares=command.shares,
+                fee=command.fee,
                 position_type=command.position_type,
                 occurred_at=occurred_at,
                 reason=command.reason,

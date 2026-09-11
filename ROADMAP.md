@@ -27,7 +27,7 @@ Milestone 表示内部开发阶段；Version / Release 表示用户可感知的�
 | `v1.0.0` | M8 | 本地用户从产品主页注册 / 登录、初始化并持续维护 Portfolio，完成真实 Agent Self-Service MVP |
 | Unreleased | M8.1 | Ask Composer 使用 Enter 提交、Shift+Enter 换行，并正确处理 IME 与重复提交；暂不单独发布 |
 | `v1.1.0` | M9 | Asset Identity、Portfolio Import、紧凑批次持仓与当前未实现估值 |
-| `v1.2.0` | M10 | 真实 Transaction Cost 语义与可人工确认的 Transaction Import |
+| `v1.2.0` | M10 | 可人工确认的 Transaction Import |
 | `v1.3.0` | M11 | 基于稳定成本语义的第一阶段 Accounting / P&L |
 | `v1.4.0` | M12 | 按需路由的确定性 Technical Context |
 | Answer Quality Evolution | Discovery，尚未映射 Release | Conversation / Investment Memory、开放 Web Search、Context Policy 与新质量 Evaluation 共同评估 |
@@ -340,23 +340,23 @@ Opening Import 复用 M8 已批准的一次性初始化 Command 与 Gate：只�
 * 股数、均价、市值、未实现盈亏及百分比按批次到总体一致汇总；缺失行情不编造估值；
 * Human Acceptance 通过，并形成 `v1.1.0` Release。
 
-## M10 — Transaction Cost & Import
+## M10 — Transaction Import
 
 **Status:** NOT STARTED
 
 **Goal**
 
-区分 broker-reported Opening Average Cost 与真实 Transaction Execution Cost，并在此基础上提供可人工确认的 Transaction Text / Screenshot Import，形成 `v1.2.0`。
+在 M9 已确认的手工费用口径上提供可人工确认的 Transaction Text / Screenshot Import，形成 `v1.2.0`。
 
 **Scope**
 
-Opening Position 的 `average_cost` 表示用户或券商报告的 all-in unit cost，不拆解或重新估算历史 Commission，也不伪造成 Transaction。新 Transaction 明确区分 `execution_price`、`shares`、`gross_amount` 与实际 Transaction Cost；真实用户录入或受支持 Broker Screenshot 提供的 Fee 优先作为 Ledger Fact，不继续假设单一简化 IBKR Fee Schedule 能代表用户实际账单。
+Opening Position 与手工 BUY 的 `average_cost` 表示用户或券商报告的 all-in unit cost，不拆解或重新估算 Commission；手工 SELL 保存成交价与可选实际 Fee。Transaction Import 应保留截图能够明确提供的 execution price、shares、actual fee 与时间，不继续假设单一简化 IBKR Fee Schedule 能代表用户实际账单。
 
-复用 M9 的批次归属、卖出分配与交易更正能力，补齐实际费用输入。
+复用 M9 的批次归属、卖出分配、交易更正与实际卖出费用输入。
 
 建立 `Transaction Text / Screenshot → Structured Transaction Draft → Asset / Field Validation → Human Confirmation → Atomic Ledger Write` 流程。Draft 至少明确 action、ticker、shares、execution price、actual fee、occurred_at 与可选 Position Type；缺失或无法区分的字段不得由模型猜测。Portfolio Position Screenshot 只能进入 M9 Opening State Flow，不能冒充历史 Transaction。
 
-现有 Historical Transaction 永久保留已经持久化的 fee schedule 与 commission，Migration 不得重算或改写既有经济结果。新的 Transaction Cost Contract、数据库兼容方案与 replay 规则属于 Human Review Gate，并应通过 ADR 记录后再实现。
+现有 Historical Transaction 永久保留已经持久化的 fee schedule 与 commission，Migration 不得重算或改写既有经济结果。
 
 **Non-goals**
 
@@ -368,7 +368,7 @@ Opening Position 的 `average_cost` 表示用户或券商报告的 all-in unit c
 
 **Done**
 
-* Opening Average Cost 与 Transaction Execution Price / Actual Fee 语义明确且不可混淆；
+* BUY 含费平均成本与 SELL Execution Price / Actual Fee 语义明确且不可混淆；
 * Historical Transaction 的既有 fee schedule、commission 与 replay 结果保持不变；
 * 手工录入和受支持 Screenshot 均只能生成可审查、可编辑的 Structured Transaction Draft；
 * 缺失、低置信度、重复或非法字段在确认前被阻止，批量失败不产生部分 Ledger；

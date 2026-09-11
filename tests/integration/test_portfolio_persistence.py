@@ -153,6 +153,7 @@ def test_persists_and_recovers_portfolio_from_transaction_ledger() -> None:
                 action=TransactionAction.SELL,
                 price=Decimal("250"),
                 shares=Decimal("0.2"),
+                fee=Decimal("0.5"),
                 position_type=PositionType.LONG_TERM,
                 allocations=(LotAllocationInput(lot_id=first.id, shares=Decimal("0.2")),),
             )
@@ -165,12 +166,12 @@ def test_persists_and_recovers_portfolio_from_transaction_ledger() -> None:
         transactions = recovered_service.list_transactions(user.id)
 
         assert first.amount == Decimal("99.22500000")
-        assert first.commission == Decimal("0.99225000")
-        assert state.cash.available_cash == Decimal("848.93275000")
+        assert first.commission == Decimal("0E-8")
+        assert state.cash.available_cash == Decimal("850.27500000")
         long_term = state.get_position("GOOG", PositionType.LONG_TERM)
         assert long_term is not None
         assert long_term.shares == Decimal("0.25000000")
-        assert long_term.average_cost == Decimal("222.70500000")
+        assert long_term.average_cost == Decimal("220.50000000")
         assert state.get_position("GOOG", PositionType.SWING) is not None
         assert [transaction.sequence for transaction in transactions] == [1, 2, 3]
         assert [transaction.amount for transaction in transactions] == [
@@ -179,8 +180,8 @@ def test_persists_and_recovers_portfolio_from_transaction_ledger() -> None:
             Decimal("50.00000000"),
         ]
         assert [transaction.commission for transaction in transactions] == [
-            Decimal("0.99225000"),
-            Decimal("0.35000000"),
+            Decimal("0E-8"),
+            Decimal("0E-8"),
             Decimal("0.50000000"),
         ]
     finally:
@@ -708,7 +709,7 @@ def test_database_accepts_domain_bankers_rounding_at_midpoint() -> None:
         )
 
         assert transaction.amount == Decimal("0.50000000")
-        assert transaction.commission == Decimal("0.01000000")
+        assert transaction.commission == Decimal("0E-8")
         assert service.list_transactions(user.id)[0].amount == Decimal("0.50000000")
     finally:
         with engine.begin() as connection:

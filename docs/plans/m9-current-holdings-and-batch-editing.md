@@ -61,7 +61,7 @@
 - SELL 明确引用扣减批次，不自动猜 FIFO。按所选批次释放成本，剩余加权平均成本可能变化；替代原“部分 SELL 永远保持聚合均价”的规则。
 - 类型调整作用于整个批次当前剩余部分；已经卖出的部分及对应历史归属不跟随改写。本次不提供批次内部分转类型，避免为尚未提出的操作增加 Lot Split 关系。
 - M9 的购买批次更正保留原 BUY 记录，以 `BuyTransactionCorrection` 引用原交易并按有效成交事实重放；后续卖出与现金约束一并校验。若更正导致超卖或负现金，整次拒绝并说明关联问题，不做自动修复。SELL 更正留到出现明确产品需求时设计。
-- M9 复用已有已记录的 commission / fee schedule，清楚标注其费用口径；不把估算手续费声称为券商真实费用。实际 Fee 输入及 Transaction Import 保留在 M10，后续接入同一批次账本。
+- 历史交易保留已有 commission / fee schedule。新 BUY 输入券商显示的含费平均成本，`commission=0` 且标记 `BUY_COST_INCLUDED`；新 SELL 接受可选实际 Fee 并标记 `SELL_ACTUAL_FEE`。Transaction Import 保留在 M10。
 - Domain 是唯一计算来源，批次、Position、Cash 与 Agent Context 使用同一重放结果；不建立第二份独立可编辑的持仓事实。
 
 ### 估值
@@ -143,4 +143,4 @@ M9 在独立 Feature Branch 上实现；Human Acceptance 前不合并 `main`，�
 - Portfolio 主页面收敛为“当前持仓 + 交易历史”两块连续数据区，移除身份说明卡、常驻校准区、Transactions / Cash 分页和大型录入卡。
 - 当前持仓使用单行 ticker、缩进类型小计与批次行；交易与现金活动合并为按时间倒序的一行式历史列表。更正记录不再作为独立交易展示，主列表投影当前有效字段，详情中保留原始值与编辑记录。
 - Buy、Sell、Import、入金 / 出金和批次编辑统一使用紧凑 Dialog；Import 继续复用截图识别、缩略图大图预览和手工编辑，产品文案不暴露 Opening、Reconciliation、Correction 或 Replay。
-- 本次没有修改 Portfolio Domain 或公共 API。当前底层只支持仍有持仓的 BUY 更正，因此历史详情只为这类交易开放 Edit；SELL 编辑与 Transaction Void 仍需新增不可变事件及 Replay 规则后才能提供。Fee 继续由后端按已有费率计算，不提供虚假的可编辑输入。
+- 当前底层只支持仍有持仓的 BUY 更正，因此历史详情只为这类交易开放 Edit；SELL 编辑与 Transaction Void 仍需新增不可变事件及 Replay 规则后才能提供。交易写入 API 增加 SELL `fee`，BUY `price` 表示含费平均成本；旧交易不迁移、不重算。

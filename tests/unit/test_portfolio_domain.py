@@ -15,6 +15,8 @@ from position_pilot.domain.errors import (
     InvalidPortfolioValue,
 )
 from position_pilot.domain.portfolio import (
+    BUY_COST_INCLUDED_FEE_SCHEDULE,
+    SELL_ACTUAL_FEE_SCHEDULE,
     CashEvent,
     CashEventType,
     LotAllocation,
@@ -64,6 +66,7 @@ def make_transaction(
         action=action,
         price=Decimal(price),
         shares=Decimal(shares),
+        fee=None,
         position_type=position_type,
         occurred_at=occurred_at,
     )
@@ -156,6 +159,61 @@ def test_transaction_amount_is_derived_and_not_a_create_input() -> None:
     assert "amount" not in signature(Transaction.create).parameters
     assert "commission" not in signature(Transaction.create).parameters
     assert calculate_amount(Decimal("220.5"), Decimal("0.45")) == Decimal("99.22500000")
+
+
+def test_new_buy_treats_price_as_average_cost_including_fees() -> None:
+    """新 BUY 的每股成本已经含费，不应再自动追加佣金。"""
+
+    transaction = Transaction.create(
+        user_id=USER_ID,
+        sequence=1,
+        ticker="GOOG",
+        action=TransactionAction.BUY,
+        price=Decimal("100.35"),
+        shares=Decimal("2"),
+        fee=Decimal("0"),
+        occurred_at=OCCURRED_AT,
+    )
+    state = rebuild_portfolio(make_user(), [transaction])
+
+    assert transaction.fee_schedule == BUY_COST_INCLUDED_FEE_SCHEDULE
+    assert transaction.commission == Decimal("0E-8")
+    assert state.cash.available_cash == Decimal("799.30000000")
+    assert state.lots[0].average_cost == Decimal("100.35000000")
+
+
+def test_new_sell_uses_actual_fee_for_net_cash_proceeds() -> None:
+    """新 SELL 应按用户提供的实际费用计算净现金收入。"""
+
+    buy = Transaction.create(
+        user_id=USER_ID,
+        sequence=1,
+        ticker="GOOG",
+        action=TransactionAction.BUY,
+        price=Decimal("100"),
+        shares=Decimal("2"),
+        fee=Decimal("0"),
+        occurred_at=OCCURRED_AT,
+    )
+    sell = Transaction.create(
+        user_id=USER_ID,
+        sequence=2,
+        ticker="GOOG",
+        action=TransactionAction.SELL,
+        price=Decimal("120"),
+        shares=Decimal("1"),
+        fee=Decimal("1.25"),
+        occurred_at=OCCURRED_AT,
+    )
+    state = rebuild_portfolio(
+        make_user(),
+        [buy, sell],
+        lot_allocations=[make_allocation(sell, buy.id, "1")],
+    )
+
+    assert sell.fee_schedule == SELL_ACTUAL_FEE_SCHEDULE
+    assert sell.commission == Decimal("1.25000000")
+    assert state.cash.available_cash == Decimal("918.75000000")
 
 
 def test_missing_position_type_is_explicitly_unspecified() -> None:

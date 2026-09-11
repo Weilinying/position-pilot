@@ -119,7 +119,7 @@ PostgreSQL 保存 `users`、`opening_positions`、`position_reconciliations`、`
 ## 4. Transaction 写入流程
 
 ```text
-RecordTransactionCommand（无 amount / commission / sequence）
+RecordTransactionCommand（BUY 含费平均成本；SELL 可选实际 fee；无 amount / commission / sequence）
         ↓
 锁定 User 数据库行
         ↓
@@ -127,7 +127,7 @@ RecordTransactionCommand（无 amount / commission / sequence）
         ↓
 按 occurred_at 派生经济 sequence
         ↓
-领域层派生 amount 与版本化 IBKR 基础佣金
+领域层派生 amount，并保存含费 BUY 或实际 SELL 费用口径
         ↓
 重放并校验 Cash / Position
         ↓
@@ -193,10 +193,10 @@ Cash Event amount 必须为正数且最多 8 位小数。Transaction 与 Cash Ev
 - 当前没有 Cash / Position Projection；只有实际性能问题出现后才考虑可重建投影或快照。
 - Cash Event 只支持 `DEPOSIT` 与 `WITHDRAWAL`；不支持 Dividend、Fee、Interest、Tax、Margin、多币种、Broker Synchronization 或投资收益率计算。
 - Transaction 与 Cash Event 还没有跨表全局 sequence；相同 `occurred_at` 使用 Cash Event 优先的固定重放顺序。只有后续现金流类型或对账需求证明必要时才重新评估全局 Event Store。
-- 手续费只实现 `IBKR_PRO_TIERED_US_2026_08` 第一档基础佣金，不模拟月累计量跨档、执行场所、清算、监管或 pass-through fees。
+- 历史交易保留 `IBKR_PRO_TIERED_US_2026_08` 估算佣金；新 BUY 使用券商含费平均成本，新 SELL 保存用户录入的实际费用。当前不从券商自动同步费用。
 - 不处理税费、多币种、拆股、公司行动、转仓或外部券商同步。
 - Reconciliation 只校准目标为空或仅含一条 Opening / Reconciliation Lot 的汇总持仓；它不能覆盖详细 BUY Lot。M9 只支持 BUY 更正，不提供 SELL 更正或批次内部分转类型。
-- 当前持仓估值在页面可见时每 30 秒轮询，并可手工刷新；它不使用 WebSocket 或持久行情缓存。报价失败时仍返回股数、成本和均价，市场价值与未实现盈亏保持不可用。
+- 当前持仓估值在页面可见时每 30 秒轮询，并可手工刷新；它不使用 WebSocket 或持久行情缓存。报价失败或最后成交超过 7 个自然日时仍返回股数、成本和均价，市场价值与未实现盈亏保持不可用。
 - 已实现盈亏和账户历史收益率尚未实现；其后续计算将使用保留的交易、批次分配、资金流与更正事实。
 - M9 不维护本地 Asset Master；搜索与最终写入依赖 Finnhub 可用性。`qwen3-vl-flash` 图片不会由 PositionPilot 持久化，但 Provider 未公开固定原图保留时长。
 - Current Quote 默认来自 Alpaca Basic 的实时 IEX feed，只代表单一交易所覆盖；Historical Daily OHLCV 来自至少延迟 15 分钟的 SIP feed。
