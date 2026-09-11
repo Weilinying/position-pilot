@@ -357,6 +357,7 @@ Object.assign(translations.en, {
   select_sell_lots: "Select lots to sell",
   allocation_total_hint: "Allocated shares must equal the trade shares.",
   valuation_unavailable: "Valuation unavailable",
+  quote_stale: "Quote stale",
   lot_type_saved: "Lot type updated",
   transaction_correction: "Transaction correction",
   correct_purchase: "Correct purchase lot",
@@ -425,6 +426,7 @@ Object.assign(translations.zh, {
   select_sell_lots: "选择卖出批次",
   allocation_total_hint: "分配股数之和必须等于成交股数。",
   valuation_unavailable: "估值不可用",
+  quote_stale: "行情已过期",
   lot_type_saved: "批次类型已更新",
   transaction_correction: "交易更正",
   correct_purchase: "修正购买批次",
@@ -1961,7 +1963,8 @@ function createHoldingTree(ticker) {
   group.dataset.ticker = ticker;
   const details = makeElement("div", "holding-details");
   details.hidden = true;
-  const header = createHoldingRow({ label: ticker, metrics: valuation?.metrics, fallback, level: 0, toggle: true, ticker, currentPrice: valuation?.current_price });
+  const valuationNote = valuation?.status === "STALE" ? translate("quote_stale") : null;
+  const header = createHoldingRow({ label: ticker, note: valuationNote, metrics: valuation?.metrics, fallback, level: 0, toggle: true, ticker, currentPrice: valuation?.current_price });
   const toggleDetails = () => {
     const expanded = header.getAttribute("aria-expanded") !== "true";
     header.setAttribute("aria-expanded", String(expanded));

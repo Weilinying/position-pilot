@@ -1,9 +1,17 @@
 """组合当前持仓与行情的 Portfolio 估值服务。"""
 
+from collections.abc import Callable
+from datetime import UTC, datetime
 from typing import Protocol
 from uuid import UUID
 
-from position_pilot.domain.market_data import MarketDataResult, MarketQuote
+from position_pilot.domain.market_data import (
+    CURRENT_QUOTE_MAX_AGE,
+    MarketDataResult,
+    MarketDataStatus,
+    MarketQuote,
+    is_current_quote_fresh,
+)
 from position_pilot.domain.portfolio import PortfolioState
 from position_pilot.domain.portfolio_valuation import (
     PortfolioValuation,
@@ -26,9 +34,16 @@ class CurrentQuoteReader(Protocol):
 class PortfolioValuationService:
     """每个 ticker 获取一次行情并计算全部持仓层级。"""
 
-    def __init__(self, portfolios: PortfolioReader, market_data: CurrentQuoteReader) -> None:
+    def __init__(
+        self,
+        portfolios: PortfolioReader,
+        market_data: CurrentQuoteReader,
+        *,
+        clock: Callable[[], datetime] | None = None,
+    ) -> None:
         self._portfolios = portfolios
         self._market_data = market_data
+        self._clock = clock or (lambda: datetime.now(UTC))
 
     def get_current_valuation(self, user_id: UUID) -> PortfolioValuation:
         """返回当前 Portfolio 的逐 ticker 估值。"""
@@ -38,6 +53,15 @@ class PortfolioValuationService:
         results = []
         for ticker in tickers:
             result = self._market_data.get_current_quote(ticker)
+            if (
+                result.status is MarketDataStatus.OK
+                and result.data is not None
+                and not is_current_quote_fresh(result.data, at=self._clock())
+            ):
+                result = MarketDataResult.failure(
+                    MarketDataStatus.STALE,
+                    f"最新成交已超过 {CURRENT_QUOTE_MAX_AGE.days} 天",
+                )
             results.append(
                 value_portfolio_ticker(
                     portfolio,

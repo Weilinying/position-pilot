@@ -1,6 +1,6 @@
 """Portfolio 当前行情估值测试。"""
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 from position_pilot.application.portfolio_valuation_service import PortfolioValuationService
@@ -142,3 +142,35 @@ def test_preserves_market_failure_without_inventing_valuation() -> None:
     assert ticker.metrics.market_value is None
     assert len(ticker.position_types) == 2
     assert len(ticker.lots) == 2
+
+
+def test_rejects_stale_success_from_quote_provider_before_valuation() -> None:
+    """估值服务必须独立检查市场时间，不能只信任 Provider 的 OK。"""
+
+    portfolio = make_portfolio()
+    stale_quote = make_quote()
+    stale_quote = MarketQuote(
+        ticker=stale_quote.ticker,
+        last_price=stale_quote.last_price,
+        bid_price=stale_quote.bid_price,
+        ask_price=stale_quote.ask_price,
+        last_trade_at=NOW - timedelta(days=8),
+        quote_at=stale_quote.quote_at,
+        source=stale_quote.source,
+        feed=stale_quote.feed,
+        coverage=stale_quote.coverage,
+        currency=stale_quote.currency,
+        is_delayed=stale_quote.is_delayed,
+        fetched_at=NOW,
+    )
+
+    ticker = PortfolioValuationService(
+        FakePortfolioReader(portfolio),
+        FakeQuoteReader(MarketDataResult.success(stale_quote)),
+        clock=lambda: NOW,
+    ).get_current_valuation(portfolio.user_id).tickers[0]
+
+    assert ticker.status is MarketDataStatus.STALE
+    assert ticker.quote is None
+    assert ticker.metrics is not None
+    assert ticker.metrics.market_value is None
