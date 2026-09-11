@@ -28,6 +28,24 @@ async function main() {
   resolve({tickers: []});
   await stale;
   assert.equal(cell.textContent, 'edited');
+  const controls = source.slice(source.indexOf('function updateControls()'), source.indexOf('function enterHome('));
+  const control = () => ({disabled: false, dataset: {}});
+  const controlElements = {
+    logout: control(), headerLogout: control(), setupLogout: control(), setupFields: control(),
+    reloadPortfolio: control(), tradeFields: control(), cashFields: control(), openingFields: control(),
+    reconciliationFields: control(), reconciliationLoadCurrent: control(), reconciliationRevalidate: control(),
+    reconciliationSubmit: control(), question: control(), ask: control(), navChat: control(),
+    navPortfolio: control(), newQuestion: control(), writeState: control(),
+  };
+  const importSubmit = control();
+  const controlsState = {snapshot: {}, writeState: 'idle', portfolioReadState: 'idle', authTransition: 'idle', questionPending: true, importPending: false};
+  const controlsContext = vm.createContext({state: controlsState, elements: controlElements, importConfigs: [{controls: {textSubmit: importSubmit, screenshotSubmit: null}}], renderPortfolioState: () => {}, renderWriteState: () => {}, setLocalizedText: () => {}});
+  vm.runInContext(controls, controlsContext);
+  controlsContext.updateControls();
+  assert.equal(controlElements.reconciliationFields.disabled, false);
+  assert.equal(controlElements.reconciliationLoadCurrent.disabled, false);
+  assert.equal(controlElements.reconciliationSubmit.disabled, true);
+  assert.equal(importSubmit.disabled, true);
   const manual = source.slice(source.indexOf('function loadCurrentReconciliationDraft('), source.indexOf('async function handleReconciliation('));
   function element() {return {children: [], dataset: {}, append(...children) {this.children.push(...children);}, addEventListener(name, callback) {this[name] = callback;}, querySelector() {return null;}, get childElementCount() {return this.children.length;}};}
   const rows = element();
@@ -35,9 +53,12 @@ async function main() {
   const goog = {ticker: 'GOOG', position_type: 'UNSPECIFIED', shares: '1', average_cost: '100'};
   const tsla = {ticker: 'TSLA', position_type: 'SWING'};
   const purchase = {id: 'buy-tsla', ...tsla, source: 'BUY', purchased_at: '2026-09-01'};
-  const manualContext = vm.createContext({state: {snapshot: {positions: [goog, tsla], lots: [{...goog, source: 'OPENING'}, purchase]}}, elements: {reconciliationRows: rows}, clearElement: node => {node.children = [];}, createOpeningRow: parent => {const row = element(); const fields = new Map(); row.querySelector = key => {if (!fields.has(key)) fields.set(key, {dataset: {}}); return fields.get(key);}; parent.append(row); return row;}, makeElement: (_tag, _className, text) => Object.assign(element(), {textContent: text}), translate: value => value, formatTimestamp: value => value, openBuyCorrection: lot => {selected = lot;}, clearMessage: () => {}, setMessage: () => {throw new Error('Unexpected empty holdings');}});
+  let aborted = false;
+  const manualContext = vm.createContext({state: {snapshot: {positions: [goog, tsla], lots: [{...goog, source: 'OPENING'}, purchase]}, importGeneration: 1, importPending: true, importController: {abort: () => {aborted = true;}}}, elements: {reconciliationRows: rows}, updateControls: () => {}, clearElement: node => {node.children = [];}, createOpeningRow: parent => {const row = element(); const fields = new Map(); row.querySelector = key => {if (!fields.has(key)) fields.set(key, {dataset: {}}); return fields.get(key);}; parent.append(row); return row;}, makeElement: (_tag, _className, text) => Object.assign(element(), {textContent: text}), translate: value => value, formatTimestamp: value => value, openBuyCorrection: lot => {selected = lot;}, clearMessage: () => {}, setMessage: () => {throw new Error('Unexpected empty holdings');}});
   vm.runInContext(manual, manualContext);
   manualContext.loadCurrentReconciliationDraft();
+  assert.equal(aborted, true);
+  assert.equal(manualContext.state.importPending, false);
   assert.equal(rows.children.length, 2);
   assert.equal(rows.children[1].children[0].textContent, 'TSLA · SWING');
   rows.children[1].children[1].click();

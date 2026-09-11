@@ -4,7 +4,8 @@ import logging
 import ssl
 from collections.abc import Mapping
 from time import monotonic
-from urllib.parse import urlencode
+from typing import Protocol
+from urllib.parse import urlencode, urlparse
 
 import httpx2
 
@@ -32,6 +33,18 @@ FINNHUB_DEFAULT_BASE_URL = "https://finnhub.io/api/v1"
 FINNHUB_EXCHANGE_SCOPE = "US"
 _SUPPORTED_SEARCH_TYPES = frozenset({"common stock", "etf", "etp"})
 logger = logging.getLogger(__name__)
+
+
+class FinnhubSymbolDirectoryTransport(Protocol):
+    """读取 Finnhub 当前美国证券目录的最小 Transport Contract。"""
+
+    def get_us_symbols(
+        self,
+        base_url: str,
+        *,
+        api_key: str,
+        timeout_seconds: float,
+    ) -> JsonHttpResponse: ...
 
 
 class Httpx2JsonHttpTransport:
@@ -64,6 +77,47 @@ class Httpx2JsonHttpTransport:
             payload = None
         return JsonHttpResponse(status_code=response.status_code, payload=payload)
 
+    def get_us_symbols(
+        self,
+        base_url: str,
+        *,
+        api_key: str,
+        timeout_seconds: float,
+    ) -> JsonHttpResponse:
+        """读取实时目录；重定向到官方数据域名时移除 Credential Header。"""
+
+        try:
+            with httpx2.Client(timeout=timeout_seconds, trust_env=False) as client:
+                response = client.get(
+                    f"{base_url.rstrip('/')}/stock/symbol",
+                    params={"exchange": FINNHUB_EXCHANGE_SCOPE},
+                    headers={
+                        "Accept": "application/json",
+                        "X-Finnhub-Token": api_key,
+                    },
+                )
+                if 300 <= response.status_code < 400:
+                    location = response.headers.get("location")
+                    parsed_location = urlparse(location) if location else None
+                    if (
+                        parsed_location is None
+                        or parsed_location.scheme != "https"
+                        or parsed_location.hostname != "static2.finnhub.io"
+                    ):
+                        return JsonHttpResponse(response.status_code, None)
+                    assert location is not None
+                    response = client.get(location, headers={"Accept": "application/json"})
+        except httpx2.TimeoutException as error:
+            raise HttpTransportUnavailable(HttpTransportFailureKind.TIMEOUT) from error
+        except httpx2.RequestError as error:
+            raise HttpTransportUnavailable(self._classify_request_failure(error)) from error
+
+        try:
+            payload = response.json()
+        except (UnicodeDecodeError, ValueError):
+            payload = None
+        return JsonHttpResponse(status_code=response.status_code, payload=payload)
+
     @staticmethod
     def _classify_request_failure(error: httpx2.RequestError) -> HttpTransportFailureKind:
         """只保留对用户可操作的 Transport Failure 分类。"""
@@ -84,11 +138,13 @@ class FinnhubAssetMetadataProvider(AssetMetadataProvider):
         base_url: str = FINNHUB_DEFAULT_BASE_URL,
         timeout_seconds: float = 10.0,
         transport: JsonHttpTransport | None = None,
+        directory_transport: FinnhubSymbolDirectoryTransport | None = None,
     ) -> None:
         self._api_key = api_key.strip() if api_key else None
         self._base_url = base_url.rstrip("/")
         self._timeout_seconds = timeout_seconds
         self._transport = transport or Httpx2JsonHttpTransport()
+        self._directory_transport = directory_transport or Httpx2JsonHttpTransport()
 
     def search(self, query: AssetSearchQuery) -> AssetSearchResult:
         """搜索美国普通股与 ETF，并将结果数量限制在 bounded query 内。"""
@@ -192,12 +248,85 @@ class FinnhubAssetMetadataProvider(AssetMetadataProvider):
                 f"Finnhub Asset 字段格式无效: {error}",
             )
 
+        if len(candidates) < query.limit and self._is_symbol_prefix(query.query):
+            candidates.extend(
+                self._directory_candidates(
+                    query.query,
+                    limit=query.limit - len(candidates),
+                    existing_symbols={candidate.canonical_symbol for candidate in candidates},
+                )
+            )
+
         if not candidates:
             return AssetSearchResult.failure(
                 AssetMetadataStatus.NO_MATCH,
                 "没有找到可用于 PositionPilot 的美国股票或 ETF",
             )
         return AssetSearchResult.success(tuple(candidates))
+
+    def _directory_candidates(
+        self,
+        prefix: str,
+        *,
+        limit: int,
+        existing_symbols: set[str],
+    ) -> list[AssetIdentity]:
+        """普通 Search 结果不足时，从实时目录补足 ticker 前缀候选。"""
+
+        try:
+            response = self._directory_transport.get_us_symbols(
+                self._base_url,
+                api_key=self._api_key or "",
+                timeout_seconds=self._timeout_seconds,
+            )
+        except HttpTransportUnavailable:
+            logger.warning("asset_symbol_directory_failure failure_kind=TRANSPORT_UNAVAILABLE")
+            return []
+        if not 200 <= response.status_code < 300:
+            logger.warning(
+                "asset_symbol_directory_failure failure_kind=HTTP_STATUS status=%s",
+                response.status_code,
+            )
+            return []
+        if not isinstance(response.payload, list):
+            logger.warning("asset_symbol_directory_failure failure_kind=INVALID_RESPONSE")
+            return []
+
+        normalized_prefix = prefix.upper()
+        matched: list[tuple[int, int, Mapping[str, object]]] = []
+        for index, item in enumerate(response.payload):
+            if not isinstance(item, Mapping):
+                continue
+            try:
+                symbol = normalize_asset_symbol(self._required_text(item, "displaySymbol"))
+                asset_type = self._required_text(item, "type").strip().casefold()
+            except InvalidAssetMetadata:
+                continue
+            if (
+                symbol in existing_symbols
+                or not symbol.startswith(normalized_prefix)
+                or asset_type not in _SUPPORTED_SEARCH_TYPES
+            ):
+                continue
+            type_rank = 0 if asset_type == "common stock" else 1
+            matched.append((type_rank, index, item))
+
+        candidates: list[AssetIdentity] = []
+        for _, _, item in sorted(matched, key=lambda value: (value[0], value[1])):
+            try:
+                candidates.append(self._search_identity(item))
+            except InvalidAssetMetadata:
+                continue
+            if len(candidates) >= limit:
+                break
+        return candidates
+
+    @staticmethod
+    def _is_symbol_prefix(query: str) -> bool:
+        """只对短 ticker 形态启用目录补全。"""
+
+        compact = query.replace(".", "").replace("-", "")
+        return len(query) == 3 and compact.isascii() and compact.isalnum()
 
     def get_exact(self, query: AssetValidationQuery) -> AssetValidationResult:
         """使用 US-scoped Search 的精确 displaySymbol 确认 canonical identity。"""

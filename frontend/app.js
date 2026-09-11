@@ -1442,7 +1442,14 @@ function updateControls() {
   elements.tradeFields.disabled = busy || !contextReady;
   elements.cashFields.disabled = busy || !contextReady;
   elements.openingFields.disabled = busy || !contextReady;
-  elements.reconciliationFields.disabled = busy || !contextReady;
+  elements.reconciliationFields.disabled = authBusy || readBusy || writeBusy || !contextReady;
+  elements.reconciliationLoadCurrent.disabled = authBusy || readBusy || writeBusy || !contextReady;
+  elements.reconciliationRevalidate.disabled = busy || !contextReady;
+  elements.reconciliationSubmit.disabled = busy || !contextReady;
+  for (const config of importConfigs) {
+    if (config.controls.textSubmit) config.controls.textSubmit.disabled = busy;
+    if (config.controls.screenshotSubmit) config.controls.screenshotSubmit.disabled = busy;
+  }
   elements.question.disabled = busy || !contextReady;
   elements.ask.disabled = busy || !contextReady;
   elements.navChat.disabled = busy;
@@ -2310,6 +2317,11 @@ async function revalidateReconciliationAssets(event) {
 function loadCurrentReconciliationDraft(event) {
   event?.preventDefault();
   if (!state.snapshot) return;
+  state.importGeneration += 1;
+  state.importController?.abort();
+  state.importController = null;
+  state.importPending = false;
+  updateControls();
   clearElement(elements.reconciliationRows);
   const editablePositions = (state.snapshot.positions ?? []).filter((position) => {
     const matchingLots = (state.snapshot.lots ?? []).filter((lot) => lot.ticker === position.ticker && lot.position_type === position.position_type);

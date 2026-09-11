@@ -68,11 +68,29 @@ class UnavailableTransport:
 
 
 @dataclass(slots=True)
+class FakeDirectoryTransport:
+    """返回固定的美国证券目录。"""
+
+    response: JsonHttpResponse = field(default_factory=lambda: JsonHttpResponse(200, []))
+
+    def get_us_symbols(
+        self,
+        base_url: str,
+        *,
+        api_key: str,
+        timeout_seconds: float,
+    ) -> JsonHttpResponse:
+        del base_url, api_key, timeout_seconds
+        return self.response
+
+
+@dataclass(slots=True)
 class FakeHttpxResponse:
     """提供 httpx2 Transport 单元测试所需的最小 Response。"""
 
     status_code: int
     payload: object
+    headers: Mapping[str, str] = field(default_factory=dict)
 
     def json(self) -> object:
         return self.payload
@@ -81,8 +99,12 @@ class FakeHttpxResponse:
 class FakeHttpxClient:
     """模拟 httpx2 Client，避免 Transport 单元测试访问网络。"""
 
-    def __init__(self, response: FakeHttpxResponse | BaseException) -> None:
+    def __init__(
+        self,
+        response: FakeHttpxResponse | BaseException | list[FakeHttpxResponse],
+    ) -> None:
         self._response = response
+        self.requests: list[tuple[str, dict[str, str], dict[str, str]]] = []
 
     def __enter__(self) -> Self:
         return self
@@ -95,8 +117,16 @@ class FakeHttpxClient:
     ) -> None:
         return None
 
-    def get(self, url: str, *, headers: Mapping[str, str]) -> FakeHttpxResponse:
-        del url, headers
+    def get(
+        self,
+        url: str,
+        *,
+        headers: Mapping[str, str],
+        params: Mapping[str, str] | None = None,
+    ) -> FakeHttpxResponse:
+        self.requests.append((url, dict(headers), dict(params or {})))
+        if isinstance(self._response, list):
+            return self._response.pop(0)
         if isinstance(self._response, BaseException):
             raise self._response
         return self._response
@@ -114,6 +144,7 @@ def make_provider(
         base_url="https://api.example.test/api/v1",
         timeout_seconds=3,
         transport=transport,
+        directory_transport=FakeDirectoryTransport(),
     )
 
 
@@ -160,6 +191,71 @@ def test_httpx2_transport_maps_response_and_timeout(
             timeout_seconds=3,
         )
     assert error.value.kind is HttpTransportFailureKind.TIMEOUT
+
+
+def test_symbol_directory_follows_provider_redirect_without_credential_header(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """目录下载通过 Header 鉴权，重定向请求不携带 Credential。"""
+
+    client = FakeHttpxClient(
+        [
+            FakeHttpxResponse(
+                302,
+                None,
+                {"location": "https://static2.finnhub.io/file/exchange/US.json"},
+            ),
+            FakeHttpxResponse(200, [search_candidate("AAOI")]),
+        ]
+    )
+    client_options: list[dict[str, object]] = []
+
+    def make_client(**kwargs: object) -> FakeHttpxClient:
+        client_options.append(kwargs)
+        return client
+
+    monkeypatch.setattr(httpx2, "Client", make_client)
+
+    result = Httpx2JsonHttpTransport().get_us_symbols(
+        "https://api.example.test/api/v1",
+        api_key="test-key",
+        timeout_seconds=3,
+    )
+
+    assert result == JsonHttpResponse(200, [search_candidate("AAOI")])
+    assert client_options == [{"timeout": 3, "trust_env": False}]
+    assert client.requests == [
+        (
+            "https://api.example.test/api/v1/stock/symbol",
+            {"Accept": "application/json", "X-Finnhub-Token": "test-key"},
+            {"exchange": "US"},
+        ),
+        (
+            "https://static2.finnhub.io/file/exchange/US.json",
+            {"Accept": "application/json"},
+            {},
+        ),
+    ]
+
+
+def test_symbol_directory_rejects_redirect_outside_finnhub_data_host(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """目录请求不得把 Finnhub 响应引导到未经允许的 Host。"""
+
+    client = FakeHttpxClient(
+        FakeHttpxResponse(302, None, {"location": "https://example.test/assets.json"})
+    )
+    monkeypatch.setattr(httpx2, "Client", lambda **kwargs: client)
+
+    result = Httpx2JsonHttpTransport().get_us_symbols(
+        "https://api.example.test/api/v1",
+        api_key="test-key",
+        timeout_seconds=3,
+    )
+
+    assert result == JsonHttpResponse(302, None)
+    assert len(client.requests) == 1
 
 
 def search_candidate(
@@ -265,8 +361,8 @@ def test_search_empty_results_is_no_match() -> None:
     assert result.candidates == ()
 
 
-def test_search_returns_exact_symbol_without_profiling_later_candidates() -> None:
-    """精确 symbol 命中应优先返回，避免为无关候选增加 Provider Failure 面。"""
+def test_search_returns_exact_symbol_first_and_fills_requested_candidates() -> None:
+    """精确 symbol 应排在首位，同时继续补足用户请求的联想候选。"""
 
     transport = FakeJsonTransport(
         [
@@ -274,19 +370,41 @@ def test_search_returns_exact_symbol_without_profiling_later_candidates() -> Non
                 200,
                 {
                     "result": [
-                        search_candidate("AAOI", description="Applied Optoelectronics"),
-                        search_candidate("AAOX", description="Defiance Daily Target 2X"),
+                        search_candidate("AAON", description="AAON Inc."),
                     ]
                 },
             ),
+            JsonHttpResponse(200, profile_payload("AAON", name="AAON Inc.")),
         ]
     )
+    directory = FakeDirectoryTransport(
+        JsonHttpResponse(
+            200,
+            [
+                search_candidate("AAOX", description="TRADR 2X LONG AAOI", asset_type="ETP"),
+                search_candidate("AAOG", description="LEVERAGE SHARES 2X AAOI", asset_type="ETP"),
+                search_candidate("AAOI", description="Applied Optoelectronics"),
+                search_candidate("AAON", description="AAON Inc."),
+                search_candidate("AAOZ", description="TRADR 2X SHORT AAOI", asset_type="ETP"),
+            ],
+        )
+    )
 
-    result = make_provider(transport).search(AssetSearchQuery("AAOX", limit=5))
+    result = FinnhubAssetMetadataProvider(
+        api_key="test-key",
+        base_url="https://api.example.test/api/v1",
+        timeout_seconds=3,
+        transport=transport,
+        directory_transport=directory,
+    ).search(AssetSearchQuery("AAO", limit=3))
 
     assert result.status is AssetMetadataStatus.OK
-    assert [candidate.canonical_symbol for candidate in result.candidates] == ["AAOX"]
-    assert len(transport.requests) == 1
+    assert [candidate.canonical_symbol for candidate in result.candidates] == [
+        "AAON",
+        "AAOI",
+        "AAOX",
+    ]
+    assert len(transport.requests) == 2
 
 
 def test_search_null_result_is_invalid_provider_response() -> None:
