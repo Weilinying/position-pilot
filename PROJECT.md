@@ -56,9 +56,25 @@ V1 优先实现 Structured Memory。总可投资资金、剩余现金、Portfoli
 
 系统开始跟踪前已经存在的持仓使用独立、不可变的 Opening State 表达，只记录 ticker、shares、average cost、可选 Position Type 与后端记录时间。Opening Position 不是经济 Ledger Event，不伪造成 BUY、不扣减现金、没有交易 sequence 或手续费；当前 State 由 Opening State 与 Cash / Transaction Ledger 共同确定性重建。
 
+已有 Portfolio 的截图校准使用独立、不可变的 Position Reconciliation 事件，保存对应 `(ticker, position_type)` 的 `target_shares`、`target_average_cost`、确认时间、来源及可选 broker / source info。Replay 在确认时间将该仓位直接校准到目标状态，之后的 Transaction 继续生效；它不生成 BUY / SELL、不改变 Cash，也不删除截图中未出现的持仓或修改任何历史事实。
+
+从 M9 开始，Opening State 中的 Asset Identity 以 Asset Metadata Provider 验证后的 canonical symbol 表示；现有 `ticker` 字段承载该 canonical symbol，而不是未经验证的用户输入或公司名称。每一条可提交的 Opening Position Draft 都必须绑定 Provider 验证后的 Asset Identity：自由输入必须由用户从真实候选中明确选择；Recognition 明确识别的 `suggested_symbol`，或在其缺失时明确识别的 `ticker`，经后端 exact validation 成功后可以自动绑定，验证失败或存在歧义时才要求用户选择。修改已绑定的 ticker 后必须重新选择或重新验证。V1 不建立、复制或持续同步完整的本地 Asset Master；M9 只通过 Provider-neutral Asset Metadata Boundary 规范化前端 Asset Selector 与写入校验所需的 canonical symbol、display name 和 exchange，Provider-specific Payload 不进入 Portfolio Domain。Provider exact validation 成功只表示当前能够识别并规范化该 symbol，不把 Provider 未明确提供的 active / inactive 状态推断为 Portfolio Domain Truth。只有当前界面出现真实需求时才增加其他 Metadata 字段，不建设通用证券主数据模型。
+
 V1 的 Email / Password 账户只为本地产品闭环提供稳定身份与 Portfolio Ownership。Account 与现有单一 `User → Portfolio State` 之间保持一对一关系；Browser 不再把 UUID 当作正常用户身份或恢复方式。密码明文不得持久化，认证后由 HttpOnly Session Cookie 识别当前 Account，Portfolio 与 Investment API 的 User Identity 必须由 Session 在 Server 端确定。
 
 同一 Ticker 可以同时存在 `UNSPECIFIED`、`LONG_TERM` 和 `SWING` 三类独立仓位。`UNSPECIFIED` 只表示用户尚未提供策略分类，系统与 LLM 都不得自动把它推断为长期仓或波段仓；已明确的长期与波段仓仍必须在数据结构和分析逻辑中保持区别，因为两者的 Thesis、Plan、风险管理方式和退出条件不同。
+
+### M9 当前持仓与批次扩展（2026-09-10 确认，已在 M9 Branch 实现）
+
+保留交易与资金历史作为事实来源。当前持仓由剩余批次汇总，UI 按 ticker 展示总体，展开后直接列出 UNSPECIFIED 批次，再列 SWING、LONG_TERM 分组及各自按购买时间排序的批次；不在主页面并列展示起始持仓与校准记录。
+
+BUY 建立批次，SELL 明确选择扣减批次并释放其成本，剩余均价由剩余成本与股数重算。批次策略类型可调整并记录生效时间，不改变总股数、总成本或现金，不覆盖历史交易分类。成交字段通过引用原交易的更正记录修正并重放，不能覆盖原始事实。此扩展替代聚合仓位“部分卖出均价永远不变”的核算规则。
+
+截图保存后仍能直接手工维护：导入持仓使用无现金影响的校准；真实交易使用更正；策略类型直接调整。截图只有聚合值时不推测购买批次或日期，显示来源与未知时间。批次明细与聚合校准必须由同一确定性重放产生，不能维护第二份独立持仓。
+
+M9 提供当前市值与未实现指标。新手工 BUY 录入券商显示的含费平均成本，不再额外估算手续费；新手工 SELL 录入可选实际 Fee，并按成交金额减去 Fee 更新现金。历史 Transaction 永久保留原 fee schedule 与 commission 口径。Transaction 截图导入属于 M10，已实现盈亏属于 M11。账户历史收益率需完整资金事实与明确口径，另行规划，不等同于当前持仓盈亏百分比。本地旧测试数据不做兼容迁移，可在实施时重置后重新录入。
+
+执行细节见 [M9 当前持仓与批次计划](docs/plans/m9-current-holdings-and-batch-editing.md)。以下交易示例沿用现有接口；新增批次相关 Schema 随实现更新。
 
 示例 Transaction：
 
@@ -75,7 +91,7 @@ V1 的 Email / Password 账户只为本地产品闭环提供稳定身份与 Port
 }
 ```
 
-`amount` 是由 `price × shares` 确定性计算的只读成交金额，不是独立用户输入。Transaction 对现金的实际影响可以包含当前已批准规则产生的交易成本，但 `PROJECT.md` 不绑定具体券商或费率实现。
+`amount` 是由 `price × shares` 确定性计算的只读金额，不是独立用户输入。手工 BUY 的 `price` 表示含费平均成本；手工 SELL 的 `price` 表示成交价，并可另行提供实际 Fee。费用数值与口径随 Transaction 保存，后续规则变化不得改写历史经济结果。
 
 当前持仓、平均成本、现金变化和仓位比例必须由确定性业务代码计算，不依赖 LLM 从聊天历史推断。Cash Event 只影响现金，不改变 Position Shares、Cost Basis 或 Average Cost。
 
@@ -119,7 +135,9 @@ Tool 负责获取外部事实或暴露系统能力，例如当前价格、历史
 
 确定性代码负责平均成本、金额、仓位比例、技术指标以及能够明确编码的 Market Regime 规则。
 
-交易能力同样属于确定性事实。标的是否可交易、是否支持 Fractional Shares，应由 Broker / Asset Metadata 等可靠来源提供 `tradable` 与 `fractionable` 状态，不能由 LLM 根据训练知识判断。规划新增买入时，若 `fractionable` 未知，Agent 不得默认只支持整股，也不得默认支持碎股；只有明确支持碎股时，潜在可购买数量才允许为 Decimal，明确不支持时才应用整股约束，具体数量仍由确定性代码计算。Available Cash 低于单股价格不能作为通用的“无法买入”判断。
+交易能力同样属于确定性事实。标的是否可交易、是否支持 Fractional Shares，应由 Broker / Asset Metadata 等可靠来源提供 `tradable` 与 `fractionable` 状态，不能由 LLM 根据训练知识判断。规划新增买入时，若 `fractionable` 未知，Agent 不得默认只支持整股，也不得默认支持碎股；只有明确支持碎股时，潜在可购买数量才允许为 Decimal，明确不支持时才应用整股约束，具体数量仍由确定性代码计算。Available Cash 低于单股价格不能作为通用的“无法买入”判断。这一未来交易规划边界不要求 M9 Asset Selector 提前规范化 `fractionable` 或建设通用 Metadata Model。
+
+Portfolio Import 中的识别结果只生成可审查 Draft，不直接成为 Structured State。Recognition Confidence 只用于帮助用户定位需要复核的字段，不是 Portfolio Domain Truth，也不形成独立 Write Gate；最终写入只接受用户明确确认、在本地 Browser Draft 中已绑定 Provider-validated Asset Identity 且通过 deterministic Domain Validation 的确定字段。M9 接受仅限 loopback 本地产品的受信任 Browser 边界，Confirm 不重复调用 Asset Provider；若未来暴露到公网或不受控客户端，必须恢复写入时验证或引入后端签名的短期 Asset Receipt。Asset Metadata Provider 与 Vision / OCR Capability 必须在实现前通过短 Capability Spike 完成选型，并通过各自的 Provider-neutral Boundary 接入。Recognition 输出只作为数据处理，不进入 PositionPilot Agent 的指令链路。
 
 LLM 负责理解开放式问题、判断需要哪些 Context、选择 Tool、综合多个来源、解释金融信息和生成条件式 Decision Support。
 
@@ -141,7 +159,7 @@ V1 已确定使用 Python、FastAPI、Pydantic、PostgreSQL 和 pytest。
 
 ## 10. 尚未确定的技术问题
 
-PositionPilot 自身的 Agent Orchestration 已在 M3 Human Review 中确定使用 Single Agent + Native Function Calling，M3 不引入 LangGraph。M2 已选择 Alpaca Market Data API v2 REST 作为 Market Data Provider，具体覆盖与限制见 ADR 0004；M3 已选择阿里云 Model Studio 作为 V1 默认 LLM Provider，并保持 Provider / Model 可配置和与 Agent / Domain 解耦；News Provider 和 Financial Data Provider 尚未确定。
+PositionPilot 自身的 Agent Orchestration 已在 M3 Human Review 中确定使用 Single Agent + Native Function Calling，M3 不引入 LangGraph。M2 已选择 Alpaca Market Data API v2 REST 作为 Market Data Provider，具体覆盖与限制见 ADR 0004；M3 已选择阿里云 Model Studio 作为 V1 默认 LLM Provider，并保持 Provider / Model 可配置和与 Agent / Domain 解耦；M9 已选择 Finnhub 作为 Asset Metadata Provider、Alibaba Model Studio `qwen3-vl-flash` 作为 Vision / OCR Capability，具体边界见 ADR 0010；News Provider 和 Financial Data Provider 尚未确定。
 
 “尚未确定”本身是一种有效状态。开发过程中不得因为需要继续编码，就未经评估默认选择某个 Framework 或 Provider。进入相关 Milestone 后，应根据真实需求、Technical Spike 或可验证比较做出决策，并在必要时记录 ADR。
 
@@ -154,6 +172,8 @@ V1 不实现自动交易、券商账户控制、自动调仓、期权策略、�
 V1 也暂不实现自动投资复盘、行为偏差分析、复杂 Semantic Memory、Vector Database、大型 RAG Pipeline 和 Multi-Agent；不为了增加技术复杂度主动加入 Redis、Kafka、Microservices、Kubernetes、MCP Server 或多个未实际使用的 LLM Provider。
 
 V1.x 保持本地、受控环境与单 Account / 单 Portfolio Context。V1 只实现基础 Email / Password 注册、登录、退出和持久 Session，不实现 Email Verification、Password Reset、OAuth、MFA、Organization、Role / Permission、Cloud Account、Broker Sync、Multiple Portfolio Management、完整 Portfolio Performance History、Dividend 或 Corporate Action；这些 Account Platform、connected product 与 accounting 边界留到 V2。
+
+M9 Import 辅助 Portfolio Opening State 初始化，并允许用户用当前截图对已有 Portfolio 追加一次明确确认的 Position Reconciliation。它不提供 Broker / Account Connection、自动 Sync、自动 Diff、Conflict Resolution 或持续同步；Recognition Draft 也不得绕过用户确认直接写入。
 
 复杂度必须由真实需求证明。
 

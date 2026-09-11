@@ -35,8 +35,8 @@ CASE
     ELSE GREATEST(amount * 0.01, 0.01)
 END
 """
-COMMISSION_DERIVATION_CHECK = f"""
-commission = round(({COMMISSION_RAW_SQL}), 8) -
+COMMISSION_DERIVATION_SQL = f"""
+round(({COMMISSION_RAW_SQL}), 8) -
     CASE
         WHEN ({COMMISSION_RAW_SQL}) * 100000000
             - trunc(({COMMISSION_RAW_SQL}) * 100000000) = 0.5
@@ -121,11 +121,17 @@ class TransactionModel(Base):
             name="ck_transactions_amount_derived",
         ),
         CheckConstraint(
-            COMMISSION_DERIVATION_CHECK,
+            f"""
+            (fee_schedule = 'IBKR_PRO_TIERED_US_2026_08'
+                AND commission = {COMMISSION_DERIVATION_SQL})
+            OR (fee_schedule = 'BUY_COST_INCLUDED' AND action = 'BUY' AND commission = 0)
+            OR (fee_schedule = 'SELL_ACTUAL_FEE' AND action = 'SELL')
+            """,
             name="ck_transactions_commission_derived",
         ),
         CheckConstraint(
-            "fee_schedule = 'IBKR_PRO_TIERED_US_2026_08'",
+            "fee_schedule IN ('IBKR_PRO_TIERED_US_2026_08', "
+            "'BUY_COST_INCLUDED', 'SELL_ACTUAL_FEE')",
             name="ck_transactions_fee_schedule_supported",
         ),
         Index(
@@ -192,6 +198,131 @@ class OpeningPositionModel(Base):
     average_cost: Mapped[Decimal] = mapped_column(Numeric(28, 8))
     position_type: Mapped[str] = mapped_column(String(11))
     recorded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class PositionReconciliationModel(Base):
+    """不可变外部持仓校准事实的持久化记录。"""
+
+    __tablename__ = "position_reconciliations"
+    __table_args__ = (
+        CheckConstraint(
+            "target_shares > 0",
+            name="ck_position_reconciliations_target_shares_positive",
+        ),
+        CheckConstraint(
+            "target_average_cost > 0",
+            name="ck_position_reconciliations_target_average_cost_positive",
+        ),
+        CheckConstraint(
+            "position_type IN ('LONG_TERM', 'SWING', 'UNSPECIFIED')",
+            name="position_reconciliation_type",
+        ),
+        Index(
+            "ix_position_reconciliations_user_confirmed_at",
+            "user_id",
+            "confirmed_at",
+        ),
+        Index(
+            "ix_position_reconciliations_user_position",
+            "user_id",
+            "ticker",
+            "position_type",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    user_id: Mapped[UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    ticker: Mapped[str] = mapped_column(String(10))
+    target_shares: Mapped[Decimal] = mapped_column(Numeric(28, 8))
+    target_average_cost: Mapped[Decimal] = mapped_column(Numeric(28, 8))
+    position_type: Mapped[str] = mapped_column(String(11))
+    source: Mapped[str] = mapped_column(String(100))
+    confirmed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    broker: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    source_info: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class LotAllocationModel(Base):
+    """SELL Transaction 对来源批次的不可变股数分配。"""
+
+    __tablename__ = "lot_allocations"
+    __table_args__ = (
+        UniqueConstraint(
+            "sell_transaction_id",
+            "lot_id",
+            name="uq_lot_allocations_transaction_lot",
+        ),
+        CheckConstraint("shares > 0", name="ck_lot_allocations_shares_positive"),
+        Index("ix_lot_allocations_user_transaction", "user_id", "sell_transaction_id"),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    user_id: Mapped[UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    sell_transaction_id: Mapped[UUID] = mapped_column(
+        ForeignKey("transactions.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    lot_id: Mapped[UUID] = mapped_column(nullable=False)
+    shares: Mapped[Decimal] = mapped_column(Numeric(28, 8))
+
+
+class LotClassificationChangeModel(Base):
+    """来源批次策略类型的不可变变更记录。"""
+
+    __tablename__ = "lot_classification_changes"
+    __table_args__ = (
+        CheckConstraint(
+            "position_type IN ('LONG_TERM', 'SWING', 'UNSPECIFIED')",
+            name="lot_classification_position_type",
+        ),
+        Index("ix_lot_classification_user_lot_time", "user_id", "lot_id", "effective_at"),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    user_id: Mapped[UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    lot_id: Mapped[UUID] = mapped_column(nullable=False)
+    position_type: Mapped[str] = mapped_column(String(11))
+    effective_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class BuyTransactionCorrectionModel(Base):
+    """BUY Transaction 有效成交字段的不可变更正。"""
+
+    __tablename__ = "buy_transaction_corrections"
+    __table_args__ = (
+        CheckConstraint("price > 0", name="ck_buy_corrections_price_positive"),
+        CheckConstraint("shares > 0", name="ck_buy_corrections_shares_positive"),
+        Index(
+            "ix_buy_corrections_user_transaction_time",
+            "user_id",
+            "transaction_id",
+            "corrected_at",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    user_id: Mapped[UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    transaction_id: Mapped[UUID] = mapped_column(
+        ForeignKey("transactions.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    price: Mapped[Decimal] = mapped_column(Numeric(28, 8))
+    shares: Mapped[Decimal] = mapped_column(Numeric(28, 8))
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    corrected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 
 class CashEventModel(Base):

@@ -17,6 +17,7 @@ from position_pilot.application.market_data_service import HistoricalBarsQuery
 from position_pilot.config import Settings
 from position_pilot.domain.errors import InvalidPortfolioValue
 from position_pilot.domain.market_data import (
+    CURRENT_QUOTE_MAX_AGE,
     HistoricalBars,
     InvalidMarketData,
     MarketDataCoverage,
@@ -25,6 +26,7 @@ from position_pilot.domain.market_data import (
     MarketQuote,
     OHLCVBar,
     decimal_from_provider,
+    is_current_quote_fresh,
 )
 
 ALPACA_SOURCE = "ALPACA"
@@ -183,6 +185,7 @@ class AlpacaMarketDataProvider:
         try:
             latest_quote = response.payload.get("latestQuote")
             bid_price, ask_price, quote_at = self._parse_latest_quote(latest_quote)
+            fetched_at = self._utc_now()
             market_quote = MarketQuote(
                 ticker=ticker,
                 last_price=decimal_from_provider(latest_trade.get("p"), field_name="last_price"),
@@ -197,12 +200,22 @@ class AlpacaMarketDataProvider:
                 coverage=MarketDataCoverage.SINGLE_EXCHANGE,
                 currency="USD",
                 is_delayed=False,
-                fetched_at=self._utc_now(),
+                fetched_at=fetched_at,
             )
         except (InvalidMarketData, InvalidPortfolioValue) as error:
             return MarketDataResult.failure(
                 MarketDataStatus.INVALID_PROVIDER_RESPONSE,
                 str(error),
+            )
+        if market_quote.last_trade_at > fetched_at:
+            return MarketDataResult.failure(
+                MarketDataStatus.INVALID_PROVIDER_RESPONSE,
+                "Alpaca latest trade 时间晚于读取时间",
+            )
+        if not is_current_quote_fresh(market_quote, at=fetched_at):
+            return MarketDataResult.failure(
+                MarketDataStatus.STALE,
+                f"Alpaca latest trade 已超过 {CURRENT_QUOTE_MAX_AGE.days} 天",
             )
         return MarketDataResult.success(market_quote)
 

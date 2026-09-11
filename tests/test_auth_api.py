@@ -27,6 +27,7 @@ from position_pilot.main import (
     app,
     get_auth_service_dependency,
     get_investment_agent_dependency,
+    get_opening_import_service_dependency,
     get_portfolio_service_dependency,
 )
 
@@ -126,6 +127,18 @@ class FakePortfolioReader:
             positions=(),
             transaction_count=0,
         )
+
+
+@dataclass(slots=True)
+class FakeOpeningImportSetup:
+    """把 Setup API 委托给测试中的 Fake Auth Service。"""
+
+    auth_service: FakeAuthService
+
+    def setup_portfolio(self, command: SetupPortfolioCommand) -> User:
+        """记录并返回 Fake Auth Service 产生的 User。"""
+
+        return self.auth_service.setup_portfolio(command)
 
 
 @pytest.fixture
@@ -252,6 +265,9 @@ def test_portfolio_setup_uses_current_account_and_optional_opening_draft(
     portfolio_service = FakePortfolioReader()
     override_auth(auth_service)
     app.dependency_overrides[get_portfolio_service_dependency] = lambda: portfolio_service
+    app.dependency_overrides[get_opening_import_service_dependency] = lambda: (
+        FakeOpeningImportSetup(auth_service)
+    )
     client.cookies.set(SESSION_COOKIE_NAME, TOKEN)
 
     response = client.post(

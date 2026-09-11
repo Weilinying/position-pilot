@@ -2,7 +2,7 @@
 
 ## 状态
 
-已接受（2026-08-21）
+已接受（2026-08-21，2026-09-11 修订）
 
 ## 背景
 
@@ -60,9 +60,10 @@ M2 需要为 M3 的第一个 Agent 闭环提供美股和美国上市 ETF 的 Cur
 - Historical Bars 使用 `adjustment=all`，由 Provider 处理拆股、现金分红与 spin-off 对历史 OHLCV 的调整；M2 不自行实现 Corporate Action Engine。
 - 输出必须显式保留 `source=ALPACA`、feed、coverage、currency、market timestamp 与 fetched timestamp。IEX 必须标记为 single-exchange coverage，不能表述为完整 SIP / NBBO。
 - Current Quote 使用 Snapshot 中的 latest eligible trade 作为 last price，并按可用情况返回 bid / ask 及其独立 timestamp。
+- Current Quote 只有在 `last_trade_at` 距读取时间不超过 7 个自然日时才返回 `OK`；超过阈值返回 `STALE` 且不向估值暴露价格。Adapter 与 Portfolio Valuation Service 都执行同一检查，避免其他 Provider 或测试替身把陈旧成交误报为成功。
 - Domain / Application 依赖 Provider Protocol 和稳定 Schema；Alpaca JSON、HTTP 状态码和凭据只存在于 Integration Adapter。
 - 使用 Python 标准库实现最小同步 REST Transport，不引入 `alpaca-py`、Cache、Queue、Database Table 或新 Framework。
-- 正常无数据与 Provider Failure 必须区分。M2 稳定状态至少包含 `OK`、`NO_DATA`、`INVALID_SYMBOL`、`INVALID_REQUEST`、`AUTHENTICATION_FAILED`、`RATE_LIMITED`、`PROVIDER_UNAVAILABLE` 和 `INVALID_PROVIDER_RESPONSE`。
+- 正常无数据、陈旧数据与 Provider Failure 必须区分。稳定状态包含 `OK`、`STALE`、`NO_DATA`、`INVALID_SYMBOL`、`INVALID_REQUEST`、`AUTHENTICATION_FAILED`、`RATE_LIMITED`、`PROVIDER_UNAVAILABLE` 和 `INVALID_PROVIDER_RESPONSE`。
 - API Key ID 与 Secret Key 仅通过环境变量提供；`.env.example` 只保存安全占位值，日志和错误不得暴露 Secret。
 
 ## 理由
@@ -75,6 +76,7 @@ M2 需要为 M3 的第一个 Agent 闭环提供美股和美国上市 ETF 的 Cur
 ## Trade-off
 
 - 免费 Current Quote 只来自 IEX，低流动性标的可能比全市场交易更陈旧；调用方必须检查 feed、coverage 和 market timestamp。
+- 七个自然日阈值允许周末与常见休市，但极低流动性标的可能因此暂时不显示估值。若需要更精确的新鲜度规则，应在取得交易日历或按资产类别配置阈值后重新评估。
 - Current Quote 与 Historical OHLCV 来自不同 feed，Volume 不能直接假设为同一覆盖口径。
 - `adjustment=all` 适合连续历史分析，但不等于未经调整的真实成交记录；输出必须保留 adjustment 元数据。
 - 实际在线验证需要用户在本地提供 Alpaca 凭据；CI 与 Unit Test 不依赖真实凭据。

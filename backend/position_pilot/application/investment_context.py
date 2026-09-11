@@ -9,6 +9,7 @@ from uuid import UUID
 from position_pilot.domain.market_data import HistoricalBars, MarketQuote
 from position_pilot.domain.portfolio import (
     PortfolioState,
+    PositionLotSource,
     PositionType,
     Transaction,
     TransactionAction,
@@ -114,13 +115,18 @@ class HistoricalBuyFact:
     shares: Decimal
 
     @classmethod
-    def from_transaction(cls, transaction: Transaction) -> "HistoricalBuyFact":
+    def from_transaction(
+        cls,
+        transaction: Transaction,
+        *,
+        position_type: PositionType | None = None,
+    ) -> "HistoricalBuyFact":
         """从已校验 Ledger Transaction 投影 LLM 所需字段。"""
 
         return cls(
             sequence=transaction.sequence,
             ticker=transaction.ticker,
-            position_type=transaction.position_type,
+            position_type=position_type or transaction.position_type,
             occurred_at=transaction.occurred_at,
             price=transaction.price,
             shares=transaction.shares,
@@ -162,29 +168,41 @@ class HistoricalBuyFacts:
         active_positions = {
             (position.ticker, position.position_type) for position in state.positions
         }
+        active_buy_types = {
+            lot.id: lot.position_type for lot in state.lots if lot.source is PositionLotSource.BUY
+        }
         eligible = tuple(
-            transaction
+            (transaction, active_buy_types.get(transaction.id, transaction.position_type))
             for transaction in sorted(transactions, key=lambda item: item.sequence)
             if transaction.action is TransactionAction.BUY
-            and (transaction.ticker, transaction.position_type) in active_positions
+            and (
+                transaction.id in active_buy_types
+                or (transaction.ticker, transaction.position_type) in active_positions
+            )
         )
-        grouped: dict[tuple[str, PositionType], list[Transaction]] = {}
-        for transaction in eligible:
-            grouped.setdefault((transaction.ticker, transaction.position_type), []).append(
-                transaction
+        grouped: dict[tuple[str, PositionType], list[tuple[Transaction, PositionType]]] = {}
+        for transaction, current_type in eligible:
+            grouped.setdefault((transaction.ticker, current_type), []).append(
+                (transaction, current_type)
             )
         included = tuple(
             sorted(
                 (
-                    transaction
+                    item
                     for group in grouped.values()
-                    for transaction in group[-HISTORICAL_BUYS_PER_POSITION_LIMIT:]
+                    for item in group[-HISTORICAL_BUYS_PER_POSITION_LIMIT:]
                 ),
-                key=lambda item: item.sequence,
+                key=lambda item: item[0].sequence,
             )
         )
         return cls(
-            records=tuple(HistoricalBuyFact.from_transaction(item) for item in included),
+            records=tuple(
+                HistoricalBuyFact.from_transaction(
+                    transaction,
+                    position_type=current_type,
+                )
+                for transaction, current_type in included
+            ),
             total_count=len(eligible),
             included_count=len(included),
             truncated=len(included) < len(eligible),

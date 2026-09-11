@@ -17,6 +17,7 @@ from uuid import UUID
 from fastapi import Request
 from starlette.responses import RedirectResponse, Response
 
+from position_pilot.application.asset_metadata_service import AssetMetadataService
 from position_pilot.application.auth_service import Account, AuthService, AuthSession
 from position_pilot.application.errors import OpeningStateSealed, UserNotFound
 from position_pilot.application.investment_agent import (
@@ -27,22 +28,61 @@ from position_pilot.application.investment_agent import (
     InvestmentRequestFailure,
     InvestmentResponseStatus,
 )
+from position_pilot.application.opening_import_service import OpeningImportService
 from position_pilot.application.portfolio_service import (
+    BuyTransactionCorrectionResult,
     CashAdjustmentResult,
+    ChangeLotClassificationCommand,
+    CorrectBuyTransactionCommand,
     CreateUserCommand,
     InitializeOpeningPositionsCommand,
+    LotClassificationResult,
+    PositionReconciliationsResult,
     RecordCashEventCommand,
+    RecordPositionReconciliationsCommand,
     RecordTransactionCommand,
 )
+from position_pilot.application.portfolio_valuation_service import PortfolioValuationService
+from position_pilot.application.recognition_service import (
+    DraftField,
+    RecognitionDraft,
+    RecognitionDraftRow,
+    RecognitionFieldStatus,
+    RecognitionInput,
+    RecognitionInputKind,
+    RecognitionProvider,
+    RecognitionResult,
+    RecognitionService,
+)
+from position_pilot.domain.asset_metadata import (
+    AssetIdentity,
+    AssetMetadataStatus,
+    AssetSearchQuery,
+    AssetSearchResult,
+    AssetValidationQuery,
+    AssetValidationResult,
+)
 from position_pilot.domain.errors import FutureTimestamp
+from position_pilot.domain.market_data import (
+    MarketDataCoverage,
+    MarketDataResult,
+    MarketQuote,
+)
 from position_pilot.domain.portfolio import (
+    BuyTransactionCorrection,
     CashBalance,
     CashEvent,
+    LotAllocation,
+    LotClassificationChange,
     OpeningPosition,
     PortfolioState,
     Position,
+    PositionLot,
+    PositionLotSource,
+    PositionReconciliation,
     PositionType,
     Transaction,
+    TransactionAction,
     User,
     normalize_timestamp,
     rebuild_portfolio,
@@ -51,9 +91,13 @@ from position_pilot.domain.portfolio import (
 )
 from position_pilot.main import (
     app,
+    get_asset_metadata_service_dependency,
     get_auth_service_dependency,
     get_investment_agent_dependency,
+    get_opening_import_service_dependency,
     get_portfolio_service_dependency,
+    get_portfolio_valuation_service_dependency,
+    get_recognition_service_dependency,
 )
 
 USER_A = UUID("10000000-0000-4000-8000-000000000001")
@@ -107,6 +151,32 @@ def _portfolio(user_id: UUID, *, ticker: str) -> PortfolioState:
             ),
         ),
         transaction_count=2,
+        lots=(
+            PositionLot(
+                id=UUID(f"{user_id.hex[:24]}00000001"),
+                ticker=ticker,
+                position_type=PositionType.LONG_TERM,
+                source=PositionLotSource.BUY,
+                acquired_shares=Decimal("10.00000000"),
+                remaining_shares=Decimal("10.00000000"),
+                average_cost=Decimal("180.03500000"),
+                cost_basis=Decimal("1800.35000000"),
+                entry_price=Decimal("180.00000000"),
+                purchased_at=NOW,
+            ),
+            PositionLot(
+                id=UUID(f"{user_id.hex[:24]}00000002"),
+                ticker=ticker,
+                position_type=PositionType.SWING,
+                source=PositionLotSource.BUY,
+                acquired_shares=Decimal("4.00000000"),
+                remaining_shares=Decimal("4.00000000"),
+                average_cost=Decimal("210.08750000"),
+                cost_basis=Decimal("840.35000000"),
+                entry_price=Decimal("210.00000000"),
+                purchased_at=NOW,
+            ),
+        ),
     )
 
 
@@ -118,6 +188,10 @@ class BrowserSmokePortfolioService:
         self._transactions: dict[UUID, list[Transaction]] = {}
         self._cash_events: dict[UUID, list[CashEvent]] = {}
         self._opening_positions: dict[UUID, list[OpeningPosition]] = {}
+        self._reconciliations: dict[UUID, list[PositionReconciliation]] = {}
+        self._lot_allocations: dict[UUID, list[LotAllocation]] = {}
+        self._classification_changes: dict[UUID, list[LotClassificationChange]] = {}
+        self._buy_corrections: dict[UUID, list[BuyTransactionCorrection]] = {}
         self._lock = RLock()
 
     def create_user(self, command: CreateUserCommand) -> User:
@@ -132,6 +206,10 @@ class BrowserSmokePortfolioService:
             self._transactions[user.id] = []
             self._cash_events[user.id] = []
             self._opening_positions[user.id] = []
+            self._reconciliations[user.id] = []
+            self._lot_allocations[user.id] = []
+            self._classification_changes[user.id] = []
+            self._buy_corrections[user.id] = []
             return user
 
     def add_auth_user(self, user: User) -> None:
@@ -142,6 +220,10 @@ class BrowserSmokePortfolioService:
             self._transactions[user.id] = []
             self._cash_events[user.id] = []
             self._opening_positions[user.id] = []
+            self._reconciliations[user.id] = []
+            self._lot_allocations[user.id] = []
+            self._classification_changes[user.id] = []
+            self._buy_corrections[user.id] = []
 
     def add_auth_opening_positions(self, opening_positions: list[OpeningPosition]) -> None:
         """保存 Auth Portfolio Setup 已验证的 Opening Positions。"""
@@ -164,6 +246,7 @@ class BrowserSmokePortfolioService:
                 self._opening_positions[user.id]
                 or self._transactions[user.id]
                 or self._cash_events[user.id]
+                or self._reconciliations[user.id]
             ):
                 raise OpeningStateSealed()
             recorded_at = datetime.now(UTC)
@@ -178,7 +261,7 @@ class BrowserSmokePortfolioService:
                 )
                 for item in command.positions
             ]
-            rebuild_portfolio(user, [], [], positions)
+            rebuild_portfolio(user, [], [], positions, [])
             self._opening_positions[user.id] = positions
             return tuple(
                 sorted(positions, key=lambda item: (item.ticker, item.position_type.value))
@@ -202,13 +285,35 @@ class BrowserSmokePortfolioService:
                 action=command.action,
                 price=command.price,
                 shares=command.shares,
+                fee=command.fee,
                 position_type=command.position_type,
                 occurred_at=occurred_at,
                 reason=command.reason,
             )
+            new_allocations = [
+                LotAllocation.create(
+                    user_id=user.id,
+                    sell_transaction_id=transaction.id,
+                    lot_id=item.lot_id,
+                    shares=item.shares,
+                )
+                for item in command.allocations
+            ]
+            if transaction.action is TransactionAction.SELL and not new_allocations:
+                raise ValueError("SELL 必须选择批次")
             ordered = resequence_transactions([*transactions, transaction])
-            rebuild_portfolio(user, ordered, cash_events, self._opening_positions[user.id])
+            rebuild_portfolio(
+                user,
+                ordered,
+                cash_events,
+                self._opening_positions[user.id],
+                self._reconciliations[user.id],
+                [*self._lot_allocations[user.id], *new_allocations],
+                self._classification_changes[user.id],
+                self._buy_corrections[user.id],
+            )
             self._transactions[user.id] = ordered
+            self._lot_allocations[user.id].extend(new_allocations)
             return next(candidate for candidate in ordered if candidate.id == transaction.id)
 
     def record_cash_event(self, command: RecordCashEventCommand) -> CashAdjustmentResult:
@@ -236,6 +341,10 @@ class BrowserSmokePortfolioService:
                 transactions,
                 ordered,
                 self._opening_positions[user.id],
+                self._reconciliations[user.id],
+                self._lot_allocations[user.id],
+                self._classification_changes[user.id],
+                self._buy_corrections[user.id],
             )
             self._cash_events[user.id] = ordered
             persisted = next(candidate for candidate in ordered if candidate.id == cash_event.id)
@@ -250,6 +359,10 @@ class BrowserSmokePortfolioService:
                     self._transactions[user_id],
                     self._cash_events[user_id],
                     self._opening_positions[user_id],
+                    self._reconciliations[user_id],
+                    self._lot_allocations[user_id],
+                    self._classification_changes[user_id],
+                    self._buy_corrections[user_id],
                 )
         if user_id == EMPTY_USER:
             return PortfolioState(
@@ -307,6 +420,107 @@ class BrowserSmokePortfolioService:
         with self._lock:
             if user_id in self._users:
                 return tuple(self._transactions[user_id])
+        if user_id in {USER_A, USER_B, SLOW_USER, EMPTY_USER}:
+            return ()
+        raise UserNotFound(user_id)
+
+    def record_position_reconciliations(
+        self,
+        command: RecordPositionReconciliationsCommand,
+    ) -> PositionReconciliationsResult:
+        """追加 Engineering Smoke 使用的不可变持仓校准事实。"""
+
+        with self._lock:
+            user = self._require_mutable_user(command.user_id)
+            confirmed_at = datetime.now(UTC)
+            reconciliations = tuple(
+                PositionReconciliation.create(
+                    user_id=user.id,
+                    ticker=item.ticker,
+                    target_shares=item.target_shares,
+                    target_average_cost=item.target_average_cost,
+                    position_type=item.position_type,
+                    source=command.source,
+                    confirmed_at=confirmed_at,
+                    broker=command.broker,
+                    source_info=command.source_info,
+                )
+                for item in command.positions
+            )
+            self._reconciliations[user.id].extend(reconciliations)
+            portfolio = rebuild_portfolio(
+                user,
+                self._transactions[user.id],
+                self._cash_events[user.id],
+                self._opening_positions[user.id],
+                self._reconciliations[user.id],
+                self._lot_allocations[user.id],
+                self._classification_changes[user.id],
+                self._buy_corrections[user.id],
+            )
+            return PositionReconciliationsResult(reconciliations, portfolio)
+
+    def change_lot_classification(
+        self,
+        command: ChangeLotClassificationCommand,
+    ) -> LotClassificationResult:
+        """记录批次类型变更并重建 Engineering Smoke Portfolio。"""
+
+        with self._lock:
+            user = self._require_mutable_user(command.user_id)
+            change = LotClassificationChange.create(
+                user_id=user.id,
+                lot_id=command.lot_id,
+                position_type=command.position_type,
+                effective_at=datetime.now(UTC),
+            )
+            self._classification_changes[user.id].append(change)
+            portfolio = self.get_portfolio(user.id)
+            return LotClassificationResult(change, portfolio)
+
+    def correct_buy_transaction(
+        self,
+        command: CorrectBuyTransactionCommand,
+    ) -> BuyTransactionCorrectionResult:
+        """记录 BUY 更正并重建 Engineering Smoke Portfolio。"""
+
+        with self._lock:
+            user = self._require_mutable_user(command.user_id)
+            correction = BuyTransactionCorrection.create(
+                user_id=user.id,
+                transaction_id=command.transaction_id,
+                price=command.price,
+                shares=command.shares,
+                occurred_at=command.occurred_at,
+                reason=command.reason,
+                corrected_at=datetime.now(UTC),
+            )
+            self._buy_corrections[user.id].append(correction)
+            portfolio = self.get_portfolio(user.id)
+            return BuyTransactionCorrectionResult(correction, portfolio)
+
+    def list_buy_transaction_corrections(
+        self,
+        user_id: UUID,
+    ) -> tuple[BuyTransactionCorrection, ...]:
+        """返回 Engineering Smoke 的 BUY 更正。"""
+
+        with self._lock:
+            if user_id in self._users:
+                return tuple(self._buy_corrections[user_id])
+        if user_id in {USER_A, USER_B, SLOW_USER, EMPTY_USER}:
+            return ()
+        raise UserNotFound(user_id)
+
+    def list_position_reconciliations(
+        self,
+        user_id: UUID,
+    ) -> tuple[PositionReconciliation, ...]:
+        """返回 Engineering Smoke 的完整持仓校准事实。"""
+
+        with self._lock:
+            if user_id in self._users:
+                return tuple(self._reconciliations[user_id])
         if user_id in {USER_A, USER_B, SLOW_USER, EMPTY_USER}:
             return ()
         raise UserNotFound(user_id)
@@ -492,14 +706,190 @@ class BrowserSmokeInvestmentAgent:
         )
 
 
+def _smoke_asset(symbol: str, display_name: str, exchange: str = "NASDAQ") -> AssetIdentity:
+    """创建供 Import UI 使用的最小 Asset Fixture。"""
+
+    return AssetIdentity(
+        canonical_symbol=symbol,
+        display_name=display_name,
+        exchange=exchange,
+    )
+
+
+class BrowserSmokeAssetMetadataProvider:
+    """提供不访问网络的 Asset Search / exact Validation Fixture。"""
+
+    _assets = (
+        _smoke_asset("ADBE", "Adobe Inc."),
+        _smoke_asset("GOOG", "Alphabet Inc."),
+        _smoke_asset("GOOGL", "Alphabet Inc."),
+        _smoke_asset("NVDA", "NVIDIA Corporation"),
+        _smoke_asset("SPY", "SPDR S&P 500 ETF Trust", "NYSE ARCA"),
+    )
+
+    def search(self, query: AssetSearchQuery) -> AssetSearchResult:
+        """按 symbol 或公司名称返回固定 active 候选。"""
+
+        normalized = query.query.casefold()
+        candidates = tuple(
+            asset
+            for asset in self._assets
+            if normalized in asset.canonical_symbol.casefold()
+            or normalized in asset.display_name.casefold()
+        )[: query.limit]
+        if not candidates:
+            return AssetSearchResult.failure(
+                AssetMetadataStatus.NO_MATCH,
+                "Smoke fixture 没有找到匹配 Asset",
+            )
+        return AssetSearchResult.success(candidates)
+
+    def get_exact(self, query: AssetValidationQuery) -> AssetValidationResult:
+        """对固定候选执行 deterministic exact Validation。"""
+
+        for asset in self._assets:
+            if asset.canonical_symbol == query.symbol:
+                return AssetValidationResult.success(asset)
+        return AssetValidationResult.failure(
+            AssetMetadataStatus.NO_MATCH,
+            "Smoke fixture 没有找到对应 Asset",
+        )
+
+
+def _smoke_draft_row(
+    *,
+    ticker: str | None,
+    suggested_symbol: str | None,
+    shares: str | None,
+    average_cost: str | None,
+    position_type: PositionType | None = None,
+    confidence: str | None = "0.93",
+    ticker_status: RecognitionFieldStatus | None = None,
+    suggested_status: RecognitionFieldStatus | None = None,
+) -> RecognitionDraftRow:
+    """创建可供 Browser Smoke Review 的临时 Draft 行。"""
+
+    def text_field(value: str | None, status: RecognitionFieldStatus | None) -> DraftField[str]:
+        return DraftField(
+            value=value,
+            status=status
+            or (
+                RecognitionFieldStatus.PRESENT
+                if value is not None
+                else RecognitionFieldStatus.MISSING
+            ),
+        )
+
+    def decimal_field(value: str | None) -> DraftField[Decimal]:
+        return DraftField(
+            value=Decimal(value) if value is not None else None,
+            status=RecognitionFieldStatus.PRESENT
+            if value is not None
+            else RecognitionFieldStatus.MISSING,
+        )
+
+    return RecognitionDraftRow(
+        ticker=text_field(ticker, ticker_status),
+        suggested_symbol=text_field(suggested_symbol, suggested_status),
+        shares=decimal_field(shares),
+        average_cost=decimal_field(average_cost),
+        position_type=DraftField(
+            value=position_type,
+            status=RecognitionFieldStatus.PRESENT
+            if position_type is not None
+            else RecognitionFieldStatus.MISSING,
+        ),
+        confidence=Decimal(confidence) if confidence is not None else None,
+    )
+
+
+class BrowserSmokeRecognitionProvider(RecognitionProvider):
+    """返回固定 Text / Screenshot Draft，不执行真实 Vision Provider。"""
+
+    def recognize(self, request: RecognitionInput) -> RecognitionResult:
+        """按输入形式返回正常与 ambiguous 主流程 Fixture。"""
+
+        if request.kind is RecognitionInputKind.TEXT:
+            text = (request.text or "").upper()
+            if "AMBIGUOUS" in text:
+                row = _smoke_draft_row(
+                    ticker="GOOG",
+                    suggested_symbol="GOOG",
+                    shares="2",
+                    average_cost="180.25",
+                    confidence="0.48",
+                    ticker_status=RecognitionFieldStatus.AMBIGUOUS,
+                    suggested_status=RecognitionFieldStatus.AMBIGUOUS,
+                )
+            else:
+                row = _smoke_draft_row(
+                    ticker="ADBE",
+                    suggested_symbol="ADBE",
+                    shares="3",
+                    average_cost="260.50",
+                )
+            return RecognitionResult.success(
+                RecognitionDraft(rows=(row,), input_kind=RecognitionInputKind.TEXT)
+            )
+
+        row = _smoke_draft_row(
+            ticker="NVDA",
+            suggested_symbol="NVDA",
+            shares="4",
+            # 用户提供的 IBKR 参考截图没有展示平均成本，Smoke 必须保留该缺失事实。
+            average_cost=None,
+        )
+        return RecognitionResult.success(
+            RecognitionDraft(rows=(row,), input_kind=RecognitionInputKind.SCREENSHOT)
+        )
+
+
+class BrowserSmokeQuoteReader:
+    """为 Engineering Smoke 返回固定当前行情。"""
+
+    def get_current_quote(self, ticker: str) -> MarketDataResult[MarketQuote]:
+        return MarketDataResult.success(
+            MarketQuote(
+                ticker=ticker,
+                last_price=Decimal("250"),
+                bid_price=Decimal("249.5"),
+                ask_price=Decimal("250.5"),
+                last_trade_at=NOW,
+                quote_at=NOW,
+                source="browser-smoke",
+                feed="fixture",
+                coverage=MarketDataCoverage.SINGLE_EXCHANGE,
+                currency="USD",
+                is_delayed=False,
+                fetched_at=NOW,
+            )
+        )
+
+
 portfolio_service = BrowserSmokePortfolioService()
+portfolio_valuation_service = PortfolioValuationService(
+    portfolio_service,
+    BrowserSmokeQuoteReader(),
+)
 investment_agent = BrowserSmokeInvestmentAgent()
+asset_metadata_service = AssetMetadataService(BrowserSmokeAssetMetadataProvider())
+recognition_service = RecognitionService(BrowserSmokeRecognitionProvider())
 auth_store = BrowserSmokeAuthStore()
 auth_service = AuthService(
     lambda: BrowserSmokeAuthUnitOfWork(auth_store, portfolio_service),
     clock=lambda: datetime.now(UTC),
 )
+opening_import_service = OpeningImportService(
+    auth_service,
+    portfolio_service,
+)
 
 app.dependency_overrides[get_portfolio_service_dependency] = lambda: portfolio_service
+app.dependency_overrides[get_portfolio_valuation_service_dependency] = lambda: (
+    portfolio_valuation_service
+)
 app.dependency_overrides[get_investment_agent_dependency] = lambda: investment_agent
 app.dependency_overrides[get_auth_service_dependency] = lambda: auth_service
+app.dependency_overrides[get_asset_metadata_service_dependency] = lambda: asset_metadata_service
+app.dependency_overrides[get_recognition_service_dependency] = lambda: recognition_service
+app.dependency_overrides[get_opening_import_service_dependency] = lambda: opening_import_service

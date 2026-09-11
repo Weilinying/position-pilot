@@ -12,9 +12,13 @@ from fastapi.testclient import TestClient
 from position_pilot.application.auth_service import Account, SetupPortfolioCommand
 from position_pilot.application.errors import OpeningStateSealed, UserNotFound
 from position_pilot.application.portfolio_service import (
+    BuyTransactionCorrectionResult,
     CashAdjustmentResult,
     InitializeOpeningPositionsCommand,
+    LotClassificationResult,
+    PositionReconciliationsResult,
     RecordCashEventCommand,
+    RecordPositionReconciliationsCommand,
     RecordTransactionCommand,
 )
 from position_pilot.domain.errors import (
@@ -23,30 +27,42 @@ from position_pilot.domain.errors import (
     InsufficientShares,
     InvalidPortfolioValue,
 )
+from position_pilot.domain.market_data import MarketDataCoverage, MarketDataStatus, MarketQuote
 from position_pilot.domain.portfolio import (
+    BuyTransactionCorrection,
     CashBalance,
     CashEvent,
     CashEventType,
+    LotClassificationChange,
     OpeningPosition,
     PortfolioState,
     Position,
+    PositionReconciliation,
     PositionType,
     Transaction,
     TransactionAction,
     User,
     rebuild_portfolio,
 )
+from position_pilot.domain.portfolio_valuation import (
+    PortfolioValuation,
+    TickerValuation,
+    calculate_valuation_metrics,
+)
 from position_pilot.main import (
     app,
     get_auth_service_dependency,
     get_current_account_dependency,
+    get_opening_import_service_dependency,
     get_portfolio_service_dependency,
+    get_portfolio_valuation_service_dependency,
 )
 
 USER_ID = UUID("00000000-0000-0000-0000-000000000001")
 EVENT_ID = UUID("00000000-0000-0000-0000-000000000002")
 TRANSACTION_ID = UUID("00000000-0000-0000-0000-000000000003")
 OPENING_ID = UUID("00000000-0000-0000-0000-000000000004")
+RECONCILIATION_ID = UUID("00000000-0000-0000-0000-000000000005")
 OCCURRED_AT = datetime(2026, 8, 25, 8, 30, tzinfo=UTC)
 ACCOUNT_ID = UUID("00000000-0000-0000-0000-000000000010")
 
@@ -121,6 +137,18 @@ class FakePortfolioReader:
 
 
 @dataclass(slots=True)
+class FakePortfolioValuationService:
+    """返回固定当前估值并记录 Portfolio 身份。"""
+
+    result: PortfolioValuation
+    user_ids: list[UUID] = field(default_factory=list)
+
+    def get_current_valuation(self, user_id: UUID) -> PortfolioValuation:
+        self.user_ids.append(user_id)
+        return self.result
+
+
+@dataclass(slots=True)
 class FakeOpeningPositionService:
     """返回固定 Opening Positions，并记录初始化 Command 或查询。"""
 
@@ -145,6 +173,34 @@ class FakeOpeningPositionService:
 
 
 @dataclass(slots=True)
+class FakePositionReconciliationService:
+    """返回固定 Reconciliation Result，并记录批量 Command 或查询。"""
+
+    write_result: PositionReconciliationsResult | Exception
+    list_result: tuple[PositionReconciliation, ...] | Exception
+    commands: list[RecordPositionReconciliationsCommand] = field(default_factory=list)
+    user_ids: list[UUID] = field(default_factory=list)
+
+    def record_position_reconciliations(
+        self,
+        command: RecordPositionReconciliationsCommand,
+    ) -> PositionReconciliationsResult:
+        self.commands.append(command)
+        if isinstance(self.write_result, Exception):
+            raise self.write_result
+        return self.write_result
+
+    def list_position_reconciliations(
+        self,
+        user_id: UUID,
+    ) -> tuple[PositionReconciliation, ...]:
+        self.user_ids.append(user_id)
+        if isinstance(self.list_result, Exception):
+            raise self.list_result
+        return self.list_result
+
+
+@dataclass(slots=True)
 class FakeTransactionListReader:
     """返回固定 Transaction List。"""
 
@@ -154,6 +210,26 @@ class FakeTransactionListReader:
         if isinstance(self.result, Exception):
             raise self.result
         return self.result
+
+
+@dataclass(slots=True)
+class FakeLotMutationService:
+    """记录批次类型与 BUY 更正 Command。"""
+
+    classification_result: LotClassificationResult | None = None
+    correction_result: BuyTransactionCorrectionResult | None = None
+    classification_commands: list[object] = field(default_factory=list)
+    correction_commands: list[object] = field(default_factory=list)
+
+    def change_lot_classification(self, command):
+        self.classification_commands.append(command)
+        assert self.classification_result is not None
+        return self.classification_result
+
+    def correct_buy_transaction(self, command):
+        self.correction_commands.append(command)
+        assert self.correction_result is not None
+        return self.correction_result
 
 
 @dataclass(slots=True)
@@ -213,6 +289,7 @@ def make_transaction() -> Transaction:
         action=TransactionAction.BUY,
         price=Decimal("180.25"),
         shares=Decimal("2"),
+        fee=None,
         position_type=PositionType.LONG_TERM,
         occurred_at=OCCURRED_AT,
         reason="Initial long-term position",
@@ -237,10 +314,28 @@ def make_opening_position(
     )
 
 
+def make_reconciliation() -> PositionReconciliation:
+    """创建 API Response 使用的固定持仓校准事实。"""
+
+    return PositionReconciliation.create(
+        reconciliation_id=RECONCILIATION_ID,
+        user_id=USER_ID,
+        ticker="AAOX",
+        target_shares=Decimal("8"),
+        target_average_cost=Decimal("42.5"),
+        position_type=PositionType.LONG_TERM,
+        source="SCREENSHOT",
+        confirmed_at=OCCURRED_AT,
+        broker="IBKR",
+        source_info="portfolio page",
+    )
+
+
 def override_service(service: object) -> None:
     """避免 API Contract Test 读取真实数据库。"""
 
     app.dependency_overrides[get_portfolio_service_dependency] = lambda: service
+    app.dependency_overrides[get_opening_import_service_dependency] = lambda: service
 
 
 def override_auth_service(service: object) -> None:
@@ -404,6 +499,7 @@ def test_returns_complete_portfolio_snapshot_with_stable_position_order(
                 "cost_basis": "120.35000000",
             },
         ],
+        "lots": [],
     }
     assert service.user_ids == [USER_ID]
 
@@ -418,6 +514,123 @@ def test_returns_empty_portfolio_as_complete_snapshot(client: TestClient) -> Non
     assert response.status_code == 200
     assert response.json()["positions_are_complete"] is True
     assert response.json()["positions"] == []
+
+
+def test_returns_current_portfolio_valuation_with_quote_metadata(client: TestClient) -> None:
+    """当前估值 API 应保留行情来源并序列化确定性汇总。"""
+
+    quote = MarketQuote(
+        ticker="GOOG",
+        last_price=Decimal("250"),
+        bid_price=None,
+        ask_price=None,
+        last_trade_at=OCCURRED_AT,
+        quote_at=None,
+        source="alpaca",
+        feed="iex",
+        coverage=MarketDataCoverage.SINGLE_EXCHANGE,
+        currency="USD",
+        is_delayed=False,
+        fetched_at=OCCURRED_AT,
+    )
+    metrics = calculate_valuation_metrics(
+        shares=Decimal("2"),
+        cost_basis=Decimal("200"),
+        current_price=quote.last_price,
+    )
+    service = FakePortfolioValuationService(
+        PortfolioValuation(
+            user_id=USER_ID,
+            tickers=(
+                TickerValuation(
+                    ticker="GOOG",
+                    status=MarketDataStatus.OK,
+                    quote=quote,
+                    message=None,
+                    metrics=metrics,
+                    position_types=(),
+                    lots=(),
+                ),
+            ),
+        )
+    )
+    app.dependency_overrides[get_portfolio_valuation_service_dependency] = lambda: service
+
+    response = client.get("/v1/portfolio/valuation")
+
+    assert response.status_code == 200
+    payload = response.json()["tickers"][0]
+    assert payload["current_price"] == "250"
+    assert payload["source"] == "ALPACA"
+    assert payload["feed"] == "IEX"
+    assert payload["metrics"]["market_value"] == "500.00000000"
+    assert payload["metrics"]["unrealized_pnl_percent"] == "150.00"
+    assert service.user_ids == [USER_ID]
+
+
+def test_updates_lot_classification_and_corrects_buy_through_current_routes(
+    client: TestClient,
+) -> None:
+    """批次类型和 BUY 字段修改应使用独立事件接口并返回最新 Snapshot。"""
+
+    user = User.create(
+        user_id=USER_ID,
+        display_name="API User",
+        initial_cash=Decimal("1000"),
+        created_at=OCCURRED_AT,
+    )
+    purchase = Transaction.create(
+        user_id=USER_ID,
+        sequence=1,
+        ticker="GOOG",
+        action=TransactionAction.BUY,
+        price=Decimal("100"),
+        shares=Decimal("2"),
+        occurred_at=OCCURRED_AT,
+        transaction_id=TRANSACTION_ID,
+    )
+    portfolio = rebuild_portfolio(user, [purchase])
+    classification = LotClassificationChange.create(
+        user_id=USER_ID,
+        lot_id=TRANSACTION_ID,
+        position_type=PositionType.SWING,
+        effective_at=OCCURRED_AT,
+    )
+    correction = BuyTransactionCorrection.create(
+        user_id=USER_ID,
+        transaction_id=TRANSACTION_ID,
+        price=Decimal("110"),
+        shares=Decimal("3"),
+        occurred_at=OCCURRED_AT,
+        reason="修正",
+        corrected_at=OCCURRED_AT,
+    )
+    service = FakeLotMutationService(
+        classification_result=LotClassificationResult(classification, portfolio),
+        correction_result=BuyTransactionCorrectionResult(correction, portfolio),
+    )
+    override_service(service)
+
+    classification_response = client.post(
+        f"/v1/portfolio/lots/{TRANSACTION_ID}/classification",
+        json={"position_type": "SWING"},
+    )
+    correction_response = client.post(
+        f"/v1/portfolio/lots/{TRANSACTION_ID}/correction",
+        json={
+            "price": "110",
+            "shares": "3",
+            "occurred_at": "2026-08-25T08:30:00Z",
+            "reason": "修正",
+        },
+    )
+
+    assert classification_response.status_code == 200
+    assert classification_response.json()["lot_id"] == str(TRANSACTION_ID)
+    assert service.classification_commands[0].position_type is PositionType.SWING
+    assert correction_response.status_code == 200
+    assert correction_response.json()["transaction_id"] == str(TRANSACTION_ID)
+    assert service.correction_commands[0].shares == Decimal("3")
 
 
 def test_maps_missing_portfolio_snapshot_user_to_404(client: TestClient) -> None:
@@ -526,6 +739,74 @@ def test_rejects_client_derived_opening_fields_before_service_call(client: TestC
 
     assert response.status_code == 422
     assert service.commands == []
+
+
+def test_records_and_lists_position_reconciliations(client: TestClient) -> None:
+    """Reconciliation API 只接收目标状态，并返回不可变事实与最新 Snapshot。"""
+
+    reconciliation = make_reconciliation()
+    portfolio = make_portfolio_state(
+        positions=(
+            Position(
+                ticker="AAOX",
+                position_type=PositionType.LONG_TERM,
+                shares=Decimal("8.00000000"),
+                cost_basis=Decimal("340.00000000"),
+                average_cost=Decimal("42.50000000"),
+            ),
+        )
+    )
+    service = FakePositionReconciliationService(
+        write_result=PositionReconciliationsResult(
+            reconciliations=(reconciliation,),
+            portfolio=portfolio,
+        ),
+        list_result=(reconciliation,),
+    )
+    override_service(service)
+
+    write_response = client.post(
+        "/v1/portfolio/reconciliations",
+        json={
+            "positions": [
+                {
+                    "ticker": "aaox",
+                    "target_shares": "8",
+                    "target_average_cost": "42.5",
+                    "position_type": "LONG_TERM",
+                }
+            ],
+            "source": "SCREENSHOT",
+            "broker": "IBKR",
+            "source_info": "portfolio page",
+        },
+    )
+    list_response = client.get("/v1/portfolio/reconciliations")
+
+    assert write_response.status_code == 201
+    assert write_response.json()["reconciliations"] == [
+        {
+            "id": str(RECONCILIATION_ID),
+            "user_id": str(USER_ID),
+            "ticker": "AAOX",
+            "target_shares": "8.00000000",
+            "target_average_cost": "42.50000000",
+            "target_cost_basis": "340.00000000",
+            "position_type": "LONG_TERM",
+            "source": "SCREENSHOT",
+            "confirmed_at": "2026-08-25T08:30:00Z",
+            "broker": "IBKR",
+            "source_info": "portfolio page",
+        }
+    ]
+    assert write_response.json()["portfolio"]["available_cash"] == "1679.30000000"
+    assert write_response.json()["portfolio"]["positions"][0]["ticker"] == "AAOX"
+    assert len(service.commands) == 1
+    assert service.commands[0].positions[0].ticker == "aaox"
+    assert list_response.status_code == 200
+    assert list_response.json()["items_are_complete"] is True
+    assert list_response.json()["items"][0]["id"] == str(RECONCILIATION_ID)
+    assert service.user_ids == [USER_ID]
 
 
 def test_returns_complete_read_only_record_lists(client: TestClient) -> None:
@@ -637,8 +918,44 @@ def test_records_transaction_and_returns_backend_derived_fields(client: TestClie
     assert command.action is TransactionAction.BUY
     assert command.price == Decimal("180.25")
     assert command.shares == Decimal("2")
+    assert command.fee == Decimal("0")
     assert command.position_type is PositionType.LONG_TERM
     assert command.occurred_at is None
+
+
+def test_passes_actual_sell_fee_to_application_service(client: TestClient) -> None:
+    """SELL API 应把用户录入的实际费用交给统一交易服务。"""
+
+    sell = Transaction.create(
+        transaction_id=TRANSACTION_ID,
+        user_id=USER_ID,
+        sequence=1,
+        ticker="GOOG",
+        action=TransactionAction.SELL,
+        price=Decimal("200"),
+        shares=Decimal("1"),
+        fee=Decimal("1.25"),
+        occurred_at=OCCURRED_AT,
+    )
+    service = FakeTransactionWriter(sell)
+    override_service(service)
+
+    response = client.post(
+        f"/v1/portfolios/{USER_ID}/transactions",
+        json={
+            "ticker": "GOOG",
+            "action": "SELL",
+            "price": "200",
+            "shares": "1",
+            "fee": "1.25",
+            "allocations": [{"lot_id": str(OPENING_ID), "shares": "1"}],
+        },
+    )
+
+    assert response.status_code == 201
+    assert response.json()["transaction"]["commission"] == "1.25000000"
+    assert response.json()["transaction"]["fee_schedule"] == "SELL_ACTUAL_FEE"
+    assert service.commands[0].fee == Decimal("1.25")
 
 
 @pytest.mark.parametrize(
@@ -732,6 +1049,13 @@ def test_maps_transaction_application_errors(
             "amount": "10",
             "commission": "0.35",
             "fee_schedule": "CLIENT_VALUE",
+        },
+        {
+            "ticker": "GOOG",
+            "action": "BUY",
+            "price": "10",
+            "shares": "1",
+            "fee": "0.35",
         },
     ],
 )

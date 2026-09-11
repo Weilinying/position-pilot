@@ -10,10 +10,10 @@
 
 ## 2. Current Status
 
-**Current Milestone:** M8 — Local Portfolio Management
-**Status:** DONE — Human Accepted and merged to `main` (2026-09-01)
-**Current Release State:** `v1.0.0` Local Self-Service MVP 已完成并进入 `main`；Git Tag / GitHub Release 尚待发布
-**Next Planned Milestone:** M9 — Portfolio Import（尚未开始）
+**Current Milestone:** M9 — Asset Identity & Portfolio Import
+**Status:** DONE — Human Accepted and merged to `main` (2026-09-11)
+**Current Release State:** `v1.1.0` 已完成并进入本地 `main`；Git Tag / GitHub Release 尚待发布
+**Next Planned Milestone:** M10 — Transaction Import
 
 Milestone 状态统一使用 `NOT STARTED`、`IN PROGRESS`、`DONE`，不维护百分比进度。
 
@@ -25,19 +25,13 @@ Milestone 表示内部开发阶段；Version / Release 表示用户可感知的�
 |---|---|---|
 | Demo Core（pre-`v1.0.0`） | M0～M7 | 核心 Ledger、Market / News Context、Single Agent、Evaluation 与需预置 User ID 的 Demo Interface |
 | `v1.0.0` | M8 | 本地用户从产品主页注册 / 登录、初始化并持续维护 Portfolio，完成真实 Agent Self-Service MVP |
-<<<<<<< Updated upstream
-| `v1.1.0` | M9 | 通过 Text / Screenshot Draft 与人工确认降低 Portfolio 初始化成本 |
-| `v1.2.0` | M10 | Broker-neutral Fee Policy 基础与语义明确的第一阶段 Accounting / P&L |
-| `v1.3.0` | M11 | 按需路由的确定性 Technical Context |
-=======
-| Unreleased | M8.1 | Ask Composer 使用 Enter 提交、Shift+Enter 换行，并正确处理 IME 与重复提交；暂不单独发布 |
-| `v1.1.0` | M9 | Asset Identity、Ticker 搜索 / 校验与可人工确认的 Text / Screenshot Portfolio Import |
-| `v1.2.0` | M10 | 真实 Transaction Cost 语义与可人工确认的 Transaction Import |
+| `v1.1.0` | M8.1 | Ask Composer 使用 Enter 提交、Shift+Enter 换行，并正确处理 IME 与重复提交；随 M9 发布 |
+| `v1.1.0` | M9 | Asset Identity、Portfolio Import、紧凑批次持仓与当前未实现估值 |
+| `v1.2.0` | M10 | 可人工确认的 Transaction Import |
 | `v1.3.0` | M11 | 基于稳定成本语义的第一阶段 Accounting / P&L |
 | `v1.4.0` | M12 | 按需路由的确定性 Technical Context |
 | `v1.5.0` | M13 | 基于 PositionPilot 自有 Market / Portfolio Data 的交互式行情图表，展示 K 线、Technical Context 与实际 Portfolio 买卖位置 |
 | Answer Quality Evolution | Discovery，尚未映射 Release | Conversation / Investment Memory、开放 Web Search、Context Policy 与新质量 Evaluation 共同评估 |
->>>>>>> Stashed changes
 | V2 | 后续另行规划 | Connected Product：完整 Account Platform、Broker Sync、多 Portfolio 与完整绩效历史 |
 
 ## 4. V1 Engineering Milestones
@@ -52,14 +46,6 @@ M0 Project Foundation
 → M6 Evaluation & V1 Hardening
 → M7 Minimal Product Interface
 → M8 Local Portfolio Management (`v1.0.0`)
-<<<<<<< Updated upstream
-→ M9 Portfolio Import (`v1.1.0`)
-→ M10 Accounting & P&L (`v1.2.0`)
-→ M11 Technical Context (`v1.3.0`)
-```
-
-M0～M7 是构建 PositionPilot V1 Core 与 Demo Interface 的内部 Engineering Milestones，不直接等同于正式 `v1.0.0`。M8 完成 Local Self-Service 闭环后才形成 `v1.0.0`；M9～M11 在保持本地、单用户上下文与现有核心架构的前提下形成后续 V1.x Release。
-=======
 → M8.1 Ask Composer UX（Unreleased）
 → M9 Asset Identity & Portfolio Import (`v1.1.0`)
 → M10 Transaction Cost & Import (`v1.2.0`)
@@ -68,8 +54,7 @@ M0～M7 是构建 PositionPilot V1 Core 与 Demo Interface 的内部 Engineering
 → M13 Position-Aware Market Chart (`v1.5.0`)
 ```
 
-M0～M7 是构建 PositionPilot V1 Core 与 Demo Interface 的内部 Engineering Milestones，不直接等同于正式 `v1.0.0`。M8 完成 Local Self-Service 闭环后形成 `v1.0.0`；M8.1 已进入 `main` 但暂存于 Changelog `Unreleased`，不因 Milestone 完成自动产生 `v1.0.1`。M9～M13 在保持本地、单用户上下文与现有核心架构的前提下形成后续 V1.x Release。Answer Quality Evolution 不因列入 Discovery 就自动成为 Milestone；只有 Memory、开放 Web Search、Context Policy 与 Evaluation Contract 形成经 Human Review 批准的最小闭环后，才映射到具体 Release。
->>>>>>> Stashed changes
+M0～M7 是构建 PositionPilot V1 Core 与 Demo Interface 的内部 Engineering Milestones，不直接等同于正式 `v1.0.0`。M8 完成 Local Self-Service 闭环后形成 `v1.0.0`；M8.1 随 M9 一并进入 `v1.1.0`。M9～M13 在保持本地、单用户上下文与现有核心架构的前提下形成后续 V1.x Release。Answer Quality Evolution 不因列入 Discovery 就自动成为 Milestone；只有 Memory、开放 Web Search、Context Policy 与 Evaluation Contract 形成经 Human Review 批准的最小闭环后，才映射到具体 Release。
 
 ## M0 — Project Foundation
 
@@ -295,79 +280,143 @@ Positions、Transactions 与 Cash Activity 分别展示当前仓位、只读交�
 * Automated Review、相关 Regression Gate 与 Human Browser Smoke 通过；
 * Human Acceptance 通过，并形成 `v1.0.0` Release。
 
-## M9 — Portfolio Import
+## M8.1 — Ask Composer UX
 
-**Status:** NOT STARTED
+**Status:** DONE — Human Accepted and merged to `main` (2026-09-01); included in `v1.1.0`
 
 **Goal**
 
-通过 Text / Screenshot Import 降低用户初始化 Portfolio 的录入成本，形成 `v1.1.0`。
+让 Ask Composer 符合常见对话输入习惯；是否单独形成 Maintenance Release 由实际发布需要决定。
+
+**Scope**
+Question Textarea 使用 Enter 提交，Shift+Enter 插入换行。中文等输入法仍在 composing 时不得误提交；空问题、进行中的请求以及单次 Enter 产生的重复事件不得产生额外 Request。按钮提交和既有 Question Failure / Cancellation 行为保持不变。
+
+**Done**
+
+- Enter 在非 composing、非 pending 且问题有效时，一次操作只触发一次提交；
+- Shift+Enter 保留换行且不提交；
+- IME composing、空问题与请求进行中不会通过键盘或按钮误提交、重复提交；
+- 相关 Product Interface Test 与 Browser Smoke 通过；
+- Human Acceptance 通过；变更随 M9 进入 `v1.1.0`，未单独创建 Maintenance Release。
+
+## M9 — Asset Identity & Portfolio Import
+
+**Status:** DONE — Human Accepted and merged to `main` (2026-09-11)
+
+**Goal**
+
+通过 Asset Identity、Text / Screenshot Import 与紧凑批次持仓，支持低成本录入、保存后手工维护和当前估值，保留交易历史，形成 `v1.1.0`。
 
 **Scope**
 
-建立 `Text / Screenshot → Structured Import Draft → Uncertain / Missing Field Highlight → Human Confirmation → Deterministic Validation → Portfolio Write` 流程。识别结果不得直接写 Ledger；原始图片默认不持久化，错误与低置信度 / `UNKNOWN` 字段必须可解释。
+先建立 Provider-neutral Asset Metadata Boundary。Asset Identity 以 Asset Metadata Provider 验证后的 canonical symbol 表示；不建立本地完整 Asset Master，也不让 Provider-specific Payload 进入 Portfolio Domain。用户输入 ticker 或公司名称片段时，前端通过后端搜索返回 canonical symbol、公司名称与 Exchange；自由输入必须由用户从真实候选中选择，Recognition `suggested_symbol` 经后端 exact validation 成功后可以自动绑定，失败或歧义时才要求人工选择。修改已绑定的 ticker 会清除选择状态并要求重新选择或验证。M9 接受 loopback 本地产品的受信任 Browser 边界：Confirm 提交已绑定的 canonical symbol，不重复调用 Asset Provider；若未来开放到不受控客户端，必须重新引入后端验证凭证或写入时验证。Provider exact validation 成功只代表当前能够识别并规范化该 symbol，不推断 Provider 未明确提供的 active / inactive 状态。V1 继续允许同一 canonical symbol 分别存在 `UNSPECIFIED / LONG_TERM / SWING`，聚合边界是 `(canonical_symbol, position_type)`，同一分组内允许多个独立批次。
 
-M9 复用 M8 已批准的 immutable Opening State 与一次性初始化 Command，只新增识别 Draft、字段置信度 / 缺失状态、Human Confirmation 与图片安全边界。截图中的 ticker、shares 与 average cost 不能伪造成真实历史 BUY；Vision / OCR Provider 仍必须在 M9 实现前评估，不默认假设当前 LLM Adapter 支持图片。
+建立 `Text / Screenshot → Structured Import Draft → Asset Validation / Binding → Missing / Invalid / Confidence Review Signal → Human Confirmation → Deterministic Validation → Opening State Write` 流程。Recognition Confidence 只帮助用户定位需要复核的字段，不是 Portfolio Domain Truth，也不是独立 Write Gate；最终写入只接受用户确认后的确定字段。Confidence 高低均不能绕过或替代 Asset Binding、必填字段检查与 deterministic Domain Validation。原始图片默认不持久化，识别错误、缺失字段与 Provider Failure 必须可解释。
+
+Opening Import 复用 M8 已批准的一次性初始化 Command 与 Gate：只有尚无 Opening Position、Transaction、Cash Event 或 Reconciliation 时才允许最终写入。已有 Portfolio 的当前截图走独立 Position Reconciliation：用户确认后追加 immutable event，Replay 直接校准对应 `(canonical_symbol, position_type)` 的 Shares / Average Cost，不生成 BUY / SELL、不修改 Cash，截图中未出现的持仓保持不变。它不是 Broker Sync、自动 Diff 或持续同步。短 Spike 最终选择 Finnhub 与 Alibaba Model Studio `qwen3-vl-flash`，两者只通过各自的 Provider-neutral Boundary 接入；PositionPilot 不持久化图片，Model Studio 官方声明数据不用于训练，但未公开固定原图保留时长，UI 必须披露该限制。未经 Provider 验证或候选选择的 Browser Suggestion 以及 Recognition Confidence 均不能建立 Asset Binding。
+
+2026-09-10 扩展（已在 M9 Branch 实现）：删除“浏览图片”，缩略图打开大图；ticker 输入原位联想，取消独立搜索区；保存后可直接手工维护。当前持仓按 ticker 单行汇总，展开直接列 UNSPECIFIED 批次，其后为 SWING、LONG_TERM 分组，批次按购买时间排序。类型可逐批调整；BUY 成交事实通过更正记录修正；SELL 明确分配批次。保留交易和资金历史，旧测试数据不做兼容回填。M9 提供市值与未实现指标，按现有已记录费用计算并显示行情来源/时间；执行见 [M9 后续计划](docs/plans/m9-current-holdings-and-batch-editing.md)。
 
 **Non-goals**
 
 - 识别结果绕过确认直接写入；
 - 默认持久化原始图片，或把图片内容写入普通日志；
-- Broker Sync、自动 Reconciliation 或覆盖所有券商截图格式；
-- 从不完整图片推测缺失的 Ticker、Position Type、Shares 或 Cost Basis。
+- Broker Connection、外部账户持续同步、自动 Diff / Reconciliation、Conflict Resolution 或覆盖所有券商截图格式；
+- 从不完整图片推测缺失的 Ticker、Position Type、Shares 或 Cost Basis；
+- Transaction Screenshot Import；该能力依赖 M10 的 Transaction Cost 语义。
 
 **Done**
 
+* 短 Capability Spike 已选择 Finnhub 与 `qwen3-vl-flash`：Asset Provider 能完成 symbol / company name 搜索、exact validation，并具备足够的美股与 ETF 覆盖、交互查询额度、稳定性和可接受成本；Vision 支持图片输入与 Structured Output，PositionPilot 不持久化图片，Provider 未公开固定原图保留时长的限制已明确披露并经 Human Review 接受；
+* Ticker / 公司名称通过输入框联想返回 Provider 候选；选择或 exact validation 建立 Browser Binding，Confirm 沿用受信任本地 Binding，不重复调用 Provider；不建立本地完整 Asset Master；
 * Text 与受支持 Screenshot 均只能生成可审查的 Structured Import Draft；
-* 不确定、缺失与非法字段在写入前明确展示并阻止未确认导入；
-* Human Confirmation 后复用 deterministic Domain Validation，失败不产生部分 Portfolio State；
+* Recognition Confidence 只作为 Human Review Signal；缺失与非法字段必须修正，用户确认后的确定字段仍须通过 Asset Validation 与 deterministic Domain Validation；
+* Human Confirmation 后，未初始化 Portfolio 复用一次性 Opening State 写入；已有 Portfolio 可原子追加 Position Reconciliation，确定性校准目标 Shares / Average Cost，且不修改 Cash 或未出现的持仓；
+* Asset exact validation 明确区分 `VALID / INVALID / PROVIDER_UNAVAILABLE`；网络、timeout、429、5xx 与 Provider 异常不会误判为 invalid ticker，Provider 恢复后的 canonical match 仍需用户明确选择；
+* Screenshot Attachment Composer 支持选择文件、拖放、Cmd/Ctrl+V 粘贴、本地预览与移除；只有点击“开始识别”才上传；
 * Imported Opening Position 语义不冒充已知历史交易；Position Type 可缺省为 `UNSPECIFIED`，并保留 `LONG_TERM / SWING` 的独立语义；
-* 图片隐私、大小 / 类型限制、Provider Failure 与 Injection Boundary 有明确测试和文档；
+* 图片隐私、大小 / 类型限制与 Provider Failure 有明确测试和文档；Recognition 输出只作为 Structured Draft 数据，不进入 PositionPilot Agent 指令链路；
+* 缩略图可打开大图，无独立“浏览图片”按钮；保存截图后可无需上传再次手工维护，ticker 无独立搜索区；
+* 当前持仓树正确展示未分类直属批次、波段/长期分组与日期顺序；类型变更不改总成本、总股数、现金或过去交易分类；
+* BUY 建批次、SELL 按指定批次扣减、更正保留原事实并重放；完全卖出后历史仍保留；
+* 股数、均价、市值、未实现盈亏及百分比按批次到总体一致汇总；缺失行情不编造估值；
 * Human Acceptance 通过，并形成 `v1.1.0` Release。
 
-## M10 — Accounting & P&L
+## M10 — Transaction Import
 
 **Status:** NOT STARTED
 
 **Goal**
 
-先建立版本化、Broker-neutral 的 Fee Policy 基础，再提供语义明确且可确定计算的第一阶段 Accounting / P&L，形成 `v1.2.0`。
+在 M9 已确认的手工费用口径上提供可人工确认的 Transaction Text / Screenshot Import，形成 `v1.2.0`。
 
 **Scope**
 
-依赖顺序固定为 `Fee Policy → Cost Basis → Realized / Unrealized P&L → Return Metrics`。将当前唯一的 `IBKR_PRO_TIERED_US_2026_08` 演化为轻量 Fee Policy Contract / Registry，至少保留既有策略并评估 `ZERO_COMMISSION_US`；不为未来券商构建 Plugin System。Historical Transaction 永久保留创建时的 fee policy 与已持久化 fee，策略演进不得重算历史记录。
+Opening Position 与手工 BUY 的 `average_cost` 表示用户或券商报告的 all-in unit cost，不拆解或重新估算 Commission；手工 SELL 保存成交价与可选实际 Fee。Transaction Import 应保留截图能够明确提供的 execution price、shares、actual fee 与时间，不继续假设单一简化 IBKR Fee Schedule 能代表用户实际账单。
 
-第一阶段只提供 Current Market Value、Unrealized P&L、Unrealized Return 与 Realized P&L。Current Market Value 与未实现指标必须保留 Market Price source / timestamp；默认不扣除未来卖出手续费，除非届时批准了明确规则。`LONG_TERM / SWING` 必须先独立核算，才允许向 ticker 或 portfolio 层聚合。Fee Policy、持久化约束和历史重放校验的具体演进属于候选 ADR / Human Review 范围。
+复用 M9 的批次归属、卖出分配、交易更正与实际卖出费用输入。
+
+建立 `Transaction Text / Screenshot → Structured Transaction Draft → Asset / Field Validation → Human Confirmation → Atomic Ledger Write` 流程。Draft 至少明确 action、ticker、shares、execution price、actual fee、occurred_at 与可选 Position Type；缺失或无法区分的字段不得由模型猜测。Portfolio Position Screenshot 只能进入 M9 Opening State Flow，不能冒充历史 Transaction。
+
+现有 Historical Transaction 永久保留已经持久化的 fee schedule 与 commission，Migration 不得重算或改写既有经济结果。
+
+**Non-goals**
+
+- 识别结果绕过确认直接写入；
+- 将 Portfolio Avg Price 当成单笔 Transaction Execution Price；
+- 自动 Reconciliation、Partial Fill Matching 或完整 Broker Statement Import；
+- 通用 Fee Plugin Framework、未经证实的券商费率或改写历史费用；
+- 扩展 P&L 或账户 Return Metrics；M9 已提供当前估值，M11 增加已实现盈亏并完善核算。
+
+**Done**
+
+* BUY 含费平均成本与 SELL Execution Price / Actual Fee 语义明确且不可混淆；
+* Historical Transaction 的既有 fee schedule、commission 与 replay 结果保持不变；
+* 手工录入和受支持 Screenshot 均只能生成可审查、可编辑的 Structured Transaction Draft；
+* 缺失、低置信度、重复或非法字段在确认前被阻止，批量失败不产生部分 Ledger；
+* BUY / SELL、Fractional Shares、Actual Fee、backdated replay 与 `LONG_TERM / SWING` 具有边界测试；
+* Human Acceptance 通过，并形成 `v1.2.0` Release。
+
+## M11 — Accounting & P&L
+
+**Status:** NOT STARTED
+
+**Goal**
+
+基于 M10 已稳定的 Opening Average Cost 与 Transaction Cost 语义，提供第一阶段可确定计算的 Accounting / P&L，形成 `v1.3.0`。
+
+**Scope**
+
+在 M9 当前估值与 M10 实际费用基础上增加 Realized P&L，并完善 Current Market Value、Unrealized P&L 与 Unrealized Return；不重复建设 M9 批次模型。Current Market Value 与未实现指标必须保留 Market Price source / timestamp；默认不扣除未来卖出手续费，除非届时批准了明确规则。`LONG_TERM / SWING` 必须先独立核算，才允许向 ticker 或 portfolio 层聚合。
 
 **Non-goals**
 
 - 用 `current_value / cumulative_deposit - 1` 冒充完整 Portfolio Return；
 - TWR、MWR / XIRR、Return Curve 或 Daily Valuation History；
 - Dividend、Tax、Corporate Action、多币种或完整 Broker Statement Accounting；
-- 通用 Fee Plugin Framework、未经证实的券商费率或改写历史费用。
+- 改写 M10 已确认的历史成本或费用。
 
 **Done**
 
-* 至少两个明确、版本化的 Fee Policy 可独立测试，既有 IBKR Ledger 结果保持不变；
-* Historical Transaction 的 fee policy 与实际 fee 不因当前默认策略变化而改变；
 * Market Value 与 P&L 使用 Decimal、明确公式和结构化 Source / Timestamp；
 * Realized / Unrealized P&L 与 Unrealized Return 对 BUY、部分 / 全部 SELL、费用和 `LONG_TERM / SWING` 有边界测试；
+* Opening Position 与 Transaction Ledger 在已批准成本语义下能够一致重放；
 * 缺少或陈旧 Market Price 时不编造 Current Value / Unrealized Metrics，并给出明确状态；
-* Human Acceptance 通过，并形成 `v1.2.0` Release。
+* Human Acceptance 通过，并形成 `v1.3.0` Release。
 
-## M11 — Technical Context
+## M12 — Technical Context
 
 **Status:** NOT STARTED
 
 **Goal**
 
-在现有 Context Routing 与 Price History Tool 上增加按需使用的 deterministic Technical Context，形成 `v1.3.0`；不建设自动交易信号引擎。
+在现有 Context Routing 与 Price History Tool 上增加按需使用的 deterministic Technical Context，形成 `v1.4.0`；不建设自动交易信号引擎，也不把本 Milestone 单独描述为已解决整体 Answer Quality。
 
 **Scope**
 
 保持 `Question → Context Routing → Price History Tool → Deterministic Python Calculation → Structured Derived Facts → LLM Explanation`。初步评估 SMA20、SMA50、Distance to SMA20、Distance to SMA50，并保留现有 range / direction facts。只有问题需要趋势、位置或均线 Context 时才调用 Price History；LLM 只解释已提供事实，不负责指标计算。
 
-当前 Recent Price History 固定为最近 45 个日历日、最多 30 根 Daily Bars，不足以计算 SMA50；M11 必须在保留 completed-bar、freshness、adjustment、source / feed / timestamp 与 Provider Failure 语义的前提下扩展窗口。优先丰富现有 Price History Context，不为指标数量机械增加独立 Tool。
+当前 Recent Price History 固定为最近 45 个日历日、最多 30 根 Daily Bars，不足以计算 SMA50；M12 必须在保留 completed-bar、freshness、adjustment、source / feed / timestamp 与 Provider Failure 语义的前提下扩展窗口。优先丰富现有 Price History Context，不为指标数量机械增加独立 Tool。
 
 **Non-goals**
 
@@ -384,9 +433,6 @@ M9 复用 M8 已批准的 immutable Opening State 与一次性初始化 Command�
 * 与技术趋势无关的问题不机械调用 Price History，相关问题能够取得并解释 Structured Derived Facts；
 * Source Grounding 保留 Provider、Feed、Adjustment、Market Timestamp 与 Fetched At；
 * 指标不被表示为自动 BUY / SELL Signal；
-<<<<<<< Updated upstream
-* Human Acceptance 通过，并形成 `v1.3.0` Release。
-=======
 * Human Acceptance 通过，并形成 `v1.4.0` Release。
 
 ## M13 — Position-Aware Market Chart
@@ -448,7 +494,6 @@ TradingView Lightweight Charts 作为 Frontend Library 使用；其官方 Agent 
 - 是否需要更换 Model / Provider，且比较必须在相同 Memory、Tool 与 Answer Contract 下进行。
 
 只有上述范围通过 Human Review，并由固定 Evaluation 或真实 Failure Mode 证明最小方案后，才新增对应 Milestone、Plan、ADR 与 Release Mapping。Discovery 不预设 Vector Database、LangGraph、Multi-Agent 或不受控 General Browser。
->>>>>>> Stashed changes
 
 ## 5. V2 — Connected Product
 

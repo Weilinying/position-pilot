@@ -1,6 +1,6 @@
 # PositionPilot
 
-当前仓库已完成并通过 M8 Human Acceptance：Portfolio / Transaction Structured State、Current Quote、Price History、Recent News、SPY Market Context、Single Investment Agent 与 Local Portfolio Management 已形成 `v1.0.0` Local Self-Service MVP。Git Tag / GitHub Release 可在发布时单独创建。
+当前稳定基线为 [`v1.0.0`](https://github.com/Weilinying/position-pilot/tree/v1.0.0) Local Self-Service MVP。M8.1 Ask Composer UX 已通过 Human Acceptance 并进入 `main`，但暂不单独发布 `v1.0.1`；M9 Asset Identity、Portfolio Import、批次持仓与当前估值已在 `codex/m9-asset-identity-import` 分支完成实现，等待 Human Acceptance。相关改动记录在 [`CHANGELOG.md`](CHANGELOG.md) 的 `Unreleased` 部分。
 
 ## 前置条件
 
@@ -56,16 +56,22 @@ curl http://127.0.0.1:8000/health
 
 注册只需要 Display Name、Email 与 Password。Password 使用带随机 Salt 的 `scrypt` Hash 存入本地 PostgreSQL；Browser 只持有七天有效的 `HttpOnly + SameSite=Lax` Session Cookie，Database 只保存 Token Digest。登录成功会轮换当前 Browser Session；Logout、Session 过期或认证失败会清空当前页面的 Portfolio 与 Question Presentation State。M8 不提供 Email Verification、Password Reset、OAuth、MFA、Role / Permission 或远程 Session 管理。
 
-注册后进入一次性 Portfolio Setup。Initial Cash 默认是 `0`；Existing Positions 为可选批量输入，可记录开始跟踪前已经持有的 ticker、shares、average cost 与可选 Position Type。它们属于 immutable Opening State，不扣减现金、不产生交易 sequence，也不会伪造成历史 BUY。用户可以直接从零开始，并在第一笔 Opening Position、Transaction 或 Cash Event 之前稍后添加 Existing Positions；Text / Screenshot Recognition 仍属于 M9 `v1.1.0`。
+注册后进入一次性 Portfolio Setup。Initial Cash 默认是 `0`；Existing Positions 为可选批量输入，可记录开始跟踪前已经持有的 ticker、shares、average cost 与可选 Position Type。它们属于 immutable Opening State，不扣减现金、不产生交易 sequence，也不会伪造成历史 BUY。用户可以直接从零开始，并在第一笔 Opening Position、Transaction、Cash Event 或 Reconciliation 之前稍后添加 Existing Positions。M9 在同一 Opening State Gate 内提供 Manual Asset Search、Text Import 与 Screenshot Import；已有 Portfolio 可从当前截图生成 Position Reconciliation Draft。Recognition 只生成可编辑 Draft，最终字段必须经用户确认、Finnhub exact Asset Validation 与 deterministic Domain Validation。
 
 完成 Setup 后进入单一应用壳：左侧导航在 Decision Questions 与 Portfolio Workspace 之间切换。Question History 会保留当前浏览器标签页内的多个 Question / Answer 并支持跳转；它们不会写入 `localStorage`、不会跨刷新恢复，也不会作为下一次模型请求的 Conversation Memory。Ask Composer 支持按 Enter 提交、按 Shift+Enter 换行；输入法 composing、自动重复事件和请求进行中不会产生重复 Request，按钮提交仍复用同一标准 Form 路径。每次提问只发送当前 `question`，User Identity 由 Server Session 注入，并调用正式 `InvestmentAgent`；Answer 是默认视觉主体，Sources 默认折叠。Portfolio Workspace 将 Positions、Transactions 与 Cash Activity 分开，避免初始化、账本输入和问答堆在同一页面。
 
 页面支持：
 
 - 通过 HttpOnly Session 恢复当前 Account 与唯一 Portfolio；
-- 追加 BUY / SELL；Position Type 可留空并归一为 `UNSPECIFIED`，与 `LONG_TERM`、`SWING` 独立维护；
+- 在 ticker 输入框中通过 Finnhub 按 symbol / company name 获得联想候选，并选择 Provider 验证的 canonical symbol；
+- 从 Text 或最多两张 JPEG / PNG / WebP Screenshot 生成当前 Browser 生命周期内的可编辑 Opening Position Draft；
+- 通过统一 Attachment Composer 点击上传区、拖放或直接粘贴截图；缩略图可打开大图，点击“开始识别”后才上传；
+- 对已有导入汇总持仓追加 immutable Position Reconciliation，可直接手工校准 Shares / Average Cost，不要求再次上传，也不影响 Cash 或未出现的持仓；
+- 按 ticker 总体、UNSPECIFIED 批次、SWING 与 LONG_TERM 分组查看当前股数、均价、未实现盈亏、百分比和市场价值；
+- 追加 BUY / SELL；BUY 建立批次，SELL 明确分配批次，整个批次的 Position Type 可直接调整；
+- 通过不可变 BUY Correction 修正购买价格、原成交股数和时间，并保留原始交易记录；
 - 追加 DEPOSIT / WITHDRAWAL；
-- 分别查看完整的 Opening Position、Transaction 与 Cash Event 只读记录；
+- 查看完整 Transaction、BUY Correction 与 Cash Event 历史；
 - 在独立 Decision Questions 页面连续提交多个 Investment Question，并分别展示 Answer、`OK` / `DEGRADED` 和本轮 Context Sources；
 - 中文与英文一键切换；切换只改变本地展示文案与时间格式，不改写 Agent Answer 或 Provider Metadata。
 
@@ -87,7 +93,7 @@ M8 Authentication 只服务本地 Self-Service 闭环，不是完整公网 Accou
 
 ## Market Data
 
-M2 使用 Alpaca Market Data API v2 REST。Current Quote 来自实时 IEX feed，Historical Daily OHLCV 来自至少延迟 15 分钟的 SIP feed。调用方通过 Application Service 获取结构化结果；当前没有 Market Data REST endpoint。
+M2 使用 Alpaca Market Data API v2 REST。Current Quote 来自实时 IEX feed，Historical Daily OHLCV 来自至少延迟 15 分钟的 SIP feed。M9 通过 `GET /v1/portfolio/valuation` 返回当前 Portfolio 的 ticker、类型与批次估值；不暴露通用原始 Market Data REST endpoint。
 
 在本地 `.env` 配置 `ALPACA_API_KEY_ID` 与 `ALPACA_API_SECRET_KEY` 后，可显式运行真实 Provider smoke test：
 
@@ -96,6 +102,33 @@ RUN_ALPACA_ONLINE_TESTS=1 uv run pytest tests/integration/test_alpaca_market_dat
 ```
 
 默认测试不会访问 Alpaca。Provider 选择、数据覆盖限制和备选方案见 [`ADR 0004`](docs/adr/0004-alpaca-market-data-provider.md)。
+
+## Asset Identity 与 Opening Import
+
+M9 使用 Finnhub 进行美国股票 / ETF 的 symbol、company name 搜索与 Recognition 自动解析；Portfolio
+只保存本地 Browser Draft 已绑定的 canonical symbol，不维护本地完整 Asset Master。手工输入必须从
+Provider 候选中选择，Recognition symbol 仅在 exact validation 成功后自动绑定；Confirm 接受本地
+Browser 已绑定的 symbol，不重复调用 Finnhub，并继续执行确定性 Domain Validation。Screenshot Recognition
+使用 Alibaba Model Studio `qwen3-vl-flash`，图片只在当前 Browser / Request 内处理，PositionPilot
+不持久化图片、OCR 全文、Draft、Confidence 或 Provider Payload。图片会发送至 Alibaba Model
+Studio；Provider 官方声明数据不用于训练，但没有公开固定原图保留时长，因此界面不会宣称 Zero
+Retention。
+
+在本地 `.env` 配置 `FINNHUB_API_KEY`；Vision 可以配置独立 `VISION_API_KEY`，留空时复用
+`LLM_API_KEY`。真实 Provider Smoke 默认关闭，并且只读取显式导出的环境变量：
+
+```bash
+RUN_M9_ONLINE_TESTS=1 \
+FINNHUB_API_KEY=<local-secret> \
+VISION_API_KEY=<local-secret> \
+M9_VISION_FIXTURE_PATH=/absolute/path/to/non-sensitive-fixture.png \
+M9_VISION_EXPECTED_SYMBOL=NVDA \
+uv run pytest \
+  tests/integration/test_finnhub_asset_metadata_online.py \
+  tests/integration/test_aliyun_vision_online.py -s
+```
+
+不要把真实券商截图加入 Git。Provider 决策与隐私限制见 [`ADR 0010`](docs/adr/0010-m9-asset-and-vision-providers.md)。
 
 ## Investment Agent
 

@@ -1,7 +1,7 @@
 """Provider-neutral Market Data Schema 与确定性校验。"""
 
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal, DecimalException
 from enum import StrEnum
 
@@ -17,6 +17,7 @@ class MarketDataStatus(StrEnum):
     """Provider 调用的稳定结果状态。"""
 
     OK = "OK"
+    STALE = "STALE"
     NO_DATA = "NO_DATA"
     INVALID_SYMBOL = "INVALID_SYMBOL"
     INVALID_REQUEST = "INVALID_REQUEST"
@@ -24,6 +25,9 @@ class MarketDataStatus(StrEnum):
     RATE_LIMITED = "RATE_LIMITED"
     PROVIDER_UNAVAILABLE = "PROVIDER_UNAVAILABLE"
     INVALID_PROVIDER_RESPONSE = "INVALID_PROVIDER_RESPONSE"
+
+
+CURRENT_QUOTE_MAX_AGE = timedelta(days=7)
 
 
 class MarketDataCoverage(StrEnum):
@@ -148,6 +152,19 @@ class MarketQuote:
             "fetched_at",
             normalize_market_timestamp(self.fetched_at, field_name="fetched_at"),
         )
+
+
+def is_current_quote_fresh(
+    quote: MarketQuote,
+    *,
+    at: datetime,
+    max_age: timedelta = CURRENT_QUOTE_MAX_AGE,
+) -> bool:
+    """按市场成交时间判断当前报价是否仍可用于持仓估值。"""
+
+    checked_at = normalize_market_timestamp(at, field_name="quote freshness time")
+    age = checked_at - quote.last_trade_at
+    return timedelta(0) <= age <= max_age
 
 
 @dataclass(frozen=True, slots=True)

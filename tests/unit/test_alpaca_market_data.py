@@ -129,6 +129,70 @@ def test_missing_latest_trade_is_no_data_not_provider_failure() -> None:
     assert result.data is None
 
 
+def test_rejects_stale_latest_trade_even_when_snapshot_request_succeeds() -> None:
+    """HTTP 200 不能让超过七天的成交价进入当前估值。"""
+
+    transport = FakeJsonTransport(
+        [
+            JsonHttpResponse(
+                200,
+                {
+                    "latestTrade": {"p": 220.125, "t": "2026-08-14T11:59:59Z"},
+                    "latestQuote": None,
+                },
+            )
+        ]
+    )
+
+    result = make_provider(transport).get_current_quote("GOOG")
+
+    assert result.status is MarketDataStatus.STALE
+    assert result.data is None
+    assert result.message == "Alpaca latest trade 已超过 7 天"
+
+
+def test_accepts_latest_trade_at_seven_day_freshness_boundary() -> None:
+    """正好七个自然日的成交仍应覆盖周末与常见休市。"""
+
+    transport = FakeJsonTransport(
+        [
+            JsonHttpResponse(
+                200,
+                {
+                    "latestTrade": {"p": 220.125, "t": "2026-08-14T12:00:00Z"},
+                    "latestQuote": None,
+                },
+            )
+        ]
+    )
+
+    result = make_provider(transport).get_current_quote("GOOG")
+
+    assert result.status is MarketDataStatus.OK
+    assert result.data is not None
+
+
+def test_rejects_future_latest_trade_as_unusable() -> None:
+    """Provider 的未来成交时间不能作为当前价格进入估值。"""
+
+    transport = FakeJsonTransport(
+        [
+            JsonHttpResponse(
+                200,
+                {
+                    "latestTrade": {"p": 220.125, "t": "2026-08-21T12:00:01Z"},
+                    "latestQuote": None,
+                },
+            )
+        ]
+    )
+
+    result = make_provider(transport).get_current_quote("GOOG")
+
+    assert result.status is MarketDataStatus.INVALID_PROVIDER_RESPONSE
+    assert result.data is None
+
+
 def test_zero_quote_prices_are_treated_as_unavailable() -> None:
     """Alpaca 的浮点零值 Quote 应映射为可选空值而非非法响应。"""
 

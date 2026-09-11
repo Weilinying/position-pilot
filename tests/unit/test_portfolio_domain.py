@@ -15,9 +15,14 @@ from position_pilot.domain.errors import (
     InvalidPortfolioValue,
 )
 from position_pilot.domain.portfolio import (
+    BUY_COST_INCLUDED_FEE_SCHEDULE,
+    SELL_ACTUAL_FEE_SCHEDULE,
     CashEvent,
     CashEventType,
+    LotAllocation,
+    LotClassificationChange,
     OpeningPosition,
+    PositionReconciliation,
     PositionType,
     Transaction,
     TransactionAction,
@@ -61,8 +66,20 @@ def make_transaction(
         action=action,
         price=Decimal(price),
         shares=Decimal(shares),
+        fee=None,
         position_type=position_type,
         occurred_at=occurred_at,
+    )
+
+
+def make_allocation(transaction: Transaction, lot_id: UUID, shares: str) -> LotAllocation:
+    """创建与测试 SELL 对应的明确批次分配。"""
+
+    return LotAllocation.create(
+        user_id=USER_ID,
+        sell_transaction_id=transaction.id,
+        lot_id=lot_id,
+        shares=Decimal(shares),
     )
 
 
@@ -104,6 +121,29 @@ def make_opening_position(
     )
 
 
+def make_reconciliation(
+    *,
+    ticker: str = "GOOG",
+    target_shares: str = "4",
+    target_average_cost: str = "125",
+    position_type: PositionType | None = None,
+    confirmed_at: datetime = OCCURRED_AT,
+    user_id: UUID = USER_ID,
+) -> PositionReconciliation:
+    """创建固定 User 的持仓校准事件。"""
+
+    return PositionReconciliation.create(
+        user_id=user_id,
+        ticker=ticker,
+        target_shares=Decimal(target_shares),
+        target_average_cost=Decimal(target_average_cost),
+        position_type=position_type,
+        source="screenshot",
+        confirmed_at=confirmed_at,
+        broker="paper-broker",
+    )
+
+
 def test_transaction_amount_is_derived_and_not_a_create_input() -> None:
     """amount 与 commission 应只读派生，不能出现在 Transaction 写入参数中。"""
 
@@ -119,6 +159,61 @@ def test_transaction_amount_is_derived_and_not_a_create_input() -> None:
     assert "amount" not in signature(Transaction.create).parameters
     assert "commission" not in signature(Transaction.create).parameters
     assert calculate_amount(Decimal("220.5"), Decimal("0.45")) == Decimal("99.22500000")
+
+
+def test_new_buy_treats_price_as_average_cost_including_fees() -> None:
+    """新 BUY 的每股成本已经含费，不应再自动追加佣金。"""
+
+    transaction = Transaction.create(
+        user_id=USER_ID,
+        sequence=1,
+        ticker="GOOG",
+        action=TransactionAction.BUY,
+        price=Decimal("100.35"),
+        shares=Decimal("2"),
+        fee=Decimal("0"),
+        occurred_at=OCCURRED_AT,
+    )
+    state = rebuild_portfolio(make_user(), [transaction])
+
+    assert transaction.fee_schedule == BUY_COST_INCLUDED_FEE_SCHEDULE
+    assert transaction.commission == Decimal("0E-8")
+    assert state.cash.available_cash == Decimal("799.30000000")
+    assert state.lots[0].average_cost == Decimal("100.35000000")
+
+
+def test_new_sell_uses_actual_fee_for_net_cash_proceeds() -> None:
+    """新 SELL 应按用户提供的实际费用计算净现金收入。"""
+
+    buy = Transaction.create(
+        user_id=USER_ID,
+        sequence=1,
+        ticker="GOOG",
+        action=TransactionAction.BUY,
+        price=Decimal("100"),
+        shares=Decimal("2"),
+        fee=Decimal("0"),
+        occurred_at=OCCURRED_AT,
+    )
+    sell = Transaction.create(
+        user_id=USER_ID,
+        sequence=2,
+        ticker="GOOG",
+        action=TransactionAction.SELL,
+        price=Decimal("120"),
+        shares=Decimal("1"),
+        fee=Decimal("1.25"),
+        occurred_at=OCCURRED_AT,
+    )
+    state = rebuild_portfolio(
+        make_user(),
+        [buy, sell],
+        lot_allocations=[make_allocation(sell, buy.id, "1")],
+    )
+
+    assert sell.fee_schedule == SELL_ACTUAL_FEE_SCHEDULE
+    assert sell.commission == Decimal("1.25000000")
+    assert state.cash.available_cash == Decimal("918.75000000")
 
 
 def test_missing_position_type_is_explicitly_unspecified() -> None:
@@ -188,6 +283,117 @@ def test_replay_starts_from_opening_state_without_cash_impact() -> None:
     assert state.cash.available_cash == Decimal("500.00000000")
 
 
+def test_reconciliation_calibrates_position_without_cash_or_trade_effect() -> None:
+    """持仓校准应直接替换目标 Position，但不产生交易或现金变化。"""
+
+    opening_position = make_opening_position(shares="2", average_cost="100")
+    transaction = make_transaction(
+        sequence=1,
+        action=TransactionAction.BUY,
+        price="10",
+        shares="1",
+        occurred_at=datetime(2026, 8, 20, 10, 0, tzinfo=UTC),
+    )
+    reconciliation = make_reconciliation(
+        target_shares="7",
+        target_average_cost="130",
+        confirmed_at=datetime(2026, 8, 20, 12, 0, tzinfo=UTC),
+    )
+
+    state = rebuild_portfolio(
+        make_user("500"),
+        [transaction],
+        [],
+        [opening_position],
+        [reconciliation],
+    )
+
+    position = state.get_position("GOOG", PositionType.UNSPECIFIED)
+    assert position is not None
+    assert position.shares == Decimal("7.00000000")
+    assert position.average_cost == Decimal("130.00000000")
+    assert state.cash.available_cash == Decimal("489.90000000")
+    assert state.transaction_count == 1
+    assert state.reconciliation_count == 1
+
+
+def test_reconciliation_preserves_unmentioned_positions() -> None:
+    """校准只覆盖对应 Position Key，截图未出现的持仓必须保留。"""
+
+    opening_positions = [
+        make_opening_position(ticker="GOOG", shares="2"),
+        make_opening_position(ticker="MSFT", shares="3"),
+    ]
+    state = rebuild_portfolio(
+        make_user(),
+        [],
+        [],
+        opening_positions,
+        [make_reconciliation(ticker="GOOG", target_shares="5")],
+    )
+
+    goog = state.get_position("GOOG", PositionType.UNSPECIFIED)
+    msft = state.get_position("MSFT", PositionType.UNSPECIFIED)
+    assert goog is not None and goog.shares == Decimal("5.00000000")
+    assert msft is not None and msft.shares == Decimal("3.00000000")
+
+
+def test_reconciliation_preserves_confirmed_average_cost_without_round_trip_drift() -> None:
+    """校准均价不得经已量化 Cost Basis 反推后产生最小精度漂移。"""
+
+    state = rebuild_portfolio(
+        make_user(),
+        [],
+        [],
+        [],
+        [
+            make_reconciliation(
+                target_shares="0.3",
+                target_average_cost="100.12345678",
+            )
+        ],
+    )
+
+    position = state.get_position("GOOG", PositionType.UNSPECIFIED)
+    assert position is not None
+    assert position.shares == Decimal("0.30000000")
+    assert position.cost_basis == Decimal("30.03703703")
+    assert position.average_cost == Decimal("100.12345678")
+
+
+def test_reconciliation_is_applied_before_later_transaction() -> None:
+    """校准后的后续交易必须继续作用在目标状态上。"""
+
+    reconciliation = make_reconciliation(
+        target_shares="7",
+        target_average_cost="130",
+        confirmed_at=datetime(2026, 8, 20, 12, 0, tzinfo=UTC),
+    )
+    transaction = make_transaction(
+        sequence=1,
+        action=TransactionAction.SELL,
+        price="150",
+        shares="2",
+        position_type=PositionType.UNSPECIFIED,
+        occurred_at=datetime(2026, 8, 21, 12, 0, tzinfo=UTC),
+    )
+
+    state = rebuild_portfolio(
+        make_user(),
+        [transaction],
+        [],
+        [],
+        [reconciliation],
+        [make_allocation(transaction, reconciliation.id, "2")],
+    )
+
+    position = state.get_position("GOOG", PositionType.UNSPECIFIED)
+    assert position is not None
+    assert position.shares == Decimal("5.00000000")
+    assert position.average_cost == Decimal("130.00000000")
+    assert state.cash.available_cash == Decimal("1299.65000000")
+
+
 def test_three_position_types_remain_independent_during_replay() -> None:
     """同一 Ticker 的三类 Position Key 不得相互合并或提供 Shares。"""
 
@@ -196,19 +402,20 @@ def test_three_position_types_remain_independent_during_replay() -> None:
         make_opening_position(position_type=PositionType.SWING, shares="2"),
         make_opening_position(position_type=PositionType.UNSPECIFIED, shares="1"),
     ]
+    transaction = make_transaction(
+        sequence=1,
+        action=TransactionAction.SELL,
+        price="120",
+        shares="1",
+        position_type=PositionType.SWING,
+    )
     state = rebuild_portfolio(
         make_user(),
-        [
-            make_transaction(
-                sequence=1,
-                action=TransactionAction.SELL,
-                price="120",
-                shares="1",
-                position_type=PositionType.SWING,
-            )
-        ],
+        [transaction],
         [],
         opening_positions,
+        [],
+        [make_allocation(transaction, opening_positions[1].id, "1")],
     )
 
     long_term = state.get_position("GOOG", PositionType.LONG_TERM)
@@ -217,6 +424,58 @@ def test_three_position_types_remain_independent_during_replay() -> None:
     assert long_term is not None and long_term.shares == Decimal("3.00000000")
     assert swing is not None and swing.shares == Decimal("1.00000000")
     assert unspecified is not None and unspecified.shares == Decimal("1.00000000")
+
+
+def test_lot_classification_change_moves_only_current_batch() -> None:
+    """批次类型调整只移动该批剩余持仓，不改变现金或成本。"""
+
+    buy = make_transaction(
+        sequence=1,
+        action=TransactionAction.BUY,
+        price="10",
+        shares="5",
+        position_type=PositionType.UNSPECIFIED,
+    )
+    change = LotClassificationChange.create(
+        user_id=USER_ID,
+        lot_id=buy.id,
+        position_type=PositionType.SWING,
+        effective_at=datetime(2026, 8, 21, 12, 0, tzinfo=UTC),
+    )
+
+    state = rebuild_portfolio(
+        make_user(),
+        [buy],
+        lot_classification_changes=[change],
+    )
+
+    assert state.get_position("GOOG", PositionType.UNSPECIFIED) is None
+    swing = state.get_position("GOOG", PositionType.SWING)
+    assert swing is not None and swing.shares == Decimal("5.00000000")
+    assert swing.cost_basis == Decimal("50.35000000")
+    assert state.cash.available_cash == Decimal("949.65000000")
+    assert state.lots[0].id == buy.id
+    assert state.lots[0].position_type is PositionType.SWING
+
+
+def test_sell_allocation_releases_cost_from_selected_batch() -> None:
+    """指定批次卖出后，总体均价应由其他剩余批次重新计算。"""
+
+    first = make_transaction(sequence=1, action=TransactionAction.BUY, price="10", shares="2")
+    second = make_transaction(sequence=2, action=TransactionAction.BUY, price="20", shares="3")
+    sell = make_transaction(sequence=3, action=TransactionAction.SELL, price="25", shares="2")
+
+    state = rebuild_portfolio(
+        make_user(),
+        [first, second, sell],
+        lot_allocations=[make_allocation(sell, first.id, "2")],
+    )
+
+    position = state.get_position("GOOG", PositionType.LONG_TERM)
+    assert position is not None
+    assert position.shares == Decimal("3.00000000")
+    assert position.average_cost == Decimal("20.11666667")
+    assert [lot.id for lot in state.lots] == [second.id]
 
 
 def test_rejects_invalid_opening_state_owner_and_duplicate_key() -> None:
@@ -280,24 +539,23 @@ def test_rebuilds_weighted_average_cost_and_cash() -> None:
 def test_rebuilds_cash_adjustment_vertical_slice_to_1100() -> None:
     """Deposit、净交易现金流与 Withdrawal 应按实际时间稳定合并重放。"""
 
+    buy = make_transaction(
+        sequence=1,
+        action=TransactionAction.BUY,
+        price="594.05940594",
+        shares="0.5",
+        occurred_at=datetime(2026, 8, 21, 12, 0, tzinfo=UTC),
+    )
+    sell = make_transaction(
+        sequence=2,
+        action=TransactionAction.SELL,
+        price="404.04040404",
+        shares="0.25",
+        occurred_at=datetime(2026, 8, 22, 12, 0, tzinfo=UTC),
+    )
     state = rebuild_portfolio(
         make_user(),
-        [
-            make_transaction(
-                sequence=1,
-                action=TransactionAction.BUY,
-                price="594.05940594",
-                shares="0.5",
-                occurred_at=datetime(2026, 8, 21, 12, 0, tzinfo=UTC),
-            ),
-            make_transaction(
-                sequence=2,
-                action=TransactionAction.SELL,
-                price="404.04040404",
-                shares="0.25",
-                occurred_at=datetime(2026, 8, 22, 12, 0, tzinfo=UTC),
-            ),
-        ],
+        [buy, sell],
         [
             make_cash_event(
                 sequence=1,
@@ -312,6 +570,9 @@ def test_rebuilds_cash_adjustment_vertical_slice_to_1100() -> None:
                 occurred_at=datetime(2026, 8, 23, 12, 0, tzinfo=UTC),
             ),
         ],
+        [],
+        [],
+        [make_allocation(sell, buy.id, "0.25")],
     )
 
     position = state.get_position("GOOG", PositionType.LONG_TERM)
@@ -491,12 +752,12 @@ def test_long_term_and_swing_are_independent_for_same_ticker() -> None:
 def test_partial_sell_preserves_average_cost_and_updates_cash() -> None:
     """部分 SELL 只减少 Shares 与 Cost Basis，不改变剩余 Average Cost。"""
 
+    buy = make_transaction(sequence=1, action=TransactionAction.BUY, price="10", shares="10")
+    sell = make_transaction(sequence=2, action=TransactionAction.SELL, price="15", shares="4")
     state = rebuild_portfolio(
         make_user(),
-        [
-            make_transaction(sequence=1, action=TransactionAction.BUY, price="10", shares="10"),
-            make_transaction(sequence=2, action=TransactionAction.SELL, price="15", shares="4"),
-        ],
+        [buy, sell],
+        lot_allocations=[make_allocation(sell, buy.id, "4")],
     )
 
     position = state.get_position("GOOG", PositionType.LONG_TERM)
@@ -510,19 +771,19 @@ def test_partial_sell_preserves_average_cost_and_updates_cash() -> None:
 def test_full_sell_removes_only_matching_position() -> None:
     """全部 SELL 应移除目标仓位，但保留同 Ticker 的另一 Position Type。"""
 
+    long_buy = make_transaction(sequence=1, action=TransactionAction.BUY, price="10", shares="5")
+    swing_buy = make_transaction(
+        sequence=2,
+        action=TransactionAction.BUY,
+        price="10",
+        shares="3",
+        position_type=PositionType.SWING,
+    )
+    sell = make_transaction(sequence=3, action=TransactionAction.SELL, price="12", shares="5")
     state = rebuild_portfolio(
         make_user(),
-        [
-            make_transaction(sequence=1, action=TransactionAction.BUY, price="10", shares="5"),
-            make_transaction(
-                sequence=2,
-                action=TransactionAction.BUY,
-                price="10",
-                shares="3",
-                position_type=PositionType.SWING,
-            ),
-            make_transaction(sequence=3, action=TransactionAction.SELL, price="12", shares="5"),
-        ],
+        [long_buy, swing_buy, sell],
+        lot_allocations=[make_allocation(sell, long_buy.id, "5")],
     )
 
     assert state.get_position("GOOG", PositionType.LONG_TERM) is None
@@ -542,31 +803,44 @@ def test_buy_rejects_insufficient_cash() -> None:
     assert error.value.required == Decimal("120.35000000")
 
 
-def test_sell_rejects_oversell_for_matching_position_type() -> None:
-    """SELL 只能使用同 Position Type 的可用 Shares。"""
+def test_sell_rejects_oversell_for_allocated_lot() -> None:
+    """SELL 不得超过明确指定批次的剩余股数。"""
 
+    buy = make_transaction(
+        sequence=1,
+        action=TransactionAction.BUY,
+        price="10",
+        shares="5",
+        position_type=PositionType.SWING,
+    )
+    sell = make_transaction(
+        sequence=2,
+        action=TransactionAction.SELL,
+        price="12",
+        shares="6",
+        position_type=PositionType.SWING,
+    )
     with pytest.raises(InsufficientShares) as error:
         rebuild_portfolio(
             make_user(),
-            [
-                make_transaction(
-                    sequence=1,
-                    action=TransactionAction.BUY,
-                    price="10",
-                    shares="5",
-                    position_type=PositionType.SWING,
-                ),
-                make_transaction(
-                    sequence=2,
-                    action=TransactionAction.SELL,
-                    price="12",
-                    shares="1",
-                    position_type=PositionType.LONG_TERM,
-                ),
-            ],
+            [buy, sell],
+            lot_allocations=[make_allocation(sell, buy.id, "6")],
         )
 
-    assert error.value.available == Decimal("0")
+    assert error.value.available == Decimal("5.00000000")
+
+
+def test_lot_allocation_must_reference_a_sell_transaction() -> None:
+    """批次分配不能挂在 BUY 或不存在的交易上。"""
+
+    buy = make_transaction(sequence=1, action=TransactionAction.BUY, price="10", shares="5")
+
+    with pytest.raises(InvalidLedger, match="SELL Transaction"):
+        rebuild_portfolio(
+            make_user(),
+            [buy],
+            lot_allocations=[make_allocation(buy, buy.id, "1")],
+        )
 
 
 def test_rejects_more_than_eight_decimal_places() -> None:
