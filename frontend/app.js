@@ -299,6 +299,52 @@ Object.assign(translations.zh, {
 });
 
 Object.assign(translations.en, {
+  hero_summary: "Track the positions you own, record trades and cash activity, and ask focused questions using current portfolio and market context.",
+  proof_ledger: "Trade and cash history",
+  setup_eyebrow: "Portfolio setup",
+  setup_title: "Add your cash and current holdings.",
+  setup_summary: "Start with what you hold today, or begin with an empty portfolio.",
+  opening_positions: "Current holdings",
+  opening_optional_hint: "Optional. Add stocks you already own, or start with none.",
+  structured_state: "Portfolio",
+  portfolio_manage_title: "Current Portfolio",
+  current_portfolio: "Current Portfolio",
+  positions_count_label: "positions",
+  last_price: "Last",
+  time: "Time",
+  side: "Side",
+  status: "Status",
+  position_type: "Type",
+  buy: "Buy",
+  sell: "Sell",
+  buy_stock: "Buy stock",
+  sell_stock: "Sell stock",
+  import_action: "Import",
+  import_holdings: "Import holdings",
+  add_screenshot: "Add screenshot",
+  cash_action: "Deposit / Withdraw",
+  deposit: "Deposit",
+  withdrawal: "Withdrawal",
+  source_optional: "Source (optional)",
+  screenshot_privacy_short: "Sent to Alibaba Model Studio for recognition.",
+  edit_current: "Edit current",
+  add_holding: "Add holding",
+  save: "Save",
+  sell_from: "Sell from",
+  fee_calculated: "Fee is calculated automatically.",
+  buy_first_stock: "Buy your first stock",
+  edit_lot: "Edit lot",
+  price_cost: "Price / Cost",
+  edited: "Edited",
+  completed: "Completed",
+  details: "Details",
+  edit: "Edit",
+  current_values: "Current values",
+  original_values: "Original values",
+  edit_history: "Edit history",
+  edit_unavailable: "Editing is available for current buy lots.",
+  aggregate_edit_unavailable: "This type contains multiple lots. You can still change this lot's type.",
+  reconciliation_revalidate: "Verify tickers",
   holding_name: "Holding",
   unrealized_pnl: "Unrealized P&L",
   unrealized_pnl_percent: "P&L %",
@@ -321,6 +367,52 @@ Object.assign(translations.en, {
 });
 
 Object.assign(translations.zh, {
+  hero_summary: "记录当前持仓、交易和资金变化，并结合投资组合与市场信息提出具体问题。",
+  proof_ledger: "交易与资金历史",
+  setup_eyebrow: "投资组合设置",
+  setup_title: "添加现金和当前持仓",
+  setup_summary: "录入你现在持有的资产，也可以从空投资组合开始。",
+  opening_positions: "当前持仓",
+  opening_optional_hint: "可选。添加已经持有的股票，或暂时不添加。",
+  structured_state: "投资组合",
+  portfolio_manage_title: "当前持仓",
+  current_portfolio: "当前持仓",
+  positions_count_label: "个持仓",
+  last_price: "现价",
+  time: "时间",
+  side: "方向",
+  status: "状态",
+  position_type: "类型",
+  buy: "买入",
+  sell: "卖出",
+  buy_stock: "买入股票",
+  sell_stock: "卖出股票",
+  import_action: "导入",
+  import_holdings: "导入持仓",
+  add_screenshot: "添加截图",
+  cash_action: "入金 / 出金",
+  deposit: "入金",
+  withdrawal: "出金",
+  source_optional: "来源（可选）",
+  screenshot_privacy_short: "截图将发送至阿里云 Model Studio 识别。",
+  edit_current: "编辑当前持仓",
+  add_holding: "添加持仓",
+  save: "保存",
+  sell_from: "从以下批次卖出",
+  fee_calculated: "手续费由系统自动计算。",
+  buy_first_stock: "买入第一只股票",
+  edit_lot: "编辑批次",
+  price_cost: "价格 / 成本",
+  edited: "已编辑",
+  completed: "已完成",
+  details: "详情",
+  edit: "编辑",
+  current_values: "当前值",
+  original_values: "原始值",
+  edit_history: "编辑记录",
+  edit_unavailable: "目前仅支持编辑仍在持有的买入批次。",
+  aggregate_edit_unavailable: "这个类型包含多个批次；当前仍可修改此批次的持仓类型。",
+  reconciliation_revalidate: "验证标的",
   holding_name: "持仓",
   unrealized_pnl: "未实现盈亏",
   unrealized_pnl_percent: "盈亏 %",
@@ -372,6 +464,7 @@ const state = {
   pendingQuestionView: null,
   questionCount: 0,
   activeView: "chat",
+  selectedLot: null,
 };
 
 const DECIMAL_PATTERN = /^(?:0|[1-9]\d*)(?:\.\d{1,8})?$/;
@@ -452,12 +545,14 @@ const elements = {
   setupAccountName: byId("setup-account-name"), setupLogout: byId("setup-logout-button"), setupForm: byId("setup-form"), setupFields: byId("setup-fields"), setupCash: byId("setup-initial-cash"), setupRows: byId("setup-draft-rows"), setupAddRow: byId("setup-add-row"), setupZero: byId("setup-zero-button"), setupMessage: byId("setup-message"), setupImport: importElements("setup"),
   navChat: byId("nav-chat"), navPortfolio: byId("nav-portfolio"), newQuestion: byId("new-question-button"), chatView: byId("chat-view"), portfolioView: byId("portfolio-view"), viewTitle: byId("view-title"), viewEyebrow: byId("view-eyebrow"), portfolioState: byId("portfolio-state"), writeState: byId("write-state"), reloadPortfolio: byId("reload-portfolio-button"), accountName: byId("account-display-name"), accountEmail: byId("account-email"), headerAccountName: byId("header-account-name"), headerAccountInitial: byId("header-account-initial"), accountMessage: byId("account-message"), logout: byId("logout-button"), headerLogout: byId("header-logout-button"),
   chatIntro: byId("chat-intro"), conversationScroll: byId("conversation-scroll"), conversationList: byId("conversation-list"), sessionEmpty: byId("session-empty"), sessionList: byId("session-list"), questionForm: byId("question-form"), question: byId("question"), questionHint: byId("question-hint"), ask: byId("ask-button"), responseTemplate: byId("assistant-response-template"),
-  portfolioTabs: [byId("portfolio-tab-overview"), byId("portfolio-tab-trade"), byId("portfolio-tab-cash")], portfolioPanels: [byId("portfolio-overview-panel"), byId("portfolio-trade-panel"), byId("portfolio-cash-panel")], availableCash: byId("available-cash"), positionCount: byId("position-count"), positionsEmpty: byId("positions-empty"), positionList: byId("position-list"),
-  openingSetup: byId("opening-setup"), reopenOpening: byId("reopen-opening-setup"), openingForm: byId("opening-form"), openingFields: byId("opening-fields"), openingRows: byId("opening-draft-rows"), addOpeningRow: byId("add-opening-row"), skipOpening: byId("skip-opening-setup"), openingMessage: byId("opening-message"), openingImport: importElements("opening"), reconciliationCard: byId("position-reconciliation"), reconciliationForm: byId("reconciliation-form"), reconciliationFields: byId("reconciliation-fields"), reconciliationRows: byId("reconciliation-draft-rows"), reconciliationBroker: byId("reconciliation-broker"), reconciliationLoadCurrent: byId("reconciliation-load-current"), reconciliationRevalidate: byId("reconciliation-revalidate"), reconciliationSubmit: byId("reconciliation-submit"), reconciliationMessage: byId("reconciliation-message"), reconciliationImport: importElements("reconciliation"),
-  tradeForm: byId("trade-form"), tradeFields: byId("trade-fields"), tradeAction: byId("trade-action"), tradeType: byId("trade-position-type"), tradeTicker: byId("trade-ticker"), tradePrice: byId("trade-price"), tradeShares: byId("trade-shares"), tradeTime: byId("trade-occurred-at"), tradeReason: byId("trade-reason"), tradeMessage: byId("trade-message"), tradeLotAllocation: byId("trade-lot-allocation"), tradeLotList: byId("trade-lot-list"), transactionCount: byId("transaction-count"), transactionsEmpty: byId("transactions-empty"), transactionList: byId("transaction-list"),
-  cashForm: byId("cash-form"), cashFields: byId("cash-fields"), cashType: byId("cash-event-type"), cashAmount: byId("cash-amount"), cashTime: byId("cash-occurred-at"), cashReason: byId("cash-reason"), cashMessage: byId("cash-message"), cashCount: byId("cash-event-count"), cashEmpty: byId("cash-events-empty"), cashList: byId("cash-event-list"),
+  portfolioTabs: [], portfolioPanels: [], availableCash: byId("available-cash"), positionCount: byId("position-count"), positionsEmpty: byId("positions-empty"), positionList: byId("position-list"), emptyBuy: byId("empty-buy-button"), openBuy: byId("open-buy-dialog"), openImport: byId("open-import-dialog"), openCash: byId("open-cash-dialog"),
+  openingSetup: byId("opening-setup"), reopenOpening: byId("reopen-opening-setup"), openingForm: byId("opening-form"), openingFields: byId("opening-fields"), openingRows: byId("opening-draft-rows"), addOpeningRow: byId("add-opening-row"), skipOpening: byId("skip-opening-setup"), openingMessage: byId("opening-message"), openingImport: importElements("opening"), reconciliationCard: byId("position-reconciliation"), reconciliationForm: byId("reconciliation-form"), reconciliationFields: byId("reconciliation-fields"), reconciliationRows: byId("reconciliation-draft-rows"), reconciliationBroker: byId("reconciliation-broker"), reconciliationAddRow: byId("reconciliation-add-row"), reconciliationLoadCurrent: byId("reconciliation-load-current"), reconciliationRevalidate: byId("reconciliation-revalidate"), reconciliationSubmit: byId("reconciliation-submit"), reconciliationMessage: byId("reconciliation-message"), reconciliationImport: importElements("reconciliation"),
+  tradeDialog: byId("trade-dialog"), tradeDialogTitle: byId("trade-dialog-title"), tradeDialogClose: byId("trade-dialog-close"), tradeBuyMode: byId("trade-buy-mode"), tradeSellMode: byId("trade-sell-mode"), tradeForm: byId("trade-form"), tradeFields: byId("trade-fields"), tradeAction: byId("trade-action"), tradeType: byId("trade-position-type"), tradeTicker: byId("trade-ticker"), tradePrice: byId("trade-price"), tradeShares: byId("trade-shares"), tradeTime: byId("trade-occurred-at"), tradeReason: byId("trade-reason"), tradeMessage: byId("trade-message"), tradeLotAllocation: byId("trade-lot-allocation"), tradeLotList: byId("trade-lot-list"), transactionCount: byId("transaction-count"), transactionsEmpty: byId("transactions-empty"), transactionList: byId("transaction-list"),
+  cashDialog: byId("cash-dialog"), cashDialogClose: byId("cash-dialog-close"), cashForm: byId("cash-form"), cashFields: byId("cash-fields"), cashType: byId("cash-event-type"), cashAmount: byId("cash-amount"), cashTime: byId("cash-occurred-at"), cashReason: byId("cash-reason"), cashMessage: byId("cash-message"), cashCount: byId("cash-event-count"), cashEmpty: byId("cash-events-empty"), cashList: byId("cash-event-list"),
+  importDialog: byId("import-dialog"), importDialogClose: byId("import-dialog-close"),
   imagePreviewDialog: byId("image-preview-dialog"), imagePreviewClose: byId("image-preview-close"), imagePreviewFull: byId("image-preview-full"), imagePreviewCaption: byId("image-preview-caption"),
-  correctionDialog: byId("buy-correction-dialog"), correctionForm: byId("buy-correction-form"), correctionClose: byId("buy-correction-close"), correctionLotId: byId("buy-correction-lot-id"), correctionPrice: byId("buy-correction-price"), correctionShares: byId("buy-correction-shares"), correctionTime: byId("buy-correction-time"), correctionReason: byId("buy-correction-reason"), correctionMessage: byId("buy-correction-message"),
+  correctionDialog: byId("buy-correction-dialog"), correctionForm: byId("buy-correction-form"), correctionClose: byId("buy-correction-close"), correctionLotId: byId("buy-correction-lot-id"), correctionSymbol: byId("buy-correction-symbol"), correctionPrice: byId("buy-correction-price"), correctionShares: byId("buy-correction-shares"), correctionTime: byId("buy-correction-time"), correctionType: byId("buy-correction-type"), correctionReason: byId("buy-correction-reason"), correctionMessage: byId("buy-correction-message"),
+  transactionDetailDialog: byId("transaction-detail-dialog"), transactionDetailTitle: byId("transaction-detail-title"), transactionDetailSubtitle: byId("transaction-detail-subtitle"), transactionDetailContent: byId("transaction-detail-content"), transactionDetailActions: byId("transaction-detail-actions"), transactionDetailClose: byId("transaction-detail-close"),
 };
 
 const importConfigs = [
@@ -1439,10 +1534,14 @@ function updateControls() {
   elements.setupLogout.disabled = writeBusy || authBusy;
   elements.setupFields.disabled = authBusy || readBusy || state.writeState !== "idle" || state.importPending;
   elements.reloadPortfolio.disabled = busy;
+  for (const control of [elements.openBuy, elements.emptyBuy, elements.openImport, elements.openCash]) {
+    if (control) control.disabled = busy || !contextReady;
+  }
   elements.tradeFields.disabled = busy || !contextReady;
   elements.cashFields.disabled = busy || !contextReady;
   elements.openingFields.disabled = busy || !contextReady;
   elements.reconciliationFields.disabled = authBusy || readBusy || writeBusy || !contextReady;
+  elements.reconciliationAddRow.disabled = busy || !contextReady;
   elements.reconciliationLoadCurrent.disabled = authBusy || readBusy || writeBusy || !contextReady;
   elements.reconciliationRevalidate.disabled = busy || !contextReady;
   elements.reconciliationSubmit.disabled = busy || !contextReady;
@@ -1707,16 +1806,17 @@ function metricText(metrics, field, fallback = null) {
   return formatDecimal(value);
 }
 
-function createHoldingRow({ label, note = null, metrics, fallback, level, toggle = null, lot = null }) {
-  const row = makeElement(toggle ? "button" : "div", `holding-row holding-level-${level}`);
-  if (toggle) {
-    row.type = "button";
-    row.classList.add("holding-toggle");
-    row.setAttribute("aria-expanded", "false");
-  }
+function createHoldingRow({ label, note = null, metrics, fallback, level, toggle = null, lot = null, ticker = null, currentPrice = null }) {
+  const row = makeElement("div", `holding-row holding-level-${level}`);
+  if (toggle) row.setAttribute("aria-expanded", "false");
   const identity = makeElement("span", "holding-identity");
-  if (toggle) identity.append(makeElement("span", "holding-caret", "›"));
-  identity.append(makeElement("strong", "", label));
+  if (toggle) {
+    const disclosure = makeElement("button", "holding-disclosure");
+    disclosure.type = "button";
+    disclosure.setAttribute("aria-expanded", "false");
+    disclosure.append(makeElement("span", "holding-caret", "›"), makeElement("strong", "", label));
+    identity.append(disclosure);
+  } else identity.append(makeElement("strong", "", label));
   if (note) identity.append(makeElement("small", "holding-note", note));
   if (lot) {
     const selector = makeElement("select", "lot-type-select");
@@ -1734,28 +1834,36 @@ function createHoldingRow({ label, note = null, metrics, fallback, level, toggle
       changeLotType(lot.id, selector.value, selector);
     });
     identity.append(selector);
-    if (lot.source === "BUY") {
-      const edit = makeElement("button", "lot-edit-button", "✎");
-      edit.type = "button";
-      edit.setAttribute("aria-label", translate("edit_purchase"));
-      edit.title = translate("edit_purchase");
-      edit.addEventListener("click", () => openBuyCorrection(lot));
-      identity.append(edit);
-      row.addEventListener("dblclick", () => openBuyCorrection(lot));
-    }
+    row.addEventListener("dblclick", () => openBuyCorrection(lot));
   }
   const values = [
     metricText(metrics, "shares", fallback?.shares),
     metricText(metrics, "average_cost", fallback?.average_cost),
+    currentPrice === null || currentPrice === undefined ? "—" : formatMoney(currentPrice),
     metricText(metrics, "unrealized_pnl"),
     metricText(metrics, "unrealized_pnl_percent"),
     metricText(metrics, "market_value"),
   ];
-  row.append(identity, ...values.map((value) => makeElement("span", "holding-number", value)));
+  const actions = makeElement("span", "holding-actions");
+  if (ticker && level === 0) {
+    for (const [action, key] of [["BUY", "buy"], ["SELL", "sell"]]) {
+      const button = makeElement("button", "row-action", translate(key));
+      button.type = "button";
+      button.addEventListener("click", (event) => { event.stopPropagation(); openTradeDialog(action, ticker); });
+      actions.append(button);
+    }
+  } else if (lot) {
+    const edit = makeElement("button", "lot-menu-button", "···");
+    edit.type = "button";
+    edit.setAttribute("aria-label", translate("edit_lot"));
+    edit.addEventListener("click", (event) => { event.stopPropagation(); openBuyCorrection(lot); });
+    actions.append(edit);
+  }
+  row.append(identity, ...values.map((value) => makeElement("span", "holding-number", value)), actions);
   if (metrics?.unrealized_pnl !== undefined) {
     const tone = Number(metrics.unrealized_pnl) > 0 ? "positive" : Number(metrics.unrealized_pnl) < 0 ? "negative" : "neutral";
-    row.children[3].dataset.tone = tone;
     row.children[4].dataset.tone = tone;
+    row.children[5].dataset.tone = tone;
   }
   return row;
 }
@@ -1780,77 +1888,99 @@ function toLocalDateTimeValue(value) {
 }
 
 function openBuyCorrection(lot) {
+  state.selectedLot = lot;
   elements.correctionLotId.value = lot.id;
-  elements.correctionPrice.value = lot.entry_price ?? "";
-  elements.correctionShares.value = lot.acquired_shares;
+  elements.correctionSymbol.textContent = lot.ticker;
+  elements.correctionPrice.value = lot.entry_price ?? lot.average_cost;
+  elements.correctionShares.value = lot.source === "BUY" ? lot.acquired_shares : lot.remaining_shares;
   const localTime = toLocalDateTimeValue(lot.purchased_at);
   elements.correctionTime.value = localTime;
+  elements.correctionTime.disabled = lot.source !== "BUY";
   elements.correctionTime.dataset.originalIso = lot.purchased_at;
   elements.correctionTime.dataset.originalLocalValue = localTime;
+  elements.correctionType.value = lot.position_type;
   elements.correctionReason.value = "";
   clearMessage(elements.correctionMessage);
+  const sameTypeLots = (state.snapshot?.lots ?? []).filter((item) => item.ticker === lot.ticker && item.position_type === lot.position_type);
+  const aggregateFieldsLocked = lot.source !== "BUY" && sameTypeLots.length > 1;
+  elements.correctionShares.disabled = aggregateFieldsLocked;
+  elements.correctionPrice.disabled = aggregateFieldsLocked;
+  if (aggregateFieldsLocked) setMessage(elements.correctionMessage, "aggregate_edit_unavailable", "neutral");
   elements.correctionDialog.showModal();
-  elements.correctionPrice.focus();
+  (aggregateFieldsLocked ? elements.correctionType : elements.correctionShares).focus();
 }
 
 async function handleBuyCorrection(event) {
   event.preventDefault();
+  const lot = state.selectedLot;
+  if (!lot) return;
   clearFieldErrors(elements.correctionForm);
   const price = validateRequiredPositive(elements.correctionPrice);
   const shares = validateRequiredPositive(elements.correctionShares);
-  const occurredAt = elements.correctionTime.value === elements.correctionTime.dataset.originalLocalValue
+  const occurredAt = lot.source === "BUY" ? (elements.correctionTime.value === elements.correctionTime.dataset.originalLocalValue
     ? elements.correctionTime.dataset.originalIso
-    : localDateTimeToIso(elements.correctionTime);
-  if (!price || !shares || !occurredAt) {
-    if (!occurredAt) showFieldError(elements.correctionTime, "invalid_form");
+    : localDateTimeToIso(elements.correctionTime)) : null;
+  if (!price || !shares || (lot.source === "BUY" && !occurredAt)) {
+    if (lot.source === "BUY" && !occurredAt) showFieldError(elements.correctionTime, "invalid_form");
     setMessage(elements.correctionMessage, "invalid_form");
     return;
   }
-  const payload = { price, shares, occurred_at: occurredAt };
-  if (elements.correctionReason.value.trim()) payload.reason = elements.correctionReason.value.trim();
-  const saved = await runMutation({
-    url: `/v1/portfolio/lots/${elements.correctionLotId.value}/correction`,
-    payload,
-    messageElement: elements.correctionMessage,
-    successKey: "correction_saved",
-    recordId: (result) => result.correction_id,
-  });
-  if (saved) elements.correctionDialog.close();
+  const typeChanged = elements.correctionType.value !== lot.position_type;
+  let saved = true;
+  if (lot.source === "BUY") {
+    const detailsChanged = price !== String(lot.entry_price) || shares !== String(lot.acquired_shares)
+      || occurredAt !== lot.purchased_at || elements.correctionReason.value.trim();
+    if (detailsChanged) {
+      const payload = { price, shares, occurred_at: occurredAt };
+      if (elements.correctionReason.value.trim()) payload.reason = elements.correctionReason.value.trim();
+      saved = await runMutation({ url: `/v1/portfolio/lots/${lot.id}/correction`, payload, messageElement: elements.correctionMessage, successKey: "correction_saved", recordId: (result) => result.correction_id });
+    }
+  } else {
+    const dataChanged = !elements.correctionShares.disabled && (price !== String(lot.average_cost) || shares !== String(lot.remaining_shares));
+    let editableLotId = lot.id;
+    if (dataChanged) {
+      const payload = { positions: [{ ticker: lot.ticker, target_shares: shares, target_average_cost: price, position_type: elements.correctionType.value }], source: "MANUAL" };
+      payload.positions[0].position_type = lot.position_type;
+      const result = await runMutation({ url: "/v1/portfolio/reconciliations", payload, messageElement: elements.correctionMessage, successKey: "correction_saved", recordId: (value) => value.reconciliations?.[0]?.id });
+      saved = Boolean(result);
+      if (result) editableLotId = result.reconciliations?.[0]?.id ?? editableLotId;
+    }
+    if (saved && typeChanged) saved = Boolean(await runMutation({ url: `/v1/portfolio/lots/${editableLotId}/classification`, payload: { position_type: elements.correctionType.value }, messageElement: elements.correctionMessage, successKey: "lot_type_saved", recordId: (result) => result.lot_id }));
+  }
+  if (saved && lot.source === "BUY" && typeChanged) saved = await runMutation({ url: `/v1/portfolio/lots/${lot.id}/classification`, payload: { position_type: elements.correctionType.value }, messageElement: elements.correctionMessage, successKey: "lot_type_saved", recordId: (result) => result.lot_id });
+  if (saved) { state.selectedLot = null; elements.correctionDialog.close(); }
 }
 
 function createHoldingTree(ticker) {
   const valuation = state.valuation?.tickers?.find((item) => item.ticker === ticker) ?? null;
   const lots = (state.snapshot?.lots ?? []).filter((lot) => lot.ticker === ticker);
   const positions = (state.snapshot?.positions ?? []).filter((position) => position.ticker === ticker);
-  const fallback = {
-    shares: lots.reduce((total, lot) => total + Number(lot.remaining_shares), 0),
-    average_cost: positions.reduce((total, position) => total + Number(position.cost_basis), 0)
-      / lots.reduce((total, lot) => total + Number(lot.remaining_shares), 0),
-  };
+  const totalShares = lots.reduce((total, lot) => total + Number(lot.remaining_shares), 0);
+  const fallback = { shares: totalShares, average_cost: totalShares ? positions.reduce((total, position) => total + Number(position.cost_basis), 0) / totalShares : 0 };
   const group = makeElement("section", "holding-group");
   group.dataset.ticker = ticker;
   const details = makeElement("div", "holding-details");
   details.hidden = true;
-  const quoteNote = valuation?.current_price
-    ? `${formatMoney(valuation.current_price)} · ${valuation.source}/${valuation.feed} · ${formatTimestamp(valuation.last_trade_at)}${valuation.is_delayed ? " · delayed" : ""}`
-    : valuation?.message ?? translate("valuation_unavailable");
-  const header = createHoldingRow({ label: ticker, note: quoteNote, metrics: valuation?.metrics, fallback, level: 0, toggle: true });
-  header.addEventListener("click", () => {
+  const header = createHoldingRow({ label: ticker, metrics: valuation?.metrics, fallback, level: 0, toggle: true, ticker, currentPrice: valuation?.current_price });
+  const toggleDetails = () => {
     const expanded = header.getAttribute("aria-expanded") !== "true";
     header.setAttribute("aria-expanded", String(expanded));
+    header.querySelector(".holding-disclosure").setAttribute("aria-expanded", String(expanded));
     details.hidden = !expanded;
-  });
+  };
+  header.querySelector(".holding-disclosure").addEventListener("click", (event) => { event.stopPropagation(); toggleDetails(); });
+  header.addEventListener("click", (event) => { if (!event.target.closest("button, select")) toggleDetails(); });
   const lotValuations = new Map((valuation?.lots ?? []).map((item) => [item.lot_id, item.metrics]));
   const typeValuations = new Map((valuation?.position_types ?? []).map((item) => [item.position_type, item.metrics]));
   const appendLot = (lot) => {
-    const time = lot.purchased_at ? formatTimestamp(lot.purchased_at) : translate("not_provided");
-    const source = lot.source === "BUY" ? time : `${translate("imported_holding")} · ${time}`;
+    const time = lot.purchased_at ? new Intl.DateTimeFormat(state.language === "zh" ? "zh-CN" : "en-US", { month: "2-digit", day: "2-digit" }).format(new Date(lot.purchased_at)) : "—";
     details.append(createHoldingRow({
-      label: source,
+      label: time,
       metrics: lotValuations.get(lot.id),
       fallback: { shares: lot.remaining_shares, average_cost: lot.average_cost },
       level: 2,
       lot,
+      currentPrice: valuation?.current_price,
     }));
   };
   const sortedLots = [...lots].sort((left, right) => {
@@ -1863,38 +1993,91 @@ function createHoldingTree(ticker) {
     const typeLots = sortedLots.filter((lot) => lot.position_type === type);
     if (!typeLots.length) continue;
     const position = positions.find((item) => item.position_type === type);
-    details.append(createHoldingRow({ label: translate(key), metrics: typeValuations.get(type), fallback: position, level: 1 }));
+    details.append(createHoldingRow({ label: translate(key), metrics: typeValuations.get(type), fallback: position, level: 1, currentPrice: valuation?.current_price }));
     typeLots.forEach(appendLot);
   }
   group.append(header, details);
   return group;
 }
 
-function createRecordCard(title, badgeText, facts) {
-  const card = makeElement("article", "record-card");
-  const heading = makeElement("div", "position-card-heading");
-  heading.append(makeElement("strong", "", title));
-  if (badgeText) {
-    const badge = makeElement("span", "position-type", badgeText === "UNSPECIFIED" ? translate("unspecified") : badgeText);
-    if (badgeText === "UNSPECIFIED") badge.dataset.i18n = "unspecified";
-    heading.append(badge);
-  }
-  card.append(heading, createFactList(facts));
-  return card;
+function latestCorrection(transactionId) {
+  return [...state.buyCorrectionRecords]
+    .filter((item) => item.transaction_id === transactionId)
+    .sort((left, right) => String(right.corrected_at).localeCompare(String(left.corrected_at)))[0] ?? null;
 }
 
-function renderRecordCollection(list, empty, count, records, factory) {
-  clearElement(list);
-  count.textContent = String(records.length);
-  empty.hidden = records.length > 0;
-  for (const record of records) list.append(factory(record));
+function effectiveTransaction(record) {
+  const correction = latestCorrection(record.id);
+  return correction ? { ...record, price: correction.price, shares: correction.shares, occurred_at: correction.occurred_at, reason: correction.reason, edited: true } : { ...record, edited: false };
+}
+
+function historyDate(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+  return new Intl.DateTimeFormat(state.language === "zh" ? "zh-CN" : "en-US", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false }).format(date);
+}
+
+function openTransactionDetail(record, kind) {
+  const isTrade = kind === "trade";
+  const effective = isTrade ? effectiveTransaction(record) : record;
+  elements.transactionDetailTitle.textContent = isTrade ? `${effective.ticker} · ${effective.action}` : translate(record.event_type === "DEPOSIT" ? "deposit" : "withdrawal");
+  elements.transactionDetailSubtitle.textContent = formatTimestamp(effective.occurred_at);
+  clearElement(elements.transactionDetailContent);
+  const facts = isTrade
+    ? [["shares", effective.shares, "decimal"], ["price", effective.price, "decimal"], ["commission", effective.commission, "decimal"], ["position_type", effective.position_type === "UNSPECIFIED" ? translate("unspecified") : effective.position_type], ["reason", effective.reason]]
+    : [["amount", effective.amount, "decimal"], ["reason", effective.reason]];
+  elements.transactionDetailContent.append(createFactList(facts));
+  if (isTrade && effective.edited) {
+    const original = makeElement("details", "correction-history");
+    const summary = makeElement("summary", "", translate("edit_history"));
+    original.append(summary);
+    const versions = [
+      { label: translate("original_values"), value: record, changedAt: null },
+      ...state.buyCorrectionRecords.filter((item) => item.transaction_id === record.id).sort((left, right) => String(left.corrected_at).localeCompare(String(right.corrected_at))).map((item) => ({ label: translate("edited"), value: item, changedAt: item.corrected_at })),
+    ];
+    for (const version of versions) {
+      const block = makeElement("section", "correction-version");
+      const label = version.changedAt ? `${version.label} · ${formatTimestamp(version.changedAt)}` : version.label;
+      block.append(makeElement("strong", "", label), createFactList([["shares", version.value.shares, "decimal"], ["price", version.value.price, "decimal"], ["occurred_at", version.value.occurred_at, "timestamp"], ["reason", version.value.reason]]));
+      original.append(block);
+    }
+    elements.transactionDetailContent.append(original);
+  }
+  clearElement(elements.transactionDetailActions);
+  const lot = isTrade && effective.action === "BUY" ? (state.snapshot?.lots ?? []).find((item) => item.id === record.id) : null;
+  if (lot) {
+    const edit = makeElement("button", "primary-button compact-button", translate("edit"));
+    edit.type = "button";
+    edit.addEventListener("click", () => { elements.transactionDetailDialog.close(); openBuyCorrection(lot); });
+    elements.transactionDetailActions.append(edit);
+  } else if (isTrade) elements.transactionDetailActions.append(makeElement("small", "muted-note", translate("edit_unavailable")));
+  elements.transactionDetailDialog.showModal();
+}
+
+function createHistoryRow(record, kind) {
+  const isTrade = kind === "trade";
+  const effective = isTrade ? effectiveTransaction(record) : record;
+  const row = makeElement("button", "history-row");
+  row.type = "button";
+  const side = isTrade ? effective.action : translate(effective.event_type === "DEPOSIT" ? "deposit" : "withdrawal");
+  const status = isTrade && effective.edited ? translate("edited") : translate("completed");
+  row.append(
+    makeElement("span", "history-time", historyDate(effective.occurred_at)),
+    makeElement("strong", "history-ticker", isTrade ? effective.ticker : "USD"),
+    makeElement("span", `history-side ${isTrade ? effective.action.toLowerCase() : effective.event_type.toLowerCase()}`, side),
+    makeElement("span", "history-number", isTrade ? formatDecimal(effective.shares) : "—"),
+    makeElement("span", "history-number", formatMoney(isTrade ? effective.price : effective.amount)),
+    makeElement("span", "history-number", isTrade ? formatMoney(effective.commission) : "—"),
+    makeElement("span", "history-type", isTrade ? (effective.position_type === "UNSPECIFIED" ? translate("unspecified") : effective.position_type) : "CASH"),
+    makeElement("span", `history-status ${effective.edited ? "is-edited" : ""}`, status),
+  );
+  row.addEventListener("click", () => openTransactionDetail(record, kind));
+  return row;
 }
 
 function renderOpeningAvailability() {
-  const eligible = state.openingRecords.length === 0 && state.reconciliationRecords.length === 0 && state.transactionRecords.length === 0 && state.cashRecords.length === 0;
-  elements.openingSetup.hidden = !eligible || state.openingDismissed;
-  elements.reopenOpening.hidden = !eligible || !state.openingDismissed;
-  if (eligible && !state.openingDismissed && elements.openingRows.childElementCount === 0) createOpeningRow(elements.openingRows);
+  elements.openingSetup.hidden = true;
+  elements.reopenOpening.hidden = true;
 }
 
 function renderPortfolio() {
@@ -1906,13 +2089,20 @@ function renderPortfolio() {
   clearElement(elements.positionList);
   elements.positionsEmpty.hidden = tickers.length > 0;
   for (const ticker of tickers) elements.positionList.append(createHoldingTree(ticker));
-  renderRecordCollection(elements.transactionList, elements.transactionsEmpty, elements.transactionCount, state.transactionRecords, (record) => createRecordCard(`${record.action} · ${record.ticker}`, record.position_type, [["sequence", record.sequence], ["price", record.price, "decimal"], ["shares", record.shares, "decimal"], ["amount", record.amount, "decimal"], ["commission", record.commission, "decimal"], ["fee_schedule", record.fee_schedule], ["occurred_at", record.occurred_at, "timestamp"], ["reason", record.reason]]));
-  for (const correction of state.buyCorrectionRecords) {
-    elements.transactionList.append(createRecordCard(`CORRECTION · ${correction.transaction_id}`, null, [["price", correction.price, "decimal"], ["shares", correction.shares, "decimal"], ["occurred_at", correction.occurred_at, "timestamp"], ["reason", correction.reason], ["confirmed_at", correction.corrected_at, "timestamp"]]));
-  }
-  elements.transactionCount.textContent = String(state.transactionRecords.length + state.buyCorrectionRecords.length);
-  elements.transactionsEmpty.hidden = state.transactionRecords.length + state.buyCorrectionRecords.length > 0;
-  renderRecordCollection(elements.cashList, elements.cashEmpty, elements.cashCount, state.cashRecords, (record) => createRecordCard(record.event_type, null, [["sequence", record.sequence], ["amount", record.amount, "decimal"], ["occurred_at", record.occurred_at, "timestamp"], ["reason", record.reason]]));
+  const history = [
+    ...state.transactionRecords.map((record) => ({ record, kind: "trade" })),
+    ...state.cashRecords.map((record) => ({ record, kind: "cash" })),
+  ].sort((left, right) => {
+    const leftTime = left.kind === "trade" ? effectiveTransaction(left.record).occurred_at : left.record.occurred_at;
+    const rightTime = right.kind === "trade" ? effectiveTransaction(right.record).occurred_at : right.record.occurred_at;
+    return String(rightTime).localeCompare(String(leftTime));
+  });
+  clearElement(elements.transactionList);
+  for (const item of history) elements.transactionList.append(createHistoryRow(item.record, item.kind));
+  elements.transactionCount.textContent = String(history.length);
+  elements.transactionsEmpty.hidden = history.length > 0;
+  elements.cashCount.textContent = String(state.cashRecords.length);
+  elements.cashEmpty.hidden = state.cashRecords.length > 0;
   renderOpeningAvailability();
   renderSellLotAllocation();
   updateControls();
@@ -2027,7 +2217,7 @@ async function runMutation({ url, payload, messageElement, successKey, recordId 
     state.writeState = "idle";
     const id = recordId(result);
     setMessage(messageElement, id ? `${translate(successKey)} · ${id}` : translate(successKey), "success", false);
-    return true;
+    return result;
   } catch (error) {
     if (error instanceof TypeError) { state.writeState = "refresh_required"; setMessage(messageElement, "mutation_unknown"); }
     else if (error instanceof ApiError && error.status === 401) enterHome("session_expired");
@@ -2052,9 +2242,42 @@ function decimalUnits(value) {
   return BigInt(whole) * 100000000n + BigInt(fraction.padEnd(8, "0"));
 }
 
+function setTradeAction(action) {
+  elements.tradeAction.value = action;
+  const isBuy = action === "BUY";
+  elements.tradeBuyMode.classList.toggle("is-active", isBuy);
+  elements.tradeSellMode.classList.toggle("is-active", !isBuy);
+  setLocalizedText(elements.tradeDialogTitle, isBuy ? "buy_stock" : "sell_stock");
+  renderSellLotAllocation();
+}
+
+function openTradeDialog(action = "BUY", ticker = "") {
+  elements.tradeForm.reset();
+  clearMessage(elements.tradeMessage);
+  elements.tradeTicker.value = ticker;
+  if (ticker) elements.tradeTicker.dataset.assetSymbol = ticker;
+  else delete elements.tradeTicker.dataset.assetSymbol;
+  setTradeAction(action);
+  elements.tradeDialog.showModal();
+  (ticker ? elements.tradeShares : elements.tradeTicker).focus();
+}
+
+function openCashDialog() {
+  elements.cashForm.reset();
+  clearMessage(elements.cashMessage);
+  elements.cashDialog.showModal();
+  elements.cashAmount.focus();
+}
+
+function openImportDialog() {
+  clearMessage(elements.reconciliationMessage);
+  elements.importDialog.showModal();
+}
+
 function renderSellLotAllocation() {
   const isSell = elements.tradeAction.value === "SELL";
   elements.tradeType.disabled = isSell;
+  elements.tradeType.closest("div").hidden = isSell;
   if (isSell) elements.tradeType.value = "";
   elements.tradeLotAllocation.hidden = !isSell;
   clearElement(elements.tradeLotList);
@@ -2122,7 +2345,7 @@ async function handleTrade(event) {
   if (occurredAt) payload.occurred_at = occurredAt;
   if (elements.tradeReason.value.trim()) payload.reason = elements.tradeReason.value.trim();
   const saved = await runMutation({ url: "/v1/portfolio/transactions", payload, messageElement: elements.tradeMessage, successKey: "trade_saved", recordId: (result) => result.transaction?.id });
-  if (saved) { elements.tradeTicker.value = ""; elements.tradePrice.value = ""; elements.tradeShares.value = ""; elements.tradeTime.value = ""; elements.tradeReason.value = ""; renderSellLotAllocation(); }
+  if (saved) { elements.tradeForm.reset(); renderSellLotAllocation(); elements.tradeDialog.close(); }
 }
 
 async function handleCash(event) {
@@ -2137,7 +2360,7 @@ async function handleCash(event) {
   if (occurredAt) payload.occurred_at = occurredAt;
   if (elements.cashReason.value.trim()) payload.reason = elements.cashReason.value.trim();
   const saved = await runMutation({ url: "/v1/portfolio/cash-events", payload, messageElement: elements.cashMessage, successKey: "cash_saved", recordId: (result) => result.cash_event?.id });
-  if (saved) { elements.cashAmount.value = ""; elements.cashTime.value = ""; elements.cashReason.value = ""; }
+  if (saved) { elements.cashForm.reset(); elements.cashDialog.close(); }
 }
 
 async function handleOpening(event) {
@@ -2381,6 +2604,7 @@ async function handleReconciliation(event) {
     elements.reconciliationBroker.value = "";
     state.reconciliationSource = "SCREENSHOT";
     resetImportControls(elements.reconciliationImport);
+    elements.importDialog.close();
   }
 }
 
@@ -2504,8 +2728,9 @@ function switchAppView(view, focus = true) {
   elements.navPortfolio.classList.toggle("is-active", !chat);
   elements.navChat.toggleAttribute("aria-current", chat);
   elements.navPortfolio.toggleAttribute("aria-current", !chat);
-  setLocalizedText(elements.viewEyebrow, chat ? "context_aware" : "structured_state");
-  setLocalizedText(elements.viewTitle, chat ? "chat_view_title" : "portfolio_manage_title");
+  elements.viewEyebrow.hidden = !chat;
+  setLocalizedText(elements.viewEyebrow, "context_aware");
+  setLocalizedText(elements.viewTitle, chat ? "chat_view_title" : "portfolio_nav");
   if (focus) elements.viewTitle.focus();
 }
 
@@ -2534,16 +2759,29 @@ function bindEvents() {
   elements.newQuestion.addEventListener("click", () => { switchAppView("chat", false); elements.question.focus(); });
   elements.portfolioTabs.forEach((tab, index) => tab.addEventListener("click", () => switchPortfolioTab(index)));
   elements.reloadPortfolio.addEventListener("click", () => refreshPortfolio());
+  elements.openBuy.addEventListener("click", () => openTradeDialog("BUY"));
+  elements.emptyBuy.addEventListener("click", () => openTradeDialog("BUY"));
+  elements.openImport.addEventListener("click", openImportDialog);
+  elements.openCash.addEventListener("click", openCashDialog);
   elements.addOpeningRow.addEventListener("click", () => createOpeningRow(elements.openingRows));
   elements.skipOpening.addEventListener("click", () => { state.openingDismissed = true; renderOpeningAvailability(); });
   elements.reopenOpening.addEventListener("click", () => { state.openingDismissed = false; renderOpeningAvailability(); });
   elements.openingForm.addEventListener("submit", handleOpening);
+  elements.reconciliationAddRow.addEventListener("click", () => {
+    state.reconciliationSource = "MANUAL";
+    const row = createOpeningRow(elements.reconciliationRows);
+    row.querySelector("[data-field='ticker']")?.focus();
+  });
   elements.reconciliationLoadCurrent.addEventListener("click", loadCurrentReconciliationDraft);
   elements.reconciliationRevalidate.addEventListener("click", revalidateReconciliationAssets);
   elements.reconciliationForm.addEventListener("submit", handleReconciliation);
   elements.tradeForm.addEventListener("submit", handleTrade);
-  elements.tradeAction.addEventListener("change", renderSellLotAllocation);
+  elements.tradeBuyMode.addEventListener("click", () => setTradeAction("BUY"));
+  elements.tradeSellMode.addEventListener("click", () => setTradeAction("SELL"));
+  elements.tradeDialogClose.addEventListener("click", () => elements.tradeDialog.close());
   elements.cashForm.addEventListener("submit", handleCash);
+  elements.cashDialogClose.addEventListener("click", () => elements.cashDialog.close());
+  elements.importDialogClose.addEventListener("click", () => elements.importDialog.close());
   elements.tradeTicker.addEventListener("input", () => {
     delete elements.tradeTicker.dataset.assetSymbol;
     renderSellLotAllocation();
@@ -2568,6 +2806,7 @@ function bindEvents() {
   });
   elements.correctionClose.addEventListener("click", () => elements.correctionDialog.close());
   elements.correctionForm.addEventListener("submit", handleBuyCorrection);
+  elements.transactionDetailClose.addEventListener("click", () => elements.transactionDetailDialog.close());
   elements.question.addEventListener("compositionstart", () => { state.questionComposing = true; });
   elements.question.addEventListener("compositionend", () => { state.questionComposing = false; });
   elements.question.addEventListener("keydown", handleQuestionKeydown);

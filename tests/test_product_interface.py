@@ -54,11 +54,15 @@ def test_serves_public_auth_setup_and_authenticated_app_shell() -> None:
         "header-logout-button",
         "question-form",
         "portfolio-view",
-        "portfolio-tab-overview",
-        "portfolio-tab-trade",
-        "portfolio-tab-cash",
+        "open-buy-dialog",
+        "open-import-dialog",
+        "open-cash-dialog",
         "position-list",
+        "trade-dialog",
+        "cash-dialog",
+        "import-dialog",
         "buy-correction-dialog",
+        "transaction-detail-dialog",
         "transaction-list",
         "cash-event-list",
     ):
@@ -82,7 +86,7 @@ def test_attachment_composer_and_reconciliation_contract() -> None:
 
     page, script, stylesheet = _product_assets()
 
-    for prefix in ("setup", "opening", "reconciliation"):
+    for prefix in ("setup", "reconciliation"):
         for element_id in (
             f"{prefix}-attachment-composer",
             f"{prefix}-attachment-dropzone",
@@ -97,6 +101,7 @@ def test_attachment_composer_and_reconciliation_contract() -> None:
         "reconciliation-broker",
         "reconciliation-revalidate",
         "reconciliation-submit",
+        "reconciliation-add-row",
         "reconciliation-load-current",
     ):
         assert f'id="{element_id}"' in page
@@ -131,7 +136,7 @@ def test_attachment_composer_and_reconciliation_contract() -> None:
         assert marker in script or marker in page
     assert ".attachment-preview-card" in stylesheet
     assert ".image-preview-dialog" in stylesheet
-    assert page.count('data-attachment-dropzone role="button" tabindex="0"') == 3
+    assert page.count('data-attachment-dropzone role="button" tabindex="0"') == 2
     assert 'event.key !== "Enter" && event.key !== " "' in script
     assert page.count('type="file" accept="image/jpeg,image/png,image/webp" multiple') == 3
     assert 'aria-labelledby="reconciliation-import-title"' in page
@@ -217,7 +222,7 @@ def test_client_script_preserves_session_identity_safe_text_and_question_boundar
         assert script.count(f"{label}:") >= 2
 
     assert 'ERROR_LABELS[error.code] ?? "unexpected_server_error"' in script
-    assert "20260911-m9-feedback-2" in page
+    assert "20260911-portfolio-compact-2" in page
 
     assert "innerHTML" not in script
     assert "outerHTML" not in script
@@ -349,6 +354,54 @@ def test_question_composer_keyboard_contract() -> None:
     ):
         assert marker in script
     assert "event.preventDefault(); return;" in script
+
+
+def test_portfolio_uses_compact_tables_and_dialog_actions() -> None:
+    """Portfolio 主界面应聚焦当前持仓与紧凑历史，并把录入收进 Dialog。"""
+
+    page, script, stylesheet = _product_assets()
+    portfolio = page[page.index('id="portfolio-view"') : page.index("</main>")]
+
+    for marker in (
+        'class="holdings-table-header"',
+        'class="history-table-header"',
+        'id="open-buy-dialog"',
+        'id="open-import-dialog"',
+        'id="open-cash-dialog"',
+        'id="trade-dialog"',
+        'id="cash-dialog"',
+        'id="import-dialog"',
+        'id="transaction-detail-dialog"',
+    ):
+        assert marker in page
+    for removed_copy in (
+        "Review deterministic state",
+        "Appends an immutable record",
+        "Session-owned",
+        "Ledger-derived",
+        "Reconcile from a broker screenshot",
+    ):
+        assert removed_copy not in portfolio
+    for marker in (
+        "openTradeDialog",
+        "setTradeAction",
+        "createHistoryRow",
+        "openTransactionDetail",
+        "effectiveTransaction",
+        'elements.tradeBuyMode.addEventListener("click"',
+        'elements.tradeSellMode.addEventListener("click"',
+        'url: "/v1/portfolio/reconciliations"',
+    ):
+        assert marker in script
+    for selector in (
+        ".compact-portfolio",
+        ".portfolio-product-header",
+        ".history-row",
+        ".product-dialog",
+        ".holding-disclosure",
+    ):
+        assert selector in stylesheet
+    assert "createRecordCard" not in script
 
 
 def test_sources_are_details_closed_by_default() -> None:

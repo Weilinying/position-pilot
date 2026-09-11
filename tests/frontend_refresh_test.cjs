@@ -33,7 +33,7 @@ async function main() {
   const controlElements = {
     logout: control(), headerLogout: control(), setupLogout: control(), setupFields: control(),
     reloadPortfolio: control(), tradeFields: control(), cashFields: control(), openingFields: control(),
-    reconciliationFields: control(), reconciliationLoadCurrent: control(), reconciliationRevalidate: control(),
+    reconciliationFields: control(), reconciliationAddRow: control(), reconciliationLoadCurrent: control(), reconciliationRevalidate: control(),
     reconciliationSubmit: control(), question: control(), ask: control(), navChat: control(),
     navPortfolio: control(), newQuestion: control(), writeState: control(),
   };

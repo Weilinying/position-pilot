@@ -137,3 +137,10 @@ M9 在独立 Feature Branch 上实现；Human Acceptance 前不合并 `main`，�
 - 手工编辑不再被问答或识别的全局 busy 状态锁住；点击手工编辑会取消尚未完成的识别，避免旧识别结果覆盖用户输入。保存与重新验证按钮仍在相关请求期间禁用。
 
 - 识图 INVALID_PROVIDER_RESPONSE 尚未复现到同一截图：真实配置的文本识别返回 OK。新增仅含响应形状和固定失败阶段的诊断日志，区分 completion_parse / draft_schema；保持严格字段校验，不添加未经证实的格式容错。需使用原截图再次识别确认根因，当前不标记该反馈已修复。
+
+## 7. Portfolio 产品界面收敛（2026-09-11）
+
+- Portfolio 主页面收敛为“当前持仓 + 交易历史”两块连续数据区，移除身份说明卡、常驻校准区、Transactions / Cash 分页和大型录入卡。
+- 当前持仓使用单行 ticker、缩进类型小计与批次行；交易与现金活动合并为按时间倒序的一行式历史列表。更正记录不再作为独立交易展示，主列表投影当前有效字段，详情中保留原始值与编辑记录。
+- Buy、Sell、Import、入金 / 出金和批次编辑统一使用紧凑 Dialog；Import 继续复用截图识别、缩略图大图预览和手工编辑，产品文案不暴露 Opening、Reconciliation、Correction 或 Replay。
+- 本次没有修改 Portfolio Domain 或公共 API。当前底层只支持仍有持仓的 BUY 更正，因此历史详情只为这类交易开放 Edit；SELL 编辑与 Transaction Void 仍需新增不可变事件及 Replay 规则后才能提供。Fee 继续由后端按已有费率计算，不提供虚假的可编辑输入。
