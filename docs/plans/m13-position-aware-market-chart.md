@@ -1,6 +1,6 @@
 # M13 — Position-Aware Market Chart 执行计划
 
-状态：Human 已批准并开始实施。
+状态：已实现并完成定向验证，等待 Human Acceptance。
 目标版本：`v1.3.0`。M12 Technical Context 暂缓，保留编号、暂不绑定版本。
 
 ## 1. 目标与页面边界
@@ -147,3 +147,18 @@ Session 绑定路由，复用 MarketDataService 与现有日线过滤逻辑。
 5. API 明确返回 ALL 复权口径；标记不按交易价格定位 Y 轴。未经对齐的成本只显示为记录数字，
    不出现误导性的 Average Cost Line，且没有新增公司行动系统。
 6. 图表没有 ticker 搜索或独立股票浏览功能；行情不可用时不展示伪造价格。
+
+## 7. 实施记录
+
+- 新增 Session 限定的 `GET /v1/portfolio/chart`，由一次 Portfolio 事实读取取得统一 ReplayResult
+  与有效交易；ticker 不属于当前持仓或交易事实时，在访问行情前拒绝。
+- 后端按纽约日期解析日历范围与历史锚点，过滤未完成日 K，并返回来源、SIP、`ALL` 复权、
+  当前记录成本、按日期分组的有效交易和 SELL 批次分配。
+- 前端使用自托管的 TradingView Lightweight Charts 5.2.0，持仓行与交易详情均可进入固定 ticker
+  的宽图表 Dialog；支持范围切换、刷新、缩放、拖动、十字光标、同日记录选择和实例清理。
+- 当前成本只显示为记录数字，API 固定返回不可比状态，前端没有 Average Cost Line 或强制开启入口。
+- 真实浏览器验证覆盖当前持仓入口、历史交易入口、日 K / Volume、SELL 日期标记、复权来源、
+  成本提示、区间切换和 Provider Failure 下保留交易事实。验收时发现的上游分块读取中断已映射为
+  `PROVIDER_UNAVAILABLE`，不再泄漏为 API 500。
+- 定向验证覆盖 Chart Service / API / Product Interface / Market Context、Frontend Chart 与背景行情
+  刷新，以及相关 Ruff、Formatter、mypy 和 JavaScript syntax；未运行全量测试。

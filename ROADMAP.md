@@ -11,7 +11,7 @@
 ## 2. Current Status
 
 **Current Milestone:** M13 — Position-Aware Market Chart
-**Status:** IN PROGRESS — Human 已批准（2026-09-12）
+**Status:** IMPLEMENTED — 等待 Human Acceptance（2026-09-12）
 **Current Release State:** `v1.1.0` 已完成并进入本地 `main`；Git Tag / GitHub Release 尚待发布
 **Next Planned Work:** 实施 M13；M11 待 Human Acceptance，M10、M12 已暂缓
 
