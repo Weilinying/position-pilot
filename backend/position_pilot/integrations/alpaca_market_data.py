@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal, DecimalException
 from enum import StrEnum
-from http.client import HTTPResponse
+from http.client import HTTPResponse, IncompleteRead
 from typing import Protocol
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlencode
@@ -103,7 +103,7 @@ class UrllibJsonHttpTransport:
             )
         except URLError as error:
             raise HttpTransportUnavailable(self._classify_failure(error.reason)) from error
-        except (TimeoutError, OSError) as error:
+        except (IncompleteRead, TimeoutError, OSError) as error:
             raise HttpTransportUnavailable(self._classify_failure(error)) from error
 
     @staticmethod
