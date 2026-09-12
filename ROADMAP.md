@@ -478,6 +478,14 @@ TradingView Lightweight Charts 作为 Frontend Library 使用；其官方 Agent 
 * 相关 Frontend Integration Test、Browser Smoke 与 Human Acceptance 通过；
 * Human Acceptance 通过，并形成 `v1.4.0` Release。
 
+## Portfolio UI 后续增强
+
+**Status:** NOT STARTED — 后续 V1.x 待排期，不纳入 M11 验收范围
+
+- Cost Basis 展示（2026-09-12 Human 提出）：在持仓详情中展示当前剩余持仓总成本，支持
+  ticker、仓位类型与批次层级，复用后端已有 `cost_basis`。与每股 Average Cost、历史 SELL
+  的 Released Cost 区分；部分卖出后显示剩余成本，BUY 更正后同步更新。具体入口与版本在实施前确定。
+
 ## Answer Quality / Memory / Open Web Research Discovery
 
 **Status:** DISCOVERY — NO RELEASE COMMITMENT

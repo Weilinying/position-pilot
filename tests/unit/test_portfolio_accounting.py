@@ -5,6 +5,7 @@ from decimal import Decimal
 from uuid import UUID
 
 from position_pilot.domain.portfolio import (
+    BuyTransactionCorrection,
     LotAllocation,
     PositionLotSource,
     PositionReconciliation,
@@ -104,6 +105,84 @@ def test_accounting_aggregates_realized_pnl_and_single_sell_percent() -> None:
     assert len(accounting.transactions) == 1
     assert accounting.transactions[0].transaction_id == sell.id
     assert accounting.tickers[0].ticker == "GOOG"
+
+
+def test_buy_correction_recalculates_every_historical_sell_and_accounting_total() -> None:
+    """更正同一 BUY 成本后，两笔历史 SELL 的分配、收益和汇总应一起重算。"""
+
+    buy = make_transaction(
+        sequence=1,
+        ticker="GOOG",
+        action=TransactionAction.BUY,
+        price="100",
+        shares="6",
+        position_type=PositionType.SWING,
+    )
+    first_sell = make_transaction(
+        sequence=2,
+        ticker="GOOG",
+        action=TransactionAction.SELL,
+        price="120",
+        shares="2",
+        fee="1",
+        occurred_at=datetime(2026, 8, 21, 12, 0, tzinfo=UTC),
+    )
+    second_sell = make_transaction(
+        sequence=3,
+        ticker="GOOG",
+        action=TransactionAction.SELL,
+        price="130",
+        shares="1",
+        fee="2",
+        occurred_at=datetime(2026, 8, 22, 12, 0, tzinfo=UTC),
+    )
+    transactions = [buy, first_sell, second_sell]
+    allocations = [
+        make_allocation(first_sell, buy.id, "2"),
+        make_allocation(second_sell, buy.id, "1"),
+    ]
+    before = calculate_portfolio_accounting(
+        replay_portfolio(make_user(), transactions, lot_allocations=allocations)
+    )
+    correction = BuyTransactionCorrection.create(
+        user_id=USER_ID,
+        transaction_id=buy.id,
+        price=Decimal("110"),
+        shares=Decimal("6"),
+        occurred_at=buy.occurred_at,
+        reason="核对券商含费成本",
+        corrected_at=datetime(2026, 8, 23, 12, 0, tzinfo=UTC),
+    )
+
+    replay = replay_portfolio(
+        make_user(),
+        transactions,
+        lot_allocations=allocations,
+        buy_transaction_corrections=[correction],
+    )
+    after = calculate_portfolio_accounting(replay)
+
+    assert [row.metrics.realized_pnl for row in before.transactions] == [
+        Decimal("28"),
+        Decimal("39"),
+    ]
+    assert before.metrics.realized_pnl == Decimal("67")
+    assert [row.transaction_id for row in after.transactions] == [second_sell.id, first_sell.id]
+    for row, cost, pnl in zip(after.transactions, ["110", "220"], ["18", "19"], strict=True):
+        assert row.metrics.released_cost == Decimal(cost)
+        assert row.metrics.realized_pnl == Decimal(pnl)
+        assert row.allocations[0].released_cost == Decimal(cost)
+        assert row.allocations[0].realized_pnl == Decimal(pnl)
+        assert row.allocations[0].position_type_at_sale is PositionType.SWING
+    assert after.metrics.gross_proceeds == before.metrics.gross_proceeds == Decimal("370")
+    assert after.metrics.fee == before.metrics.fee == Decimal("3")
+    assert after.metrics.net_proceeds == before.metrics.net_proceeds == Decimal("367")
+    assert after.metrics.released_cost == Decimal("330")
+    assert after.metrics.realized_pnl == Decimal("37")
+    assert after.tickers[0].metrics == after.metrics
+    assert after.tickers[0].position_types[0].metrics == after.metrics
+    assert replay.portfolio.lots[0].cost_basis == Decimal("330")
+    assert buy.price == Decimal("100")
 
 
 def test_accounting_orders_transactions_descending_and_types_explicitly() -> None:

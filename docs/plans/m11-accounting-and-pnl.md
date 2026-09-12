@@ -193,3 +193,11 @@ SELL 详情与按 ticker / 类型汇总 Dialog。复用现有中英文文案、�
 - 真实本地服务按原方式重启，8000 端口已加载 accounting / summary 新接口；未修改真实持仓数据。
 - 已同步 PROJECT、ROADMAP、ARCHITECTURE、CHANGELOG 和 ADR 0013；无需额外 Engineering Note。
   本阶段只提交 Feature Branch，Human Acceptance 前不合并到 main。
+
+### 验收建议补充（2026-09-12）
+
+- 补充 BUY Correction → 多次 Historical SELL P&L 测试：6 股买入成本由 100 更正为 110，
+  已发生的两笔卖出收益分别从 39 / 28 重算为 19 / 18，累计从 67 变为 37；检查分配成本、
+  ticker / 类型汇总同步，卖出成交额与费用不变，剩余 3 股成本为 330，原 BUY 保留。
+- Cost Basis 展示记入 ROADMAP 的 Portfolio UI 后续增强，待排期，不扩展本轮 UI 范围。
+- 新增用例定向运行 1 passed；变更测试文件 Ruff / Formatter / mypy 通过，差异 Review 完成。
