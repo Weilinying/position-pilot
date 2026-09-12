@@ -199,5 +199,28 @@ SELL 详情与按 ticker / 类型汇总 Dialog。复用现有中英文文案、�
 - 补充 BUY Correction → 多次 Historical SELL P&L 测试：6 股买入成本由 100 更正为 110，
   已发生的两笔卖出收益分别从 39 / 28 重算为 19 / 18，累计从 67 变为 37；检查分配成本、
   ticker / 类型汇总同步，卖出成交额与费用不变，剩余 3 股成本为 330，原 BUY 保留。
-- Cost Basis 展示记入 ROADMAP 的 Portfolio UI 后续增强，待排期，不扩展本轮 UI 范围。
+- Cost Basis 展示按 Human 最新决定纳入 M11，执行见下方补充任务。
 - 新增用例定向运行 1 passed；变更测试文件 Ruff / Formatter / mypy 通过，差异 Review 完成。
+
+### T5 — Current Portfolio Cost Basis 展示
+
+状态：实现、定向测试、差异 Review 与浏览器检查完成，纳入 M11 Human Acceptance。
+
+1. 在当前持仓表 Average Cost 后增加 `Cost Basis / 总成本` 列，ticker、类型、批次各占一行，
+   数字右对齐，成本只读；维持未分类批次 → SWING → LONG_TERM 层级和原编辑入口。
+2. 复用 summary 内 valuation 各层已有 `metrics.cost_basis` 及已有持仓成本字段；不在前端用
+   均价乘股数重算，不改 Domain / API / Database。该值表示剩余持仓成本，与每股均价及历史卖出
+   释放成本区分；行情缺失也能显示。
+3. 调整表头、行网格、盈亏颜色列位置和中英文文案；沿用现有刷新流程，卖出与 BUY 更正后
+   展示重放得到的新成本。更新静态资源版本。
+4. Worker subagent 实施前端与受影响测试；主线程负责文档、整合 Review 和浏览器布局检查。
+   仅运行相关前端 Node / 产品界面测试及修改文件的质量检查，不重复后端核算测试或全量回归。
+
+验收：三个层级都能看到金额格式正确的总成本；部分卖出显示剩余成本，BUY 更正后成本更新；
+行情缺失时成本可见但市场指标为缺失；刷新保持展开状态、控件和盈亏颜色正确。
+
+验证记录：产品界面测试 8 passed；现有 Node 测试验证后端成本精度、行情缺失、成本列刷新与
+盈亏颜色位置，JS 语法检查通过；修改 Python 测试的 Ruff / Formatter / mypy 均通过。
+真实应用只读检查了 ticker、类型与批次成本，以及无行情时成本仍可见；1280px 桌面中英文
+布局完整显示市值与买卖入口。主线程 Review 后按截图收窄网格并复核，未修改真实持仓数据，
+未新增或重跑后端核算测试，无新 ADR / Engineering Note / Architecture 变更需求。

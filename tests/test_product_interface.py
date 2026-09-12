@@ -228,7 +228,7 @@ def test_client_script_preserves_session_identity_safe_text_and_question_boundar
         assert script.count(f"{label}:") >= 2
 
     assert 'ERROR_LABELS[error.code] ?? "unexpected_server_error"' in script
-    assert "20260912-m11-accounting-2" in page
+    assert "20260912-m11-cost-basis-2" in page
 
     assert "innerHTML" not in script
     assert "outerHTML" not in script
@@ -367,6 +367,16 @@ def test_portfolio_uses_compact_tables_and_dialog_actions() -> None:
 
     page, script, stylesheet = _product_assets()
     portfolio = page[page.index('id="portfolio-view"') : page.index("</main>")]
+    holdings_header_start = page.index('<div class="holdings-table-header"')
+    holdings_header = page[
+        holdings_header_start : page.index("</div>", holdings_header_start) + len("</div>")
+    ]
+    assert holdings_header.count("<span") == 9
+    assert (
+        holdings_header.index('data-i18n="average_cost"')
+        < holdings_header.index('data-i18n="cost_basis"')
+        < holdings_header.index('data-i18n="last_price"')
+    )
 
     for marker in (
         'class="holdings-table-header"',
@@ -381,6 +391,7 @@ def test_portfolio_uses_compact_tables_and_dialog_actions() -> None:
         'id="trade-fee"',
         'data-i18n="average_cost_fee_included"',
         'data-i18n="realized_pnl_short"',
+        'data-i18n="cost_basis"',
     ):
         assert marker in page
     for removed_copy in (
@@ -400,6 +411,8 @@ def test_portfolio_uses_compact_tables_and_dialog_actions() -> None:
         "effectiveTransaction",
         "transactionFeeText",
         "accountingTransaction",
+        'metricText(metrics, "cost_basis", fallback?.cost_basis)',
+        "cost_basis: lot.cost_basis",
         "renderPortfolioSummary",
         'requestJson("/v1/portfolio/summary"',
         "allocated_gross_proceeds",
@@ -426,6 +439,8 @@ def test_portfolio_uses_compact_tables_and_dialog_actions() -> None:
         ".holding-disclosure",
     ):
         assert selector in stylesheet
+    assert "minmax(150px, 1.5fr) repeat(7, minmax(78px, 0.8fr)) minmax(70px, auto)" in stylesheet
+    assert "min-width: 900px" in stylesheet
     assert "createRecordCard" not in script
 
 

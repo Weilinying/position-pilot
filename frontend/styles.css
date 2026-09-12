@@ -3255,9 +3255,9 @@ footer {
 
 .compact-portfolio .holdings-table-header,
 .compact-portfolio .holding-row {
-  grid-template-columns: minmax(170px, 1.5fr) repeat(6, minmax(90px, 0.8fr)) minmax(92px, auto);
-  min-width: 1040px;
-  gap: 10px;
+  grid-template-columns: minmax(150px, 1.5fr) repeat(7, minmax(78px, 0.8fr)) minmax(70px, auto);
+  min-width: 900px;
+  gap: 8px;
 }
 
 .compact-portfolio .holdings-table-header,

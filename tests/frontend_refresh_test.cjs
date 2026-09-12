@@ -12,15 +12,74 @@ async function main() {
   assert.equal(formatting.formatPnl('1E-8'), '+$0.00000001');
   assert.equal(formatting.formatPnl('-1E-8'), '-$0.00000001');
   assert.equal(formatting.formatMoney('1.234E+5'), '$123,400');
+
+  class HoldingElement {
+    constructor(tag) {
+      this.tagName = tag;
+      this.children = [];
+      this.dataset = {};
+      this.textContent = '';
+      this.className = '';
+    }
+
+    append(...children) { this.children.push(...children); }
+    setAttribute(name, value) { this[name] = String(value); }
+  }
+  const holdingContext = vm.createContext({
+    document: {createElement: tag => new HoldingElement(tag)},
+    state: {language: 'en'},
+    translate: key => key,
+    makeElement: (tag, className = '', text = '') => {
+      const element = new HoldingElement(tag);
+      element.className = className;
+      element.textContent = text;
+      return element;
+    },
+  });
+  vm.runInContext(
+    source.slice(source.indexOf('function formatDecimal('), source.indexOf('function formatTimestamp('))
+      + source.slice(source.indexOf('function metricText('), source.indexOf('async function changeLotType(')),
+    holdingContext,
+  );
+  const valuedHolding = holdingContext.createHoldingRow({
+    label: 'GOOG',
+    metrics: {shares: '5', average_cost: '100', cost_basis: '500.00000001', unrealized_pnl: '25', unrealized_pnl_percent: '5', market_value: '525'},
+    fallback: {},
+    level: 0,
+    currentPrice: '105',
+  });
+  assert.deepEqual(
+    valuedHolding.children.slice(1, 8).map(child => child.textContent),
+    ['5', '$100', '$500.00000001', '$105', '$25', '5%', '$525'],
+  );
+  assert.equal(valuedHolding.children.length, 9);
+  assert.equal(valuedHolding.children[5].dataset.tone, 'positive');
+  assert.equal(valuedHolding.children[6].dataset.tone, 'positive');
+  assert.equal(valuedHolding.children[3].dataset.tone, undefined);
+  assert.equal(valuedHolding.children[4].dataset.tone, undefined);
+  const quoteMissingHolding = holdingContext.createHoldingRow({
+    label: 'TSLA',
+    metrics: {shares: '2', average_cost: '100', cost_basis: '200', unrealized_pnl: null, unrealized_pnl_percent: null, market_value: null},
+    fallback: {},
+    level: 0,
+    currentPrice: null,
+  });
+  assert.equal(quoteMissingHolding.children[3].textContent, '$200');
+  assert.equal(quoteMissingHolding.children[4].textContent, '—');
+  assert.equal(quoteMissingHolding.children[5].textContent, '—');
+
   let resolve;
   const requests = [];
-  const cell = {textContent: 'old', dataset: {tone: 'positive'}};
-  const group = {dataset: {ticker: 'TSLA'}, querySelectorAll: () => [cell], querySelector: () => null};
+  const holdingCells = Array.from({length: 7}, (_, index) => ({textContent: `old-${index}`, dataset: index === 0 ? {tone: 'positive'} : {}}));
+  const freshHoldingCells = Array.from({length: 7}, (_, index) => ({textContent: `fresh-${index}`, dataset: {}}));
+  freshHoldingCells[0].textContent = 'new';
+  const cell = holdingCells[0];
+  const group = {dataset: {ticker: 'TSLA'}, querySelectorAll: () => holdingCells, querySelector: () => null};
   const historyPnl = {textContent: 'old', dataset: {}};
   const historyRow = {dataset: {recordKind: 'trade', recordId: 'sell-1'}, querySelector: () => historyPnl};
   const state = {snapshot: {}, valuation: null, accounting: null, summary: null, valuationController: null, portfolioReadState: 'idle', writeState: 'idle', authTransition: 'idle', portfolioGeneration: 1};
   let summaryRenderCount = 0;
-  const context = vm.createContext({state, AbortController, ApiError: class extends Error {}, requestJson: (url) => { requests.push(url); return new Promise(r => {resolve = r;}); }, elements: {positionList: {querySelectorAll: () => [group]}, transactionList: {querySelectorAll: () => [historyRow]}, summaryRealizedPnl: {textContent: '', dataset: {}}, summaryUnrealizedPnl: {textContent: '', dataset: {}}, summaryTotalPnl: {textContent: '', dataset: {}}, summaryPnlStatus: {textContent: '', dataset: {}}}, createHoldingTree: () => ({querySelectorAll: () => [{textContent: 'new', dataset: {}}], querySelector: () => null}), renderPortfolioSummary: () => {summaryRenderCount += 1;}, accountingTransaction: () => ({metrics: {realized_pnl: '79'}}), formatPnl: value => value === '79' ? '+$79' : '—', pnlTone: () => 'positive'});
+  const context = vm.createContext({state, AbortController, ApiError: class extends Error {}, requestJson: (url) => { requests.push(url); return new Promise(r => {resolve = r;}); }, elements: {positionList: {querySelectorAll: () => [group]}, transactionList: {querySelectorAll: () => [historyRow]}, summaryRealizedPnl: {textContent: '', dataset: {}}, summaryUnrealizedPnl: {textContent: '', dataset: {}}, summaryTotalPnl: {textContent: '', dataset: {}}, summaryPnlStatus: {textContent: '', dataset: {}}}, createHoldingTree: () => ({querySelectorAll: () => freshHoldingCells, querySelector: () => null}), renderPortfolioSummary: () => {summaryRenderCount += 1;}, accountingTransaction: () => ({metrics: {realized_pnl: '79'}}), formatPnl: value => value === '79' ? '+$79' : '—', pnlTone: () => 'positive'});
   vm.runInContext(refresh, context);
   const pending = context.refreshValuation();
   assert.equal(state.portfolioReadState, 'idle');
@@ -31,6 +90,8 @@ async function main() {
   await pending;
   assert.equal(cell.textContent, 'new');
   assert.equal(cell.dataset.tone, undefined);
+  assert.equal(holdingCells.length, 7);
+  assert.equal(holdingCells[2].textContent, 'fresh-2');
   assert.equal(state.summary.totals.total_pnl, '139');
   assert.equal(summaryRenderCount, 1);
   assert.equal(historyPnl.textContent, '+$79');

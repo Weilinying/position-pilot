@@ -393,6 +393,9 @@ Opening Position 与手工 BUY 的 `average_cost` 表示用户或券商报告的
 
 具体公式、卖出时类型归属、校准边界、只读 API 与紧凑 UI 见 [M11 执行计划](docs/plans/m11-accounting-and-pnl.md)。计划已通过 Human Review：统一 ReplayResult 返回持仓与卖出分配结果，accounting 仅含已实现收益、valuation 保留行情职责，首页通过 summary 聚合。
 
+当前持仓表增加只读 Cost Basis（总成本）列，覆盖 ticker、类型和批次层级，直接展示后端当前剩余
+成本。部分卖出、BUY 更正后同步刷新；行情缺失时成本仍可见。
+
 **Non-goals**
 
 - 用 `current_value / cumulative_deposit - 1` 冒充完整 Portfolio Return；
@@ -477,14 +480,6 @@ TradingView Lightweight Charts 作为 Frontend Library 使用；其官方 Agent 
 * TradingView Lightweight Charts 等第三方 Library 与 PositionPilot Domain / Market Data Boundary 保持解耦；
 * 相关 Frontend Integration Test、Browser Smoke 与 Human Acceptance 通过；
 * Human Acceptance 通过，并形成 `v1.4.0` Release。
-
-## Portfolio UI 后续增强
-
-**Status:** NOT STARTED — 后续 V1.x 待排期，不纳入 M11 验收范围
-
-- Cost Basis 展示（2026-09-12 Human 提出）：在持仓详情中展示当前剩余持仓总成本，支持
-  ticker、仓位类型与批次层级，复用后端已有 `cost_basis`。与每股 Average Cost、历史 SELL
-  的 Released Cost 区分；部分卖出后显示剩余成本，BUY 更正后同步更新。具体入口与版本在实施前确定。
 
 ## Answer Quality / Memory / Open Web Research Discovery
 
