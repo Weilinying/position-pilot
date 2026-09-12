@@ -10,10 +10,10 @@
 
 ## 2. Current Status
 
-**Current Milestone:** M11 — Accounting & P&L
-**Status:** IN PROGRESS — 实现与定向验证完成，待 Human Acceptance（2026-09-12）
+**Current Milestone:** M13 — Position-Aware Market Chart
+**Status:** IN PROGRESS — Human 已批准（2026-09-12）
 **Current Release State:** `v1.1.0` 已完成并进入本地 `main`；Git Tag / GitHub Release 尚待发布
-**Next Planned Work:** M11 Human Acceptance；M10 Transaction Import 已暂缓
+**Next Planned Work:** 实施 M13；M11 待 Human Acceptance，M10、M12 已暂缓
 
 Milestone 状态统一使用 `NOT STARTED`、`IN PROGRESS`、`DONE`，不维护百分比进度。
 
@@ -29,8 +29,8 @@ Milestone 表示内部开发阶段；Version / Release 表示用户可感知的�
 | `v1.1.0` | M9 | Asset Identity、Portfolio Import、紧凑批次持仓与当前未实现估值 |
 | Deferred，暂不绑定版本 | M10 | 可人工确认的 Transaction Import；手工录入成本成为实际痛点后恢复 |
 | `v1.2.0` | M11 | 基于 M9 成本、费用与批次语义的第一阶段 Accounting / P&L |
-| `v1.3.0` | M12 | 按需路由的确定性 Technical Context |
-| `v1.4.0` | M13 | 基于 PositionPilot 自有 Market / Portfolio Data 的交互式行情图表，展示 K 线、Technical Context 与实际 Portfolio 买卖位置 |
+| Deferred，暂不绑定版本 | M12 | 按需路由的确定性 Technical Context，后续恢复 |
+| `v1.3.0` | M13 | 从当前持仓和交易历史进入日 K / Volume 图表，展示买卖日期并明确价格与成本口径 |
 | Answer Quality Evolution | Discovery，尚未映射 Release | Conversation / Investment Memory、开放 Web Search、Context Policy 与新质量 Evaluation 共同评估 |
 | V2 | 后续另行规划 | Connected Product：完整 Account Platform、Broker Sync、多 Portfolio 与完整绩效历史 |
 
@@ -49,11 +49,12 @@ M0 Project Foundation
 → M8.1 Ask Composer UX（Unreleased）
 → M9 Asset Identity & Portfolio Import (`v1.1.0`)
 → M11 Accounting & P&L (`v1.2.0`)
-→ M12 Technical Context (`v1.3.0`)
-→ M13 Position-Aware Market Chart (`v1.4.0`)
+→ M13 Position-Aware Market Chart (`v1.3.0`)
 ```
 
 2026-09-11：Human 确认暂缓 M10，先使用手工交易录入推进 M11。M10 保留编号，暂不绑定版本，也不阻塞后续 Milestone。
+
+Human 已确认暂缓 M12、先做 M13；M12 保留编号、暂不绑定版本，M13 不依赖均线与 Technical Context。
 
 M0～M7 是构建 PositionPilot V1 Core 与 Demo Interface 的内部 Engineering Milestones，不直接等同于正式 `v1.0.0`。M8 完成 Local Self-Service 闭环后形成 `v1.0.0`；M8.1 随 M9 一并进入 `v1.1.0`。M9～M13 在保持本地、单用户上下文与现有核心架构的前提下形成后续 V1.x Release。Answer Quality Evolution 不因列入 Discovery 就自动成为 Milestone；只有 Memory、开放 Web Search、Context Policy 与 Evaluation Contract 形成经 Human Review 批准的最小闭环后，才映射到具体 Release。
 
@@ -415,9 +416,11 @@ Opening Position 与手工 BUY 的 `average_cost` 表示用户或券商报告的
 
 **Status:** NOT STARTED
 
+**Priority:** DEFERRED — Human 确认先推进 M13；暂不绑定 Release
+
 **Goal**
 
-在现有 Context Routing 与 Price History Tool 上增加按需使用的 deterministic Technical Context，形成 `v1.3.0`；不建设自动交易信号引擎，也不把本 Milestone 单独描述为已解决整体 Answer Quality。
+在现有 Context Routing 与 Price History Tool 上增加按需使用的 deterministic Technical Context；恢复实施时再绑定版本，不建设自动交易信号引擎，也不把本 Milestone 单独描述为已解决整体 Answer Quality。
 
 **Scope**
 
@@ -440,21 +443,23 @@ Opening Position 与手工 BUY 的 `average_cost` 表示用户或券商报告的
 * 与技术趋势无关的问题不机械调用 Price History，相关问题能够取得并解释 Structured Derived Facts；
 * Source Grounding 保留 Provider、Feed、Adjustment、Market Timestamp 与 Fetched At；
 * 指标不被表示为自动 BUY / SELL Signal；
-* Human Acceptance 通过，并形成 `v1.3.0` Release。
+* Human Acceptance 通过，并形成恢复实施时确定的 Release。
 
 ## M13 — Position-Aware Market Chart
 
-**Status:** NOT STARTED
+**Status:** IN PROGRESS — Human 已批准（2026-09-12）
 
 **Goal**
 
-基于 PositionPilot 已有 Market、Portfolio 与 Technical Context 数据提供交互式行情图表，让用户能够直观看到价格走势、技术指标以及自己的实际买卖位置，形成 `v1.4.0`。
+基于已有 Market 与 Portfolio 数据，从当前持仓或历史交易进入日 K 图表，查看走势、成交量与自己的买卖日期，形成 `v1.3.0`。首版不依赖 M12。
 
 **Scope**
 
-前端使用 TradingView Lightweight Charts 等轻量图表库渲染 PositionPilot 自有数据，不将 TradingView Widget 或其他第三方图表页面作为 Agent Market Data Source。Historical OHLCV、Technical Context、Transaction Ledger 与 Position State 继续由现有 Backend 提供，图表只负责展示，不在前端重新计算金融事实。
+前端使用 TradingView Lightweight Charts 渲染后端提供的数据，首版限定为 Portfolio Position → Chart；已清仓 ticker 可从 Transaction History / Accounting Detail 进入。使用固定 ticker 的宽 Dialog，无 ticker 搜索或任意股票浏览。
 
-第一阶段支持 Daily Candlestick、Volume、已批准的 SMA20 / SMA50 等 Technical Overlay，以及真实 BUY / SELL Transaction Marker。Transaction Marker 应区分 `LONG_TERM / SWING / UNSPECIFIED`，并能够结合当前 Position 展示 Average Cost 等已有确定性 Portfolio Fact。
+支持已完成 Daily Candlestick、Volume、BUY / SELL 日期标记及 1M / 3M / 6M / 1Y 范围。有效交易、更正和类型分配继续由后端提供，前端不重新计算金融事实。
+
+Chart API 必须返回 adjustment，沿用现有 ALL 复权行情。Transaction Marker 只定位日期，不按交易价格定位 Y 轴。Average Cost Line 仅在成本与图表价格口径明确可比较时显示；当前系统没有成本对齐证明，首版不画成本线，只展示已有记录成本数字，不新增 Corporate Action Accounting。详见 [M13 执行计划](docs/plans/m13-position-aware-market-chart.md)。
 
 Agent 与 Chart 应尽可能消费同一套 Backend Market / Technical Data，避免回答中的 Market Fact 与图表数据来自不同来源。
 
@@ -466,20 +471,20 @@ TradingView Lightweight Charts 作为 Frontend Library 使用；其官方 Agent 
 - 在前端重新计算 SMA、P&L、Average Cost 或其他确定性金融事实；
 - 把图表升级为完整 Trading Terminal、TradingView Clone 或通用 Technical Analysis Platform；
 - Drawing Tools、Pine Script、Strategy Backtesting、WebSocket 实时行情或分钟级指标；
+- M12 均线 / Technical Context、任意 ticker 浏览、公司行动核算或手工强制开启不可比成本线；
 - 从历史价格自动推导 BUY / SELL Signal；
 - 尚未成为 Structured State 的计划买入区间、止损、止盈或 Investment Thesis 可视化；这些能力依赖后续 Strategy / Memory Contract。
 
 **Done**
 
-* 用户可以在 Asset / Position 相关页面查看基于 Backend Historical OHLCV 的交互式 Daily Candlestick Chart；
-* Volume 与 M12 已批准的 Technical Context 可以作为图表 Overlay 展示，且前端不重复计算指标；
-* BUY / SELL Transaction 可以按实际发生时间和价格显示在图表上，并区分 `LONG_TERM / SWING / UNSPECIFIED`；
-* 当前 Average Cost 等已有确定性 Portfolio Fact 可以在适用场景中显示；
+* 用户从当前持仓或已清仓交易记录进入日 K / Volume 图表，历史入口定位相关交易区间；
+* BUY / SELL 仅按日期显示，详情保留有效记录价格口径、类型和多批次分配，不生成虚构交易；
+* adjustment 明确返回；没有成本可比依据时不画 Average Cost Line，不新增公司行动会计；
 * Chart 与 Agent 使用的数据来源和时间语义保持一致，不通过 TradingView Widget 或页面数据建立第二套 Market Truth；
 * Zoom、Pan、Crosshair、Responsive Resize 等核心图表交互稳定可用；
 * TradingView Lightweight Charts 等第三方 Library 与 PositionPilot Domain / Market Data Boundary 保持解耦；
 * 相关 Frontend Integration Test、Browser Smoke 与 Human Acceptance 通过；
-* Human Acceptance 通过，并形成 `v1.4.0` Release。
+* Human Acceptance 通过，并形成 `v1.3.0` Release。
 
 ## Answer Quality / Memory / Open Web Research Discovery
 
