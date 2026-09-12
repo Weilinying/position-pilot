@@ -100,14 +100,14 @@ class MarketContextService:
         completed_bars = tuple(
             bar
             for bar in historical_bars.bars
-            if _is_completed_daily_bar(bar.timestamp, query_end=end)
+            if is_completed_daily_bar(bar.timestamp, query_end=end)
         )
         if len(completed_bars) < MINIMUM_OBSERVATION_COUNT:
             return MarketDataResult.failure(
                 MarketDataStatus.NO_DATA,
                 "Market Regime 至少需要 21 根 completed SPY Daily Bars",
             )
-        if _is_obviously_stale(completed_bars[-1].timestamp, query_end=end):
+        if is_historical_bars_stale(completed_bars[-1].timestamp, query_end=end):
             return MarketDataResult.failure(
                 MarketDataStatus.NO_DATA,
                 "最新 completed SPY Daily Bar 已超过 7 个日历日，Market Regime 保持 UNKNOWN",
@@ -133,13 +133,13 @@ class MarketContextService:
         return MarketDataResult.success(context)
 
 
-def _is_completed_daily_bar(timestamp: datetime, *, query_end: datetime) -> bool:
+def is_completed_daily_bar(timestamp: datetime, *, query_end: datetime) -> bool:
     """按纽约常规收盘时间保守排除仍可能变化的当前 Session Daily Bar。"""
 
     return timestamp.astimezone(_NEW_YORK).date() <= _latest_completed_session_date(query_end)
 
 
-def _is_obviously_stale(timestamp: datetime, *, query_end: datetime) -> bool:
+def is_historical_bars_stale(timestamp: datetime, *, query_end: datetime) -> bool:
     """仅拒绝明显陈旧数据，并容纳正常周末和交易所假期。"""
 
     latest_bar_date = timestamp.astimezone(_NEW_YORK).date()

@@ -234,6 +234,14 @@ class PositionReconciliationsResult:
     portfolio: PortfolioState
 
 
+@dataclass(frozen=True, slots=True)
+class PortfolioReplaySnapshot:
+    """一次完整事实读取产生的 Replay 与有效交易视图。"""
+
+    replay: ReplayResult
+    effective_transactions: tuple[Transaction, ...]
+
+
 class PortfolioService:
     """协调领域计算与 Portfolio 持久化事务。"""
 
@@ -531,6 +539,11 @@ class PortfolioService:
     def get_replay(self, user_id: UUID) -> ReplayResult:
         """读取同一批完整事实，共享一次持仓与卖出分配重放。"""
 
+        return self.get_replay_snapshot(user_id).replay
+
+    def get_replay_snapshot(self, user_id: UUID) -> PortfolioReplaySnapshot:
+        """一次读取完整账本，返回重放结果及更正后的有效交易。"""
+
         with self._unit_of_work_factory() as unit_of_work:
             user = unit_of_work.get_user(user_id)
             if user is None:
@@ -542,15 +555,24 @@ class PortfolioService:
             lot_allocations = unit_of_work.list_lot_allocations(user.id)
             classification_changes = unit_of_work.list_lot_classification_changes(user.id)
             buy_corrections = unit_of_work.list_buy_transaction_corrections(user.id)
-            return replay_portfolio(
-                user,
-                transactions,
-                cash_events,
-                opening_positions,
-                reconciliations,
-                lot_allocations,
-                classification_changes,
-                buy_corrections,
+            return PortfolioReplaySnapshot(
+                replay=replay_portfolio(
+                    user,
+                    transactions,
+                    cash_events,
+                    opening_positions,
+                    reconciliations,
+                    lot_allocations,
+                    classification_changes,
+                    buy_corrections,
+                ),
+                effective_transactions=tuple(
+                    apply_buy_transaction_corrections(
+                        user,
+                        transactions,
+                        buy_corrections,
+                    )
+                ),
             )
 
     def get_investment_context(self, user_id: UUID) -> InvestmentPortfolioContext:

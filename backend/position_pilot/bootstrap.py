@@ -12,6 +12,7 @@ from position_pilot.application.market_context_service import MarketContextServi
 from position_pilot.application.market_data_service import MarketDataService
 from position_pilot.application.news_service import NewsService
 from position_pilot.application.opening_import_service import OpeningImportService
+from position_pilot.application.portfolio_chart_service import PortfolioChartService
 from position_pilot.application.portfolio_service import PortfolioService
 from position_pilot.application.portfolio_summary_service import PortfolioSummaryService
 from position_pilot.application.portfolio_valuation_service import PortfolioValuationService
@@ -81,6 +82,13 @@ def get_portfolio_summary_service() -> PortfolioSummaryService:
     """装配复用同一账本快照的首页聚合服务。"""
 
     return PortfolioSummaryService(get_portfolio_service(), get_portfolio_valuation_service())
+
+
+@lru_cache
+def get_portfolio_chart_service() -> PortfolioChartService:
+    """装配固定用户资产范围的历史图表服务。"""
+
+    return PortfolioChartService(get_portfolio_service(), get_market_data_service())
 
 
 @lru_cache

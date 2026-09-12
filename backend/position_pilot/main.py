@@ -2,7 +2,7 @@
 
 import base64
 import binascii
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from enum import StrEnum
 from pathlib import Path
@@ -41,6 +41,12 @@ from position_pilot.application.investment_agent import (
     InvestmentResponseStatus,
 )
 from position_pilot.application.opening_import_service import OpeningImportService
+from position_pilot.application.portfolio_chart_service import (
+    ChartAssetNotFound,
+    ChartRange,
+    PortfolioChart,
+    PortfolioChartService,
+)
 from position_pilot.application.portfolio_service import (
     ChangeLotClassificationCommand,
     CorrectBuyTransactionCommand,
@@ -72,6 +78,7 @@ from position_pilot.bootstrap import (
     get_auth_service,
     get_investment_agent,
     get_opening_import_service,
+    get_portfolio_chart_service,
     get_portfolio_service,
     get_portfolio_summary_service,
     get_portfolio_valuation_service,
@@ -614,6 +621,87 @@ class PortfolioValuationResponse(BaseModel):
     tickers: tuple[TickerValuationResponse, ...]
 
 
+class ChartBarResponse(BaseModel):
+    """图表使用的单根已完成日线。"""
+
+    timestamp: datetime
+    open: Decimal
+    high: Decimal
+    low: Decimal
+    close: Decimal
+    volume: int
+
+
+class ChartCurrentCostResponse(BaseModel):
+    """当前仍有持仓时的记录成本摘要。"""
+
+    shares: Decimal
+    average_cost: Decimal
+    cost_basis: Decimal
+
+
+class ChartSellAllocationResponse(BaseModel):
+    """卖出标记对应的批次分配审计结果。"""
+
+    lot_id: UUID
+    source: str
+    shares: Decimal
+    position_type_at_sale: PositionType
+    allocated_gross_proceeds: Decimal
+    allocated_fee: Decimal
+    allocated_net_proceeds: Decimal
+    released_cost: Decimal
+    realized_pnl: Decimal
+
+
+class ChartTransactionResponse(BaseModel):
+    """单个交易标记及其卖出批次分配。"""
+
+    transaction_id: UUID
+    action: TransactionAction
+    occurred_at: datetime
+    market_date: date
+    shares: Decimal
+    price: Decimal
+    fee: Decimal
+    fee_schedule: str
+    position_type: PositionType
+    allocations: tuple[ChartSellAllocationResponse, ...]
+
+
+class ChartTransactionMarkerResponse(BaseModel):
+    """同一纽约市场日期下的交易集合。"""
+
+    market_date: date
+    has_bar: bool
+    transactions: tuple[ChartTransactionResponse, ...]
+
+
+class PortfolioChartResponse(BaseModel):
+    """固定 Portfolio ticker 的日线、成本摘要和交易标记。"""
+
+    user_id: UUID
+    ticker: str
+    range: ChartRange
+    anchor_date: date
+    requested_start: date
+    requested_end: date
+    timeframe: str
+    status: MarketDataStatus
+    message: str | None
+    bars: tuple[ChartBarResponse, ...]
+    source: str | None
+    feed: str | None
+    coverage: MarketDataCoverage | None
+    currency: str | None
+    adjustment: str | None
+    fetched_at: datetime | None
+    current_cost: ChartCurrentCostResponse | None
+    cost_basis_comparable: bool
+    cost_line_unavailable_reason: str
+    markers: tuple[ChartTransactionMarkerResponse, ...]
+
+
 class PortfolioSummaryResponse(BaseModel):
     """首页聚合持仓、账本收益和行情估值，各自保持独立数据结构。"""
 
@@ -758,6 +846,12 @@ def get_portfolio_summary_service_dependency() -> PortfolioSummaryService:
     """延迟装配首页服务，允许测试替换行情与账本。"""
 
     return get_portfolio_summary_service()
+
+
+def get_portfolio_chart_service_dependency() -> PortfolioChartService:
+    """延迟装配 Portfolio Chart Service，允许测试替换行情。"""
+
+    return get_portfolio_chart_service()
 
 
 def get_auth_service_dependency() -> AuthService:
@@ -1575,6 +1669,47 @@ def get_current_portfolio_summary(
     )
 
 
+@app.get("/v1/portfolio/chart", response_model=PortfolioChartResponse)
+def get_portfolio_chart(
+    ticker: Annotated[str, Query(min_length=1, max_length=100)],
+    chart_range: Annotated[ChartRange, Query(alias="range")],
+    account: Annotated[Account, Depends(get_current_account_dependency)],
+    chart_service: Annotated[
+        PortfolioChartService,
+        Depends(get_portfolio_chart_service_dependency),
+    ],
+    anchor_date: Annotated[date | None, Query()] = None,
+) -> PortfolioChartResponse:
+    """返回当前 Session 可访问 ticker 的历史日线与交易日期标记。"""
+
+    try:
+        chart = chart_service.get_chart(
+            _require_portfolio_user(account),
+            ticker,
+            chart_range,
+            anchor_date=anchor_date,
+        )
+    except ChartAssetNotFound:
+        _raise_api_error(
+            status.HTTP_404_NOT_FOUND,
+            ApiErrorDetail(
+                code="CHART_ASSET_NOT_FOUND",
+                message="该 ticker 不属于当前 Portfolio 或交易记录",
+            ),
+        )
+    except UserNotFound:
+        _raise_api_error(
+            status.HTTP_404_NOT_FOUND,
+            ApiErrorDetail(code="USER_NOT_FOUND", message="Portfolio User 不存在"),
+        )
+    except ValueError as error:
+        _raise_api_error(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            ApiErrorDetail(code="INVALID_CHART_REQUEST", message=str(error)),
+        )
+    return _portfolio_chart_response(chart)
+
+
 @app.post(
     "/v1/portfolio/opening-positions",
     response_model=OpeningPositionsWriteResponse,
@@ -2052,6 +2187,85 @@ def _portfolio_valuation_response(
     return PortfolioValuationResponse(
         user_id=valuation.user_id,
         tickers=tuple(_ticker_valuation_response(item) for item in valuation.tickers),
+    )
+
+
+def _portfolio_chart_response(chart: PortfolioChart) -> PortfolioChartResponse:
+    """把 Chart Application Result 映射为稳定的 Public Response。"""
+
+    return PortfolioChartResponse(
+        user_id=chart.user_id,
+        ticker=chart.ticker,
+        range=chart.chart_range,
+        anchor_date=chart.anchor_date,
+        requested_start=chart.requested_start,
+        requested_end=chart.requested_end,
+        timeframe=chart.timeframe,
+        status=chart.status,
+        message=chart.message,
+        bars=tuple(
+            ChartBarResponse(
+                timestamp=bar.timestamp,
+                open=bar.open,
+                high=bar.high,
+                low=bar.low,
+                close=bar.close,
+                volume=bar.volume,
+            )
+            for bar in chart.bars
+        ),
+        source=chart.source,
+        feed=chart.feed,
+        coverage=chart.coverage,
+        currency=chart.currency,
+        adjustment=chart.adjustment,
+        fetched_at=chart.fetched_at,
+        current_cost=(
+            ChartCurrentCostResponse(
+                shares=chart.current_cost.shares,
+                average_cost=chart.current_cost.average_cost,
+                cost_basis=chart.current_cost.cost_basis,
+            )
+            if chart.current_cost is not None
+            else None
+        ),
+        cost_basis_comparable=chart.cost_basis_comparable,
+        cost_line_unavailable_reason=chart.cost_line_unavailable_reason,
+        markers=tuple(
+            ChartTransactionMarkerResponse(
+                market_date=marker.market_date,
+                has_bar=marker.has_bar,
+                transactions=tuple(
+                    ChartTransactionResponse(
+                        transaction_id=transaction.transaction_id,
+                        action=transaction.action,
+                        occurred_at=transaction.occurred_at,
+                        market_date=transaction.market_date,
+                        shares=transaction.shares,
+                        price=transaction.price,
+                        fee=transaction.fee,
+                        fee_schedule=transaction.fee_schedule,
+                        position_type=transaction.position_type,
+                        allocations=tuple(
+                            ChartSellAllocationResponse(
+                                lot_id=allocation.lot_id,
+                                source=allocation.source,
+                                shares=allocation.shares,
+                                position_type_at_sale=allocation.position_type_at_sale,
+                                allocated_gross_proceeds=allocation.allocated_gross_proceeds,
+                                allocated_fee=allocation.allocated_fee,
+                                allocated_net_proceeds=allocation.allocated_net_proceeds,
+                                released_cost=allocation.released_cost,
+                                realized_pnl=allocation.realized_pnl,
+                            )
+                            for allocation in transaction.allocations
+                        ),
+                    )
+                    for transaction in marker.transactions
+                ),
+            )
+            for marker in chart.markers
+        ),
     )
 
 
