@@ -2223,18 +2223,30 @@ function positionTypeLabel(positionType) {
   return translate("unspecified");
 }
 
-function createSummaryMetricLine(label, metrics, level = 0) {
+function createSummaryMetricLine(label, metrics, level = 0, ticker = null) {
   const row = makeElement("div", `summary-breakdown-row summary-breakdown-level-${level}`);
   const identity = makeElement("strong", "summary-breakdown-label", label);
   const realized = makeElement("span", "summary-breakdown-number");
   const unrealized = makeElement("span", "summary-breakdown-number");
   const total = makeElement("span", "summary-breakdown-number");
   const market = makeElement("span", "summary-breakdown-number");
+  const actions = makeElement("span", "summary-breakdown-actions");
   setPnlElement(realized, metrics?.realized_pnl);
   setPnlElement(unrealized, metrics?.unrealized_pnl);
   setPnlElement(total, metrics?.total_pnl);
   market.textContent = metrics?.market_value === null || metrics?.market_value === undefined ? "—" : formatMoney(metrics.market_value);
-  row.append(identity, realized, unrealized, total, market);
+  if (ticker) {
+    const chart = makeElement("button", "row-action", translate("open_chart"));
+    chart.type = "button";
+    chart.setAttribute("aria-label", `${translate("open_chart")} ${ticker}`);
+    chart.addEventListener("click", () => {
+      const anchorDate = latestSellAnchorDate(ticker);
+      elements.summaryDialog.close();
+      openPositionChart(ticker, anchorDate);
+    });
+    actions.append(chart);
+  }
+  row.append(identity, realized, unrealized, total, market, actions);
   return row;
 }
 
@@ -2253,10 +2265,11 @@ function renderSummaryDialog() {
     setLocalizedText(cell, key);
     header.append(cell);
   }
+  header.append(makeElement("span"));
   elements.summaryContent.append(header);
   for (const ticker of tickers) {
     const section = makeElement("section", "summary-breakdown-group");
-    section.append(createSummaryMetricLine(ticker.ticker, ticker.metrics, 0));
+    section.append(createSummaryMetricLine(ticker.ticker, ticker.metrics, 0, ticker.ticker));
     for (const positionType of ticker.position_types ?? []) {
       section.append(createSummaryMetricLine(positionTypeLabel(positionType.position_type), positionType.metrics, 1));
     }
@@ -2431,6 +2444,13 @@ function nyMarketDate(value) {
   }).formatToParts(date);
   const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
   return values.year && values.month && values.day ? `${values.year}-${values.month}-${values.day}` : null;
+}
+
+function latestSellAnchorDate(ticker) {
+  const latestSell = [...state.transactionRecords]
+    .filter((record) => record.ticker === ticker && record.action === "SELL")
+    .sort((left, right) => new Date(right.occurred_at).getTime() - new Date(left.occurred_at).getTime())[0];
+  return latestSell ? nyMarketDate(latestSell.occurred_at) : null;
 }
 
 function setChartRangeState(range) {

@@ -273,9 +273,10 @@ stale / refresh_required; never automatic retry
 - Decision Questions 将当前浏览器标签页内的多个 Question / Answer 作为纯 Presentation State 依次追加，并提供 Question History 跳转列表。刷新、Logout 或 Account 变化即清空；每个 Question 仍是独立的真实 `InvestmentAgent` Request，不携带先前问答，因此不构成 Conversation Memory 或多轮模型上下文。
 - Ask Composer 的 Question Textarea 通过 `compositionstart` / `compositionend` 维护短生命周期的 composing state。非 Shift 的 Enter 只有在非 composing、非 repeat、非 pending 时调用 `questionForm.requestSubmit()`，再由 `handleQuestion` 统一执行 Trim、空问题校验和 Request；Shift+Enter 保留浏览器换行，`event.isComposing`、composing state 或 `keyCode === 229` 会直接放过输入法，repeat / pending 只阻止默认 Enter 行为且不产生第二次 Request。
 - Portfolio Workspace 将当前持仓、Trade Entry 与 Cash Entry 分成 Positions / Transactions / Cash Activity 三个 Panel。持仓按 ticker 总体 → UNSPECIFIED Lot → SWING 小计 / Lot → LONG_TERM 小计 / Lot 展开；Opening 与 Reconciliation 历史不在主持仓页并列展示。导入汇总持仓可直接生成手工校准 Draft，BUY Lot 从批次行打开更正表单。
-- Portfolio 顶层 ticker 行与交易详情可打开固定 ticker 的宽图表 Dialog。当前持仓入口使用最近区间，
-  历史交易入口以该交易的纽约市场日期为查询锚点；关闭或切换范围会取消旧请求并销毁旧图表实例，
-  不改变持仓行的展开状态。
+- Portfolio 顶层 ticker 行、交易详情与 Accounting Detail 可打开固定 ticker 的宽图表 Dialog。当前持仓
+  入口使用最近区间，历史交易入口以该交易的纽约市场日期为查询锚点；Accounting Detail 优先以该
+  ticker 最近一次 SELL 的纽约市场日期为锚点，没有 SELL 时使用最近区间。关闭或切换范围会取消旧
+  请求并销毁旧图表实例，不改变持仓行的展开状态。
 - 正常产品 Flow 使用 Session-derived singular API：`GET /v1/portfolio` 映射 `PortfolioService.get_portfolio()`；`POST /v1/portfolio` 原子创建唯一 User 与可选 Opening State；Opening Position、Transaction 与 Cash Event 使用对应 singular 子资源。原 UUID 路由只为现有工程兼容保留，并同样要求当前 Session 对目标 User 具有 Ownership，不构成匿名绕过入口。
 - `POST /v1/portfolio/opening-positions` 在 User Row Lock 下执行一次性 1～100 行批量写入。`POST /v1/portfolio/reconciliations` 追加截图或手工确认的汇总校准。Lot 类型与 BUY 成交字段修改都追加不可变事件；所有写入在锁内重放后原子提交。
 - M8 API 中的“Portfolio”仍是现有单一 `User → Portfolio State` 模型的产品呈现，Account 只是一对一 Owner；不新增独立 Portfolio Entity。Multiple Portfolios 的 Ownership / Resource Boundary 留到 V2 重新评估。

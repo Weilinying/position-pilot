@@ -3456,7 +3456,7 @@ footer {
 .summary-breakdown-header,
 .summary-breakdown-row {
   display: grid;
-  grid-template-columns: minmax(120px, 1.4fr) repeat(4, minmax(92px, 1fr));
+  grid-template-columns: minmax(120px, 1.4fr) repeat(4, minmax(92px, 1fr)) minmax(48px, auto);
   align-items: center;
   gap: 10px;
 }
@@ -3500,6 +3500,11 @@ footer {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.summary-breakdown-actions {
+  display: flex;
+  justify-content: flex-end;
 }
 
 .allocation-details {

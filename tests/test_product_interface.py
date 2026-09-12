@@ -247,7 +247,7 @@ def test_client_script_preserves_session_identity_safe_text_and_question_boundar
         assert script.count(f"{label}:") >= 2
 
     assert 'ERROR_LABELS[error.code] ?? "unexpected_server_error"' in script
-    assert "20260912-m13-chart-1" in page
+    assert "20260912-m13-chart-2" in page
     assert "lightweight-charts/5.2.0/lightweight-charts.standalone.production.js" in page
     assert "Chart" in script
     assert "position-chart-dialog" in script
@@ -256,6 +256,9 @@ def test_client_script_preserves_session_identity_safe_text_and_question_boundar
     assert "state.chartInstance?.destroy()" in script
     assert "openPositionChart(ticker, null, chart)" in script
     assert "openPositionChart(effective.ticker, anchorDate, chart)" in script
+    assert "function latestSellAnchorDate(ticker)" in script
+    assert 'record.ticker === ticker && record.action === "SELL"' in script
+    assert "openPositionChart(ticker, anchorDate);" in script
     assert "event.stopPropagation(); openPositionChart" in script
     assert "createPriceLine" not in script
     assert "Average Cost Line" not in script
