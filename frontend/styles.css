@@ -3648,6 +3648,226 @@ footer {
   gap: 7px;
 }
 
+/* M13 图表采用宽对话框，保留日 K、成交量和交易记录的紧凑层级。 */
+.product-dialog.chart-dialog {
+  width: min(1080px, calc(100vw - 28px));
+  max-height: min(92vh, 900px);
+  padding: 20px;
+}
+
+.chart-toolbar,
+.chart-attribution,
+.chart-cost-facts,
+.chart-marker-date,
+.chart-transaction-row {
+  display: flex;
+  align-items: center;
+}
+
+.chart-toolbar {
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 4px;
+}
+
+.chart-range-control {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(20, 37, 31, 0.035);
+}
+
+.chart-range-control button {
+  min-width: 42px;
+  padding: 5px 8px;
+  border-radius: 6px;
+  color: var(--muted);
+  background: transparent;
+  font-size: 11px;
+  font-weight: 720;
+}
+
+.chart-range-control button:hover,
+.chart-range-control button:focus-visible,
+.chart-range-control button.is-active {
+  color: var(--signal-dark);
+  background: var(--signal);
+}
+
+.chart-message {
+  min-height: 18px;
+  margin: 5px 0 7px;
+  font-size: 11px;
+}
+
+.chart-canvas {
+  width: 100%;
+  min-height: 360px;
+  border-top: 1px solid rgba(20, 37, 31, 0.08);
+  border-bottom: 1px solid rgba(20, 37, 31, 0.08);
+}
+
+.chart-attribution {
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 28px;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.chart-attribution a {
+  color: var(--teal);
+  text-decoration: none;
+}
+
+.chart-source-item {
+  display: inline-flex;
+  gap: 4px;
+  margin-right: 11px;
+}
+
+.chart-source-label,
+.chart-cost-label {
+  color: var(--muted);
+  font-weight: 650;
+}
+
+.chart-source-value {
+  color: var(--ink-soft);
+}
+
+.chart-recorded-cost,
+.chart-marker-records {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+
+.chart-section-heading {
+  display: block;
+  margin-bottom: 8px;
+  color: var(--ink);
+  font-size: 11px;
+  font-weight: 720;
+}
+
+.chart-cost-facts {
+  flex-wrap: wrap;
+  gap: 18px;
+}
+
+.chart-cost-fact {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  font-variant-numeric: tabular-nums;
+}
+
+.chart-cost-value {
+  font-size: 12px;
+}
+
+.chart-cost-note,
+.chart-marker-note {
+  margin: 7px 0 0;
+  font-size: 10px;
+}
+
+.chart-marker-list {
+  display: grid;
+  grid-template-columns: minmax(150px, 0.7fr) minmax(0, 1.8fr);
+  gap: 0 12px;
+  max-height: 190px;
+  overflow: auto;
+}
+
+.chart-marker-date {
+  align-self: start;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  min-height: 31px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  color: var(--ink-soft);
+  background: transparent;
+  font-size: 10px;
+  text-align: left;
+}
+
+.chart-marker-date span {
+  margin-left: auto;
+  color: var(--muted);
+}
+
+.chart-marker-date small {
+  min-width: 16px;
+  color: var(--muted);
+  text-align: right;
+}
+
+.chart-marker-date:hover,
+.chart-marker-date:focus-visible,
+.chart-marker-date.is-selected {
+  color: var(--ink);
+  background: rgba(27, 107, 84, 0.08);
+}
+
+.chart-marker-details {
+  padding: 4px 8px 8px;
+  border-left: 1px solid var(--line);
+}
+
+.chart-transaction-row {
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 28px;
+  color: var(--ink-soft);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.chart-transaction-row small {
+  color: var(--muted);
+  text-align: right;
+}
+
+.chart-transaction-action.buy {
+  color: var(--teal);
+}
+
+.chart-transaction-action.sell {
+  color: var(--danger);
+}
+
+@media (max-width: 720px) {
+  .product-dialog.chart-dialog {
+    padding: 14px;
+  }
+
+  .chart-canvas {
+    min-height: 360px;
+  }
+
+  .chart-attribution {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 3px;
+    padding: 5px 0;
+  }
+
+  .chart-marker-list {
+    grid-template-columns: 1fr;
+  }
+
+  .chart-marker-details {
+    border-left: 0;
+    border-top: 1px solid rgba(20, 37, 31, 0.06);
+  }
+}
+
 .segmented-control {
   display: grid;
   grid-template-columns: 1fr 1fr;

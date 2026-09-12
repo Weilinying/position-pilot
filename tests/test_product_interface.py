@@ -63,6 +63,9 @@ def test_serves_public_auth_setup_and_authenticated_app_shell() -> None:
         "import-dialog",
         "buy-correction-dialog",
         "transaction-detail-dialog",
+        "position-chart-dialog",
+        "position-chart-canvas",
+        "position-chart-records",
         "open-summary-dialog",
         "portfolio-summary-dialog",
         "portfolio-pnl-title",
@@ -163,6 +166,22 @@ def test_attachment_composer_and_reconciliation_contract() -> None:
     assert "collectSellAllocations" in script
 
 
+def test_position_chart_uses_self_hosted_attributed_library() -> None:
+    """图表应使用固定版本的本地库，并保留许可证与署名入口。"""
+
+    with TestClient(app) as client:
+        library = client.get(
+            "/static/vendor/lightweight-charts/5.2.0/lightweight-charts.standalone.production.js"
+        )
+        license_file = client.get("/static/vendor/lightweight-charts/5.2.0/LICENSE")
+        notice_file = client.get("/static/vendor/lightweight-charts/5.2.0/NOTICE")
+
+    assert library.status_code == 200
+    assert b"createSeriesMarkers" in library.content
+    assert license_file.status_code == 200
+    assert notice_file.status_code == 200
+
+
 def test_client_script_preserves_session_identity_safe_text_and_question_boundary() -> None:
     """前端应使用 Session-derived identity、安全 DOM 和独立 question 请求。"""
 
@@ -228,7 +247,19 @@ def test_client_script_preserves_session_identity_safe_text_and_question_boundar
         assert script.count(f"{label}:") >= 2
 
     assert 'ERROR_LABELS[error.code] ?? "unexpected_server_error"' in script
-    assert "20260912-m11-cost-basis-2" in page
+    assert "20260912-m13-chart-1" in page
+    assert "lightweight-charts/5.2.0/lightweight-charts.standalone.production.js" in page
+    assert "Chart" in script
+    assert "position-chart-dialog" in script
+    assert "/v1/portfolio/chart?" in script
+    assert "state.chartController?.abort()" in script
+    assert "state.chartInstance?.destroy()" in script
+    assert "openPositionChart(ticker, null, chart)" in script
+    assert "openPositionChart(effective.ticker, anchorDate, chart)" in script
+    assert "event.stopPropagation(); openPositionChart" in script
+    assert "createPriceLine" not in script
+    assert "Average Cost Line" not in script
+    assert "localChartCost" not in script
 
     assert "innerHTML" not in script
     assert "outerHTML" not in script

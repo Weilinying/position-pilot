@@ -1,3 +1,5 @@
+import { CHART_RANGES, createPositionChart, normalizeChartPayload } from "./chart.js";
+
 const translations = {
   en: {
     meta_description: "PositionPilot — portfolio-grounded investment decision support.",
@@ -393,6 +395,34 @@ Object.assign(translations.en, {
   sell_allocation: "Sell allocation",
   sold_at_type: "Type at sale",
   no_realized_pnl: "—",
+  open_chart: "Chart",
+  chart_title: "Price chart",
+  chart_range: "Range",
+  chart_refresh: "Refresh chart",
+  chart_loading: "Loading chart…",
+  chart_no_data: "No completed bars are available for this range.",
+  chart_unavailable: "Market data is unavailable right now.",
+  chart_stale: "The latest available bar is outside the selected window.",
+  chart_source: "Source",
+  chart_feed: "Feed",
+  chart_adjustment: "Price basis",
+  chart_coverage: "Coverage",
+  chart_currency: "Currency",
+  chart_timeframe: "Timeframe",
+  chart_fetched: "Fetched",
+  chart_recorded_cost: "Recorded cost",
+  chart_shares: "Shares",
+  chart_average_cost: "Average cost",
+  chart_cost_basis: "Cost basis",
+  chart_cost_not_comparable: "Recorded cost is shown for reference and is not drawn on the chart.",
+  chart_no_position_cost: "No current position cost is recorded.",
+  chart_transactions: "Transactions",
+  chart_no_transactions: "No transactions in this range.",
+  chart_marker_no_bar: "No completed bar for this date",
+  chart_history: "Historical chart",
+  chart_provider_failure: "Market data could not be loaded. Your transaction records remain available.",
+  chart_status_ok: "Market data loaded",
+  chart_status_no_data: "No market data",
 });
 
 Object.assign(translations.zh, {
@@ -490,6 +520,34 @@ Object.assign(translations.zh, {
   sell_allocation: "卖出批次分配",
   sold_at_type: "卖出时类型",
   no_realized_pnl: "—",
+  open_chart: "图表",
+  chart_title: "价格图表",
+  chart_range: "区间",
+  chart_refresh: "刷新图表",
+  chart_loading: "正在加载图表…",
+  chart_no_data: "这个区间没有可用的已完成日 K。",
+  chart_unavailable: "当前无法获取行情。",
+  chart_stale: "最新可用日 K 已超出所选区间。",
+  chart_source: "来源",
+  chart_feed: "数据源",
+  chart_adjustment: "价格口径",
+  chart_coverage: "覆盖范围",
+  chart_currency: "货币",
+  chart_timeframe: "周期",
+  chart_fetched: "获取时间",
+  chart_recorded_cost: "记录成本",
+  chart_shares: "股数",
+  chart_average_cost: "平均成本",
+  chart_cost_basis: "成本基础",
+  chart_cost_not_comparable: "记录成本仅供参考，不叠加到图表价格轴。",
+  chart_no_position_cost: "当前没有记录中的持仓成本。",
+  chart_transactions: "交易记录",
+  chart_no_transactions: "这个区间没有交易记录。",
+  chart_marker_no_bar: "该日期没有已完成日 K",
+  chart_history: "历史图表",
+  chart_provider_failure: "暂时无法加载行情，交易记录仍然可以查看。",
+  chart_status_ok: "行情已加载",
+  chart_status_no_data: "没有行情数据",
 });
 
 const state = {
@@ -525,6 +583,15 @@ const state = {
   questionCount: 0,
   activeView: "chat",
   selectedLot: null,
+  chartGeneration: 0,
+  chartController: null,
+  chartInstance: null,
+  chartTicker: null,
+  chartRange: "3M",
+  chartAnchorDate: null,
+  chartPayload: null,
+  chartSelectedDate: null,
+  chartOpener: null,
 };
 
 const DECIMAL_PATTERN = /^(?:0|[1-9]\d*)(?:\.\d{1,8})?$/;
@@ -613,6 +680,7 @@ const elements = {
   imagePreviewDialog: byId("image-preview-dialog"), imagePreviewClose: byId("image-preview-close"), imagePreviewFull: byId("image-preview-full"), imagePreviewCaption: byId("image-preview-caption"),
   correctionDialog: byId("buy-correction-dialog"), correctionForm: byId("buy-correction-form"), correctionClose: byId("buy-correction-close"), correctionLotId: byId("buy-correction-lot-id"), correctionSymbol: byId("buy-correction-symbol"), correctionPrice: byId("buy-correction-price"), correctionPriceLabel: byId("buy-correction-price-label"), correctionShares: byId("buy-correction-shares"), correctionTime: byId("buy-correction-time"), correctionType: byId("buy-correction-type"), correctionReason: byId("buy-correction-reason"), correctionMessage: byId("buy-correction-message"),
   transactionDetailDialog: byId("transaction-detail-dialog"), transactionDetailTitle: byId("transaction-detail-title"), transactionDetailSubtitle: byId("transaction-detail-subtitle"), transactionDetailContent: byId("transaction-detail-content"), transactionDetailActions: byId("transaction-detail-actions"), transactionDetailClose: byId("transaction-detail-close"),
+  chartDialog: byId("position-chart-dialog"), chartTitle: byId("position-chart-title"), chartSubtitle: byId("position-chart-subtitle"), chartClose: byId("position-chart-close"), chartRefresh: byId("position-chart-refresh"), chartRanges: [...document.querySelectorAll("[data-chart-range]")], chartMessage: byId("position-chart-message"), chartCanvas: byId("position-chart-canvas"), chartSource: byId("position-chart-source"), chartCost: byId("position-chart-cost"), chartRecords: byId("position-chart-records"),
   summaryRealizedPnl: byId("summary-realized-pnl"), summaryUnrealizedPnl: byId("summary-unrealized-pnl"), summaryTotalPnl: byId("summary-total-pnl"), summaryPnlStatus: byId("portfolio-pnl-status"), openSummary: byId("open-summary-dialog"), summaryDialog: byId("portfolio-summary-dialog"), summaryDialogClose: byId("portfolio-summary-dialog-close"), summaryContent: byId("portfolio-summary-content"),
 };
 
@@ -1965,6 +2033,11 @@ function createHoldingRow({ label, note = null, metrics, fallback, level, toggle
   ];
   const actions = makeElement("span", "holding-actions");
   if (ticker && level === 0) {
+    const chart = makeElement("button", "row-action", translate("open_chart"));
+    chart.type = "button";
+    chart.setAttribute("aria-label", `${translate("open_chart")} ${ticker}`);
+    chart.addEventListener("click", (event) => { event.stopPropagation(); openPositionChart(ticker, null, chart); });
+    actions.append(chart);
     for (const [action, key] of [["BUY", "buy"], ["SELL", "sell"]]) {
       const button = makeElement("button", "row-action", translate(key));
       button.type = "button";
@@ -2301,6 +2374,16 @@ function openTransactionDetail(record, kind) {
     edit.addEventListener("click", () => { elements.transactionDetailDialog.close(); openBuyCorrection(lot); });
     elements.transactionDetailActions.append(edit);
   } else if (isTrade) elements.transactionDetailActions.append(makeElement("small", "muted-note", translate("edit_unavailable")));
+  if (isTrade) {
+    const chart = makeElement("button", "secondary-button compact-button", translate("open_chart"));
+    chart.type = "button";
+    chart.addEventListener("click", () => {
+      const anchorDate = nyMarketDate(effective.occurred_at);
+      elements.transactionDetailDialog.close();
+      openPositionChart(effective.ticker, anchorDate, chart);
+    });
+    elements.transactionDetailActions.append(chart);
+  }
   elements.transactionDetailDialog.showModal();
 }
 
@@ -2335,6 +2418,228 @@ function transactionFeeText(transaction) {
   return transaction.fee_schedule === "BUY_COST_INCLUDED"
     ? translate("fee_included")
     : formatMoney(transaction.commission);
+}
+
+function nyMarketDate(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return values.year && values.month && values.day ? `${values.year}-${values.month}-${values.day}` : null;
+}
+
+function setChartRangeState(range) {
+  state.chartRange = CHART_RANGES.includes(range) ? range : "3M";
+  for (const button of elements.chartRanges) button.classList.toggle("is-active", button.dataset.chartRange === state.chartRange);
+}
+
+function chartStatusKey(payload) {
+  const status = String(payload?.status ?? "").toUpperCase();
+  if (status === "STALE") return "chart_stale";
+  if (["AUTHENTICATION_FAILED", "RATE_LIMITED", "PROVIDER_UNAVAILABLE", "INVALID_PROVIDER_RESPONSE", "INVALID_SYMBOL", "INVALID_REQUEST", "PROVIDER_FAILURE", "UNAVAILABLE", "ERROR", "FAILED"].includes(status)) return "chart_provider_failure";
+  if (["NO_DATA", "NO_MARKET_DATA"].includes(status)) return "chart_no_data";
+  if (!payload?.bars?.length) return "chart_no_data";
+  return "chart_status_ok";
+}
+
+function renderChartSource(payload) {
+  clearElement(elements.chartSource);
+  const source = payload?.source && typeof payload.source === "object" ? payload.source : {};
+  const items = [
+    ["chart_source", typeof payload?.source === "string" ? payload.source : source.source ?? payload?.source_name],
+    ["chart_feed", payload?.feed ?? source.feed],
+    ["chart_adjustment", payload?.adjustment ?? source.adjustment],
+    ["chart_coverage", payload?.coverage ?? source.coverage],
+    ["chart_currency", payload?.currency ?? source.currency],
+    ["chart_timeframe", payload?.timeframe ?? source.timeframe],
+    ["chart_fetched", payload?.fetched_at ?? source.fetched_at],
+  ].filter(([, value]) => value !== null && value !== undefined && value !== "");
+  for (const [key, value] of items) {
+    const item = makeElement("span", "chart-source-item");
+    const label = makeElement("small", "chart-source-label", translate(key));
+    const content = makeElement("span", "chart-source-value");
+    content.textContent = key === "chart_fetched" ? formatTimestamp(value) : String(value);
+    item.append(label, content);
+    elements.chartSource.append(item);
+  }
+}
+
+function renderChartCost(payload) {
+  clearElement(elements.chartCost);
+  const cost = payload?.current_cost;
+  if (!cost) {
+    elements.chartCost.hidden = true;
+    return;
+  }
+  elements.chartCost.hidden = false;
+  const heading = makeElement("strong", "chart-section-heading", translate("chart_recorded_cost"));
+  const facts = makeElement("div", "chart-cost-facts");
+  for (const [key, value] of [["chart_shares", cost.shares], ["chart_average_cost", cost.average_cost], ["chart_cost_basis", cost.cost_basis]]) {
+    const item = makeElement("span", "chart-cost-fact");
+    item.append(makeElement("small", "chart-cost-label", translate(key)), makeElement("strong", "chart-cost-value", key === "chart_shares" ? formatDecimal(value) : formatMoney(value)));
+    facts.append(item);
+  }
+  elements.chartCost.append(heading, facts);
+  if (payload.cost_basis_comparable === false) elements.chartCost.append(makeElement("p", "field-note chart-cost-note", translate("chart_cost_not_comparable")));
+}
+
+function renderChartRecords(payload) {
+  clearElement(elements.chartRecords);
+  const markers = Array.isArray(payload?.markers) ? payload.markers : [];
+  if (!markers.length) {
+    elements.chartRecords.append(makeElement("p", "muted-note", translate("chart_no_transactions")));
+    return;
+  }
+  const heading = makeElement("strong", "chart-section-heading", translate("chart_transactions"));
+  elements.chartRecords.append(heading);
+  const list = makeElement("div", "chart-marker-list");
+  const selectedDate = state.chartSelectedDate && markers.some((marker) => marker.market_date === state.chartSelectedDate)
+    ? state.chartSelectedDate
+    : markers[markers.length - 1].market_date;
+  state.chartSelectedDate = selectedDate;
+  for (const marker of markers) {
+    const dateButton = makeElement("button", `chart-marker-date ${marker.market_date === selectedDate ? "is-selected" : ""}`);
+    dateButton.type = "button";
+    dateButton.dataset.chartDate = marker.market_date;
+    const actions = [...new Set((marker.transactions ?? []).map((transaction) => transaction.action).filter(Boolean))].join(" / ");
+    dateButton.append(makeElement("strong", "", marker.market_date), makeElement("span", "", actions || "—"), makeElement("small", "", `${marker.transactions?.length ?? 0}`));
+    dateButton.addEventListener("click", () => {
+      state.chartSelectedDate = marker.market_date;
+      renderChartRecords(payload);
+    });
+    list.append(dateButton);
+    if (marker.market_date !== selectedDate) continue;
+    const details = makeElement("div", "chart-marker-details");
+    if (marker.has_bar === false) details.append(makeElement("p", "field-note chart-marker-note", translate("chart_marker_no_bar")));
+    for (const transaction of marker.transactions ?? []) {
+      const row = makeElement("div", "chart-transaction-row");
+      const action = String(transaction.action ?? transaction.side ?? "").toUpperCase();
+      const priceLabel = transaction.fee_schedule === "BUY_COST_INCLUDED" ? "average_cost_fee_included" : "price";
+      const typeDetail = Array.isArray(transaction.allocations) && transaction.allocations.length
+        ? transaction.allocations.map((allocation) => `${positionTypeLabel(allocation.position_type_at_sale)} ${formatDecimal(allocation.shares)}`).join(" / ")
+        : positionTypeLabel(transaction.position_type);
+      row.append(
+        makeElement("strong", `chart-transaction-action ${action.toLowerCase()}`, action),
+        makeElement("span", "", `${formatDecimal(transaction.shares)} ${translate("shares")} · ${translate(priceLabel)} ${formatMoney(transaction.price)} · ${translate("commission")} ${formatMoney(transaction.fee ?? 0)}`),
+        makeElement("small", "", `${transaction.occurred_at ? formatTimestamp(transaction.occurred_at) : translate("not_provided")} · ${typeDetail}`),
+      );
+      details.append(row);
+    }
+    list.append(details);
+  }
+  elements.chartRecords.append(list);
+}
+
+function destroyPositionChart() {
+  state.chartInstance?.destroy();
+  state.chartInstance = null;
+  clearElement(elements.chartCanvas);
+}
+
+function renderPositionChart(payload) {
+  const normalized = normalizeChartPayload(payload);
+  state.chartPayload = normalized;
+  destroyPositionChart();
+  clearMessage(elements.chartMessage);
+  const statusKey = chartStatusKey(normalized);
+  if (statusKey !== "chart_status_ok") {
+    const status = String(normalized.status ?? "").toUpperCase();
+    const tone = status === "STALE" ? "warning" : ["PROVIDER_UNAVAILABLE", "AUTHENTICATION_FAILED", "RATE_LIMITED", "INVALID_PROVIDER_RESPONSE", "INVALID_SYMBOL", "INVALID_REQUEST", "PROVIDER_FAILURE"].includes(status) ? "danger" : "neutral";
+    setMessage(elements.chartMessage, statusKey, tone);
+  }
+  if (normalized.bars.length) {
+    try {
+      state.chartInstance = createPositionChart({
+        container: elements.chartCanvas,
+        payload: normalized,
+        onDateSelect: (date) => {
+          state.chartSelectedDate = date;
+          renderChartRecords(normalized);
+        },
+      });
+    } catch {
+      setMessage(elements.chartMessage, "chart_unavailable", "danger");
+    }
+  }
+  renderChartSource(normalized);
+  renderChartCost(normalized);
+  renderChartRecords(normalized);
+}
+
+function renderChartUnavailable() {
+  renderPositionChart({
+    ticker: state.chartTicker,
+    range: state.chartRange,
+    status: "PROVIDER_FAILURE",
+    bars: [],
+    markers: [],
+  });
+  setMessage(elements.chartMessage, "chart_provider_failure", "danger");
+}
+
+async function loadPositionChart() {
+  const ticker = state.chartTicker;
+  if (!ticker) return;
+  const generation = ++state.chartGeneration;
+  state.chartController?.abort();
+  const controller = new AbortController();
+  state.chartController = controller;
+  setLocalizedText(elements.chartMessage, "chart_loading");
+  elements.chartMessage.dataset.tone = "active";
+  const params = new URLSearchParams({ ticker, range: state.chartRange });
+  if (state.chartAnchorDate) params.set("anchor_date", state.chartAnchorDate);
+  try {
+    const payload = await requestJson(`/v1/portfolio/chart?${params.toString()}`, { signal: controller.signal });
+    if (generation !== state.chartGeneration || state.chartTicker !== ticker) return;
+    renderPositionChart(payload);
+  } catch (error) {
+    if (error?.name === "AbortError" || generation !== state.chartGeneration || state.chartTicker !== ticker) return;
+    if (error instanceof ApiError && error.status === 401) {
+      if (elements.chartDialog.open) elements.chartDialog.close();
+      else closePositionChart();
+      enterHome("session_expired");
+      return;
+    }
+    renderChartUnavailable();
+  } finally {
+    if (generation === state.chartGeneration) state.chartController = null;
+  }
+}
+
+function openPositionChart(ticker, anchorDate = null, opener = null) {
+  const normalizedTicker = String(ticker ?? "").trim().toUpperCase();
+  if (!normalizedTicker) return;
+  state.chartTicker = normalizedTicker;
+  state.chartAnchorDate = anchorDate || null;
+  state.chartSelectedDate = anchorDate || null;
+  state.chartPayload = null;
+  state.chartOpener = opener;
+  setChartRangeState("3M");
+  elements.chartTitle.textContent = normalizedTicker;
+  setLocalizedText(elements.chartSubtitle, anchorDate ? "chart_history" : "chart_title");
+  clearElement(elements.chartCanvas);
+  clearElement(elements.chartSource);
+  clearElement(elements.chartCost);
+  clearElement(elements.chartRecords);
+  if (!elements.chartDialog.open) elements.chartDialog.showModal();
+  loadPositionChart();
+}
+
+function closePositionChart() {
+  state.chartGeneration += 1;
+  state.chartController?.abort();
+  state.chartController = null;
+  destroyPositionChart();
+  state.chartTicker = null;
+  state.chartPayload = null;
+  const opener = state.chartOpener;
+  state.chartOpener = null;
+  if (opener && typeof opener.focus === "function") opener.focus();
 }
 
 function renderOpeningAvailability() {
@@ -3092,6 +3397,20 @@ function bindEvents() {
   elements.correctionClose.addEventListener("click", () => elements.correctionDialog.close());
   elements.correctionForm.addEventListener("submit", handleBuyCorrection);
   elements.transactionDetailClose.addEventListener("click", () => elements.transactionDetailDialog.close());
+  elements.chartClose.addEventListener("click", () => elements.chartDialog.close());
+  elements.chartDialog.addEventListener("click", (event) => {
+    if (event.target === elements.chartDialog) elements.chartDialog.close();
+  });
+  elements.chartDialog.addEventListener("close", closePositionChart);
+  for (const button of elements.chartRanges) {
+    button.addEventListener("click", () => {
+      if (!state.chartTicker || state.chartRange === button.dataset.chartRange) return;
+      setChartRangeState(button.dataset.chartRange);
+      state.chartSelectedDate = null;
+      loadPositionChart();
+    });
+  }
+  elements.chartRefresh.addEventListener("click", () => loadPositionChart());
   elements.summaryDialogClose.addEventListener("click", () => elements.summaryDialog.close());
   elements.question.addEventListener("compositionstart", () => { state.questionComposing = true; });
   elements.question.addEventListener("compositionend", () => { state.questionComposing = false; });
