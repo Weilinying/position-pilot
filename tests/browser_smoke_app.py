@@ -42,6 +42,7 @@ from position_pilot.application.portfolio_service import (
     RecordPositionReconciliationsCommand,
     RecordTransactionCommand,
 )
+from position_pilot.application.portfolio_summary_service import PortfolioSummaryService
 from position_pilot.application.portfolio_valuation_service import PortfolioValuationService
 from position_pilot.application.recognition_service import (
     DraftField,
@@ -81,13 +82,19 @@ from position_pilot.domain.portfolio import (
     PositionLotSource,
     PositionReconciliation,
     PositionType,
+    ReplayResult,
     Transaction,
     TransactionAction,
     User,
     normalize_timestamp,
     rebuild_portfolio,
+    replay_portfolio,
     resequence_cash_events,
     resequence_transactions,
+)
+from position_pilot.domain.portfolio_accounting import (
+    PortfolioAccounting,
+    calculate_portfolio_accounting,
 )
 from position_pilot.main import (
     app,
@@ -96,6 +103,7 @@ from position_pilot.main import (
     get_investment_agent_dependency,
     get_opening_import_service_dependency,
     get_portfolio_service_dependency,
+    get_portfolio_summary_service_dependency,
     get_portfolio_valuation_service_dependency,
     get_recognition_service_dependency,
 )
@@ -423,6 +431,39 @@ class BrowserSmokePortfolioService:
         if user_id in {USER_A, USER_B, SLOW_USER, EMPTY_USER}:
             return ()
         raise UserNotFound(user_id)
+
+    def get_replay(self, user_id: UUID) -> ReplayResult:
+        """按真实 Replay 生成当前持仓与收益明细，供 M11 首页聚合读取。"""
+
+        with self._lock:
+            user = self._users.get(user_id)
+            if user is not None:
+                return replay_portfolio(
+                    user,
+                    self._transactions[user_id],
+                    self._cash_events[user_id],
+                    self._opening_positions[user_id],
+                    self._reconciliations[user_id],
+                    self._lot_allocations[user_id],
+                    self._classification_changes[user_id],
+                    self._buy_corrections[user_id],
+                )
+        if user_id == EMPTY_USER:
+            return ReplayResult(portfolio=self.get_portfolio(user_id), sell_allocation_results=())
+        if user_id in {USER_A, USER_B, SLOW_USER}:
+            ticker = {USER_A: "GOOG", USER_B: "NVDA", SLOW_USER: "SLOW"}[user_id]
+            if user_id == SLOW_USER:
+                sleep(0.6)
+            return ReplayResult(
+                portfolio=_portfolio(user_id, ticker=ticker),
+                sell_allocation_results=(),
+            )
+        raise UserNotFound(user_id)
+
+    def get_accounting(self, user_id: UUID) -> PortfolioAccounting:
+        """返回真实 Replay 产生的已实现收益核算，供只读会计接口使用。"""
+
+        return calculate_portfolio_accounting(self.get_replay(user_id))
 
     def record_position_reconciliations(
         self,
@@ -870,6 +911,11 @@ portfolio_service = BrowserSmokePortfolioService()
 portfolio_valuation_service = PortfolioValuationService(
     portfolio_service,
     BrowserSmokeQuoteReader(),
+    clock=lambda: NOW,
+)
+portfolio_summary_service = PortfolioSummaryService(
+    portfolio_service,
+    portfolio_valuation_service,
 )
 investment_agent = BrowserSmokeInvestmentAgent()
 asset_metadata_service = AssetMetadataService(BrowserSmokeAssetMetadataProvider())
@@ -887,6 +933,9 @@ opening_import_service = OpeningImportService(
 app.dependency_overrides[get_portfolio_service_dependency] = lambda: portfolio_service
 app.dependency_overrides[get_portfolio_valuation_service_dependency] = lambda: (
     portfolio_valuation_service
+)
+app.dependency_overrides[get_portfolio_summary_service_dependency] = lambda: (
+    portfolio_summary_service
 )
 app.dependency_overrides[get_investment_agent_dependency] = lambda: investment_agent
 app.dependency_overrides[get_auth_service_dependency] = lambda: auth_service

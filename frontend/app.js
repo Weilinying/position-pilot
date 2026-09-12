@@ -368,6 +368,31 @@ Object.assign(translations.en, {
   correction_saved: "Purchase correction saved",
   edit_purchase: "Edit purchase",
   no_aggregate_holdings_to_calibrate: "No imported aggregate holdings can be edited here. Edit purchase lots from the holdings list.",
+  purchase_batch: "Buy batch",
+  imported_batch: "Imported holding",
+  batch: "Batch",
+  portfolio_pnl: "Portfolio P/L",
+  realized_pnl: "Realized P/L",
+  unrealized_pnl: "Unrealized P/L",
+  total_pnl: "Total P/L",
+  realized_pnl_short: "P/L",
+  view_details: "Details",
+  pnl_breakdown: "P/L breakdown",
+  pnl_by_ticker_type: "By ticker and position type",
+  valuation_partial: "Some quotes unavailable",
+  valuation_complete: "",
+  pnl_reconciliation_note: "Includes reconciled positions; P/L uses recorded trades and confirmed costs.",
+  gross_proceeds: "Gross proceeds",
+  net_proceeds: "Net proceeds",
+  released_cost: "Released cost",
+  realized_pnl_percent: "Realized P/L %",
+  allocation_details: "Sale allocation",
+  allocated_gross_proceeds: "Allocated gross",
+  allocated_fee: "Allocated fee",
+  allocated_net_proceeds: "Allocated net",
+  sell_allocation: "Sell allocation",
+  sold_at_type: "Type at sale",
+  no_realized_pnl: "—",
 });
 
 Object.assign(translations.zh, {
@@ -440,6 +465,31 @@ Object.assign(translations.zh, {
   correction_saved: "购买批次更正已保存",
   edit_purchase: "修改购买记录",
   no_aggregate_holdings_to_calibrate: "没有可在这里修改的导入汇总持仓；请在持仓列表中修改购买批次。",
+  purchase_batch: "买入批次",
+  imported_batch: "导入持仓",
+  batch: "批次",
+  portfolio_pnl: "投资组合盈亏",
+  realized_pnl: "已实现盈亏",
+  unrealized_pnl: "未实现盈亏",
+  total_pnl: "交易盈亏合计",
+  realized_pnl_short: "盈亏",
+  view_details: "明细",
+  pnl_breakdown: "盈亏明细",
+  pnl_by_ticker_type: "按标的和仓位类型",
+  valuation_partial: "部分行情不可用",
+  valuation_complete: "",
+  pnl_reconciliation_note: "包含校准持仓；盈亏按已记录交易和确认成本计算。",
+  gross_proceeds: "卖出成交额",
+  net_proceeds: "卖出净收入",
+  released_cost: "释放成本",
+  realized_pnl_percent: "已实现盈亏 %",
+  allocation_details: "卖出分配",
+  allocated_gross_proceeds: "分配成交额",
+  allocated_fee: "分配手续费",
+  allocated_net_proceeds: "分配净收入",
+  sell_allocation: "卖出批次分配",
+  sold_at_type: "卖出时类型",
+  no_realized_pnl: "—",
 });
 
 const state = {
@@ -448,6 +498,8 @@ const state = {
   loadedUserId: null,
   snapshot: null,
   valuation: null,
+  accounting: null,
+  summary: null,
   valuationController: null,
   openingRecords: [],
   reconciliationRecords: [],
@@ -561,6 +613,7 @@ const elements = {
   imagePreviewDialog: byId("image-preview-dialog"), imagePreviewClose: byId("image-preview-close"), imagePreviewFull: byId("image-preview-full"), imagePreviewCaption: byId("image-preview-caption"),
   correctionDialog: byId("buy-correction-dialog"), correctionForm: byId("buy-correction-form"), correctionClose: byId("buy-correction-close"), correctionLotId: byId("buy-correction-lot-id"), correctionSymbol: byId("buy-correction-symbol"), correctionPrice: byId("buy-correction-price"), correctionPriceLabel: byId("buy-correction-price-label"), correctionShares: byId("buy-correction-shares"), correctionTime: byId("buy-correction-time"), correctionType: byId("buy-correction-type"), correctionReason: byId("buy-correction-reason"), correctionMessage: byId("buy-correction-message"),
   transactionDetailDialog: byId("transaction-detail-dialog"), transactionDetailTitle: byId("transaction-detail-title"), transactionDetailSubtitle: byId("transaction-detail-subtitle"), transactionDetailContent: byId("transaction-detail-content"), transactionDetailActions: byId("transaction-detail-actions"), transactionDetailClose: byId("transaction-detail-close"),
+  summaryRealizedPnl: byId("summary-realized-pnl"), summaryUnrealizedPnl: byId("summary-unrealized-pnl"), summaryTotalPnl: byId("summary-total-pnl"), summaryPnlStatus: byId("portfolio-pnl-status"), openSummary: byId("open-summary-dialog"), summaryDialog: byId("portfolio-summary-dialog"), summaryDialogClose: byId("portfolio-summary-dialog-close"), summaryContent: byId("portfolio-summary-content"),
 };
 
 const importConfigs = [
@@ -676,7 +729,17 @@ function apiMessageKey(error) {
 }
 
 function formatDecimal(value) {
-  const raw = String(value ?? "0");
+  let raw = String(value ?? "0");
+  // Decimal 的零与小数可能以科学计数法传输，展开字符串以保留金额精度。
+  const scientific = raw.match(/^(-?)(\d+)(?:\.(\d+))?[eE]([+-]?\d+)$/);
+  if (scientific) {
+    const [, sign, whole, fraction = "", exponent] = scientific;
+    const digits = whole + fraction;
+    const point = whole.length + Number(exponent);
+    raw = sign + (point <= 0 ? `0.${"0".repeat(-point)}${digits}`
+      : point >= digits.length ? digits + "0".repeat(point - digits.length)
+      : `${digits.slice(0, point)}.${digits.slice(point)}`);
+  }
   const [integerRaw, fractionRaw = ""] = raw.split(".");
   const integer = integerRaw.replace(/^(-?)0+(?=\d)/, "$1");
   const grouped = integer.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
@@ -1460,6 +1523,8 @@ function resetSensitiveState() {
   state.loadedUserId = null;
   state.snapshot = null;
   state.valuation = null;
+  state.accounting = null;
+  state.summary = null;
   state.valuationController?.abort();
   state.valuationController = null;
   state.openingRecords = [];
@@ -1785,6 +1850,10 @@ async function handleSetup(event, forceEmpty = false) {
 function renderPortfolioEmpty() {
   elements.availableCash.textContent = "—";
   elements.positionCount.textContent = "0";
+  for (const element of [elements.summaryRealizedPnl, elements.summaryUnrealizedPnl, elements.summaryTotalPnl]) {
+    if (element) { element.textContent = "—"; delete element.dataset.tone; }
+  }
+  if (elements.summaryPnlStatus) elements.summaryPnlStatus.textContent = "";
   clearElement(elements.positionList);
   elements.positionsEmpty.hidden = false;
   for (const [list, count, empty] of [[elements.transactionList, elements.transactionCount, elements.transactionsEmpty], [elements.cashList, elements.cashCount, elements.cashEmpty]]) {
@@ -1812,6 +1881,47 @@ function metricText(metrics, field, fallback = null) {
   if (field === "unrealized_pnl_percent") return `${formatDecimal(value)}%`;
   if (["average_cost", "unrealized_pnl", "market_value"].includes(field)) return formatMoney(value);
   return formatDecimal(value);
+}
+
+function formatPnl(value) {
+  if (value === null || value === undefined) return "—";
+  const raw = String(value);
+  if (Number(raw) === 0) return "$0";
+  if (raw.startsWith("-")) return `-$${formatDecimal(raw.slice(1))}`;
+  return `+$${formatDecimal(raw)}`;
+}
+
+function pnlTone(value) {
+  if (value === null || value === undefined) return "neutral";
+  const numeric = Number(value);
+  return numeric > 0 ? "positive" : numeric < 0 ? "negative" : "neutral";
+}
+
+function setPnlElement(element, value) {
+  if (!element) return;
+  element.textContent = formatPnl(value);
+  element.dataset.tone = pnlTone(value);
+}
+
+function summaryMetrics() {
+  return state.summary?.totals ?? null;
+}
+
+function renderPortfolioSummary() {
+  const metrics = summaryMetrics();
+  setPnlElement(elements.summaryRealizedPnl, metrics?.realized_pnl);
+  setPnlElement(elements.summaryUnrealizedPnl, metrics?.unrealized_pnl);
+  setPnlElement(elements.summaryTotalPnl, metrics?.total_pnl);
+  if (elements.summaryPnlStatus) {
+    const notes = [];
+    if (metrics && metrics.valuation_complete === false) notes.push(translate("valuation_partial"));
+    if (state.summary?.has_reconciliations) notes.push(translate("pnl_reconciliation_note"));
+    elements.summaryPnlStatus.textContent = notes.join(" · ");
+  }
+}
+
+function accountingTransaction(transactionId) {
+  return state.accounting?.transactions?.find((item) => item.transaction_id === transactionId) ?? null;
 }
 
 function createHoldingRow({ label, note = null, metrics, fallback, level, toggle = null, lot = null, ticker = null, currentPrice = null }) {
@@ -2033,17 +2143,139 @@ function historyDate(value) {
   return new Intl.DateTimeFormat(state.language === "zh" ? "zh-CN" : "en-US", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false }).format(date);
 }
 
+function positionTypeLabel(positionType) {
+  if (positionType === "SWING") return translate("strategy_swing");
+  if (positionType === "LONG_TERM") return translate("strategy_long_term");
+  return translate("unspecified");
+}
+
+function createSummaryMetricLine(label, metrics, level = 0) {
+  const row = makeElement("div", `summary-breakdown-row summary-breakdown-level-${level}`);
+  const identity = makeElement("strong", "summary-breakdown-label", label);
+  const realized = makeElement("span", "summary-breakdown-number");
+  const unrealized = makeElement("span", "summary-breakdown-number");
+  const total = makeElement("span", "summary-breakdown-number");
+  const market = makeElement("span", "summary-breakdown-number");
+  setPnlElement(realized, metrics?.realized_pnl);
+  setPnlElement(unrealized, metrics?.unrealized_pnl);
+  setPnlElement(total, metrics?.total_pnl);
+  market.textContent = metrics?.market_value === null || metrics?.market_value === undefined ? "—" : formatMoney(metrics.market_value);
+  row.append(identity, realized, unrealized, total, market);
+  return row;
+}
+
+function renderSummaryDialog() {
+  clearElement(elements.summaryContent);
+  const tickers = state.summary?.tickers ?? [];
+  if (!tickers.length) {
+    const empty = makeElement("p", "muted-note");
+    setLocalizedText(empty, "records_empty");
+    elements.summaryContent.append(empty);
+    return;
+  }
+  const header = makeElement("div", "summary-breakdown-header");
+  for (const key of ["ticker", "realized_pnl", "unrealized_pnl", "total_pnl", "market_value"]) {
+    const cell = makeElement("span");
+    setLocalizedText(cell, key);
+    header.append(cell);
+  }
+  elements.summaryContent.append(header);
+  for (const ticker of tickers) {
+    const section = makeElement("section", "summary-breakdown-group");
+    section.append(createSummaryMetricLine(ticker.ticker, ticker.metrics, 0));
+    for (const positionType of ticker.position_types ?? []) {
+      section.append(createSummaryMetricLine(positionTypeLabel(positionType.position_type), positionType.metrics, 1));
+    }
+    elements.summaryContent.append(section);
+  }
+}
+
+function openSummaryDialog() {
+  renderSummaryDialog();
+  elements.summaryDialog.showModal();
+}
+
+function allocationLotLabel(allocation, sourceCounters) {
+  const lotId = String(allocation.lot_id ?? "");
+  const source = String(allocation.source ?? "");
+  const auditId = lotId ? ` · ${lotId.slice(0, 8)}` : "";
+  if (source === "BUY") {
+    const purchase = state.transactionRecords.find((item) => String(item.id) === lotId);
+    const effective = purchase ? effectiveTransaction(purchase) : null;
+    return {
+      label: effective ? `${translate("purchase_batch")} · ${historyDate(effective.occurred_at)}` : `${translate("purchase_batch")}${auditId}`,
+      title: lotId,
+    };
+  }
+  const key = source === "OPENING" || source === "RECONCILIATION" ? "imported" : "other";
+  sourceCounters[key] = (sourceCounters[key] ?? 0) + 1;
+  return {
+    label: `${translate(key === "imported" ? "imported_batch" : "purchase_batch")} #${sourceCounters[key]}`,
+    title: lotId,
+  };
+}
+
+function createAllocationTable(allocationResult) {
+  const section = makeElement("section", "allocation-details");
+  const heading = makeElement("h4");
+  setLocalizedText(heading, "allocation_details");
+  section.append(heading);
+  const header = makeElement("div", "allocation-table-row allocation-table-header");
+  for (const key of ["batch", "ticker", "shares", "sold_at_type", "allocated_gross_proceeds", "allocated_fee", "allocated_net_proceeds", "released_cost", "realized_pnl"]) {
+    const cell = makeElement("span");
+    setLocalizedText(cell, key);
+    header.append(cell);
+  }
+  section.append(header);
+  const sourceCounters = {};
+  for (const allocation of allocationResult.allocations ?? []) {
+    const lotLabel = allocationLotLabel(allocation, sourceCounters);
+    const batch = makeElement("span", "allocation-lot", lotLabel.label);
+    batch.title = lotLabel.title;
+    const row = makeElement("div", "allocation-table-row");
+    row.append(
+      batch,
+      makeElement("span", "allocation-ticker", allocation.ticker),
+      makeElement("span", "allocation-number", formatDecimal(allocation.shares)),
+      makeElement("span", "allocation-type", positionTypeLabel(allocation.position_type_at_sale)),
+      makeElement("span", "allocation-number", formatMoney(allocation.allocated_gross_proceeds)),
+      makeElement("span", "allocation-number", formatMoney(allocation.allocated_fee)),
+      makeElement("span", "allocation-number", formatMoney(allocation.allocated_net_proceeds)),
+      makeElement("span", "allocation-number", formatMoney(allocation.released_cost)),
+      makeElement("span", "allocation-number", formatPnl(allocation.realized_pnl)),
+    );
+    const pnl = row.lastElementChild;
+    pnl.dataset.tone = pnlTone(allocation.realized_pnl);
+    section.append(row);
+  }
+  return section;
+}
+
 function openTransactionDetail(record, kind) {
   const isTrade = kind === "trade";
   const effective = isTrade ? effectiveTransaction(record) : record;
+  const accounting = isTrade && effective.action === "SELL" ? accountingTransaction(record.id) : null;
   elements.transactionDetailTitle.textContent = isTrade ? `${effective.ticker} · ${effective.action}` : translate(record.event_type === "DEPOSIT" ? "deposit" : "withdrawal");
   elements.transactionDetailSubtitle.textContent = formatTimestamp(effective.occurred_at);
   clearElement(elements.transactionDetailContent);
   const priceLabel = effective.fee_schedule === "BUY_COST_INCLUDED" ? "average_cost_fee_included" : "price";
   const facts = isTrade
-    ? [["shares", effective.shares, "decimal"], [priceLabel, effective.price, "decimal"], ["commission", transactionFeeText(effective)], ["position_type", effective.position_type === "UNSPECIFIED" ? translate("unspecified") : effective.position_type], ["reason", effective.reason]]
+    ? [["shares", effective.shares, "decimal"], [priceLabel, effective.price, "decimal"], ...(accounting ? [] : [["commission", transactionFeeText(effective)]]), ["position_type", effective.position_type === "UNSPECIFIED" ? translate("unspecified") : effective.position_type], ["reason", effective.reason]]
     : [["amount", effective.amount, "decimal"], ["reason", effective.reason]];
   elements.transactionDetailContent.append(createFactList(facts));
+  if (isTrade && effective.action === "SELL") {
+    if (accounting) {
+      elements.transactionDetailContent.append(createFactList([
+        ["gross_proceeds", accounting.metrics?.gross_proceeds, "decimal"],
+        ["commission", accounting.metrics?.fee, "decimal"],
+        ["net_proceeds", accounting.metrics?.net_proceeds, "decimal"],
+        ["released_cost", accounting.metrics?.released_cost, "decimal"],
+        ["realized_pnl", formatPnl(accounting.metrics?.realized_pnl)],
+        ["realized_pnl_percent", accounting.metrics?.realized_pnl_percent === null || accounting.metrics?.realized_pnl_percent === undefined ? null : `${formatDecimal(accounting.metrics.realized_pnl_percent)}%`],
+      ]));
+      elements.transactionDetailContent.append(createAllocationTable(accounting));
+    }
+  }
   if (isTrade && effective.edited) {
     const original = makeElement("details", "correction-history");
     const summary = makeElement("summary", "", translate("edit_history"));
@@ -2074,10 +2306,15 @@ function openTransactionDetail(record, kind) {
 function createHistoryRow(record, kind) {
   const isTrade = kind === "trade";
   const effective = isTrade ? effectiveTransaction(record) : record;
+  const accounting = isTrade && effective.action === "SELL" ? accountingTransaction(record.id) : null;
   const row = makeElement("button", "history-row");
   row.type = "button";
+  row.dataset.recordId = record.id;
+  row.dataset.recordKind = kind;
   const side = isTrade ? effective.action : translate(effective.event_type === "DEPOSIT" ? "deposit" : "withdrawal");
   const status = isTrade && effective.edited ? translate("edited") : translate("completed");
+  const pnl = makeElement("span", "history-number history-pnl", accounting ? formatPnl(accounting.metrics?.realized_pnl) : "—");
+  if (accounting) pnl.dataset.tone = pnlTone(accounting.metrics?.realized_pnl);
   row.append(
     makeElement("span", "history-time", historyDate(effective.occurred_at)),
     makeElement("strong", "history-ticker", isTrade ? effective.ticker : "USD"),
@@ -2086,6 +2323,7 @@ function createHistoryRow(record, kind) {
     makeElement("span", "history-number", formatMoney(isTrade ? effective.price : effective.amount)),
     makeElement("span", "history-number", isTrade ? transactionFeeText(effective) : "—"),
     makeElement("span", "history-type", isTrade ? (effective.position_type === "UNSPECIFIED" ? translate("unspecified") : effective.position_type) : "CASH"),
+    pnl,
     makeElement("span", `history-status ${effective.edited ? "is-edited" : ""}`, status),
   );
   row.addEventListener("click", () => openTransactionDetail(record, kind));
@@ -2107,6 +2345,7 @@ function renderPortfolio() {
   const snapshot = state.snapshot;
   if (!snapshot) { renderPortfolioEmpty(); updateControls(); return; }
   elements.availableCash.textContent = formatMoney(snapshot.available_cash);
+  renderPortfolioSummary();
   const tickers = [...new Set((snapshot.lots ?? []).map((lot) => lot.ticker))].sort();
   elements.positionCount.textContent = String(tickers.length);
   clearElement(elements.positionList);
@@ -2138,16 +2377,20 @@ async function refreshValuation() {
   const controller = new AbortController();
   state.valuationController = controller;
   try {
-    let valuation;
+    let summary;
     try {
-      valuation = await requestJson("/v1/portfolio/valuation", { signal: controller.signal });
+      summary = await requestJson("/v1/portfolio/summary", { signal: controller.signal });
     } catch (error) {
       if (state.snapshot !== snapshot || state.portfolioGeneration !== generation) return;
       if (error instanceof ApiError && error.status === 401) { enterHome("session_expired"); return; }
-      valuation = null;
+      // 背景刷新失败时保留上一份收益与行情，避免已实现收益随网络抖动消失。
+      return;
     }
     if (state.snapshot !== snapshot || state.portfolioGeneration !== generation || state.writeState !== "idle") return;
-    state.valuation = valuation;
+    state.summary = summary;
+    state.valuation = summary?.valuation ?? null;
+    state.accounting = summary?.accounting ?? null;
+    renderPortfolioSummary();
     // 仅替换展示数字，保留正在操作的控件、焦点和展开状态。
     for (const group of elements.positionList.querySelectorAll(".holding-group")) {
       const fresh = createHoldingTree(group.dataset.ticker);
@@ -2163,6 +2406,14 @@ async function refreshValuation() {
       else if (currentNote) currentNote.remove();
       else if (freshNote) group.querySelector(".holding-identity").append(freshNote.cloneNode(true));
     }
+    for (const row of elements.transactionList.querySelectorAll(".history-row[data-record-kind='trade']")) {
+      const accounting = accountingTransaction(row.dataset.recordId);
+      const pnl = row.querySelector(".history-pnl");
+      if (!pnl) continue;
+      pnl.textContent = accounting ? formatPnl(accounting.metrics?.realized_pnl) : "—";
+      if (accounting) pnl.dataset.tone = pnlTone(accounting.metrics?.realized_pnl);
+      else delete pnl.dataset.tone;
+    }
   } finally {
     if (state.valuationController === controller) state.valuationController = null;
   }
@@ -2171,18 +2422,16 @@ async function refreshValuation() {
 async function refreshPortfolio({ afterMutation = false } = {}) {
   if (state.authTransition !== "idle" || state.questionPending || state.portfolioReadState !== "idle" || (state.writeState === "submitting" && !afterMutation)) return false;
   const generation = ++state.portfolioGeneration;
+  state.valuationController?.abort();
+  state.valuationController = null;
   state.portfolioController?.abort();
   const controller = new AbortController();
   state.portfolioController = controller;
   state.portfolioReadState = "loading";
   updateControls();
   try {
-    const [snapshot, valuation, openings, reconciliations, transactions, corrections, cash] = await Promise.all([
-      requestJson("/v1/portfolio", { signal: controller.signal }),
-      requestJson("/v1/portfolio/valuation", { signal: controller.signal }).catch((error) => {
-        if (error?.name === "AbortError") throw error;
-        return null;
-      }),
+    const [summary, openings, reconciliations, transactions, corrections, cash] = await Promise.all([
+      requestJson("/v1/portfolio/summary", { signal: controller.signal }),
       requestJson("/v1/portfolio/opening-positions", { signal: controller.signal }),
       requestJson("/v1/portfolio/reconciliations", { signal: controller.signal }),
       requestJson("/v1/portfolio/transactions", { signal: controller.signal }),
@@ -2190,9 +2439,11 @@ async function refreshPortfolio({ afterMutation = false } = {}) {
       requestJson("/v1/portfolio/cash-events", { signal: controller.signal }),
     ]);
     if (generation !== state.portfolioGeneration) return false;
-    state.snapshot = snapshot;
-    state.valuation = valuation;
-    state.loadedUserId = snapshot.user_id;
+    state.summary = summary;
+    state.snapshot = summary.portfolio;
+    state.valuation = summary.valuation;
+    state.accounting = summary.accounting;
+    state.loadedUserId = summary.user_id ?? summary.portfolio.user_id;
     state.openingRecords = openings.items;
     state.reconciliationRecords = reconciliations.items;
     state.transactionRecords = transactions.items;
@@ -2795,6 +3046,7 @@ function bindEvents() {
   elements.emptyBuy.addEventListener("click", () => openTradeDialog("BUY"));
   elements.openImport.addEventListener("click", openImportDialog);
   elements.openCash.addEventListener("click", openCashDialog);
+  elements.openSummary.addEventListener("click", openSummaryDialog);
   elements.addOpeningRow.addEventListener("click", () => createOpeningRow(elements.openingRows));
   elements.skipOpening.addEventListener("click", () => { state.openingDismissed = true; renderOpeningAvailability(); });
   elements.reopenOpening.addEventListener("click", () => { state.openingDismissed = false; renderOpeningAvailability(); });
@@ -2839,6 +3091,7 @@ function bindEvents() {
   elements.correctionClose.addEventListener("click", () => elements.correctionDialog.close());
   elements.correctionForm.addEventListener("submit", handleBuyCorrection);
   elements.transactionDetailClose.addEventListener("click", () => elements.transactionDetailDialog.close());
+  elements.summaryDialogClose.addEventListener("click", () => elements.summaryDialog.close());
   elements.question.addEventListener("compositionstart", () => { state.questionComposing = true; });
   elements.question.addEventListener("compositionend", () => { state.questionComposing = false; });
   elements.question.addEventListener("keydown", handleQuestionKeydown);

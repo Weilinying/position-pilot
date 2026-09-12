@@ -714,6 +714,32 @@ class PortfolioState:
         )
 
 
+@dataclass(frozen=True, slots=True)
+class SellAllocationResult:
+    """一笔 SELL 对单个来源批次产生的已实现核算结果。"""
+
+    transaction_id: UUID
+    lot_id: UUID
+    ticker: str
+    source: PositionLotSource
+    occurred_at: datetime
+    position_type_at_sale: PositionType
+    shares: Decimal
+    allocated_gross_proceeds: Decimal
+    allocated_fee: Decimal
+    allocated_net_proceeds: Decimal
+    released_cost: Decimal
+    realized_pnl: Decimal
+
+
+@dataclass(frozen=True, slots=True)
+class ReplayResult:
+    """一次 Replay 同时产出的当前持仓与 SELL 分配明细。"""
+
+    portfolio: PortfolioState
+    sell_allocation_results: tuple[SellAllocationResult, ...]
+
+
 @dataclass(slots=True)
 class _PositionAccumulator:
     shares: Decimal
@@ -780,7 +806,7 @@ def apply_buy_transaction_corrections(
     return resequence_transactions(effective_transactions)
 
 
-def rebuild_portfolio(
+def replay_portfolio(
     user: User,
     transactions: list[Transaction],
     cash_events: list[CashEvent] | None = None,
@@ -789,8 +815,8 @@ def rebuild_portfolio(
     lot_allocations: list[LotAllocation] | None = None,
     lot_classification_changes: list[LotClassificationChange] | None = None,
     buy_transaction_corrections: list[BuyTransactionCorrection] | None = None,
-) -> PortfolioState:
-    """从 Opening State 开始，按实际发生时间重建当前 Portfolio。
+) -> ReplayResult:
+    """从 Opening State 开始，按实际发生时间重放 Portfolio 与 SELL 明细。
 
     参数:
         user: Ledger 所有者及 Initial Cash。
@@ -906,6 +932,7 @@ def rebuild_portfolio(
     available_cash = user.initial_cash
     total_deposits = Decimal("0")
     total_withdrawals = Decimal("0")
+    sell_allocation_results: list[SellAllocationResult] = []
     lots: dict[UUID, _LotAccumulator] = {
         position.id: _LotAccumulator(
             id=position.id,
@@ -989,11 +1016,16 @@ def rebuild_portfolio(
             )
             continue
 
-        allocations = allocations_by_transaction.get(transaction.id, [])
+        allocations = sorted(
+            allocations_by_transaction.get(transaction.id, []),
+            key=lambda allocation: allocation.lot_id.hex,
+        )
         allocated_shares = sum((allocation.shares for allocation in allocations), Decimal("0"))
         if allocated_shares != transaction.shares:
             raise InvalidLedger("SELL 的 Lot Allocation 合计必须等于成交股数")
-        for allocation in allocations:
+        allocated_gross_proceeds = Decimal("0")
+        allocated_fee = Decimal("0")
+        for allocation_index, allocation in enumerate(allocations):
             lot = lots.get(allocation.lot_id)
             if lot is None or lot.ticker != transaction.ticker:
                 raise InvalidLedger("SELL 引用了不存在或 ticker 不一致的 Lot")
@@ -1002,12 +1034,57 @@ def rebuild_portfolio(
                     available=lot.remaining_shares,
                     required=allocation.shares,
                 )
+            if allocation_index == len(allocations) - 1:
+                gross_proceeds = transaction.amount - allocated_gross_proceeds
+                fee = transaction.commission - allocated_fee
+            else:
+                gross_proceeds = (
+                    transaction.amount * allocation.shares / transaction.shares
+                ).quantize(DECIMAL_QUANTUM, rounding=ROUND_HALF_EVEN)
+                fee = (transaction.commission * allocation.shares / transaction.shares).quantize(
+                    DECIMAL_QUANTUM, rounding=ROUND_HALF_EVEN
+                )
+            net_proceeds = (gross_proceeds - fee).quantize(
+                DECIMAL_QUANTUM,
+                rounding=ROUND_HALF_EVEN,
+            )
+            source_at_sale = lot.source
+            position_type_at_sale = lot.position_type
+            released_cost_before = lot.cost_basis
             if allocation.shares == lot.remaining_shares:
                 del lots[lot.id]
-                continue
-            remaining_shares = lot.remaining_shares - allocation.shares
-            lot.cost_basis = calculate_amount(lot.average_cost, remaining_shares)
-            lot.remaining_shares = remaining_shares
+                remaining_cost = Decimal("0")
+            else:
+                remaining_shares = lot.remaining_shares - allocation.shares
+                lot.cost_basis = calculate_amount(lot.average_cost, remaining_shares)
+                lot.remaining_shares = remaining_shares
+                remaining_cost = lot.cost_basis
+            released_cost = (released_cost_before - remaining_cost).quantize(
+                DECIMAL_QUANTUM,
+                rounding=ROUND_HALF_EVEN,
+            )
+            realized_pnl = (net_proceeds - released_cost).quantize(
+                DECIMAL_QUANTUM,
+                rounding=ROUND_HALF_EVEN,
+            )
+            sell_allocation_results.append(
+                SellAllocationResult(
+                    transaction_id=transaction.id,
+                    lot_id=allocation.lot_id,
+                    ticker=transaction.ticker,
+                    source=source_at_sale,
+                    occurred_at=transaction.occurred_at,
+                    position_type_at_sale=position_type_at_sale,
+                    shares=allocation.shares,
+                    allocated_gross_proceeds=gross_proceeds,
+                    allocated_fee=fee,
+                    allocated_net_proceeds=net_proceeds,
+                    released_cost=released_cost,
+                    realized_pnl=realized_pnl,
+                )
+            )
+            allocated_gross_proceeds += gross_proceeds
+            allocated_fee += fee
         available_cash += transaction.amount - transaction.commission
 
     derived_lots = tuple(
@@ -1085,27 +1162,54 @@ def rebuild_portfolio(
         )
     )
 
-    return PortfolioState(
-        user_id=user.id,
-        cash=CashBalance(
+    return ReplayResult(
+        portfolio=PortfolioState(
             user_id=user.id,
-            initial_cash=user.initial_cash,
-            available_cash=available_cash.quantize(
-                DECIMAL_QUANTUM,
-                rounding=ROUND_HALF_EVEN,
+            cash=CashBalance(
+                user_id=user.id,
+                initial_cash=user.initial_cash,
+                available_cash=available_cash.quantize(
+                    DECIMAL_QUANTUM,
+                    rounding=ROUND_HALF_EVEN,
+                ),
+                total_deposits=total_deposits.quantize(
+                    DECIMAL_QUANTUM,
+                    rounding=ROUND_HALF_EVEN,
+                ),
+                total_withdrawals=total_withdrawals.quantize(
+                    DECIMAL_QUANTUM,
+                    rounding=ROUND_HALF_EVEN,
+                ),
             ),
-            total_deposits=total_deposits.quantize(
-                DECIMAL_QUANTUM,
-                rounding=ROUND_HALF_EVEN,
-            ),
-            total_withdrawals=total_withdrawals.quantize(
-                DECIMAL_QUANTUM,
-                rounding=ROUND_HALF_EVEN,
-            ),
+            positions=derived_positions,
+            lots=derived_lots,
+            transaction_count=len(original_transactions),
+            cash_event_count=len(ordered_cash_events),
+            reconciliation_count=len(ordered_reconciliations),
         ),
-        positions=derived_positions,
-        lots=derived_lots,
-        transaction_count=len(original_transactions),
-        cash_event_count=len(ordered_cash_events),
-        reconciliation_count=len(ordered_reconciliations),
+        sell_allocation_results=tuple(sell_allocation_results),
     )
+
+
+def rebuild_portfolio(
+    user: User,
+    transactions: list[Transaction],
+    cash_events: list[CashEvent] | None = None,
+    opening_positions: list[OpeningPosition] | None = None,
+    reconciliations: list[PositionReconciliation] | None = None,
+    lot_allocations: list[LotAllocation] | None = None,
+    lot_classification_changes: list[LotClassificationChange] | None = None,
+    buy_transaction_corrections: list[BuyTransactionCorrection] | None = None,
+) -> PortfolioState:
+    """兼容旧调用方，仅返回 Replay 产生的当前 Portfolio。"""
+
+    return replay_portfolio(
+        user,
+        transactions,
+        cash_events,
+        opening_positions,
+        reconciliations,
+        lot_allocations,
+        lot_classification_changes,
+        buy_transaction_corrections,
+    ).portfolio

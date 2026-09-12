@@ -5,8 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="description" content="PositionPilot — portfolio-grounded investment decision support." data-i18n-content="meta_description" />
     <title>PositionPilot · Decision Desk</title>
-    <link rel="stylesheet" href="/static/styles.css?v=20260911-portfolio-compact-2" />
-    <script type="module" src="/static/app.js?v=20260911-portfolio-compact-2"></script>
+    <link rel="stylesheet" href="/static/styles.css?v=20260912-m11-accounting-2" />
+    <script type="module" src="/static/app.js?v=20260912-m11-accounting-2"></script>
   </head>
   <body>
     <p class="engineering-smoke-banner" id="engineering-smoke-banner" data-i18n="engineering_smoke_notice" hidden>Engineering smoke · Fake Agent and fixture data · Not real investment analysis</p>
@@ -161,6 +161,16 @@
             </div>
           </header>
 
+          <section class="portfolio-pnl-summary" aria-labelledby="portfolio-pnl-title">
+            <div class="pnl-summary-copy"><h3 id="portfolio-pnl-title" data-i18n="portfolio_pnl">Portfolio P/L</h3><span id="portfolio-pnl-status" class="pnl-summary-status"></span></div>
+            <div class="pnl-summary-metrics" id="portfolio-pnl-metrics">
+              <span class="pnl-summary-metric"><small data-i18n="realized_pnl">Realized P/L</small><strong id="summary-realized-pnl">—</strong></span>
+              <span class="pnl-summary-metric"><small data-i18n="unrealized_pnl">Unrealized P/L</small><strong id="summary-unrealized-pnl">—</strong></span>
+              <span class="pnl-summary-metric"><small data-i18n="total_pnl">Total P/L</small><strong id="summary-total-pnl">—</strong></span>
+              <button class="text-button pnl-summary-details" id="open-summary-dialog" type="button" data-i18n="view_details">Details</button>
+            </div>
+          </section>
+
           <section class="portfolio-data-section">
             <div class="holdings-table-header" aria-hidden="true"><span data-i18n="ticker">Ticker</span><span data-i18n="shares">Shares</span><span data-i18n="average_cost">Avg Cost</span><span data-i18n="last_price">Last</span><span data-i18n="unrealized_pnl">Unrealized P/L</span><span data-i18n="unrealized_pnl_percent">P/L %</span><span data-i18n="market_value">Market Value</span><span></span></div>
             <div class="compact-empty" id="positions-empty"><p data-i18n="portfolio_empty_loaded">No open positions yet.</p><button class="text-button" id="empty-buy-button" type="button" data-i18n="buy_first_stock">Buy your first stock</button></div>
@@ -169,7 +179,7 @@
 
           <section class="portfolio-data-section history-section" aria-labelledby="transaction-history-title">
             <div class="section-title-row"><h3 id="transaction-history-title" data-i18n="transaction_history">Transaction History</h3><span id="transaction-count">0</span></div>
-            <div class="history-table-header" aria-hidden="true"><span data-i18n="time">Time</span><span data-i18n="ticker">Ticker</span><span data-i18n="side">Side</span><span data-i18n="shares">Shares</span><span data-i18n="price">Price</span><span data-i18n="commission">Fee</span><span data-i18n="position_type">Type</span><span data-i18n="status">Status</span></div>
+            <div class="history-table-header" aria-hidden="true"><span data-i18n="time">Time</span><span data-i18n="ticker">Ticker</span><span data-i18n="side">Side</span><span data-i18n="shares">Shares</span><span data-i18n="price">Price</span><span data-i18n="commission">Fee</span><span data-i18n="position_type">Type</span><span data-i18n="realized_pnl_short">P/L</span><span data-i18n="status">Status</span></div>
             <p class="record-empty compact-empty" id="transactions-empty" data-i18n="records_empty">No records yet.</p>
             <div class="record-list compact-history" id="transaction-list"></div>
             <div id="cash-event-list" hidden></div><span id="cash-event-count" hidden>0</span><p id="cash-events-empty" hidden></p>
@@ -190,6 +200,8 @@
     <dialog class="product-dialog lot-edit-dialog" id="buy-correction-dialog"><form id="buy-correction-form" novalidate><div class="dialog-heading"><div><h3 id="buy-correction-title" data-i18n="edit_lot">Edit lot</h3><p class="dialog-symbol" id="buy-correction-symbol"></p></div><button class="dialog-close" id="buy-correction-close" type="button" aria-label="Close">×</button></div><input id="buy-correction-lot-id" type="hidden" /><div class="dialog-field-grid"><div><label for="buy-correction-shares" data-i18n="shares">Shares</label><input id="buy-correction-shares" type="text" inputmode="decimal" autocomplete="off" /></div><div><label id="buy-correction-price-label" for="buy-correction-price" data-i18n="price_cost">Price / Cost</label><input id="buy-correction-price" type="text" inputmode="decimal" autocomplete="off" /></div></div><label for="buy-correction-time" data-i18n="purchase_time">Purchase time</label><input id="buy-correction-time" type="datetime-local" /><label for="buy-correction-type" data-i18n="position_type">Position Type</label><select id="buy-correction-type"><option value="UNSPECIFIED" data-i18n="unspecified">Unspecified</option><option value="SWING" data-i18n="strategy_swing">Swing</option><option value="LONG_TERM" data-i18n="strategy_long_term">Long term</option></select><label for="buy-correction-reason" data-i18n="reason_optional">Note (optional)</label><textarea id="buy-correction-reason" rows="2" maxlength="1000"></textarea><p class="panel-message" id="buy-correction-message" role="status"></p><div class="dialog-actions"><button class="primary-button compact-button" type="submit" data-i18n="save">Save</button></div></form></dialog>
 
     <dialog class="product-dialog transaction-detail-dialog" id="transaction-detail-dialog"><div class="dialog-heading"><div><h3 id="transaction-detail-title">—</h3><p class="dialog-symbol" id="transaction-detail-subtitle"></p></div><button class="dialog-close" id="transaction-detail-close" type="button" aria-label="Close">×</button></div><div id="transaction-detail-content"></div><div class="dialog-actions" id="transaction-detail-actions"></div></dialog>
+
+    <dialog class="product-dialog summary-dialog" id="portfolio-summary-dialog" aria-labelledby="portfolio-summary-dialog-title"><div class="dialog-heading"><div><h3 id="portfolio-summary-dialog-title" data-i18n="pnl_breakdown">P/L breakdown</h3><p class="dialog-symbol" data-i18n="pnl_by_ticker_type">By ticker and position type</p></div><button class="dialog-close" id="portfolio-summary-dialog-close" type="button" aria-label="Close">×</button></div><div id="portfolio-summary-content"></div></dialog>
 
     <template id="assistant-response-template"><article class="assistant-message result-card"><div class="result-heading"><div><p class="eyebrow response-eyebrow">PositionPilot</p><h2 class="result-title" data-i18n="working_title">Assembling decision context</h2></div><span class="response-badge response-status">Working</span></div><section class="answer-section"><p class="answer-label" data-i18n="answer_label">Answer</p><div class="answer-copy" data-i18n="working_answer">Reading your portfolio and selecting current context.</div></section><details class="source-disclosure"><summary><span data-i18n="sources_used">Sources used</span><span class="source-count">0</span></summary><p class="source-explainer" data-i18n="source_explainer">Supporting context for this answer.</p><div class="source-list"></div></details></article></template>
   </body>

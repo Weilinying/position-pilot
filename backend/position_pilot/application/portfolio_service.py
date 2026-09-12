@@ -22,14 +22,20 @@ from position_pilot.domain.portfolio import (
     PositionLotSource,
     PositionReconciliation,
     PositionType,
+    ReplayResult,
     Transaction,
     TransactionAction,
     User,
     apply_buy_transaction_corrections,
     normalize_timestamp,
     rebuild_portfolio,
+    replay_portfolio,
     resequence_cash_events,
     resequence_transactions,
+)
+from position_pilot.domain.portfolio_accounting import (
+    PortfolioAccounting,
+    calculate_portfolio_accounting,
 )
 
 
@@ -515,6 +521,16 @@ class PortfolioService:
     def get_portfolio(self, user_id: UUID) -> PortfolioState:
         """从持久化 Ledger 恢复当前 Portfolio State。"""
 
+        return self.get_replay(user_id).portfolio
+
+    def get_accounting(self, user_id: UUID) -> PortfolioAccounting:
+        """只根据账本计算已实现收益，不读取行情。"""
+
+        return calculate_portfolio_accounting(self.get_replay(user_id))
+
+    def get_replay(self, user_id: UUID) -> ReplayResult:
+        """读取同一批完整事实，共享一次持仓与卖出分配重放。"""
+
         with self._unit_of_work_factory() as unit_of_work:
             user = unit_of_work.get_user(user_id)
             if user is None:
@@ -526,7 +542,7 @@ class PortfolioService:
             lot_allocations = unit_of_work.list_lot_allocations(user.id)
             classification_changes = unit_of_work.list_lot_classification_changes(user.id)
             buy_corrections = unit_of_work.list_buy_transaction_corrections(user.id)
-            return rebuild_portfolio(
+            return replay_portfolio(
                 user,
                 transactions,
                 cash_events,

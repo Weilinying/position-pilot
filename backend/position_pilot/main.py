@@ -53,6 +53,7 @@ from position_pilot.application.portfolio_service import (
     RecordPositionReconciliationsCommand,
     RecordTransactionCommand,
 )
+from position_pilot.application.portfolio_summary_service import PortfolioSummaryService
 from position_pilot.application.portfolio_valuation_service import PortfolioValuationService
 from position_pilot.application.recognition_service import (
     MAX_RECOGNITION_IMAGE_BYTES,
@@ -72,6 +73,7 @@ from position_pilot.bootstrap import (
     get_investment_agent,
     get_opening_import_service,
     get_portfolio_service,
+    get_portfolio_summary_service,
     get_portfolio_valuation_service,
     get_recognition_service,
 )
@@ -100,6 +102,8 @@ from position_pilot.domain.portfolio import (
     Transaction,
     TransactionAction,
 )
+from position_pilot.domain.portfolio_accounting import PortfolioAccounting
+from position_pilot.domain.portfolio_summary import SummaryMetrics, TickerSummary
 from position_pilot.domain.portfolio_valuation import (
     PortfolioValuation,
     TickerValuation,
@@ -610,6 +614,18 @@ class PortfolioValuationResponse(BaseModel):
     tickers: tuple[TickerValuationResponse, ...]
 
 
+class PortfolioSummaryResponse(BaseModel):
+    """首页聚合持仓、账本收益和行情估值，各自保持独立数据结构。"""
+
+    user_id: UUID
+    portfolio: PortfolioSnapshotResponse
+    accounting: PortfolioAccounting
+    valuation: PortfolioValuationResponse
+    totals: SummaryMetrics
+    tickers: tuple[TickerSummary, ...]
+    has_reconciliations: bool
+
+
 class AssetCandidateResponse(BaseModel):
     """Asset Metadata Provider 返回给前端选择器的最小候选。"""
 
@@ -736,6 +752,12 @@ def get_portfolio_valuation_service_dependency() -> PortfolioValuationService:
     """延迟装配 Portfolio Valuation Service，允许测试替换行情。"""
 
     return get_portfolio_valuation_service()
+
+
+def get_portfolio_summary_service_dependency() -> PortfolioSummaryService:
+    """延迟装配首页服务，允许测试替换行情与账本。"""
+
+    return get_portfolio_summary_service()
 
 
 def get_auth_service_dependency() -> AuthService:
@@ -1508,6 +1530,49 @@ def get_current_portfolio_valuation(
             ApiErrorDetail(code="USER_NOT_FOUND", message="Portfolio User 不存在"),
         )
     return _portfolio_valuation_response(valuation)
+
+
+@app.get("/v1/portfolio/accounting", response_model=PortfolioAccounting)
+def get_current_portfolio_accounting(
+    account: Annotated[Account, Depends(get_current_account_dependency)],
+    portfolio_service: Annotated[PortfolioService, Depends(get_portfolio_service_dependency)],
+) -> PortfolioAccounting:
+    """只返回已实现收益与卖出分配审计明细，不调用行情。"""
+
+    try:
+        return portfolio_service.get_accounting(_require_portfolio_user(account))
+    except UserNotFound:
+        _raise_api_error(
+            status.HTTP_404_NOT_FOUND,
+            ApiErrorDetail(code="USER_NOT_FOUND", message="Portfolio User 不存在"),
+        )
+
+
+@app.get("/v1/portfolio/summary", response_model=PortfolioSummaryResponse)
+def get_current_portfolio_summary(
+    account: Annotated[Account, Depends(get_current_account_dependency)],
+    summary_service: Annotated[
+        PortfolioSummaryService, Depends(get_portfolio_summary_service_dependency)
+    ],
+) -> PortfolioSummaryResponse:
+    """首页一次读取同一重放下的持仓、已实现收益和当前估值。"""
+
+    try:
+        summary = summary_service.get_summary(_require_portfolio_user(account))
+    except UserNotFound:
+        _raise_api_error(
+            status.HTTP_404_NOT_FOUND,
+            ApiErrorDetail(code="USER_NOT_FOUND", message="Portfolio User 不存在"),
+        )
+    return PortfolioSummaryResponse(
+        user_id=summary.portfolio.user_id,
+        portfolio=_portfolio_snapshot_response(summary.portfolio),
+        accounting=summary.accounting,
+        valuation=_portfolio_valuation_response(summary.valuation),
+        totals=summary.totals,
+        tickers=summary.tickers,
+        has_reconciliations=summary.portfolio.reconciliation_count > 0,
+    )
 
 
 @app.post(

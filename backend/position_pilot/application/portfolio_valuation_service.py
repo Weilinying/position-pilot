@@ -48,6 +48,11 @@ class PortfolioValuationService:
         """返回当前 Portfolio 的逐 ticker 估值。"""
 
         portfolio = self._portfolios.get_portfolio(user_id)
+        return self.value_portfolio(portfolio)
+
+    def value_portfolio(self, portfolio: PortfolioState) -> PortfolioValuation:
+        """为已读取的持仓估值，让首页与收益核算共享同一重放结果。"""
+
         tickers = sorted({lot.ticker for lot in portfolio.lots})
         results = []
         for ticker in tickers:
@@ -70,4 +75,4 @@ class PortfolioValuationService:
                     message=result.message,
                 )
             )
-        return PortfolioValuation(user_id=user_id, tickers=tuple(results))
+        return PortfolioValuation(user_id=portfolio.user_id, tickers=tuple(results))

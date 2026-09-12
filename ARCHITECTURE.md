@@ -2,7 +2,7 @@
 
 ## 1. 当前范围
 
-本文档描述 M8 Local Portfolio Management / `v1.0.0` 稳定基线，以及当前 M9 Branch 已实现、等待 Human Acceptance 的 Asset Identity、Position Import、派生 Lot 与当前持仓估值。系统包含最小本地 Account / Session、immutable Opening / Reconciliation / Transaction / Cash Facts、BUY Correction、SELL Lot Allocation、Lot Classification Change、Provider-neutral Asset / Recognition / Market / News Data，以及 Single Investment Agent。同源静态 Web Interface 提供 ticker 联想、截图缩略图预览、保存后手工校准、紧凑持仓层级、购买批次更正、交易与资金录入；Browser Identity 由 HttpOnly Session 恢复，金融事实仍由后端确定性 Replay 产生。
+本文档描述已合并的 M9 Portfolio Workflow 与当前 M11 Branch 的已实现盈亏及首页收益汇总。系统包含最小本地 Account / Session、immutable Opening / Reconciliation / Transaction / Cash Facts、BUY Correction、SELL Lot Allocation、Lot Classification Change、Provider-neutral Asset / Recognition / Market / News Data，以及 Single Investment Agent。同源静态 Web Interface 提供 ticker 联想、截图缩略图预览、保存后手工校准、紧凑持仓层级、购买批次更正、交易与资金录入及收益明细；Browser Identity 由 HttpOnly Session 恢复，金融事实仍由后端确定性 Replay 产生。
 
 ## 2. 依赖方向
 
@@ -22,6 +22,8 @@ Vanilla HTML / CSS / ES Modules
   ├── POST /v1/portfolio/lots/{lot_id}/correction
   ├── GET /v1/portfolio/buy-corrections
   ├── GET /v1/portfolio/valuation
+  ├── GET /v1/portfolio/accounting（只读已实现收益）
+  ├── GET /v1/portfolio/summary（首页组合读取）
   ├── POST + GET /v1/portfolio/cash-events
   ├── GET /v1/assets/search
   ├── POST /v1/portfolio/import/recognize-text
@@ -108,9 +110,19 @@ User.initial_cash
         + SELL Lot Allocation
         + Lot Classification Change
         + BUY Transaction Correction
-        ↓ combined deterministic replay
-CashBalance + PositionLot[] + Position[]
+        ↓ replay_portfolio()
+ReplayResult
+  ├── PortfolioState（CashBalance + PositionLot[] + Position[]）
+  └── SellAllocationResult[]（分配成交额、费用、净收入、释放成本与盈亏）
 ```
+
+`rebuild_portfolio()` 是统一 Replay 的持仓 wrapper。Accounting 从 SellAllocationResults 派生交易、
+ticker / 类型与组合级已实现收益；不持久化第二份收益事实。卖出按当时批次类型归属，BUY 更正
+影响有效成本，校准与出入金不生成收益。详见 [ADR 0013](docs/adr/0013-replay-derived-realized-pnl.md)。
+
+`PortfolioSummaryService` 从一次账本读取获得 ReplayResult，再调用独立估值服务为同一 PortfolioState
+取价；它组合 accounting、valuation 和首页金额摘要。`/accounting` 不访问行情，`/valuation` 仍可
+独立调用。UI 使用 `/summary` 替代原先分别读取当前持仓和估值，沿用其他历史接口。
 
 PostgreSQL 保存 `users`、`opening_positions`、`position_reconciliations`、`transactions`、`cash_events`、`lot_allocations`、`lot_classification_changes` 与 `buy_transaction_corrections`。Lot、当前 Position、Shares、Cost Basis 和 Average Cost 不保存冗余投影，而是在读取时合并重建。BUY / Opening / Reconciliation 的来源 ID 是稳定 Lot ID；SELL 必须明确分配当前 Lot。原始 BUY 不覆盖，更正记录提供有效成交字段并触发完整重放。
 
@@ -160,12 +172,15 @@ Cash Event amount 必须为正数且最多 8 位小数。Transaction 与 Cash Ev
 
 - `backend/position_pilot/domain/portfolio.py`：领域实体、Lot 事件、Decimal 规则以及完整 Portfolio replay。
 - `backend/position_pilot/domain/portfolio_valuation.py`：Lot、类型与 ticker 级的确定性当前估值。
+- `backend/position_pilot/domain/portfolio_accounting.py`：从 SELL 分配派生已实现收益与审计汇总。
+- `backend/position_pilot/domain/portfolio_summary.py`：合并历史收益和当前估值，缺失行情不生成部分总额。
 - `backend/position_pilot/domain/asset_metadata.py`：Selector 使用的最小 Asset Identity、Search / exact Validation 与 Failure Status。
 - `backend/position_pilot/domain/market_context.py`：SPY Daily Price Stress 指标、确定性 Market Regime 与 V1 Heuristic 元数据。
 - `backend/position_pilot/domain/news.py`：Provider-neutral News Article、归因、时间、稳定排序与 Failure Status。
 - `backend/position_pilot/domain/errors.py`：明确的领域失败状态。
 - `backend/position_pilot/application/portfolio_service.py`：Opening、Reconciliation、Transaction、Cash、Lot 分类与 BUY 更正 Use Case。
 - `backend/position_pilot/application/portfolio_valuation_service.py`：每个 ticker 共享一次报价并组合三层估值。
+- `backend/position_pilot/application/portfolio_summary_service.py`：基于同一 ReplayResult 聚合首页数据。
 - `backend/position_pilot/application/auth_service.py`：本地 Account 注册 / 登录 / 退出、scrypt Password Verification、Opaque Session 与一对一 Portfolio Ownership。
 - `backend/position_pilot/application/asset_metadata_service.py`：Provider-neutral Asset Search / exact Validation Boundary。
 - `backend/position_pilot/application/recognition_service.py`：Text / Screenshot 临时 Structured Draft、Field Status、Confidence Review Signal 与输入边界。
@@ -197,7 +212,7 @@ Cash Event amount 必须为正数且最多 8 位小数。Transaction 与 Cash Ev
 - 不处理税费、多币种、拆股、公司行动、转仓或外部券商同步。
 - Reconciliation 只校准目标为空或仅含一条 Opening / Reconciliation Lot 的汇总持仓；它不能覆盖详细 BUY Lot。M9 只支持 BUY 更正，不提供 SELL 更正或批次内部分转类型。
 - 当前持仓估值在页面可见时每 30 秒轮询，并可手工刷新；它不使用 WebSocket 或持久行情缓存。报价失败或最后成交超过 7 个自然日时仍返回股数、成本和均价，市场价值与未实现盈亏保持不可用。
-- 已实现盈亏和账户历史收益率尚未实现；其后续计算将使用保留的交易、批次分配、资金流与更正事实。
+- 已实现盈亏覆盖已记录的 SELL 与确认成本；账户历史收益率、每日收益与曲线尚未实现，不能用交易收益率或金额合计替代。Agent Context 暂不包含新收益指标。
 - M9 不维护本地 Asset Master；搜索与最终写入依赖 Finnhub 可用性。`qwen3-vl-flash` 图片不会由 PositionPilot 持久化，但 Provider 未公开固定原图保留时长。
 - Current Quote 默认来自 Alpaca Basic 的实时 IEX feed，只代表单一交易所覆盖；Historical Daily OHLCV 来自至少延迟 15 分钟的 SIP feed。
 - 不包含 WebSocket、行情 / 新闻缓存或持久化、通用技术指标、VIX、市场宽度、宏观 Context、News 全文抓取、Earnings 或 Fundamentals；Market Regime 仅为已批准的 SPY Daily Price Stress V1 Heuristic。

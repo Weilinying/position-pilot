@@ -63,6 +63,12 @@ def test_serves_public_auth_setup_and_authenticated_app_shell() -> None:
         "import-dialog",
         "buy-correction-dialog",
         "transaction-detail-dialog",
+        "open-summary-dialog",
+        "portfolio-summary-dialog",
+        "portfolio-pnl-title",
+        "summary-realized-pnl",
+        "summary-unrealized-pnl",
+        "summary-total-pnl",
         "transaction-list",
         "cash-event-list",
     ):
@@ -222,7 +228,7 @@ def test_client_script_preserves_session_identity_safe_text_and_question_boundar
         assert script.count(f"{label}:") >= 2
 
     assert 'ERROR_LABELS[error.code] ?? "unexpected_server_error"' in script
-    assert "20260911-portfolio-compact-2" in page
+    assert "20260912-m11-accounting-2" in page
 
     assert "innerHTML" not in script
     assert "outerHTML" not in script
@@ -242,7 +248,7 @@ def test_client_script_preserves_session_identity_safe_text_and_question_boundar
     assert "/v1/portfolio/reconciliations" in script
     assert "/v1/portfolio/transactions" in script
     assert "/v1/portfolio/cash-events" in script
-    assert "/v1/portfolio/valuation" in script
+    assert "/v1/portfolio/summary" in script
     assert "/v1/portfolio/buy-corrections" in script
     assert "/classification`" in script
     assert "/correction`" in script
@@ -374,6 +380,7 @@ def test_portfolio_uses_compact_tables_and_dialog_actions() -> None:
         'id="transaction-detail-dialog"',
         'id="trade-fee"',
         'data-i18n="average_cost_fee_included"',
+        'data-i18n="realized_pnl_short"',
     ):
         assert marker in page
     for removed_copy in (
@@ -392,7 +399,18 @@ def test_portfolio_uses_compact_tables_and_dialog_actions() -> None:
         "openTransactionDetail",
         "effectiveTransaction",
         "transactionFeeText",
-        'payload.fee = fee',
+        "accountingTransaction",
+        "renderPortfolioSummary",
+        'requestJson("/v1/portfolio/summary"',
+        "allocated_gross_proceeds",
+        "allocated_fee",
+        "allocated_net_proceeds",
+        "allocationLotLabel",
+        "sold_at_type",
+        "purchase_batch",
+        "imported_batch",
+        "realized_pnl_percent",
+        "payload.fee = fee",
         "currentNote && freshNote",
         "freshNote.cloneNode(true)",
         'elements.tradeBuyMode.addEventListener("click"',
@@ -448,6 +466,8 @@ def test_static_mount_and_v1_authenticated_route_contract() -> None:
         "/v1/portfolio/reconciliations",
         "/v1/portfolio/transactions",
         "/v1/portfolio/valuation",
+        "/v1/portfolio/accounting",
+        "/v1/portfolio/summary",
         "/v1/portfolio/lots/{lot_id}/classification",
         "/v1/portfolio/lots/{lot_id}/correction",
         "/v1/portfolio/buy-corrections",

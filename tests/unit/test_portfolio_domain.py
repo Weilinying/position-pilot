@@ -17,6 +17,7 @@ from position_pilot.domain.errors import (
 from position_pilot.domain.portfolio import (
     BUY_COST_INCLUDED_FEE_SCHEDULE,
     SELL_ACTUAL_FEE_SCHEDULE,
+    BuyTransactionCorrection,
     CashEvent,
     CashEventType,
     LotAllocation,
@@ -30,6 +31,7 @@ from position_pilot.domain.portfolio import (
     calculate_amount,
     calculate_commission,
     rebuild_portfolio,
+    replay_portfolio,
 )
 
 USER_ID = UUID("00000000-0000-0000-0000-000000000001")
@@ -766,6 +768,151 @@ def test_partial_sell_preserves_average_cost_and_updates_cash() -> None:
     assert position.cost_basis == Decimal("60.21000000")
     assert position.average_cost == Decimal("10.03500000")
     assert state.cash.available_cash == Decimal("959.30000000")
+
+
+def test_replay_returns_sell_allocation_result_and_rebuild_wrapper_keeps_state() -> None:
+    """Replay 应同时返回当前持仓与可审计的 SELL 分配结果。"""
+
+    buy = make_transaction(sequence=1, action=TransactionAction.BUY, price="100", shares="2")
+    sell = make_transaction(sequence=2, action=TransactionAction.SELL, price="120", shares="1")
+    replay = replay_portfolio(
+        make_user(),
+        [buy, sell],
+        lot_allocations=[make_allocation(sell, buy.id, "1")],
+    )
+
+    assert replay.portfolio == rebuild_portfolio(
+        make_user(),
+        [buy, sell],
+        lot_allocations=[make_allocation(sell, buy.id, "1")],
+    )
+    assert len(replay.sell_allocation_results) == 1
+    result = replay.sell_allocation_results[0]
+    assert result.transaction_id == sell.id
+    assert result.lot_id == buy.id
+    assert result.source.value == "BUY"
+    assert result.position_type_at_sale is PositionType.LONG_TERM
+    assert result.shares == Decimal("1")
+    assert result.allocated_gross_proceeds == Decimal("120.00000000")
+    assert result.allocated_fee == Decimal("0.35000000")
+    assert result.allocated_net_proceeds == Decimal("119.65000000")
+    assert result.released_cost == Decimal("100.17500000")
+    assert result.realized_pnl == Decimal("19.47500000")
+
+
+def test_sell_allocation_last_row_absorbs_gross_and_fee_rounding_tail() -> None:
+    """跨批次成交额与费用的量化尾差应由稳定排序的最后一批吸收。"""
+
+    first = make_transaction(sequence=1, action=TransactionAction.BUY, price="10", shares="1")
+    second = make_transaction(sequence=2, action=TransactionAction.BUY, price="20", shares="2")
+    sell = make_transaction(
+        sequence=3,
+        action=TransactionAction.SELL,
+        price="10.12345678",
+        shares="1",
+    )
+    first_allocation = make_allocation(sell, first.id, "0.33333333")
+    second_allocation = make_allocation(sell, second.id, "0.66666667")
+    replay = replay_portfolio(
+        make_user("1000"),
+        [first, second, sell],
+        lot_allocations=[second_allocation, first_allocation],
+    )
+
+    results = replay.sell_allocation_results
+    assert [result.lot_id for result in results] == sorted(
+        [first.id, second.id], key=lambda lot_id: lot_id.hex
+    )
+    assert sum((result.allocated_gross_proceeds for result in results), Decimal("0")) == sell.amount
+    assert sum((result.allocated_fee for result in results), Decimal("0")) == sell.commission
+    assert sum((result.allocated_net_proceeds for result in results), Decimal("0")) == (
+        sell.amount - sell.commission
+    )
+
+
+def test_sell_allocation_keeps_type_at_sale_after_later_classification_change() -> None:
+    """后续批次分类变更只能影响剩余仓位，不得移动历史卖出收益类型。"""
+
+    buy = make_transaction(
+        sequence=1,
+        action=TransactionAction.BUY,
+        price="100",
+        shares="2",
+        position_type=PositionType.UNSPECIFIED,
+    )
+    sell = make_transaction(sequence=2, action=TransactionAction.SELL, price="120", shares="1")
+    change = LotClassificationChange.create(
+        user_id=USER_ID,
+        lot_id=buy.id,
+        position_type=PositionType.SWING,
+        effective_at=datetime(2026, 8, 21, 12, 0, tzinfo=UTC),
+    )
+    replay = replay_portfolio(
+        make_user(),
+        [buy, sell],
+        lot_allocations=[make_allocation(sell, buy.id, "1")],
+        lot_classification_changes=[change],
+    )
+
+    assert replay.sell_allocation_results[0].position_type_at_sale is PositionType.UNSPECIFIED
+    assert replay.portfolio.get_position("GOOG", PositionType.SWING) is not None
+
+
+def test_buy_correction_replays_sell_released_cost() -> None:
+    """BUY 更正后，引用该批次的 SELL 成本与收益应从同一 Replay 重算。"""
+
+    buy = make_transaction(sequence=1, action=TransactionAction.BUY, price="100", shares="2")
+    sell = make_transaction(sequence=2, action=TransactionAction.SELL, price="120", shares="1")
+    correction = BuyTransactionCorrection.create(
+        user_id=USER_ID,
+        transaction_id=buy.id,
+        price=Decimal("110"),
+        shares=Decimal("2"),
+        occurred_at=buy.occurred_at,
+        reason="更正成交成本",
+        corrected_at=datetime(2026, 8, 22, 12, 0, tzinfo=UTC),
+    )
+
+    replay = replay_portfolio(
+        make_user(),
+        [buy, sell],
+        lot_allocations=[make_allocation(sell, buy.id, "1")],
+        buy_transaction_corrections=[correction],
+    )
+
+    assert replay.sell_allocation_results[0].released_cost == Decimal("110.17500000")
+    assert replay.sell_allocation_results[0].realized_pnl == Decimal("9.47500000")
+
+
+def test_reconciliation_sell_reports_reconciliation_source_and_cost() -> None:
+    """校准批次后发生的 SELL 应使用校准成本并保留来源。"""
+
+    reconciliation = make_reconciliation(
+        target_shares="2",
+        target_average_cost="100",
+        position_type=PositionType.SWING,
+    )
+    sell = make_transaction(
+        sequence=1,
+        action=TransactionAction.SELL,
+        price="120",
+        shares="2",
+        position_type=PositionType.SWING,
+        occurred_at=datetime(2026, 8, 21, 12, 0, tzinfo=UTC),
+    )
+
+    replay = replay_portfolio(
+        make_user(),
+        [sell],
+        reconciliations=[reconciliation],
+        lot_allocations=[make_allocation(sell, reconciliation.id, "2")],
+    )
+
+    result = replay.sell_allocation_results[0]
+    assert result.source.value == "RECONCILIATION"
+    assert result.position_type_at_sale is PositionType.SWING
+    assert result.released_cost == Decimal("200.00000000")
+    assert result.realized_pnl == Decimal("39.65000000")
 
 
 def test_full_sell_removes_only_matching_position() -> None:

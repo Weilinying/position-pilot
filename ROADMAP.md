@@ -10,10 +10,10 @@
 
 ## 2. Current Status
 
-**Current Milestone:** M9 — Asset Identity & Portfolio Import
-**Status:** DONE — Human Accepted and merged to `main` (2026-09-11)
+**Current Milestone:** M11 — Accounting & P&L
+**Status:** IN PROGRESS — 实现与定向验证完成，待 Human Acceptance（2026-09-12）
 **Current Release State:** `v1.1.0` 已完成并进入本地 `main`；Git Tag / GitHub Release 尚待发布
-**Next Planned Milestone:** M10 — Transaction Import
+**Next Planned Work:** M11 Human Acceptance；M10 Transaction Import 已暂缓
 
 Milestone 状态统一使用 `NOT STARTED`、`IN PROGRESS`、`DONE`，不维护百分比进度。
 
@@ -27,10 +27,10 @@ Milestone 表示内部开发阶段；Version / Release 表示用户可感知的�
 | `v1.0.0` | M8 | 本地用户从产品主页注册 / 登录、初始化并持续维护 Portfolio，完成真实 Agent Self-Service MVP |
 | `v1.1.0` | M8.1 | Ask Composer 使用 Enter 提交、Shift+Enter 换行，并正确处理 IME 与重复提交；随 M9 发布 |
 | `v1.1.0` | M9 | Asset Identity、Portfolio Import、紧凑批次持仓与当前未实现估值 |
-| `v1.2.0` | M10 | 可人工确认的 Transaction Import |
-| `v1.3.0` | M11 | 基于稳定成本语义的第一阶段 Accounting / P&L |
-| `v1.4.0` | M12 | 按需路由的确定性 Technical Context |
-| `v1.5.0` | M13 | 基于 PositionPilot 自有 Market / Portfolio Data 的交互式行情图表，展示 K 线、Technical Context 与实际 Portfolio 买卖位置 |
+| Deferred，暂不绑定版本 | M10 | 可人工确认的 Transaction Import；手工录入成本成为实际痛点后恢复 |
+| `v1.2.0` | M11 | 基于 M9 成本、费用与批次语义的第一阶段 Accounting / P&L |
+| `v1.3.0` | M12 | 按需路由的确定性 Technical Context |
+| `v1.4.0` | M13 | 基于 PositionPilot 自有 Market / Portfolio Data 的交互式行情图表，展示 K 线、Technical Context 与实际 Portfolio 买卖位置 |
 | Answer Quality Evolution | Discovery，尚未映射 Release | Conversation / Investment Memory、开放 Web Search、Context Policy 与新质量 Evaluation 共同评估 |
 | V2 | 后续另行规划 | Connected Product：完整 Account Platform、Broker Sync、多 Portfolio 与完整绩效历史 |
 
@@ -48,11 +48,12 @@ M0 Project Foundation
 → M8 Local Portfolio Management (`v1.0.0`)
 → M8.1 Ask Composer UX（Unreleased）
 → M9 Asset Identity & Portfolio Import (`v1.1.0`)
-→ M10 Transaction Cost & Import (`v1.2.0`)
-→ M11 Accounting & P&L (`v1.3.0`)
-→ M12 Technical Context (`v1.4.0`)
-→ M13 Position-Aware Market Chart (`v1.5.0`)
+→ M11 Accounting & P&L (`v1.2.0`)
+→ M12 Technical Context (`v1.3.0`)
+→ M13 Position-Aware Market Chart (`v1.4.0`)
 ```
+
+2026-09-11：Human 确认暂缓 M10，先使用手工交易录入推进 M11。M10 保留编号，暂不绑定版本，也不阻塞后续 Milestone。
 
 M0～M7 是构建 PositionPilot V1 Core 与 Demo Interface 的内部 Engineering Milestones，不直接等同于正式 `v1.0.0`。M8 完成 Local Self-Service 闭环后形成 `v1.0.0`；M8.1 随 M9 一并进入 `v1.1.0`。M9～M13 在保持本地、单用户上下文与现有核心架构的前提下形成后续 V1.x Release。Answer Quality Evolution 不因列入 Discovery 就自动成为 Milestone；只有 Memory、开放 Web Search、Context Policy 与 Evaluation Contract 形成经 Human Review 批准的最小闭环后，才映射到具体 Release。
 
@@ -345,10 +346,11 @@ Opening Import 复用 M8 已批准的一次性初始化 Command 与 Gate：只�
 ## M10 — Transaction Import
 
 **Status:** NOT STARTED
+**Priority:** DEFERRED — 2026-09-11 Human 确认暂缓；不阻塞 M11，暂不绑定 Release
 
 **Goal**
 
-在 M9 已确认的手工费用口径上提供可人工确认的 Transaction Text / Screenshot Import，形成 `v1.2.0`。
+在 M9 已确认的手工费用口径上提供可人工确认的 Transaction Text / Screenshot Import。恢复条件是手工录入已成为实际使用痛点；届时再确定目标 Release。
 
 **Scope**
 
@@ -375,26 +377,28 @@ Opening Position 与手工 BUY 的 `average_cost` 表示用户或券商报告的
 * 手工录入和受支持 Screenshot 均只能生成可审查、可编辑的 Structured Transaction Draft；
 * 缺失、低置信度、重复或非法字段在确认前被阻止，批量失败不产生部分 Ledger；
 * BUY / SELL、Fractional Shares、Actual Fee、backdated replay 与 `LONG_TERM / SWING` 具有边界测试；
-* Human Acceptance 通过，并形成 `v1.2.0` Release。
+* Human Acceptance 通过；恢复开发时另行确定 Release。
 
 ## M11 — Accounting & P&L
 
-**Status:** NOT STARTED
+**Status:** IN PROGRESS — 实现与定向验证完成，待 Human Acceptance（2026-09-12）
 
 **Goal**
 
-基于 M10 已稳定的 Opening Average Cost 与 Transaction Cost 语义，提供第一阶段可确定计算的 Accounting / P&L，形成 `v1.3.0`。
+基于 M9 已实现的含费买入成本、实际卖出费用与显式批次分配，提供第一阶段可确定计算的 Accounting / P&L，目标为 `v1.2.0`。交易手工录入即可，不依赖 M10 Transaction Import。
 
 **Scope**
 
-在 M9 当前估值与 M10 实际费用基础上增加 Realized P&L，并完善 Current Market Value、Unrealized P&L 与 Unrealized Return；不重复建设 M9 批次模型。Current Market Value 与未实现指标必须保留 Market Price source / timestamp；默认不扣除未来卖出手续费，除非届时批准了明确规则。`LONG_TERM / SWING` 必须先独立核算，才允许向 ticker 或 portfolio 层聚合。
+在 M9 当前估值与已记录费用基础上增加 Realized P&L，并完善 Current Market Value、Unrealized P&L 与 Unrealized Return；不重复建设 M9 批次模型。Current Market Value 与未实现指标必须保留 Market Price source / timestamp；默认不扣除未来卖出手续费，除非届时批准了明确规则。`LONG_TERM / SWING / UNSPECIFIED` 必须先独立核算，才允许向 ticker 或 portfolio 层聚合。
+
+具体公式、卖出时类型归属、校准边界、只读 API 与紧凑 UI 见 [M11 执行计划](docs/plans/m11-accounting-and-pnl.md)。计划已通过 Human Review：统一 ReplayResult 返回持仓与卖出分配结果，accounting 仅含已实现收益、valuation 保留行情职责，首页通过 summary 聚合。
 
 **Non-goals**
 
 - 用 `current_value / cumulative_deposit - 1` 冒充完整 Portfolio Return；
 - TWR、MWR / XIRR、Return Curve 或 Daily Valuation History；
 - Dividend、Tax、Corporate Action、多币种或完整 Broker Statement Accounting；
-- 改写 M10 已确认的历史成本或费用。
+- 改写 M9 已确认的历史成本或费用，或为 M11 提前建设 M10 的交易导入及费用拆分输入。
 
 **Done**
 
@@ -402,7 +406,7 @@ Opening Position 与手工 BUY 的 `average_cost` 表示用户或券商报告的
 * Realized / Unrealized P&L 与 Unrealized Return 对 BUY、部分 / 全部 SELL、费用和 `LONG_TERM / SWING` 有边界测试；
 * Opening Position 与 Transaction Ledger 在已批准成本语义下能够一致重放；
 * 缺少或陈旧 Market Price 时不编造 Current Value / Unrealized Metrics，并给出明确状态；
-* Human Acceptance 通过，并形成 `v1.3.0` Release。
+* Human Acceptance 通过，并形成 `v1.2.0` Release。
 
 ## M12 — Technical Context
 
@@ -410,7 +414,7 @@ Opening Position 与手工 BUY 的 `average_cost` 表示用户或券商报告的
 
 **Goal**
 
-在现有 Context Routing 与 Price History Tool 上增加按需使用的 deterministic Technical Context，形成 `v1.4.0`；不建设自动交易信号引擎，也不把本 Milestone 单独描述为已解决整体 Answer Quality。
+在现有 Context Routing 与 Price History Tool 上增加按需使用的 deterministic Technical Context，形成 `v1.3.0`；不建设自动交易信号引擎，也不把本 Milestone 单独描述为已解决整体 Answer Quality。
 
 **Scope**
 
@@ -433,7 +437,7 @@ Opening Position 与手工 BUY 的 `average_cost` 表示用户或券商报告的
 * 与技术趋势无关的问题不机械调用 Price History，相关问题能够取得并解释 Structured Derived Facts；
 * Source Grounding 保留 Provider、Feed、Adjustment、Market Timestamp 与 Fetched At；
 * 指标不被表示为自动 BUY / SELL Signal；
-* Human Acceptance 通过，并形成 `v1.4.0` Release。
+* Human Acceptance 通过，并形成 `v1.3.0` Release。
 
 ## M13 — Position-Aware Market Chart
 
@@ -441,7 +445,7 @@ Opening Position 与手工 BUY 的 `average_cost` 表示用户或券商报告的
 
 **Goal**
 
-基于 PositionPilot 已有 Market、Portfolio 与 Technical Context 数据提供交互式行情图表，让用户能够直观看到价格走势、技术指标以及自己的实际买卖位置，形成 `v1.5.0`。
+基于 PositionPilot 已有 Market、Portfolio 与 Technical Context 数据提供交互式行情图表，让用户能够直观看到价格走势、技术指标以及自己的实际买卖位置，形成 `v1.4.0`。
 
 **Scope**
 
@@ -472,7 +476,7 @@ TradingView Lightweight Charts 作为 Frontend Library 使用；其官方 Agent 
 * Zoom、Pan、Crosshair、Responsive Resize 等核心图表交互稳定可用；
 * TradingView Lightweight Charts 等第三方 Library 与 PositionPilot Domain / Market Data Boundary 保持解耦；
 * 相关 Frontend Integration Test、Browser Smoke 与 Human Acceptance 通过；
-* Human Acceptance 通过，并形成 `v1.5.0` Release。
+* Human Acceptance 通过，并形成 `v1.4.0` Release。
 
 ## Answer Quality / Memory / Open Web Research Discovery
 
