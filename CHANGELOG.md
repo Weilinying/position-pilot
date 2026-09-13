@@ -6,7 +6,16 @@
 
 ## [Unreleased]
 
-### Added
+尚无已记录变更。
+
+## [1.3.0] - 2026-09-13
+
+这是自 `v1.0.0` 后的累计发布。原规划的 `v1.1.0`（M8.1 / M9）与 `v1.2.0`（M11）没有单独创建
+Git Tag 或 GitHub Release，其能力与 M13 一并在 `v1.3.0` 发布。
+
+### M11 / M13
+
+#### Added
 
 - M13 增加从当前持仓、历史交易与收益明细进入的宽屏日 K / Volume 图表，支持 1M、3M、6M、1Y 日历范围、
   缩放拖动、十字光标、手工刷新，以及同日多笔 BUY / SELL 记录查看。
@@ -19,21 +28,21 @@
 - 增加独立只读 accounting 接口与首页 summary 聚合，复用现有 valuation；行情缺失不影响历史
   已实现收益，组合未实现与总额不使用部分股票冒充完整结果。
 
-### Changed
+#### Changed
 
 - 图表交易标记只按纽约市场日期定位，不使用录入价格决定 Y 轴；在账本成本与复权行情没有可验证
   对齐依据时，仅显示记录成本，不绘制 Average Cost Line。
 - Portfolio 与卖出收益由统一 ReplayResult 派生，继续保留历史费用、BUY 更正、校准和分类事实。
 - M10 Transaction Import 暂缓，M11 基于 M9 手工交易事实推进，目标版本调整为 `v1.2.0`。
 
-### Fixed
+#### Fixed
 
 - Alpaca 返回不完整的分块响应时，行情读取会转换为明确的 Provider unavailable 状态，不再让
   Portfolio Chart 请求返回未处理的服务器错误。
 
-## [1.1.0] - 2026-09-11
+### M8.1 / M9
 
-### Added
+#### Added
 
 - 增加从 BUY、Opening 与 Reconciliation 事实派生的当前持仓批次；SELL 必须明确分配批次，批次
   类型调整与 BUY 成交更正以不可变事件保存并参与完整重放。
@@ -53,7 +62,7 @@
 - Screenshot Attachment Composer 支持一次选择、拖放或连续粘贴最多两张图片，以本地缩略图预览；
   只有用户点击“开始识别”后才依次上传并合并 Draft。
 
-### Changed
+#### Changed
 
 - 图片录入移除独立“浏览图片”按钮，上传后的缩略图可直接打开大图；ticker 改为输入框内联想
   下拉，保存后的导入汇总持仓无需再次上传即可生成手工校准 Draft。
@@ -69,7 +78,7 @@
 - Finnhub Adapter 改用项目可工作的 HTTP transport；exact validation 对外明确区分
   `VALID / INVALID / PROVIDER_UNAVAILABLE`，Provider 恢复后的 canonical match 仍需用户确认。
 
-### Fixed
+#### Fixed
 
 - 中文等输入法仍在 composing 时，Enter 不会误提交问题。
 - 空问题、键盘自动重复事件和进行中的请求不会产生额外 Question Request。
@@ -91,6 +100,6 @@
   Single Investment Agent 问答，并展示经过后端验证的 Context Sources。
 - 提供无构建、由 FastAPI 同源托管的 Local Self-Service Product Interface。
 
-[Unreleased]: https://github.com/Weilinying/position-pilot/compare/v1.1.0...HEAD
-[1.1.0]: https://github.com/Weilinying/position-pilot/compare/v1.0.0...v1.1.0
+[Unreleased]: https://github.com/Weilinying/position-pilot/compare/v1.3.0...HEAD
+[1.3.0]: https://github.com/Weilinying/position-pilot/compare/v1.0.0...v1.3.0
 [1.0.0]: https://github.com/Weilinying/position-pilot/tree/v1.0.0

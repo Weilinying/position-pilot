@@ -1,6 +1,6 @@
 # M13 — Position-Aware Market Chart 执行计划
 
-状态：已实现并完成定向验证，等待 Human Acceptance。
+状态：DONE — 已实现、验证并于 2026-09-13 通过 Human Acceptance，纳入 `v1.3.0` Release Candidate。
 目标版本：`v1.3.0`。M12 Technical Context 暂缓，保留编号、暂不绑定版本。
 
 ## 1. 目标与页面边界
@@ -132,8 +132,8 @@ Session 绑定路由，复用 MarketDataService 与现有日线过滤逻辑。
 
 - 主线程先定公共 Contract 与数据口径；后端 worker 执行 T1–T2，前端 worker 执行 T3–T4，
   约定固定响应后可并行；主线程负责整合、Review、文档和本地提交。
-- 当前 M11 仍待 Human Acceptance。M13 从验收后的 M11 基线建立 `codex/m13-position-chart`；
-  本次计划整理不代表已授权合并 M11，也不提前改动产品代码。
+- 实施时 M11 尚待 Human Acceptance，因此 M13 从其 Feature Branch 基线建立
+  `codex/m13-position-chart`；M11 与 M13 后续于 2026-09-13 一并通过验收并合入本地 `main`。
 - M13 不做 M12 指标、任意股票浏览、公司行动会计、分钟 K、WebSocket、图表预测、画线工具、
   回测或账户收益曲线。
 - 后续任意股票浏览可复用行情服务另行增加入口，不需要现在扩展 Portfolio Chart 的访问范围。

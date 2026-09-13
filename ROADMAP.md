@@ -11,9 +11,9 @@
 ## 2. Current Status
 
 **Current Milestone:** M13 — Position-Aware Market Chart
-**Status:** IMPLEMENTED — 等待 Human Acceptance（2026-09-12）
-**Current Release State:** `v1.1.0` 已完成并进入本地 `main`；Git Tag / GitHub Release 尚待发布
-**Next Planned Work:** 实施 M13；M11 待 Human Acceptance，M10、M12 已暂缓
+**Status:** DONE — Human Accepted and merged to local `main`（2026-09-13）
+**Current Release State:** `v1.3.0` Release Candidate 已进入本地 `main`；Git Tag / GitHub Release 尚待发布
+**Next Planned Work:** Answer Quality / Memory / Open Web Research Discovery；M10、M12 继续暂缓
 
 Milestone 状态统一使用 `NOT STARTED`、`IN PROGRESS`、`DONE`，不维护百分比进度。
 
@@ -25,10 +25,10 @@ Milestone 表示内部开发阶段；Version / Release 表示用户可感知的�
 |---|---|---|
 | Demo Core（pre-`v1.0.0`） | M0～M7 | 核心 Ledger、Market / News Context、Single Agent、Evaluation 与需预置 User ID 的 Demo Interface |
 | `v1.0.0` | M8 | 本地用户从产品主页注册 / 登录、初始化并持续维护 Portfolio，完成真实 Agent Self-Service MVP |
-| `v1.1.0` | M8.1 | Ask Composer 使用 Enter 提交、Shift+Enter 换行，并正确处理 IME 与重复提交；随 M9 发布 |
-| `v1.1.0` | M9 | Asset Identity、Portfolio Import、紧凑批次持仓与当前未实现估值 |
+| `v1.1.0` scope（未单独发布） | M8.1 | Ask Composer 使用 Enter 提交、Shift+Enter 换行，并正确处理 IME 与重复提交；随 M9 纳入 `v1.3.0` |
+| `v1.1.0` scope（未单独发布） | M9 | Asset Identity、Portfolio Import、紧凑批次持仓与当前未实现估值；纳入 `v1.3.0` |
 | Deferred，暂不绑定版本 | M10 | 可人工确认的 Transaction Import；手工录入成本成为实际痛点后恢复 |
-| `v1.2.0` | M11 | 基于 M9 成本、费用与批次语义的第一阶段 Accounting / P&L |
+| `v1.2.0` scope（未单独发布） | M11 | 基于 M9 成本、费用与批次语义的第一阶段 Accounting / P&L；纳入 `v1.3.0` |
 | Deferred，暂不绑定版本 | M12 | 按需路由的确定性 Technical Context，后续恢复 |
 | `v1.3.0` | M13 | 从当前持仓和交易历史进入日 K / Volume 图表，展示买卖日期并明确价格与成本口径 |
 | Answer Quality Evolution | Discovery，尚未映射 Release | Conversation / Investment Memory、开放 Web Search、Context Policy 与新质量 Evaluation 共同评估 |
@@ -46,7 +46,7 @@ M0 Project Foundation
 → M6 Evaluation & V1 Hardening
 → M7 Minimal Product Interface
 → M8 Local Portfolio Management (`v1.0.0`)
-→ M8.1 Ask Composer UX（Unreleased）
+→ M8.1 Ask Composer UX（included in `v1.3.0`）
 → M9 Asset Identity & Portfolio Import (`v1.1.0`)
 → M11 Accounting & P&L (`v1.2.0`)
 → M13 Position-Aware Market Chart (`v1.3.0`)
@@ -56,7 +56,7 @@ M0 Project Foundation
 
 Human 已确认暂缓 M12、先做 M13；M12 保留编号、暂不绑定版本，M13 不依赖均线与 Technical Context。
 
-M0～M7 是构建 PositionPilot V1 Core 与 Demo Interface 的内部 Engineering Milestones，不直接等同于正式 `v1.0.0`。M8 完成 Local Self-Service 闭环后形成 `v1.0.0`；M8.1 随 M9 一并进入 `v1.1.0`。M9～M13 在保持本地、单用户上下文与现有核心架构的前提下形成后续 V1.x Release。Answer Quality Evolution 不因列入 Discovery 就自动成为 Milestone；只有 Memory、开放 Web Search、Context Policy 与 Evaluation Contract 形成经 Human Review 批准的最小闭环后，才映射到具体 Release。
+M0～M7 是构建 PositionPilot V1 Core 与 Demo Interface 的内部 Engineering Milestones，不直接等同于正式 `v1.0.0`。M8 完成 Local Self-Service 闭环后形成 `v1.0.0`。M8.1 / M9 与 M11 原计划分别形成 `v1.1.0`、`v1.2.0`，但没有创建对应 Git Tag 或 GitHub Release；这些能力与 M13 合并为累计 `v1.3.0` Release，避免用事后补 Tag 制造并未实际发生的发布历史。Answer Quality Evolution 不因列入 Discovery 就自动成为 Milestone；只有 Memory、开放 Web Search、Context Policy 与 Evaluation Contract 形成经 Human Review 批准的最小闭环后，才映射到具体 Release。
 
 ## M0 — Project Foundation
 
@@ -284,7 +284,7 @@ Positions、Transactions 与 Cash Activity 分别展示当前仓位、只读交�
 
 ## M8.1 — Ask Composer UX
 
-**Status:** DONE — Human Accepted and merged to `main` (2026-09-01); included in `v1.1.0`
+**Status:** DONE — Human Accepted and merged to `main` (2026-09-01); included in cumulative `v1.3.0`
 
 **Goal**
 
@@ -299,7 +299,8 @@ Question Textarea 使用 Enter 提交，Shift+Enter 插入换行。中文等输�
 - Shift+Enter 保留换行且不提交；
 - IME composing、空问题与请求进行中不会通过键盘或按钮误提交、重复提交；
 - 相关 Product Interface Test 与 Browser Smoke 通过；
-- Human Acceptance 通过；变更随 M9 进入 `v1.1.0`，未单独创建 Maintenance Release。
+- Human Acceptance 通过；原计划随 M9 进入 `v1.1.0`，但该版本未单独发布，最终纳入累计
+  `v1.3.0` Release。
 
 ## M9 — Asset Identity & Portfolio Import
 
@@ -307,7 +308,7 @@ Question Textarea 使用 Enter 提交，Shift+Enter 插入换行。中文等输�
 
 **Goal**
 
-通过 Asset Identity、Text / Screenshot Import 与紧凑批次持仓，支持低成本录入、保存后手工维护和当前估值，保留交易历史，形成 `v1.1.0`。
+通过 Asset Identity、Text / Screenshot Import 与紧凑批次持仓，支持低成本录入、保存后手工维护和当前估值，保留交易历史。原目标版本为 `v1.1.0`；该版本未单独发布，能力最终纳入累计 `v1.3.0` Release。
 
 **Scope**
 
@@ -342,7 +343,7 @@ Opening Import 复用 M8 已批准的一次性初始化 Command 与 Gate：只�
 * 当前持仓树正确展示未分类直属批次、波段/长期分组与日期顺序；类型变更不改总成本、总股数、现金或过去交易分类；
 * BUY 建批次、SELL 按指定批次扣减、更正保留原事实并重放；完全卖出后历史仍保留；
 * 股数、均价、市值、未实现盈亏及百分比按批次到总体一致汇总；缺失行情不编造估值；
-* Human Acceptance 通过，并形成 `v1.1.0` Release。
+* Human Acceptance 通过；原 `v1.1.0` scope 纳入累计 `v1.3.0` Release。
 
 ## M10 — Transaction Import
 
@@ -382,7 +383,7 @@ Opening Position 与手工 BUY 的 `average_cost` 表示用户或券商报告的
 
 ## M11 — Accounting & P&L
 
-**Status:** IN PROGRESS — 实现与定向验证完成，待 Human Acceptance（2026-09-12）
+**Status:** DONE — Human Accepted and merged to local `main`（2026-09-13）；原 `v1.2.0` scope 纳入 `v1.3.0`
 
 **Goal**
 
@@ -410,7 +411,7 @@ Opening Position 与手工 BUY 的 `average_cost` 表示用户或券商报告的
 * Realized / Unrealized P&L 与 Unrealized Return 对 BUY、部分 / 全部 SELL、费用和 `LONG_TERM / SWING` 有边界测试；
 * Opening Position 与 Transaction Ledger 在已批准成本语义下能够一致重放；
 * 缺少或陈旧 Market Price 时不编造 Current Value / Unrealized Metrics，并给出明确状态；
-* Human Acceptance 通过，并形成 `v1.2.0` Release。
+* Human Acceptance 通过；原 `v1.2.0` scope 纳入累计 `v1.3.0` Release。
 
 ## M12 — Technical Context
 
@@ -447,7 +448,7 @@ Opening Position 与手工 BUY 的 `average_cost` 表示用户或券商报告的
 
 ## M13 — Position-Aware Market Chart
 
-**Status:** IN PROGRESS — Human 已批准（2026-09-12）
+**Status:** DONE — Human Accepted and merged to local `main`（2026-09-13）
 
 **Goal**
 

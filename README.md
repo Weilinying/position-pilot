@@ -1,6 +1,9 @@
 # PositionPilot
 
-当前稳定基线为 [`v1.0.0`](https://github.com/Weilinying/position-pilot/tree/v1.0.0) Local Self-Service MVP。M8.1 Ask Composer UX 已通过 Human Acceptance 并进入 `main`，但暂不单独发布 `v1.0.1`；M9 Asset Identity、Portfolio Import、批次持仓与当前估值已在 `codex/m9-asset-identity-import` 分支完成实现，等待 Human Acceptance。相关改动记录在 [`CHANGELOG.md`](CHANGELOG.md) 的 `Unreleased` 部分。
+PositionPilot 当前代码线已覆盖 M13，对应 `v1.3.0`：在 `v1.0.0` Local Self-Service MVP
+基础上，增加 Asset Identity 与持仓导入、批次级当前估值、已实现 / 未实现盈亏，以及从持仓和
+交易历史进入的日 K / Volume 图表。`v1.1.0` 与 `v1.2.0` 原规划能力未单独发布，统一包含在
+`v1.3.0`；实际发布历史与版本差异见 [`CHANGELOG.md`](CHANGELOG.md)。
 
 ## 前置条件
 
@@ -68,6 +71,8 @@ curl http://127.0.0.1:8000/health
 - 通过统一 Attachment Composer 点击上传区、拖放或直接粘贴截图；缩略图可打开大图，点击“开始识别”后才上传；
 - 对已有导入汇总持仓追加 immutable Position Reconciliation，可直接手工校准 Shares / Average Cost，不要求再次上传，也不影响 Cash 或未出现的持仓；
 - 按 ticker 总体、UNSPECIFIED 批次、SWING 与 LONG_TERM 分组查看当前股数、均价、未实现盈亏、百分比和市场价值；
+- 查看单次及累计已实现盈亏、剩余 Cost Basis，以及组合级已实现 / 未实现收益摘要；
+- 从当前持仓、交易历史或收益明细进入 1M / 3M / 6M / 1Y 日 K 与 Volume 图表，并按纽约市场日期查看 BUY / SELL 记录；
 - 追加 BUY / SELL；BUY 建立批次，SELL 明确分配批次，整个批次的 Position Type 可直接调整；
 - 通过不可变 BUY Correction 修正购买价格、原成交股数和时间，并保留原始交易记录；
 - 追加 DEPOSIT / WITHDRAWAL；
@@ -93,7 +98,7 @@ M8 Authentication 只服务本地 Self-Service 闭环，不是完整公网 Accou
 
 ## Market Data
 
-M2 使用 Alpaca Market Data API v2 REST。Current Quote 来自实时 IEX feed，Historical Daily OHLCV 来自至少延迟 15 分钟的 SIP feed。M9 通过 `GET /v1/portfolio/valuation` 返回当前 Portfolio 的 ticker、类型与批次估值；不暴露通用原始 Market Data REST endpoint。
+M2 使用 Alpaca Market Data API v2 REST。Current Quote 来自实时 IEX feed，Historical Daily OHLCV 来自至少延迟 15 分钟的 SIP feed。Portfolio API 提供 ticker、类型与批次估值、Replay 派生的已实现盈亏，以及 Session 持仓 / 交易范围内的图表数据；不暴露通用原始 Market Data REST endpoint。图表使用 `ALL` 复权日 K，交易标记只按纽约市场日期定位；账本成本与复权行情没有可验证的公司行动对齐依据时，只显示记录成本，不绘制 Average Cost Line。
 
 在本地 `.env` 配置 `ALPACA_API_KEY_ID` 与 `ALPACA_API_SECRET_KEY` 后，可显式运行真实 Provider smoke test：
 

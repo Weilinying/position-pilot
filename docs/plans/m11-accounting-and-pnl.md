@@ -1,6 +1,6 @@
 # M11 — Accounting & P&L 执行计划
 
-日期：2026-09-11；2026-09-12 修订。状态：T1–T4 已实现并通过定向验证与 Automated Review，待 Human Acceptance。
+日期：2026-09-11；2026-09-12 修订。状态：DONE — 已实现、验证并于 2026-09-13 通过 Human Acceptance；原 `v1.2.0` scope 纳入累计 `v1.3.0` Release。
 
 已确认：M10 Transaction Import 暂缓，M11 直接承接已合并的 M9；保留 Milestone 编号。
 目标版本：`v1.2.0`。收益口径与只读 API 已获批准；下文已纳入分配审计字段、统一 ReplayResult
@@ -192,7 +192,8 @@ SELL 详情与按 ticker / 类型汇总 Dialog。复用现有中英文文案、�
   桌面端卖出明细扩宽，分摊列完整可见；汇总 Dialog 已修正宽度与边距。
 - 真实本地服务按原方式重启，8000 端口已加载 accounting / summary 新接口；未修改真实持仓数据。
 - 已同步 PROJECT、ROADMAP、ARCHITECTURE、CHANGELOG 和 ADR 0013；无需额外 Engineering Note。
-  本阶段只提交 Feature Branch，Human Acceptance 前不合并到 main。
+  本阶段先提交 Feature Branch，并于 2026-09-13 随 M13 一并通过 Human Acceptance、合入本地
+  `main`。
 
 ### 验收建议补充（2026-09-12）
 

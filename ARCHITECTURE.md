@@ -2,7 +2,13 @@
 
 ## 1. 当前范围
 
-本文档描述已合并的 M9 Portfolio Workflow，以及当前 M11 / M13 Branch 的已实现盈亏、首页收益汇总与持仓图表。系统包含最小本地 Account / Session、immutable Opening / Reconciliation / Transaction / Cash Facts、BUY Correction、SELL Lot Allocation、Lot Classification Change、Provider-neutral Asset / Recognition / Market / News Data，以及 Single Investment Agent。同源静态 Web Interface 提供 ticker 联想、截图缩略图预览、保存后手工校准、紧凑持仓层级、购买批次更正、交易与资金录入、收益明细及从持仓或历史交易进入的日 K / Volume 图表；Browser Identity 由 HttpOnly Session 恢复，金融事实仍由后端确定性 Replay 产生。
+本文档描述 `v1.3.0` Release Candidate 的 M9 Portfolio Workflow、M11 已实现盈亏与首页收益汇总，
+以及 M13 持仓图表。系统包含最小本地 Account / Session、immutable Opening / Reconciliation /
+Transaction / Cash Facts、BUY Correction、SELL Lot Allocation、Lot Classification Change、
+Provider-neutral Asset / Recognition / Market / News Data，以及 Single Investment Agent。同源静态
+Web Interface 提供 ticker 联想、截图缩略图预览、保存后手工校准、紧凑持仓层级、购买批次更正、
+交易与资金录入、收益明细及从持仓或历史交易进入的日 K / Volume 图表；Browser Identity 由
+HttpOnly Session 恢复，金融事实仍由后端确定性 Replay 产生。
 
 ## 2. 依赖方向
 
