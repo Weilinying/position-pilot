@@ -50,8 +50,7 @@ def upgrade() -> None:
     op.create_check_constraint(
         "ck_transactions_fee_schedule_supported",
         "transactions",
-        "fee_schedule IN ('IBKR_PRO_TIERED_US_2026_08', "
-        "'BUY_COST_INCLUDED', 'SELL_ACTUAL_FEE')",
+        "fee_schedule IN ('IBKR_PRO_TIERED_US_2026_08', 'BUY_COST_INCLUDED', 'SELL_ACTUAL_FEE')",
     )
 
 
