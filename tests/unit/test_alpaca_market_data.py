@@ -5,6 +5,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
+from http.client import IncompleteRead
 
 import pytest
 
@@ -292,6 +293,38 @@ def test_transport_classifies_low_level_failures_without_forwarding_details(
     """底层异常只应转换成固定类别，不把异常文本作为业务消息。"""
 
     assert UrllibJsonHttpTransport._classify_failure(error) is expected
+
+
+def test_transport_maps_incomplete_response_read_to_network_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """上游分块响应中断时应返回稳定失败，不能把异常泄漏为 API 500。"""
+
+    class IncompleteResponse:
+        status = 200
+
+        def __enter__(self) -> "IncompleteResponse":
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            return None
+
+        def read(self) -> bytes:
+            raise IncompleteRead(b"partial")
+
+    monkeypatch.setattr(
+        "position_pilot.integrations.alpaca_market_data.urlopen",
+        lambda *args, **kwargs: IncompleteResponse(),
+    )
+
+    with pytest.raises(HttpTransportUnavailable) as captured:
+        UrllibJsonHttpTransport().get_json(
+            "https://data.example.test/v2/stocks/GOOG/bars",
+            headers={},
+            timeout_seconds=3,
+        )
+
+    assert captured.value.kind is HttpTransportFailureKind.NETWORK_ERROR
 
 
 def test_missing_credentials_fail_before_network_call() -> None:

@@ -1,3 +1,5 @@
+import { CHART_RANGES, createPositionChart, normalizeChartPayload } from "./chart.js";
+
 const translations = {
   en: {
     meta_description: "PositionPilot — portfolio-grounded investment decision support.",
@@ -278,7 +280,7 @@ const translations = {
     chat_intro_eyebrow: "你的投资组合已连接", chat_intro_title: "你正在思考什么投资决策？", chat_intro_body: "提出一个具体问题。PositionPilot 会使用你的持仓及问题所需的当前信息。", no_memory_notice: "问题仅保留在当前浏览器标签页，不构成模型记忆。", investment_question: "投资问题", question_placeholder: "例如：GOOG 今天还能加一点吗？", question_ready: "将使用你的当前投资组合。Enter 提交 · Shift+Enter 换行。", ask: "询问 PositionPilot ↗", asking: "分析中…",
     portfolio_reload: "刷新", portfolio_sections: "投资组合分区", overview_tab: "持仓", trade_tab: "交易", cash_tab: "现金记录", available_cash: "可用现金", ledger_derived: "账本计算 · USD", portfolio_context: "投资组合上下文", session_owned: "当前 Session 所属", session_owned_hint: "身份来自你的本地私有 Session。", opening_state: "起始状态", existing_positions_setup: "添加已有持仓", starting_facts: "一次性起始事实", opening_explainer: "记录开始跟踪前已经持有的仓位，不改变现金，也不创建虚假交易。", skip_for_now: "暂时跳过", save_opening_positions: "保存已有持仓", add_existing_positions: "添加已有持仓", open_positions: "当前持仓", portfolio_empty_loaded: "目前没有持仓。", opening_records: "起始持仓记录", records_empty: "暂无记录。", import_starting_positions: "导入起始持仓", import_review_title: "保存前请复核", draft_only_note: "仅为 Draft · 尚未保存", import_review_hint: "可以手动搜索、粘贴文本或选择一张截图，生成可编辑 Draft。请确认下面每个字段后再保存。", import_methods: "导入方式", manual_import: "手动搜索", text_import: "文本导入", screenshot_import: "截图识别", asset_search_label: "搜索标的或公司名称", asset_search_placeholder: "搜索标的或公司名称", search_assets: "搜索", asset_candidate_heading: "请选择已验证的标的", searching_assets: "搜索中…", use_asset: "使用此标的", asset_selected: "已选择标的。请补完其余字段，再点击保存完成确认。", asset_search_empty: "请输入标的或公司名称后搜索。", asset_no_match: "没有匹配的可用美国股票或 ETF。", asset_search_failed: "标的搜索暂时不可用。请稍后重试。", asset_provider_auth_failed: "标的搜索尚未配置，请先配置 Provider。", asset_rate_limited: "标的搜索已达到限流，请稍后重试。", asset_invalid_response: "标的搜索返回了无效响应。", text_import_label: "粘贴持仓文本", text_import_placeholder: "粘贴券商对账单中的持仓行", prepare_text_draft: "生成可编辑 Draft", preparing_text_draft: "正在生成文本 Draft…", screenshot_import_label: "选择一张券商持仓截图", prepare_screenshot_draft: "生成可编辑 Draft", preparing_screenshot_draft: "正在生成截图 Draft…", start_recognition: "开始识别", attachment_drop_prompt: "将图片拖到这里，或直接粘贴截图", attachment_drop_hint: "JPEG、PNG 或 WebP · 最大 10 MB", attachment_ready: "附件已准备好。点击“开始识别”前不会上传。", attachment_remove: "移除", attachment_file_required: "请先选择、拖入或粘贴图片。", screenshot_privacy_notice: "截图会发送至 Alibaba Model Studio 进行识别。PositionPilot 不保存图片；Provider 的固定保留时长尚未公开。", screenshot_file_required: "请先选择 JPEG、PNG 或 WebP 截图。", screenshot_file_invalid: "请选择受支持的 JPEG、PNG 或 WebP 截图。", screenshot_file_too_large: "截图过大，请选择不超过 10 MB 的图片。", recognition_invalid_request: "导入输入无效。请检查文本或截图后重试。", recognition_auth_failed: "截图识别尚未配置。你也可以手动搜索并选择持仓。", recognition_rate_limited: "识别请求已达到限流，请稍后重试或手动搜索并选择持仓。", recognition_provider_failed: "识别暂时不可用，你可以手动搜索并选择持仓。", recognition_invalid_response: "识别返回了无效响应，请手动复核字段。", recognition_empty: "没有识别出持仓行。请手动添加一行后继续。", draft_review_signal: "复核提示", draft_status_present: "已识别", draft_status_missing: "缺失 — 请填写", draft_status_invalid: "需要修正", draft_status_ambiguous: "有歧义 — 请选择匹配标的", confidence_signal: "识别置信度", confidence_unavailable: "未提供", find_matching_assets: "查找匹配标的", asset_selection_required: "保存前必须从已验证的候选列表中选择此标的。", asset_auto_selected: "已自动选择经过验证的标的。", recognition_draft_ready: "Draft 已生成。请复核每个字段，再点击保存完成确认。", recognition_input_text: "文本导入", recognition_input_screenshot: "截图导入", imported_warning: "Provider 提示", reconciliation_title: "用券商截图校准持仓", reconciliation_summary: "根据当前截图更新选中的持仓。截图中未出现的持仓保持不变，也不会创建交易或现金记录。", reconciliation_broker_label: "券商或来源（可选）", reconciliation_broker_placeholder: "例如：Fidelity、Schwab、IBKR", reconciliation_screenshot_label: "附加当前持仓截图", reconciliation_revalidate: "重新验证全部标的", reconciliation_revalidate_running: "正在重新验证标的…", reconciliation_save: "保存持仓校准", reconciliation_saved: "持仓校准已保存", reconciliation_no_positions: "请先识别截图，并确认至少一条持仓。", reconciliation_not_validated: "请重新验证并明确选择已验证的标的后再保存。", reconciliation_canonical_match: "找到规范标的。点击确认绑定", reconciliation_provider_unavailable: "标的 Provider 暂时不可用，请稍后重试。", reconciliation_invalid_asset: "没有找到与该 ticker 匹配的已验证候选。",
     reconciliation_records: "持仓校准记录", source: "来源", broker: "券商", source_info: "来源详情", confirmed_at: "确认时间",
-    transaction_entry: "交易", trade_entry: "交易记录", immutable_entry: "追加不可变记录", action: "操作", price: "价格", occurred_at_optional: "发生时间（可选）", occurred_at_hint: "留空使用后端应用时间。", reason_optional: "原因（可选）", save_trade: "保存交易", transaction_history: "交易历史", cash_activity: "现金活动", cash_entry: "现金记录", cash_event_type: "现金类型", amount: "金额", save_cash: "保存现金记录", cash_history: "现金历史", cost_basis: "成本基础", commission: "手续费", fee_schedule: "费用规则", occurred_at: "发生时间", reason: "原因", sequence: "序号", recorded_at: "记录时间", not_provided: "未填写", trade_saved: "交易已保存", cash_saved: "现金记录已保存", opening_saved: "已有持仓已保存", mutation_unknown: "结果未知。请勿自动重试，请刷新并检查最新投资组合状态。", refresh_failed: "写入可能已成功，但最新投资组合加载失败。继续前请先刷新。", invalid_form: "请检查标记的字段后再提交。", insufficient_cash: "可用现金不足以覆盖本次买入。", insufficient_shares: "该仓位类型下的股数不足。", opening_sealed: "已有持仓只能在第一笔交易、现金记录或持仓校准前添加。", future_time: "发生时间不能晚于当前时间。", session_expired: "本地 Session 已过期，请重新登录。",
+    transaction_entry: "交易", trade_entry: "交易记录", immutable_entry: "追加不可变记录", action: "操作", price: "价格", occurred_at_optional: "发生时间（可选）", occurred_at_hint: "留空使用后端应用时间。", reason_optional: "原因（可选）", save_trade: "保存交易", transaction_history: "交易历史", cash_activity: "现金活动", cash_entry: "现金记录", cash_event_type: "现金类型", amount: "金额", save_cash: "保存现金记录", cash_history: "现金历史", cost_basis: "总成本", commission: "手续费", fee_schedule: "费用规则", occurred_at: "发生时间", reason: "原因", sequence: "序号", recorded_at: "记录时间", not_provided: "未填写", trade_saved: "交易已保存", cash_saved: "现金记录已保存", opening_saved: "已有持仓已保存", mutation_unknown: "结果未知。请勿自动重试，请刷新并检查最新投资组合状态。", refresh_failed: "写入可能已成功，但最新投资组合加载失败。继续前请先刷新。", invalid_form: "请检查标记的字段后再提交。", insufficient_cash: "可用现金不足以覆盖本次买入。", insufficient_shares: "该仓位类型下的股数不足。", opening_sealed: "已有持仓只能在第一笔交易、现金记录或持仓校准前添加。", future_time: "发生时间不能晚于当前时间。", session_expired: "本地 Session 已过期，请重新登录。",
     working_title: "正在整理决策上下文", working_answer: "正在读取你的投资组合并选择当前信息。", answer_label: "回答", sources_used: "使用的来源", source_explainer: "支持本次回答的上下文。", answer_ready: "基于投资组合的回答", answer_degraded: "上下文有限的回答", answer_failed: "暂时无法回答", source_ticker: "标的", source_provider: "数据提供方", source_feed: "数据源", source_market_time: "市场时间", source_fetched: "获取时间", source_portfolio: "投资组合持仓与现金", source_quote: "当前市场报价", source_history: "价格历史", source_news: "近期新闻", source_market: "市场环境", no_sources: "本次未返回支持来源。", question_required: "请输入一个具体的投资问题。", question_failed: "PositionPilot 未能完成本次问题，请查看状态后重试。",
   },
 };
@@ -368,6 +370,59 @@ Object.assign(translations.en, {
   correction_saved: "Purchase correction saved",
   edit_purchase: "Edit purchase",
   no_aggregate_holdings_to_calibrate: "No imported aggregate holdings can be edited here. Edit purchase lots from the holdings list.",
+  purchase_batch: "Buy batch",
+  imported_batch: "Imported holding",
+  batch: "Batch",
+  portfolio_pnl: "Portfolio P/L",
+  realized_pnl: "Realized P/L",
+  unrealized_pnl: "Unrealized P/L",
+  total_pnl: "Total P/L",
+  realized_pnl_short: "P/L",
+  view_details: "Details",
+  pnl_breakdown: "P/L breakdown",
+  pnl_by_ticker_type: "By ticker and position type",
+  valuation_partial: "Some quotes unavailable",
+  valuation_complete: "",
+  pnl_reconciliation_note: "Includes reconciled positions; P/L uses recorded trades and confirmed costs.",
+  gross_proceeds: "Gross proceeds",
+  net_proceeds: "Net proceeds",
+  released_cost: "Released cost",
+  realized_pnl_percent: "Realized P/L %",
+  allocation_details: "Sale allocation",
+  allocated_gross_proceeds: "Allocated gross",
+  allocated_fee: "Allocated fee",
+  allocated_net_proceeds: "Allocated net",
+  sell_allocation: "Sell allocation",
+  sold_at_type: "Type at sale",
+  no_realized_pnl: "—",
+  open_chart: "Chart",
+  chart_title: "Price chart",
+  chart_range: "Range",
+  chart_refresh: "Refresh chart",
+  chart_loading: "Loading chart…",
+  chart_no_data: "No completed bars are available for this range.",
+  chart_unavailable: "Market data is unavailable right now.",
+  chart_stale: "The latest available bar is outside the selected window.",
+  chart_source: "Source",
+  chart_feed: "Feed",
+  chart_adjustment: "Price basis",
+  chart_coverage: "Coverage",
+  chart_currency: "Currency",
+  chart_timeframe: "Timeframe",
+  chart_fetched: "Fetched",
+  chart_recorded_cost: "Recorded cost",
+  chart_shares: "Shares",
+  chart_average_cost: "Average cost",
+  chart_cost_basis: "Cost basis",
+  chart_cost_not_comparable: "Recorded cost is shown for reference and is not drawn on the chart.",
+  chart_no_position_cost: "No current position cost is recorded.",
+  chart_transactions: "Transactions",
+  chart_no_transactions: "No transactions in this range.",
+  chart_marker_no_bar: "No completed bar for this date",
+  chart_history: "Historical chart",
+  chart_provider_failure: "Market data could not be loaded. Your transaction records remain available.",
+  chart_status_ok: "Market data loaded",
+  chart_status_no_data: "No market data",
 });
 
 Object.assign(translations.zh, {
@@ -440,6 +495,59 @@ Object.assign(translations.zh, {
   correction_saved: "购买批次更正已保存",
   edit_purchase: "修改购买记录",
   no_aggregate_holdings_to_calibrate: "没有可在这里修改的导入汇总持仓；请在持仓列表中修改购买批次。",
+  purchase_batch: "买入批次",
+  imported_batch: "导入持仓",
+  batch: "批次",
+  portfolio_pnl: "投资组合盈亏",
+  realized_pnl: "已实现盈亏",
+  unrealized_pnl: "未实现盈亏",
+  total_pnl: "交易盈亏合计",
+  realized_pnl_short: "盈亏",
+  view_details: "明细",
+  pnl_breakdown: "盈亏明细",
+  pnl_by_ticker_type: "按标的和仓位类型",
+  valuation_partial: "部分行情不可用",
+  valuation_complete: "",
+  pnl_reconciliation_note: "包含校准持仓；盈亏按已记录交易和确认成本计算。",
+  gross_proceeds: "卖出成交额",
+  net_proceeds: "卖出净收入",
+  released_cost: "释放成本",
+  realized_pnl_percent: "已实现盈亏 %",
+  allocation_details: "卖出分配",
+  allocated_gross_proceeds: "分配成交额",
+  allocated_fee: "分配手续费",
+  allocated_net_proceeds: "分配净收入",
+  sell_allocation: "卖出批次分配",
+  sold_at_type: "卖出时类型",
+  no_realized_pnl: "—",
+  open_chart: "图表",
+  chart_title: "价格图表",
+  chart_range: "区间",
+  chart_refresh: "刷新图表",
+  chart_loading: "正在加载图表…",
+  chart_no_data: "这个区间没有可用的已完成日 K。",
+  chart_unavailable: "当前无法获取行情。",
+  chart_stale: "最新可用日 K 已超出所选区间。",
+  chart_source: "来源",
+  chart_feed: "数据源",
+  chart_adjustment: "价格口径",
+  chart_coverage: "覆盖范围",
+  chart_currency: "货币",
+  chart_timeframe: "周期",
+  chart_fetched: "获取时间",
+  chart_recorded_cost: "记录成本",
+  chart_shares: "股数",
+  chart_average_cost: "平均成本",
+  chart_cost_basis: "成本基础",
+  chart_cost_not_comparable: "记录成本仅供参考，不叠加到图表价格轴。",
+  chart_no_position_cost: "当前没有记录中的持仓成本。",
+  chart_transactions: "交易记录",
+  chart_no_transactions: "这个区间没有交易记录。",
+  chart_marker_no_bar: "该日期没有已完成日 K",
+  chart_history: "历史图表",
+  chart_provider_failure: "暂时无法加载行情，交易记录仍然可以查看。",
+  chart_status_ok: "行情已加载",
+  chart_status_no_data: "没有行情数据",
 });
 
 const state = {
@@ -448,6 +556,8 @@ const state = {
   loadedUserId: null,
   snapshot: null,
   valuation: null,
+  accounting: null,
+  summary: null,
   valuationController: null,
   openingRecords: [],
   reconciliationRecords: [],
@@ -473,6 +583,15 @@ const state = {
   questionCount: 0,
   activeView: "chat",
   selectedLot: null,
+  chartGeneration: 0,
+  chartController: null,
+  chartInstance: null,
+  chartTicker: null,
+  chartRange: "3M",
+  chartAnchorDate: null,
+  chartPayload: null,
+  chartSelectedDate: null,
+  chartOpener: null,
 };
 
 const DECIMAL_PATTERN = /^(?:0|[1-9]\d*)(?:\.\d{1,8})?$/;
@@ -561,6 +680,8 @@ const elements = {
   imagePreviewDialog: byId("image-preview-dialog"), imagePreviewClose: byId("image-preview-close"), imagePreviewFull: byId("image-preview-full"), imagePreviewCaption: byId("image-preview-caption"),
   correctionDialog: byId("buy-correction-dialog"), correctionForm: byId("buy-correction-form"), correctionClose: byId("buy-correction-close"), correctionLotId: byId("buy-correction-lot-id"), correctionSymbol: byId("buy-correction-symbol"), correctionPrice: byId("buy-correction-price"), correctionPriceLabel: byId("buy-correction-price-label"), correctionShares: byId("buy-correction-shares"), correctionTime: byId("buy-correction-time"), correctionType: byId("buy-correction-type"), correctionReason: byId("buy-correction-reason"), correctionMessage: byId("buy-correction-message"),
   transactionDetailDialog: byId("transaction-detail-dialog"), transactionDetailTitle: byId("transaction-detail-title"), transactionDetailSubtitle: byId("transaction-detail-subtitle"), transactionDetailContent: byId("transaction-detail-content"), transactionDetailActions: byId("transaction-detail-actions"), transactionDetailClose: byId("transaction-detail-close"),
+  chartDialog: byId("position-chart-dialog"), chartTitle: byId("position-chart-title"), chartSubtitle: byId("position-chart-subtitle"), chartClose: byId("position-chart-close"), chartRefresh: byId("position-chart-refresh"), chartRanges: [...document.querySelectorAll("[data-chart-range]")], chartMessage: byId("position-chart-message"), chartCanvas: byId("position-chart-canvas"), chartSource: byId("position-chart-source"), chartCost: byId("position-chart-cost"), chartRecords: byId("position-chart-records"),
+  summaryRealizedPnl: byId("summary-realized-pnl"), summaryUnrealizedPnl: byId("summary-unrealized-pnl"), summaryTotalPnl: byId("summary-total-pnl"), summaryPnlStatus: byId("portfolio-pnl-status"), openSummary: byId("open-summary-dialog"), summaryDialog: byId("portfolio-summary-dialog"), summaryDialogClose: byId("portfolio-summary-dialog-close"), summaryContent: byId("portfolio-summary-content"),
 };
 
 const importConfigs = [
@@ -676,7 +797,17 @@ function apiMessageKey(error) {
 }
 
 function formatDecimal(value) {
-  const raw = String(value ?? "0");
+  let raw = String(value ?? "0");
+  // Decimal 的零与小数可能以科学计数法传输，展开字符串以保留金额精度。
+  const scientific = raw.match(/^(-?)(\d+)(?:\.(\d+))?[eE]([+-]?\d+)$/);
+  if (scientific) {
+    const [, sign, whole, fraction = "", exponent] = scientific;
+    const digits = whole + fraction;
+    const point = whole.length + Number(exponent);
+    raw = sign + (point <= 0 ? `0.${"0".repeat(-point)}${digits}`
+      : point >= digits.length ? digits + "0".repeat(point - digits.length)
+      : `${digits.slice(0, point)}.${digits.slice(point)}`);
+  }
   const [integerRaw, fractionRaw = ""] = raw.split(".");
   const integer = integerRaw.replace(/^(-?)0+(?=\d)/, "$1");
   const grouped = integer.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
@@ -1460,6 +1591,8 @@ function resetSensitiveState() {
   state.loadedUserId = null;
   state.snapshot = null;
   state.valuation = null;
+  state.accounting = null;
+  state.summary = null;
   state.valuationController?.abort();
   state.valuationController = null;
   state.openingRecords = [];
@@ -1785,6 +1918,10 @@ async function handleSetup(event, forceEmpty = false) {
 function renderPortfolioEmpty() {
   elements.availableCash.textContent = "—";
   elements.positionCount.textContent = "0";
+  for (const element of [elements.summaryRealizedPnl, elements.summaryUnrealizedPnl, elements.summaryTotalPnl]) {
+    if (element) { element.textContent = "—"; delete element.dataset.tone; }
+  }
+  if (elements.summaryPnlStatus) elements.summaryPnlStatus.textContent = "";
   clearElement(elements.positionList);
   elements.positionsEmpty.hidden = false;
   for (const [list, count, empty] of [[elements.transactionList, elements.transactionCount, elements.transactionsEmpty], [elements.cashList, elements.cashCount, elements.cashEmpty]]) {
@@ -1810,8 +1947,49 @@ function metricText(metrics, field, fallback = null) {
   const value = metrics?.[field] ?? fallback;
   if (value === null || value === undefined) return "—";
   if (field === "unrealized_pnl_percent") return `${formatDecimal(value)}%`;
-  if (["average_cost", "unrealized_pnl", "market_value"].includes(field)) return formatMoney(value);
+  if (["average_cost", "cost_basis", "unrealized_pnl", "market_value"].includes(field)) return formatMoney(value);
   return formatDecimal(value);
+}
+
+function formatPnl(value) {
+  if (value === null || value === undefined) return "—";
+  const raw = String(value);
+  if (Number(raw) === 0) return "$0";
+  if (raw.startsWith("-")) return `-$${formatDecimal(raw.slice(1))}`;
+  return `+$${formatDecimal(raw)}`;
+}
+
+function pnlTone(value) {
+  if (value === null || value === undefined) return "neutral";
+  const numeric = Number(value);
+  return numeric > 0 ? "positive" : numeric < 0 ? "negative" : "neutral";
+}
+
+function setPnlElement(element, value) {
+  if (!element) return;
+  element.textContent = formatPnl(value);
+  element.dataset.tone = pnlTone(value);
+}
+
+function summaryMetrics() {
+  return state.summary?.totals ?? null;
+}
+
+function renderPortfolioSummary() {
+  const metrics = summaryMetrics();
+  setPnlElement(elements.summaryRealizedPnl, metrics?.realized_pnl);
+  setPnlElement(elements.summaryUnrealizedPnl, metrics?.unrealized_pnl);
+  setPnlElement(elements.summaryTotalPnl, metrics?.total_pnl);
+  if (elements.summaryPnlStatus) {
+    const notes = [];
+    if (metrics && metrics.valuation_complete === false) notes.push(translate("valuation_partial"));
+    if (state.summary?.has_reconciliations) notes.push(translate("pnl_reconciliation_note"));
+    elements.summaryPnlStatus.textContent = notes.join(" · ");
+  }
+}
+
+function accountingTransaction(transactionId) {
+  return state.accounting?.transactions?.find((item) => item.transaction_id === transactionId) ?? null;
 }
 
 function createHoldingRow({ label, note = null, metrics, fallback, level, toggle = null, lot = null, ticker = null, currentPrice = null }) {
@@ -1847,6 +2025,7 @@ function createHoldingRow({ label, note = null, metrics, fallback, level, toggle
   const values = [
     metricText(metrics, "shares", fallback?.shares),
     metricText(metrics, "average_cost", fallback?.average_cost),
+    metricText(metrics, "cost_basis", fallback?.cost_basis),
     currentPrice === null || currentPrice === undefined ? "—" : formatMoney(currentPrice),
     metricText(metrics, "unrealized_pnl"),
     metricText(metrics, "unrealized_pnl_percent"),
@@ -1854,6 +2033,11 @@ function createHoldingRow({ label, note = null, metrics, fallback, level, toggle
   ];
   const actions = makeElement("span", "holding-actions");
   if (ticker && level === 0) {
+    const chart = makeElement("button", "row-action", translate("open_chart"));
+    chart.type = "button";
+    chart.setAttribute("aria-label", `${translate("open_chart")} ${ticker}`);
+    chart.addEventListener("click", (event) => { event.stopPropagation(); openPositionChart(ticker, null, chart); });
+    actions.append(chart);
     for (const [action, key] of [["BUY", "buy"], ["SELL", "sell"]]) {
       const button = makeElement("button", "row-action", translate(key));
       button.type = "button";
@@ -1870,8 +2054,8 @@ function createHoldingRow({ label, note = null, metrics, fallback, level, toggle
   row.append(identity, ...values.map((value) => makeElement("span", "holding-number", value)), actions);
   if (metrics?.unrealized_pnl !== undefined) {
     const tone = Number(metrics.unrealized_pnl) > 0 ? "positive" : Number(metrics.unrealized_pnl) < 0 ? "negative" : "neutral";
-    row.children[4].dataset.tone = tone;
     row.children[5].dataset.tone = tone;
+    row.children[6].dataset.tone = tone;
   }
   return row;
 }
@@ -1993,7 +2177,7 @@ function createHoldingTree(ticker) {
     details.append(createHoldingRow({
       label: time,
       metrics: lotValuations.get(lot.id),
-      fallback: { shares: lot.remaining_shares, average_cost: lot.average_cost },
+      fallback: { shares: lot.remaining_shares, average_cost: lot.average_cost, cost_basis: lot.cost_basis },
       level: 2,
       lot,
       currentPrice: valuation?.current_price,
@@ -2033,17 +2217,152 @@ function historyDate(value) {
   return new Intl.DateTimeFormat(state.language === "zh" ? "zh-CN" : "en-US", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false }).format(date);
 }
 
+function positionTypeLabel(positionType) {
+  if (positionType === "SWING") return translate("strategy_swing");
+  if (positionType === "LONG_TERM") return translate("strategy_long_term");
+  return translate("unspecified");
+}
+
+function createSummaryMetricLine(label, metrics, level = 0, ticker = null) {
+  const row = makeElement("div", `summary-breakdown-row summary-breakdown-level-${level}`);
+  const identity = makeElement("strong", "summary-breakdown-label", label);
+  const realized = makeElement("span", "summary-breakdown-number");
+  const unrealized = makeElement("span", "summary-breakdown-number");
+  const total = makeElement("span", "summary-breakdown-number");
+  const market = makeElement("span", "summary-breakdown-number");
+  const actions = makeElement("span", "summary-breakdown-actions");
+  setPnlElement(realized, metrics?.realized_pnl);
+  setPnlElement(unrealized, metrics?.unrealized_pnl);
+  setPnlElement(total, metrics?.total_pnl);
+  market.textContent = metrics?.market_value === null || metrics?.market_value === undefined ? "—" : formatMoney(metrics.market_value);
+  if (ticker) {
+    const chart = makeElement("button", "row-action", translate("open_chart"));
+    chart.type = "button";
+    chart.setAttribute("aria-label", `${translate("open_chart")} ${ticker}`);
+    chart.addEventListener("click", () => {
+      const anchorDate = latestSellAnchorDate(ticker);
+      elements.summaryDialog.close();
+      openPositionChart(ticker, anchorDate);
+    });
+    actions.append(chart);
+  }
+  row.append(identity, realized, unrealized, total, market, actions);
+  return row;
+}
+
+function renderSummaryDialog() {
+  clearElement(elements.summaryContent);
+  const tickers = state.summary?.tickers ?? [];
+  if (!tickers.length) {
+    const empty = makeElement("p", "muted-note");
+    setLocalizedText(empty, "records_empty");
+    elements.summaryContent.append(empty);
+    return;
+  }
+  const header = makeElement("div", "summary-breakdown-header");
+  for (const key of ["ticker", "realized_pnl", "unrealized_pnl", "total_pnl", "market_value"]) {
+    const cell = makeElement("span");
+    setLocalizedText(cell, key);
+    header.append(cell);
+  }
+  header.append(makeElement("span"));
+  elements.summaryContent.append(header);
+  for (const ticker of tickers) {
+    const section = makeElement("section", "summary-breakdown-group");
+    section.append(createSummaryMetricLine(ticker.ticker, ticker.metrics, 0, ticker.ticker));
+    for (const positionType of ticker.position_types ?? []) {
+      section.append(createSummaryMetricLine(positionTypeLabel(positionType.position_type), positionType.metrics, 1));
+    }
+    elements.summaryContent.append(section);
+  }
+}
+
+function openSummaryDialog() {
+  renderSummaryDialog();
+  elements.summaryDialog.showModal();
+}
+
+function allocationLotLabel(allocation, sourceCounters) {
+  const lotId = String(allocation.lot_id ?? "");
+  const source = String(allocation.source ?? "");
+  const auditId = lotId ? ` · ${lotId.slice(0, 8)}` : "";
+  if (source === "BUY") {
+    const purchase = state.transactionRecords.find((item) => String(item.id) === lotId);
+    const effective = purchase ? effectiveTransaction(purchase) : null;
+    return {
+      label: effective ? `${translate("purchase_batch")} · ${historyDate(effective.occurred_at)}` : `${translate("purchase_batch")}${auditId}`,
+      title: lotId,
+    };
+  }
+  const key = source === "OPENING" || source === "RECONCILIATION" ? "imported" : "other";
+  sourceCounters[key] = (sourceCounters[key] ?? 0) + 1;
+  return {
+    label: `${translate(key === "imported" ? "imported_batch" : "purchase_batch")} #${sourceCounters[key]}`,
+    title: lotId,
+  };
+}
+
+function createAllocationTable(allocationResult) {
+  const section = makeElement("section", "allocation-details");
+  const heading = makeElement("h4");
+  setLocalizedText(heading, "allocation_details");
+  section.append(heading);
+  const header = makeElement("div", "allocation-table-row allocation-table-header");
+  for (const key of ["batch", "ticker", "shares", "sold_at_type", "allocated_gross_proceeds", "allocated_fee", "allocated_net_proceeds", "released_cost", "realized_pnl"]) {
+    const cell = makeElement("span");
+    setLocalizedText(cell, key);
+    header.append(cell);
+  }
+  section.append(header);
+  const sourceCounters = {};
+  for (const allocation of allocationResult.allocations ?? []) {
+    const lotLabel = allocationLotLabel(allocation, sourceCounters);
+    const batch = makeElement("span", "allocation-lot", lotLabel.label);
+    batch.title = lotLabel.title;
+    const row = makeElement("div", "allocation-table-row");
+    row.append(
+      batch,
+      makeElement("span", "allocation-ticker", allocation.ticker),
+      makeElement("span", "allocation-number", formatDecimal(allocation.shares)),
+      makeElement("span", "allocation-type", positionTypeLabel(allocation.position_type_at_sale)),
+      makeElement("span", "allocation-number", formatMoney(allocation.allocated_gross_proceeds)),
+      makeElement("span", "allocation-number", formatMoney(allocation.allocated_fee)),
+      makeElement("span", "allocation-number", formatMoney(allocation.allocated_net_proceeds)),
+      makeElement("span", "allocation-number", formatMoney(allocation.released_cost)),
+      makeElement("span", "allocation-number", formatPnl(allocation.realized_pnl)),
+    );
+    const pnl = row.lastElementChild;
+    pnl.dataset.tone = pnlTone(allocation.realized_pnl);
+    section.append(row);
+  }
+  return section;
+}
+
 function openTransactionDetail(record, kind) {
   const isTrade = kind === "trade";
   const effective = isTrade ? effectiveTransaction(record) : record;
+  const accounting = isTrade && effective.action === "SELL" ? accountingTransaction(record.id) : null;
   elements.transactionDetailTitle.textContent = isTrade ? `${effective.ticker} · ${effective.action}` : translate(record.event_type === "DEPOSIT" ? "deposit" : "withdrawal");
   elements.transactionDetailSubtitle.textContent = formatTimestamp(effective.occurred_at);
   clearElement(elements.transactionDetailContent);
   const priceLabel = effective.fee_schedule === "BUY_COST_INCLUDED" ? "average_cost_fee_included" : "price";
   const facts = isTrade
-    ? [["shares", effective.shares, "decimal"], [priceLabel, effective.price, "decimal"], ["commission", transactionFeeText(effective)], ["position_type", effective.position_type === "UNSPECIFIED" ? translate("unspecified") : effective.position_type], ["reason", effective.reason]]
+    ? [["shares", effective.shares, "decimal"], [priceLabel, effective.price, "decimal"], ...(accounting ? [] : [["commission", transactionFeeText(effective)]]), ["position_type", effective.position_type === "UNSPECIFIED" ? translate("unspecified") : effective.position_type], ["reason", effective.reason]]
     : [["amount", effective.amount, "decimal"], ["reason", effective.reason]];
   elements.transactionDetailContent.append(createFactList(facts));
+  if (isTrade && effective.action === "SELL") {
+    if (accounting) {
+      elements.transactionDetailContent.append(createFactList([
+        ["gross_proceeds", accounting.metrics?.gross_proceeds, "decimal"],
+        ["commission", accounting.metrics?.fee, "decimal"],
+        ["net_proceeds", accounting.metrics?.net_proceeds, "decimal"],
+        ["released_cost", accounting.metrics?.released_cost, "decimal"],
+        ["realized_pnl", formatPnl(accounting.metrics?.realized_pnl)],
+        ["realized_pnl_percent", accounting.metrics?.realized_pnl_percent === null || accounting.metrics?.realized_pnl_percent === undefined ? null : `${formatDecimal(accounting.metrics.realized_pnl_percent)}%`],
+      ]));
+      elements.transactionDetailContent.append(createAllocationTable(accounting));
+    }
+  }
   if (isTrade && effective.edited) {
     const original = makeElement("details", "correction-history");
     const summary = makeElement("summary", "", translate("edit_history"));
@@ -2068,16 +2387,31 @@ function openTransactionDetail(record, kind) {
     edit.addEventListener("click", () => { elements.transactionDetailDialog.close(); openBuyCorrection(lot); });
     elements.transactionDetailActions.append(edit);
   } else if (isTrade) elements.transactionDetailActions.append(makeElement("small", "muted-note", translate("edit_unavailable")));
+  if (isTrade) {
+    const chart = makeElement("button", "secondary-button compact-button", translate("open_chart"));
+    chart.type = "button";
+    chart.addEventListener("click", () => {
+      const anchorDate = nyMarketDate(effective.occurred_at);
+      elements.transactionDetailDialog.close();
+      openPositionChart(effective.ticker, anchorDate, chart);
+    });
+    elements.transactionDetailActions.append(chart);
+  }
   elements.transactionDetailDialog.showModal();
 }
 
 function createHistoryRow(record, kind) {
   const isTrade = kind === "trade";
   const effective = isTrade ? effectiveTransaction(record) : record;
+  const accounting = isTrade && effective.action === "SELL" ? accountingTransaction(record.id) : null;
   const row = makeElement("button", "history-row");
   row.type = "button";
+  row.dataset.recordId = record.id;
+  row.dataset.recordKind = kind;
   const side = isTrade ? effective.action : translate(effective.event_type === "DEPOSIT" ? "deposit" : "withdrawal");
   const status = isTrade && effective.edited ? translate("edited") : translate("completed");
+  const pnl = makeElement("span", "history-number history-pnl", accounting ? formatPnl(accounting.metrics?.realized_pnl) : "—");
+  if (accounting) pnl.dataset.tone = pnlTone(accounting.metrics?.realized_pnl);
   row.append(
     makeElement("span", "history-time", historyDate(effective.occurred_at)),
     makeElement("strong", "history-ticker", isTrade ? effective.ticker : "USD"),
@@ -2086,6 +2420,7 @@ function createHistoryRow(record, kind) {
     makeElement("span", "history-number", formatMoney(isTrade ? effective.price : effective.amount)),
     makeElement("span", "history-number", isTrade ? transactionFeeText(effective) : "—"),
     makeElement("span", "history-type", isTrade ? (effective.position_type === "UNSPECIFIED" ? translate("unspecified") : effective.position_type) : "CASH"),
+    pnl,
     makeElement("span", `history-status ${effective.edited ? "is-edited" : ""}`, status),
   );
   row.addEventListener("click", () => openTransactionDetail(record, kind));
@@ -2095,7 +2430,236 @@ function createHistoryRow(record, kind) {
 function transactionFeeText(transaction) {
   return transaction.fee_schedule === "BUY_COST_INCLUDED"
     ? translate("fee_included")
-    : formatMoney(transaction.commission);
+    : formatMoney(transaction.commission ?? transaction.fee ?? 0);
+}
+
+function nyMarketDate(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return values.year && values.month && values.day ? `${values.year}-${values.month}-${values.day}` : null;
+}
+
+function latestSellAnchorDate(ticker) {
+  const latestSell = [...state.transactionRecords]
+    .filter((record) => record.ticker === ticker && record.action === "SELL")
+    .sort((left, right) => new Date(right.occurred_at).getTime() - new Date(left.occurred_at).getTime())[0];
+  return latestSell ? nyMarketDate(latestSell.occurred_at) : null;
+}
+
+function setChartRangeState(range) {
+  state.chartRange = CHART_RANGES.includes(range) ? range : "3M";
+  for (const button of elements.chartRanges) button.classList.toggle("is-active", button.dataset.chartRange === state.chartRange);
+}
+
+function chartStatusKey(payload) {
+  const status = String(payload?.status ?? "").toUpperCase();
+  if (status === "STALE") return "chart_stale";
+  if (["AUTHENTICATION_FAILED", "RATE_LIMITED", "PROVIDER_UNAVAILABLE", "INVALID_PROVIDER_RESPONSE", "INVALID_SYMBOL", "INVALID_REQUEST", "PROVIDER_FAILURE", "UNAVAILABLE", "ERROR", "FAILED"].includes(status)) return "chart_provider_failure";
+  if (["NO_DATA", "NO_MARKET_DATA"].includes(status)) return "chart_no_data";
+  if (!payload?.bars?.length) return "chart_no_data";
+  return "chart_status_ok";
+}
+
+function renderChartSource(payload) {
+  clearElement(elements.chartSource);
+  const source = payload?.source && typeof payload.source === "object" ? payload.source : {};
+  const items = [
+    ["chart_source", typeof payload?.source === "string" ? payload.source : source.source ?? payload?.source_name],
+    ["chart_feed", payload?.feed ?? source.feed],
+    ["chart_adjustment", payload?.adjustment ?? source.adjustment],
+    ["chart_coverage", payload?.coverage ?? source.coverage],
+    ["chart_currency", payload?.currency ?? source.currency],
+    ["chart_timeframe", payload?.timeframe ?? source.timeframe],
+    ["chart_fetched", payload?.fetched_at ?? source.fetched_at],
+  ].filter(([, value]) => value !== null && value !== undefined && value !== "");
+  for (const [key, value] of items) {
+    const item = makeElement("span", "chart-source-item");
+    const label = makeElement("small", "chart-source-label", translate(key));
+    const content = makeElement("span", "chart-source-value");
+    content.textContent = key === "chart_fetched" ? formatTimestamp(value) : String(value);
+    item.append(label, content);
+    elements.chartSource.append(item);
+  }
+}
+
+function renderChartCost(payload) {
+  clearElement(elements.chartCost);
+  const cost = payload?.current_cost;
+  if (!cost) {
+    elements.chartCost.hidden = true;
+    return;
+  }
+  elements.chartCost.hidden = false;
+  const heading = makeElement("strong", "chart-section-heading", translate("chart_recorded_cost"));
+  const facts = makeElement("div", "chart-cost-facts");
+  for (const [key, value] of [["chart_shares", cost.shares], ["chart_average_cost", cost.average_cost], ["chart_cost_basis", cost.cost_basis]]) {
+    const item = makeElement("span", "chart-cost-fact");
+    item.append(makeElement("small", "chart-cost-label", translate(key)), makeElement("strong", "chart-cost-value", key === "chart_shares" ? formatDecimal(value) : formatMoney(value)));
+    facts.append(item);
+  }
+  elements.chartCost.append(heading, facts);
+  if (payload.cost_basis_comparable === false) elements.chartCost.append(makeElement("p", "field-note chart-cost-note", translate("chart_cost_not_comparable")));
+}
+
+function renderChartRecords(payload) {
+  clearElement(elements.chartRecords);
+  const markers = Array.isArray(payload?.markers) ? payload.markers : [];
+  if (!markers.length) {
+    elements.chartRecords.append(makeElement("p", "muted-note", translate("chart_no_transactions")));
+    return;
+  }
+  const heading = makeElement("strong", "chart-section-heading", translate("chart_transactions"));
+  elements.chartRecords.append(heading);
+  const list = makeElement("div", "chart-marker-list");
+  const selectedDate = state.chartSelectedDate && markers.some((marker) => marker.market_date === state.chartSelectedDate)
+    ? state.chartSelectedDate
+    : markers[markers.length - 1].market_date;
+  state.chartSelectedDate = selectedDate;
+  for (const marker of markers) {
+    const dateButton = makeElement("button", `chart-marker-date ${marker.market_date === selectedDate ? "is-selected" : ""}`);
+    dateButton.type = "button";
+    dateButton.dataset.chartDate = marker.market_date;
+    const actions = [...new Set((marker.transactions ?? []).map((transaction) => transaction.action).filter(Boolean))].join(" / ");
+    dateButton.append(makeElement("strong", "", marker.market_date), makeElement("span", "", actions || "—"), makeElement("small", "", `${marker.transactions?.length ?? 0}`));
+    dateButton.addEventListener("click", () => {
+      state.chartSelectedDate = marker.market_date;
+      renderChartRecords(payload);
+    });
+    list.append(dateButton);
+    if (marker.market_date !== selectedDate) continue;
+    const details = makeElement("div", "chart-marker-details");
+    if (marker.has_bar === false) details.append(makeElement("p", "field-note chart-marker-note", translate("chart_marker_no_bar")));
+    for (const transaction of marker.transactions ?? []) {
+      const row = makeElement("div", "chart-transaction-row");
+      const action = String(transaction.action ?? transaction.side ?? "").toUpperCase();
+      const priceLabel = transaction.fee_schedule === "BUY_COST_INCLUDED" ? "average_cost_fee_included" : "price";
+      const typeDetail = Array.isArray(transaction.allocations) && transaction.allocations.length
+        ? transaction.allocations.map((allocation) => `${positionTypeLabel(allocation.position_type_at_sale)} ${formatDecimal(allocation.shares)}`).join(" / ")
+        : positionTypeLabel(transaction.position_type);
+      row.append(
+        makeElement("strong", `chart-transaction-action ${action.toLowerCase()}`, action),
+        makeElement("span", "", `${formatDecimal(transaction.shares)} ${translate("shares")} · ${translate(priceLabel)} ${formatMoney(transaction.price)} · ${translate("commission")} ${transactionFeeText(transaction)}`),
+        makeElement("small", "", `${transaction.occurred_at ? formatTimestamp(transaction.occurred_at) : translate("not_provided")} · ${typeDetail}`),
+      );
+      details.append(row);
+    }
+    list.append(details);
+  }
+  elements.chartRecords.append(list);
+}
+
+function destroyPositionChart() {
+  state.chartInstance?.destroy();
+  state.chartInstance = null;
+  clearElement(elements.chartCanvas);
+}
+
+function renderPositionChart(payload) {
+  const normalized = normalizeChartPayload(payload);
+  state.chartPayload = normalized;
+  destroyPositionChart();
+  clearMessage(elements.chartMessage);
+  const statusKey = chartStatusKey(normalized);
+  if (statusKey !== "chart_status_ok") {
+    const status = String(normalized.status ?? "").toUpperCase();
+    const tone = status === "STALE" ? "warning" : ["PROVIDER_UNAVAILABLE", "AUTHENTICATION_FAILED", "RATE_LIMITED", "INVALID_PROVIDER_RESPONSE", "INVALID_SYMBOL", "INVALID_REQUEST", "PROVIDER_FAILURE"].includes(status) ? "danger" : "neutral";
+    setMessage(elements.chartMessage, statusKey, tone);
+  }
+  if (normalized.bars.length) {
+    try {
+      state.chartInstance = createPositionChart({
+        container: elements.chartCanvas,
+        payload: normalized,
+        onDateSelect: (date) => {
+          state.chartSelectedDate = date;
+          renderChartRecords(normalized);
+        },
+      });
+    } catch {
+      setMessage(elements.chartMessage, "chart_unavailable", "danger");
+    }
+  }
+  renderChartSource(normalized);
+  renderChartCost(normalized);
+  renderChartRecords(normalized);
+}
+
+function renderChartUnavailable() {
+  renderPositionChart({
+    ticker: state.chartTicker,
+    range: state.chartRange,
+    status: "PROVIDER_FAILURE",
+    bars: [],
+    markers: [],
+  });
+  setMessage(elements.chartMessage, "chart_provider_failure", "danger");
+}
+
+async function loadPositionChart() {
+  const ticker = state.chartTicker;
+  if (!ticker) return;
+  const generation = ++state.chartGeneration;
+  state.chartController?.abort();
+  const controller = new AbortController();
+  state.chartController = controller;
+  setLocalizedText(elements.chartMessage, "chart_loading");
+  elements.chartMessage.dataset.tone = "active";
+  const params = new URLSearchParams({ ticker, range: state.chartRange });
+  if (state.chartAnchorDate) params.set("anchor_date", state.chartAnchorDate);
+  try {
+    const payload = await requestJson(`/v1/portfolio/chart?${params.toString()}`, { signal: controller.signal });
+    if (generation !== state.chartGeneration || state.chartTicker !== ticker) return;
+    renderPositionChart(payload);
+  } catch (error) {
+    if (error?.name === "AbortError" || generation !== state.chartGeneration || state.chartTicker !== ticker) return;
+    if (error instanceof ApiError && error.status === 401) {
+      if (elements.chartDialog.open) elements.chartDialog.close();
+      else closePositionChart();
+      enterHome("session_expired");
+      return;
+    }
+    renderChartUnavailable();
+  } finally {
+    if (generation === state.chartGeneration) state.chartController = null;
+  }
+}
+
+function openPositionChart(ticker, anchorDate = null, opener = null) {
+  const normalizedTicker = String(ticker ?? "").trim().toUpperCase();
+  if (!normalizedTicker) return;
+  state.chartTicker = normalizedTicker;
+  state.chartAnchorDate = anchorDate || null;
+  state.chartSelectedDate = anchorDate || null;
+  state.chartPayload = null;
+  state.chartOpener = opener;
+  setChartRangeState("3M");
+  elements.chartTitle.textContent = normalizedTicker;
+  setLocalizedText(elements.chartSubtitle, anchorDate ? "chart_history" : "chart_title");
+  clearElement(elements.chartCanvas);
+  clearElement(elements.chartSource);
+  clearElement(elements.chartCost);
+  clearElement(elements.chartRecords);
+  if (!elements.chartDialog.open) elements.chartDialog.showModal();
+  loadPositionChart();
+}
+
+function closePositionChart() {
+  state.chartGeneration += 1;
+  state.chartController?.abort();
+  state.chartController = null;
+  destroyPositionChart();
+  state.chartTicker = null;
+  state.chartPayload = null;
+  const opener = state.chartOpener;
+  state.chartOpener = null;
+  if (opener && typeof opener.focus === "function") opener.focus();
 }
 
 function renderOpeningAvailability() {
@@ -2107,6 +2671,7 @@ function renderPortfolio() {
   const snapshot = state.snapshot;
   if (!snapshot) { renderPortfolioEmpty(); updateControls(); return; }
   elements.availableCash.textContent = formatMoney(snapshot.available_cash);
+  renderPortfolioSummary();
   const tickers = [...new Set((snapshot.lots ?? []).map((lot) => lot.ticker))].sort();
   elements.positionCount.textContent = String(tickers.length);
   clearElement(elements.positionList);
@@ -2138,16 +2703,20 @@ async function refreshValuation() {
   const controller = new AbortController();
   state.valuationController = controller;
   try {
-    let valuation;
+    let summary;
     try {
-      valuation = await requestJson("/v1/portfolio/valuation", { signal: controller.signal });
+      summary = await requestJson("/v1/portfolio/summary", { signal: controller.signal });
     } catch (error) {
       if (state.snapshot !== snapshot || state.portfolioGeneration !== generation) return;
       if (error instanceof ApiError && error.status === 401) { enterHome("session_expired"); return; }
-      valuation = null;
+      // 背景刷新失败时保留上一份收益与行情，避免已实现收益随网络抖动消失。
+      return;
     }
     if (state.snapshot !== snapshot || state.portfolioGeneration !== generation || state.writeState !== "idle") return;
-    state.valuation = valuation;
+    state.summary = summary;
+    state.valuation = summary?.valuation ?? null;
+    state.accounting = summary?.accounting ?? null;
+    renderPortfolioSummary();
     // 仅替换展示数字，保留正在操作的控件、焦点和展开状态。
     for (const group of elements.positionList.querySelectorAll(".holding-group")) {
       const fresh = createHoldingTree(group.dataset.ticker);
@@ -2163,6 +2732,14 @@ async function refreshValuation() {
       else if (currentNote) currentNote.remove();
       else if (freshNote) group.querySelector(".holding-identity").append(freshNote.cloneNode(true));
     }
+    for (const row of elements.transactionList.querySelectorAll(".history-row[data-record-kind='trade']")) {
+      const accounting = accountingTransaction(row.dataset.recordId);
+      const pnl = row.querySelector(".history-pnl");
+      if (!pnl) continue;
+      pnl.textContent = accounting ? formatPnl(accounting.metrics?.realized_pnl) : "—";
+      if (accounting) pnl.dataset.tone = pnlTone(accounting.metrics?.realized_pnl);
+      else delete pnl.dataset.tone;
+    }
   } finally {
     if (state.valuationController === controller) state.valuationController = null;
   }
@@ -2171,18 +2748,16 @@ async function refreshValuation() {
 async function refreshPortfolio({ afterMutation = false } = {}) {
   if (state.authTransition !== "idle" || state.questionPending || state.portfolioReadState !== "idle" || (state.writeState === "submitting" && !afterMutation)) return false;
   const generation = ++state.portfolioGeneration;
+  state.valuationController?.abort();
+  state.valuationController = null;
   state.portfolioController?.abort();
   const controller = new AbortController();
   state.portfolioController = controller;
   state.portfolioReadState = "loading";
   updateControls();
   try {
-    const [snapshot, valuation, openings, reconciliations, transactions, corrections, cash] = await Promise.all([
-      requestJson("/v1/portfolio", { signal: controller.signal }),
-      requestJson("/v1/portfolio/valuation", { signal: controller.signal }).catch((error) => {
-        if (error?.name === "AbortError") throw error;
-        return null;
-      }),
+    const [summary, openings, reconciliations, transactions, corrections, cash] = await Promise.all([
+      requestJson("/v1/portfolio/summary", { signal: controller.signal }),
       requestJson("/v1/portfolio/opening-positions", { signal: controller.signal }),
       requestJson("/v1/portfolio/reconciliations", { signal: controller.signal }),
       requestJson("/v1/portfolio/transactions", { signal: controller.signal }),
@@ -2190,9 +2765,11 @@ async function refreshPortfolio({ afterMutation = false } = {}) {
       requestJson("/v1/portfolio/cash-events", { signal: controller.signal }),
     ]);
     if (generation !== state.portfolioGeneration) return false;
-    state.snapshot = snapshot;
-    state.valuation = valuation;
-    state.loadedUserId = snapshot.user_id;
+    state.summary = summary;
+    state.snapshot = summary.portfolio;
+    state.valuation = summary.valuation;
+    state.accounting = summary.accounting;
+    state.loadedUserId = summary.user_id ?? summary.portfolio.user_id;
     state.openingRecords = openings.items;
     state.reconciliationRecords = reconciliations.items;
     state.transactionRecords = transactions.items;
@@ -2795,6 +3372,7 @@ function bindEvents() {
   elements.emptyBuy.addEventListener("click", () => openTradeDialog("BUY"));
   elements.openImport.addEventListener("click", openImportDialog);
   elements.openCash.addEventListener("click", openCashDialog);
+  elements.openSummary.addEventListener("click", openSummaryDialog);
   elements.addOpeningRow.addEventListener("click", () => createOpeningRow(elements.openingRows));
   elements.skipOpening.addEventListener("click", () => { state.openingDismissed = true; renderOpeningAvailability(); });
   elements.reopenOpening.addEventListener("click", () => { state.openingDismissed = false; renderOpeningAvailability(); });
@@ -2839,6 +3417,21 @@ function bindEvents() {
   elements.correctionClose.addEventListener("click", () => elements.correctionDialog.close());
   elements.correctionForm.addEventListener("submit", handleBuyCorrection);
   elements.transactionDetailClose.addEventListener("click", () => elements.transactionDetailDialog.close());
+  elements.chartClose.addEventListener("click", () => elements.chartDialog.close());
+  elements.chartDialog.addEventListener("click", (event) => {
+    if (event.target === elements.chartDialog) elements.chartDialog.close();
+  });
+  elements.chartDialog.addEventListener("close", closePositionChart);
+  for (const button of elements.chartRanges) {
+    button.addEventListener("click", () => {
+      if (!state.chartTicker || state.chartRange === button.dataset.chartRange) return;
+      setChartRangeState(button.dataset.chartRange);
+      state.chartSelectedDate = null;
+      loadPositionChart();
+    });
+  }
+  elements.chartRefresh.addEventListener("click", () => loadPositionChart());
+  elements.summaryDialogClose.addEventListener("click", () => elements.summaryDialog.close());
   elements.question.addEventListener("compositionstart", () => { state.questionComposing = true; });
   elements.question.addEventListener("compositionend", () => { state.questionComposing = false; });
   elements.question.addEventListener("keydown", handleQuestionKeydown);

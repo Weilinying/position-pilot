@@ -968,3 +968,51 @@ def test_corrects_buy_by_appending_fact_and_replaying_current_lot() -> None:
     assert result.portfolio.lots[0].remaining_shares == Decimal("3.00000000")
     assert result.portfolio.lots[0].purchased_at == corrected_time
     assert result.portfolio.cash.available_cash == Decimal("640.00000000")
+
+
+def test_accounting_reads_complete_facts_and_recalculates_after_correction() -> None:
+    """核算读取和持仓复用同一重放，更正后历史卖出成本随有效 BUY 变化。"""
+
+    service, store = make_service()
+    user = service.create_user(
+        CreateUserCommand(display_name="Accounting", initial_cash=Decimal("2000"))
+    )
+    buy = service.record_transaction(
+        RecordTransactionCommand(
+            user_id=user.id,
+            ticker="GOOG",
+            action=TransactionAction.BUY,
+            price=Decimal("100"),
+            shares=Decimal("10"),
+            occurred_at=OCCURRED_AT,
+        )
+    )
+    service.record_transaction(
+        RecordTransactionCommand(
+            user_id=user.id,
+            ticker="GOOG",
+            action=TransactionAction.SELL,
+            price=Decimal("120"),
+            shares=Decimal("4"),
+            fee=Decimal("1"),
+            occurred_at=OCCURRED_AT + timedelta(days=1),
+            allocations=(LotAllocationInput(lot_id=buy.id, shares=Decimal("4")),),
+        )
+    )
+    commits_before_read = store.commit_count
+    assert service.get_accounting(user.id).metrics.realized_pnl == Decimal("79")
+    replay = service.get_replay(user.id)
+    assert service.get_portfolio(user.id) == replay.portfolio
+    assert len(replay.sell_allocation_results) == 1
+    assert store.commit_count == commits_before_read
+    service.correct_buy_transaction(
+        CorrectBuyTransactionCommand(
+            user_id=user.id,
+            transaction_id=buy.id,
+            price=Decimal("105"),
+            shares=Decimal("10"),
+            occurred_at=OCCURRED_AT,
+        )
+    )
+    assert service.get_accounting(user.id).metrics.realized_pnl == Decimal("59")
+    assert store.transactions[user.id][0] == buy

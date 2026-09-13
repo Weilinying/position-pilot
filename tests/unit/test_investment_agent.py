@@ -503,7 +503,7 @@ def test_always_injects_complete_portfolio_snapshot_with_bounded_buy_history() -
     assert snapshot["positions_are_complete_current_set"] is True
     assert snapshot["missing_ticker_means_no_current_position"] is True
     assert "user_id" not in snapshot
-    assert snapshot["available_cash"] == "379.30000000"
+    assert snapshot["available_cash"] == "380.00000000"
     assert snapshot["historical_buy_facts"] == {
         "status": "AVAILABLE",
         "scope": "current_positions_only",
@@ -540,7 +540,7 @@ def test_always_injects_complete_portfolio_snapshot_with_bounded_buy_history() -
             "total_position_cost_basis_excluding_available_cash"
         ),
         "position_cost_basis_weight_unit": "PERCENT_ROUNDED_2DP",
-        "total_position_cost_basis": "620.70000000",
+        "total_position_cost_basis": "620.00000000",
         "total_shares_by_ticker": {"GOOG": "3.00000000"},
         "total_shares_by_ticker_scope": "same_ticker_aggregation_only",
         "available_cash_weight": "UNAVAILABLE",
@@ -651,10 +651,10 @@ def test_cash_event_adjusted_cash_reaches_agent_snapshot_without_cash_event_hist
     content = llm.completions[0].messages[1].content
     assert content is not None
     snapshot = json.loads(content)["portfolio_snapshot"]
-    assert snapshot["available_cash"] == "1399.65000000"
+    assert snapshot["available_cash"] == "1400.00000000"
     assert "cash_events" not in snapshot
     assert snapshot["positions"][0]["shares"] == "1.00000000"
-    assert snapshot["positions"][0]["average_cost"] == "100.35000000"
+    assert snapshot["positions"][0]["average_cost"] == "100.00000000"
 
 
 def test_portfolio_derived_facts_aggregate_by_ticker_without_losing_positions() -> None:

@@ -5,27 +5,157 @@ const source = fs.readFileSync('frontend/app.js', 'utf8');
 const refresh = source.slice(source.indexOf('async function refreshValuation()'), source.indexOf('async function refreshPortfolio('));
 
 async function main() {
+  const formatting = vm.createContext({});
+  vm.runInContext(source.slice(source.indexOf('function formatDecimal('), source.indexOf('function formatTimestamp(')) + source.slice(source.indexOf('function formatPnl('), source.indexOf('function pnlTone(')), formatting);
+  assert.equal(formatting.formatPnl('0E-8'), '$0');
+  assert.equal(formatting.formatPnl('-0E-8'), '$0');
+  assert.equal(formatting.formatPnl('1E-8'), '+$0.00000001');
+  assert.equal(formatting.formatPnl('-1E-8'), '-$0.00000001');
+  assert.equal(formatting.formatMoney('1.234E+5'), '$123,400');
+
+  class ChartElement {
+    constructor(tag) {
+      this.tagName = tag;
+      this.children = [];
+      this.dataset = {};
+      this.textContent = '';
+    }
+
+    append(...children) { this.children.push(...children); }
+    replaceChildren(...children) { this.children = children; }
+    addEventListener(name, callback) { this[name] = callback; }
+  }
+
+  const chartRecords = new ChartElement('div');
+  const chartContext = vm.createContext({
+    document: {createElement: tag => new ChartElement(tag)},
+    state: {language: 'en', chartSelectedDate: null},
+    elements: {chartRecords},
+    clearElement: element => element.replaceChildren(),
+    makeElement: (tag, className = '', text = '') => {
+      const element = new ChartElement(tag);
+      element.className = className;
+      element.textContent = text;
+      return element;
+    },
+    translate: key => ({
+      shares: 'shares',
+      average_cost_fee_included: 'Average cost (fee included)',
+      price: 'Price',
+      commission: 'Fee',
+      fee_included: 'Included',
+      strategy_swing: 'Swing',
+      unspecified: 'Unspecified',
+      chart_no_transactions: 'No transactions',
+      chart_marker_no_bar: 'No price bar',
+      not_provided: 'Not provided',
+    }[key] ?? key),
+  });
+  vm.runInContext(
+    source.slice(source.indexOf('function formatDecimal('), source.indexOf('function destroyPositionChart(')),
+    chartContext,
+  );
+  chartContext.renderChartRecords({
+    markers: [{
+      market_date: '2026-09-10',
+      has_bar: true,
+      transactions: [
+        {action: 'BUY', shares: '4', price: '100', fee: '0', fee_schedule: 'BUY_COST_INCLUDED', position_type: 'SWING', occurred_at: '2026-09-10T15:00:00Z'},
+        {action: 'SELL', shares: '1', price: '120', fee: '1', fee_schedule: 'SELL_ACTUAL_FEE', position_type: 'SWING', occurred_at: '2026-09-10T16:00:00Z'},
+      ],
+    }],
+  });
+  const chartRows = chartRecords.children[1].children[1].children;
+  assert.equal(chartRows[0].children[1].textContent, '4 shares · Average cost (fee included) $100 · Fee Included');
+  assert.equal(chartRows[1].children[1].textContent, '1 shares · Price $120 · Fee $1');
+
+  class HoldingElement {
+    constructor(tag) {
+      this.tagName = tag;
+      this.children = [];
+      this.dataset = {};
+      this.textContent = '';
+      this.className = '';
+    }
+
+    append(...children) { this.children.push(...children); }
+    setAttribute(name, value) { this[name] = String(value); }
+  }
+  const holdingContext = vm.createContext({
+    document: {createElement: tag => new HoldingElement(tag)},
+    state: {language: 'en'},
+    translate: key => key,
+    makeElement: (tag, className = '', text = '') => {
+      const element = new HoldingElement(tag);
+      element.className = className;
+      element.textContent = text;
+      return element;
+    },
+  });
+  vm.runInContext(
+    source.slice(source.indexOf('function formatDecimal('), source.indexOf('function formatTimestamp('))
+      + source.slice(source.indexOf('function metricText('), source.indexOf('async function changeLotType(')),
+    holdingContext,
+  );
+  const valuedHolding = holdingContext.createHoldingRow({
+    label: 'GOOG',
+    metrics: {shares: '5', average_cost: '100', cost_basis: '500.00000001', unrealized_pnl: '25', unrealized_pnl_percent: '5', market_value: '525'},
+    fallback: {},
+    level: 0,
+    currentPrice: '105',
+  });
+  assert.deepEqual(
+    valuedHolding.children.slice(1, 8).map(child => child.textContent),
+    ['5', '$100', '$500.00000001', '$105', '$25', '5%', '$525'],
+  );
+  assert.equal(valuedHolding.children.length, 9);
+  assert.equal(valuedHolding.children[5].dataset.tone, 'positive');
+  assert.equal(valuedHolding.children[6].dataset.tone, 'positive');
+  assert.equal(valuedHolding.children[3].dataset.tone, undefined);
+  assert.equal(valuedHolding.children[4].dataset.tone, undefined);
+  const quoteMissingHolding = holdingContext.createHoldingRow({
+    label: 'TSLA',
+    metrics: {shares: '2', average_cost: '100', cost_basis: '200', unrealized_pnl: null, unrealized_pnl_percent: null, market_value: null},
+    fallback: {},
+    level: 0,
+    currentPrice: null,
+  });
+  assert.equal(quoteMissingHolding.children[3].textContent, '$200');
+  assert.equal(quoteMissingHolding.children[4].textContent, '—');
+  assert.equal(quoteMissingHolding.children[5].textContent, '—');
+
   let resolve;
   const requests = [];
-  const cell = {textContent: 'old', dataset: {tone: 'positive'}};
-  const group = {dataset: {ticker: 'TSLA'}, querySelectorAll: () => [cell]};
-  const state = {snapshot: {}, valuationController: null, portfolioReadState: 'idle', writeState: 'idle', authTransition: 'idle', portfolioGeneration: 1};
-  const context = vm.createContext({state, AbortController, ApiError: class extends Error {}, requestJson: (url) => { requests.push(url); return new Promise(r => {resolve = r;}); }, elements: {positionList: {querySelectorAll: () => [group]}}, createHoldingTree: () => ({querySelectorAll: () => [{textContent: 'new', dataset: {}}]})});
+  const holdingCells = Array.from({length: 7}, (_, index) => ({textContent: `old-${index}`, dataset: index === 0 ? {tone: 'positive'} : {}}));
+  const freshHoldingCells = Array.from({length: 7}, (_, index) => ({textContent: `fresh-${index}`, dataset: {}}));
+  freshHoldingCells[0].textContent = 'new';
+  const cell = holdingCells[0];
+  const group = {dataset: {ticker: 'TSLA'}, querySelectorAll: () => holdingCells, querySelector: () => null};
+  const historyPnl = {textContent: 'old', dataset: {}};
+  const historyRow = {dataset: {recordKind: 'trade', recordId: 'sell-1'}, querySelector: () => historyPnl};
+  const state = {snapshot: {}, valuation: null, accounting: null, summary: null, valuationController: null, portfolioReadState: 'idle', writeState: 'idle', authTransition: 'idle', portfolioGeneration: 1};
+  let summaryRenderCount = 0;
+  const context = vm.createContext({state, AbortController, ApiError: class extends Error {}, requestJson: (url) => { requests.push(url); return new Promise(r => {resolve = r;}); }, elements: {positionList: {querySelectorAll: () => [group]}, transactionList: {querySelectorAll: () => [historyRow]}, summaryRealizedPnl: {textContent: '', dataset: {}}, summaryUnrealizedPnl: {textContent: '', dataset: {}}, summaryTotalPnl: {textContent: '', dataset: {}}, summaryPnlStatus: {textContent: '', dataset: {}}}, createHoldingTree: () => ({querySelectorAll: () => freshHoldingCells, querySelector: () => null}), renderPortfolioSummary: () => {summaryRenderCount += 1;}, accountingTransaction: () => ({metrics: {realized_pnl: '79'}}), formatPnl: value => value === '79' ? '+$79' : '—', pnlTone: () => 'positive'});
   vm.runInContext(refresh, context);
   const pending = context.refreshValuation();
   assert.equal(state.portfolioReadState, 'idle');
   assert.equal(state.writeState, 'idle');
   await context.refreshValuation();
-  assert.deepEqual(requests, ['/v1/portfolio/valuation']);
-  resolve({tickers: []});
+  assert.deepEqual(requests, ['/v1/portfolio/summary']);
+  resolve({valuation: {tickers: []}, accounting: {transactions: [{transaction_id: 'sell-1', metrics: {realized_pnl: '79'}}]}, totals: {realized_pnl: '79', unrealized_pnl: '60', total_pnl: '139', valuation_complete: true}});
   await pending;
   assert.equal(cell.textContent, 'new');
   assert.equal(cell.dataset.tone, undefined);
+  assert.equal(holdingCells.length, 7);
+  assert.equal(holdingCells[2].textContent, 'fresh-2');
+  assert.equal(state.summary.totals.total_pnl, '139');
+  assert.equal(summaryRenderCount, 1);
+  assert.equal(historyPnl.textContent, '+$79');
   assert.equal(state.valuationController, null);
   const stale = context.refreshValuation();
   state.portfolioGeneration++;
   cell.textContent = 'edited';
-  resolve({tickers: []});
+  resolve({valuation: {tickers: []}, accounting: {transactions: []}, totals: {}});
   await stale;
   assert.equal(cell.textContent, 'edited');
   const controls = source.slice(source.indexOf('function updateControls()'), source.indexOf('function enterHome('));

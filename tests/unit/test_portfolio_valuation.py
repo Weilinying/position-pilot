@@ -164,11 +164,15 @@ def test_rejects_stale_success_from_quote_provider_before_valuation() -> None:
         fetched_at=NOW,
     )
 
-    ticker = PortfolioValuationService(
-        FakePortfolioReader(portfolio),
-        FakeQuoteReader(MarketDataResult.success(stale_quote)),
-        clock=lambda: NOW,
-    ).get_current_valuation(portfolio.user_id).tickers[0]
+    ticker = (
+        PortfolioValuationService(
+            FakePortfolioReader(portfolio),
+            FakeQuoteReader(MarketDataResult.success(stale_quote)),
+            clock=lambda: NOW,
+        )
+        .get_current_valuation(portfolio.user_id)
+        .tickers[0]
+    )
 
     assert ticker.status is MarketDataStatus.STALE
     assert ticker.quote is None
