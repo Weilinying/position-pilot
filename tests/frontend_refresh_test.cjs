@@ -13,6 +13,62 @@ async function main() {
   assert.equal(formatting.formatPnl('-1E-8'), '-$0.00000001');
   assert.equal(formatting.formatMoney('1.234E+5'), '$123,400');
 
+  class ChartElement {
+    constructor(tag) {
+      this.tagName = tag;
+      this.children = [];
+      this.dataset = {};
+      this.textContent = '';
+    }
+
+    append(...children) { this.children.push(...children); }
+    replaceChildren(...children) { this.children = children; }
+    addEventListener(name, callback) { this[name] = callback; }
+  }
+
+  const chartRecords = new ChartElement('div');
+  const chartContext = vm.createContext({
+    document: {createElement: tag => new ChartElement(tag)},
+    state: {language: 'en', chartSelectedDate: null},
+    elements: {chartRecords},
+    clearElement: element => element.replaceChildren(),
+    makeElement: (tag, className = '', text = '') => {
+      const element = new ChartElement(tag);
+      element.className = className;
+      element.textContent = text;
+      return element;
+    },
+    translate: key => ({
+      shares: 'shares',
+      average_cost_fee_included: 'Average cost (fee included)',
+      price: 'Price',
+      commission: 'Fee',
+      fee_included: 'Included',
+      strategy_swing: 'Swing',
+      unspecified: 'Unspecified',
+      chart_no_transactions: 'No transactions',
+      chart_marker_no_bar: 'No price bar',
+      not_provided: 'Not provided',
+    }[key] ?? key),
+  });
+  vm.runInContext(
+    source.slice(source.indexOf('function formatDecimal('), source.indexOf('function destroyPositionChart(')),
+    chartContext,
+  );
+  chartContext.renderChartRecords({
+    markers: [{
+      market_date: '2026-09-10',
+      has_bar: true,
+      transactions: [
+        {action: 'BUY', shares: '4', price: '100', fee: '0', fee_schedule: 'BUY_COST_INCLUDED', position_type: 'SWING', occurred_at: '2026-09-10T15:00:00Z'},
+        {action: 'SELL', shares: '1', price: '120', fee: '1', fee_schedule: 'SELL_ACTUAL_FEE', position_type: 'SWING', occurred_at: '2026-09-10T16:00:00Z'},
+      ],
+    }],
+  });
+  const chartRows = chartRecords.children[1].children[1].children;
+  assert.equal(chartRows[0].children[1].textContent, '4 shares · Average cost (fee included) $100 · Fee Included');
+  assert.equal(chartRows[1].children[1].textContent, '1 shares · Price $120 · Fee $1');
+
   class HoldingElement {
     constructor(tag) {
       this.tagName = tag;

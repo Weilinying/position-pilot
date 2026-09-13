@@ -2430,7 +2430,7 @@ function createHistoryRow(record, kind) {
 function transactionFeeText(transaction) {
   return transaction.fee_schedule === "BUY_COST_INCLUDED"
     ? translate("fee_included")
-    : formatMoney(transaction.commission);
+    : formatMoney(transaction.commission ?? transaction.fee ?? 0);
 }
 
 function nyMarketDate(value) {
@@ -2545,7 +2545,7 @@ function renderChartRecords(payload) {
         : positionTypeLabel(transaction.position_type);
       row.append(
         makeElement("strong", `chart-transaction-action ${action.toLowerCase()}`, action),
-        makeElement("span", "", `${formatDecimal(transaction.shares)} ${translate("shares")} · ${translate(priceLabel)} ${formatMoney(transaction.price)} · ${translate("commission")} ${formatMoney(transaction.fee ?? 0)}`),
+        makeElement("span", "", `${formatDecimal(transaction.shares)} ${translate("shares")} · ${translate(priceLabel)} ${formatMoney(transaction.price)} · ${translate("commission")} ${transactionFeeText(transaction)}`),
         makeElement("small", "", `${transaction.occurred_at ? formatTimestamp(transaction.occurred_at) : translate("not_provided")} · ${typeDetail}`),
       );
       details.append(row);

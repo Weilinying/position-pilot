@@ -6,7 +6,7 @@ Investment Agent，不是生产入口、不是自动化 E2E，也不构成真实
 
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field, replace
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from threading import RLock
 from time import sleep
@@ -28,7 +28,9 @@ from position_pilot.application.investment_agent import (
     InvestmentRequestFailure,
     InvestmentResponseStatus,
 )
+from position_pilot.application.market_data_service import HistoricalBarsQuery
 from position_pilot.application.opening_import_service import OpeningImportService
+from position_pilot.application.portfolio_chart_service import PortfolioChartService
 from position_pilot.application.portfolio_service import (
     BuyTransactionCorrectionResult,
     CashAdjustmentResult,
@@ -37,6 +39,7 @@ from position_pilot.application.portfolio_service import (
     CreateUserCommand,
     InitializeOpeningPositionsCommand,
     LotClassificationResult,
+    PortfolioReplaySnapshot,
     PositionReconciliationsResult,
     RecordCashEventCommand,
     RecordPositionReconciliationsCommand,
@@ -65,9 +68,11 @@ from position_pilot.domain.asset_metadata import (
 )
 from position_pilot.domain.errors import FutureTimestamp
 from position_pilot.domain.market_data import (
+    HistoricalBars,
     MarketDataCoverage,
     MarketDataResult,
     MarketQuote,
+    OHLCVBar,
 )
 from position_pilot.domain.portfolio import (
     BuyTransactionCorrection,
@@ -86,6 +91,7 @@ from position_pilot.domain.portfolio import (
     Transaction,
     TransactionAction,
     User,
+    apply_buy_transaction_corrections,
     normalize_timestamp,
     rebuild_portfolio,
     replay_portfolio,
@@ -102,6 +108,7 @@ from position_pilot.main import (
     get_auth_service_dependency,
     get_investment_agent_dependency,
     get_opening_import_service_dependency,
+    get_portfolio_chart_service_dependency,
     get_portfolio_service_dependency,
     get_portfolio_summary_service_dependency,
     get_portfolio_valuation_service_dependency,
@@ -457,6 +464,49 @@ class BrowserSmokePortfolioService:
             return ReplayResult(
                 portfolio=_portfolio(user_id, ticker=ticker),
                 sell_allocation_results=(),
+            )
+        raise UserNotFound(user_id)
+
+    def get_replay_snapshot(self, user_id: UUID) -> PortfolioReplaySnapshot:
+        """返回 Chart Service 所需的 Replay 与有效交易快照。"""
+
+        with self._lock:
+            user = self._users.get(user_id)
+            if user is not None:
+                transactions = self._transactions[user_id]
+                corrections = self._buy_corrections[user_id]
+                return PortfolioReplaySnapshot(
+                    replay=replay_portfolio(
+                        user,
+                        transactions,
+                        self._cash_events[user_id],
+                        self._opening_positions[user_id],
+                        self._reconciliations[user_id],
+                        self._lot_allocations[user_id],
+                        self._classification_changes[user_id],
+                        corrections,
+                    ),
+                    effective_transactions=tuple(
+                        apply_buy_transaction_corrections(user, transactions, corrections)
+                    ),
+                )
+        if user_id == EMPTY_USER:
+            return PortfolioReplaySnapshot(
+                replay=ReplayResult(
+                    portfolio=self.get_portfolio(user_id), sell_allocation_results=()
+                ),
+                effective_transactions=(),
+            )
+        if user_id in {USER_A, USER_B, SLOW_USER}:
+            ticker = {USER_A: "GOOG", USER_B: "NVDA", SLOW_USER: "SLOW"}[user_id]
+            if user_id == SLOW_USER:
+                sleep(0.6)
+            return PortfolioReplaySnapshot(
+                replay=ReplayResult(
+                    portfolio=_portfolio(user_id, ticker=ticker),
+                    sell_allocation_results=(),
+                ),
+                effective_transactions=(),
             )
         raise UserNotFound(user_id)
 
@@ -886,7 +936,7 @@ class BrowserSmokeRecognitionProvider(RecognitionProvider):
 
 
 class BrowserSmokeQuoteReader:
-    """为 Engineering Smoke 返回固定当前行情。"""
+    """为 Engineering Smoke 返回固定当前行情与历史日 K。"""
 
     def get_current_quote(self, ticker: str) -> MarketDataResult[MarketQuote]:
         return MarketDataResult.success(
@@ -906,11 +956,49 @@ class BrowserSmokeQuoteReader:
             )
         )
 
+    def get_historical_bars(
+        self,
+        query: HistoricalBarsQuery,
+    ) -> MarketDataResult[HistoricalBars]:
+        """按请求窗口返回不访问网络的已完成日 K。"""
+
+        query_end = query.end.astimezone(UTC)
+        bars = tuple(
+            OHLCVBar(
+                timestamp=query_end - timedelta(days=offset),
+                open=Decimal(str(240 + index * 4)),
+                high=Decimal(str(244 + index * 4)),
+                low=Decimal(str(238 + index * 4)),
+                close=Decimal(str(242 + index * 4)),
+                volume=1_000 + index * 100,
+            )
+            for index, offset in enumerate((3, 2, 1))
+        )
+        return MarketDataResult.success(
+            HistoricalBars(
+                ticker=query.ticker,
+                timeframe="1Day",
+                bars=bars,
+                source="browser-smoke",
+                feed="fixture",
+                coverage=MarketDataCoverage.SINGLE_EXCHANGE,
+                currency="USD",
+                adjustment="ALL",
+                fetched_at=NOW,
+            )
+        )
+
 
 portfolio_service = BrowserSmokePortfolioService()
+market_data_reader = BrowserSmokeQuoteReader()
 portfolio_valuation_service = PortfolioValuationService(
     portfolio_service,
-    BrowserSmokeQuoteReader(),
+    market_data_reader,
+    clock=lambda: NOW,
+)
+portfolio_chart_service = PortfolioChartService(
+    portfolio_service,
+    market_data_reader,
     clock=lambda: NOW,
 )
 portfolio_summary_service = PortfolioSummaryService(
@@ -937,6 +1025,7 @@ app.dependency_overrides[get_portfolio_valuation_service_dependency] = lambda: (
 app.dependency_overrides[get_portfolio_summary_service_dependency] = lambda: (
     portfolio_summary_service
 )
+app.dependency_overrides[get_portfolio_chart_service_dependency] = lambda: portfolio_chart_service
 app.dependency_overrides[get_investment_agent_dependency] = lambda: investment_agent
 app.dependency_overrides[get_auth_service_dependency] = lambda: auth_service
 app.dependency_overrides[get_asset_metadata_service_dependency] = lambda: asset_metadata_service
