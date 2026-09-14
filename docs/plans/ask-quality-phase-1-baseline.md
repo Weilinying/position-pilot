@@ -25,6 +25,39 @@ Budget、Accumulation Plan 与 Exit Conditions。Conversation Context 是当前 
 Long-term Memory 只表示不适合固定成业务字段的长期偏好或背景；Agent Execution State 只表示
 本次运行中的 tool call、observation 与 next action，不进入产品 Memory。
 
+## Evaluation Methodology
+
+**状态（2026-09-14）：** Methodology 为 **DESIGNED / PLANNED**；Discovery Dataset 尚未生成或正式
+实现；Harness 扩展尚未执行，现有 Harness 能力以 Repository 实际状态为准；Baseline Run 与 Human
+Rubric Calibration 均为 **NOT EXECUTED**，因此 Baseline Result 尚不存在。下表描述计划依据，
+AQ01～AQ20、重复运行、Controlled Contrast 与人工校准都不是已完成工作。
+
+PositionPilot Phase 1 计划采用 product-specific Agent Behavioral / Capability Eval：从真实用户
+Failure 出发，结合 Portfolio、Strategy、Conversation、Research 语义与现有 Harness 设计任务、
+运行、行为证据和评分。它吸收公开方法中适用的做法，但不直接实现 τ-bench 或 AgentDojo Dataset，
+也未选择 Anthropic 或 OpenAI 的评测工具作为本阶段平台。
+
+方法选择遵循三条约束：评测对象是 Model 与当前 Agent Harness 共同形成的产品行为，不能把坏回答
+直接归因于 Model；固定环境并同时检查 Answer、Tool Trace 与结果状态，避免只凭最终自然语言判断；
+确定性金融 / 权限错误计划由可确定检查的 Gate 处理，主观有用性计划使用经人工校准的 Rubric。
+随机性只在能够完整执行的关键场景中轻量重复观察。Capability Coverage 与 Answer Quality 分开
+则是 PositionPilot 针对当前能力缺口定义的统计边界。
+
+| Phase 1 设计 | 方法来源 / 性质 |
+|---|---|
+| 从真实用户 Failure 与合成扩展建立 AQ Cases | Product-specific agent eval；[Anthropic Agent Eval 方法](https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents)建议从真实失败和人工检查建立初始任务集，[OpenAI Evaluation Best Practices](https://developers.openai.com/api/docs/guides/evaluation-best-practices)支持生产、领域与合成数据结合 |
+| Task / Run / Trace / Grader 分离 | Anthropic 对 task、trial、transcript / trajectory、outcome、grader 与 evaluation harness 的定义提供术语参考；Phase 1 的 Run / 重复序号对应一次 trial，现有 pytest / Fixtures / Reporter 是计划复用的 harness 基础 |
+| 固定 Fixture 隔离市场与 Provider 波动 | Controlled evaluation；参考 Anthropic 对稳定、隔离评测环境的要求，具体 Fixture 方案是 PositionPilot-specific |
+| Answer + Tool Trace + State / Source 证据 | Tool-agent evaluation；Anthropic 强调 transcript 与 outcome，[τ-bench 原论文](https://arxiv.org/abs/2406.12045)评估多轮 Tool-Agent-User 交互及环境最终状态 |
+| 关键 `scope=FULL` Case 重复运行 | Stochastic reliability；Anthropic 与 τ-bench 均强调多次 trial，Phase 1 只记录轻量重复波动，不实现 `pass^k` |
+| Critical Failure Gate | PositionPilot-specific deterministic domain grader；Anthropic 建议能确定判断时使用 deterministic grader，[OpenAI Evals 指南](https://developers.openai.com/api/docs/guides/evals)提供 testing criteria、string check grader 与 eval run 的参考 |
+| 0～2 Human Rubric + calibration | Rubric-based human evaluation；Anthropic 与 [OpenAI Evaluation Best Practices](https://developers.openai.com/api/docs/guides/evaluation-best-practices)都要求清晰 Rubric，并用人工判断校准评分；Phase 1 不新增 model grader |
+| AQ19 外部 Prompt Injection | [AgentDojo 原论文](https://arxiv.org/abs/2406.13352)关于不可信 Tool Data 中间接 Prompt Injection 的方法启发；网页 / Tool Output 不因正文指令获得修改 Strategy、Memory、Ledger 或其他系统状态的权限，且不使用其 Dataset |
+| Capability Coverage 与 Answer Quality 分开 | PositionPilot-specific design，用于避免把产品能力缺口误归因于模型回答质量 |
+
+这些引用解释“为什么这样设计”，不增加 Case、指标、grader 或 Harness 要求；公开 Benchmark 的
+指标和 Dataset 也不进入 Phase 1，除非后续另有证据与批准。
+
 ## 2. P1-T0 — 冻结可复现的当前状态
 
 执行步骤：
