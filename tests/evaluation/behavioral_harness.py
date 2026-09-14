@@ -509,6 +509,7 @@ def fixed_buy(
 
     return Transaction.create(
         user_id=USER_ID,
+        transaction_id=UUID(int=sequence),
         sequence=sequence,
         ticker=ticker,
         action=TransactionAction.BUY,

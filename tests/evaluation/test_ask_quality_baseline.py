@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 from pathlib import Path
 from typing import cast
+from uuid import UUID
 
 import pytest
 from ask_quality_cases import (
@@ -232,6 +233,15 @@ def test_manifest_hash_input_contains_complete_provider_fixture_data() -> None:
     quote_results = cast(dict[str, dict[str, object]], quote_providers["quote"])
     quote_data = cast(dict[str, object], quote_results["GOOG"]["data"])
     assert quote_data["last_price"] == Decimal("210.25000000")
+
+    budget_manifest = case_manifest(CASES_BY_ID["AQ05"])
+    domain_fixture = cast(dict[str, object], budget_manifest["domain_fixture"])
+    transactions = cast(list[dict[str, object]], domain_fixture["transactions"])
+    assert [transaction["id"] for transaction in transactions] == [
+        UUID(int=1),
+        UUID(int=2),
+        UUID(int=3),
+    ]
 
     news_manifest = case_manifest(CASES_BY_ID["AQ18"])
     news_providers = cast(dict[str, object], news_manifest["provider_fixtures"])
