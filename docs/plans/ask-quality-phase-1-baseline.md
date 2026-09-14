@@ -328,4 +328,6 @@ Long-term Memory、回答约定、Agent 执行循环、模型行为、Provider /
       校准后由开发方完成其余评分并标注 Reviewer。
 - [ ] P1-T5：失败证据和待验证假设可交给阶段二；未完成项与负责人 / 原因已记录。
 
-Harness 实现日期：**2026-09-14**。Run ID、结果报告位置、用户校准记录：**待真实运行后填写**。
+Harness 实现与真实运行日期：**2026-09-14**。Run ID：`ask-quality-baseline-20260914`。结果报告：
+[`docs/evaluation/reports/2026-09-14-ask-quality-baseline.md`](../evaluation/reports/2026-09-14-ask-quality-baseline.md)。
+用户校准记录：**待完成**。
