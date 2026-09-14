@@ -68,16 +68,58 @@ uv run pytest tests/evaluation/test_real_model_behavior.py -s \
 
 `LLM_BASE_URL` 和 `LLM_REQUEST_TIMEOUT_SECONDS` 可覆盖当前 Adapter 默认配置。Harness 不读取 Repository `.env`。
 
+### Ask Quality Discovery Baseline
+
+新 Dataset `ask-quality-discovery` / `0.1` 使用独立入口
+`tests/evaluation/test_ask_quality_baseline.py`。默认运行只检查 Manifest、Fixtures、Reporter 与
+Fake Model 路径：
+
+```bash
+uv run pytest tests/evaluation/test_real_model_behavior.py \
+  tests/evaluation/test_ask_quality_baseline.py -q
+```
+
+真实模型首次运行覆盖 21 个执行变体，并将不含 HTTP Secret 的 Provider-neutral 记录写到 Git
+忽略目录：
+
+```bash
+RUN_REAL_ASK_QUALITY_EVAL=1 \
+EVAL_RUN_ID=<stable-run-id> \
+EVAL_REPETITION_INDEX=1 \
+ASK_QUALITY_ARTIFACT_DIR=build/evaluation-runs/<stable-run-id>/r1 \
+LLM_MODEL=<model-id> \
+uv run pytest -p no:cacheprovider tests/evaluation/test_ask_quality_baseline.py -s -q
+```
+
+关键重复集 AQ03、AQ05、AQ07、AQ17a、AQ17b 的第二、三次运行分别使用新的 Artifact 目录：
+
+```bash
+RUN_REAL_ASK_QUALITY_EVAL=1 \
+EVAL_RUN_ID=<stable-run-id> \
+EVAL_REPETITION_INDEX=2 \
+ASK_QUALITY_CASE_IDS=AQ03,AQ05,AQ07,AQ17a,AQ17b \
+ASK_QUALITY_ARTIFACT_DIR=build/evaluation-runs/<stable-run-id>/r2 \
+LLM_MODEL=<model-id> \
+uv run pytest -p no:cacheprovider tests/evaluation/test_ask_quality_baseline.py -s -q
+```
+
+将 repetition 改为 `3`、目录改为 `r3` 即完成第三次。调用方必须先在自己的 Shell 中注入
+`LLM_API_KEY`；Harness 不读取或解析 `.env`。每个目录生成 `manifest.json`、`cases.jsonl` 与
+`summary.json`。`ASK_QUALITY_CASE_IDS` 未设置时执行全部变体，未知或重复 ID 会作为配置错误退出。
+
 ## Reproducibility
 
 每个 Case Report 与 Session Summary 记录：
 
 - Dataset Version、Provider、Model、Routing Response Format；
-- Git Revision、Run ID、Repetition Index、Started At；
+- Production Revision、Harness Revision、Run ID、Repetition Index、Started At；
+- 脱敏后的 LLM Endpoint、Request Timeout 与 Prompt / Tool / Fixture 摘要；
 - Status、Tool Trace、Repair / Invalid JSON、Request Failure；
 - Retrieved / Declared Sources、Answer、Human Checks 与现有诊断指标。
 
-Git Revision 无法读取时记录 `UNKNOWN`，不阻断 Eval；存在已跟踪未提交修改时追加 `-dirty`。正式 Model Comparison 应使用相同 Dataset、Git Revision、Prompt、Tool Contract、Fixtures 和 Evaluation Rules，并保持工作区干净。
+Harness Revision 无法读取时记录 `UNKNOWN`，不阻断 Eval；存在任何未提交修改时追加 `-dirty`。
+正式 Model Comparison 应使用相同 Dataset、Production / Harness Revision、Prompt、Tool Contract、
+Fixtures 和 Evaluation Rules，并保持工作区干净。
 
 ## Failure Classification
 
@@ -106,6 +148,10 @@ Git Revision 无法读取时记录 `UNKNOWN`，不阻断 Eval；存在已跟踪�
 
 ## V1 Scope Boundary
 
-M13 后的 Answer Quality Discovery 方向于 2026-09-13 获批，使用独立的 [整体路线](../plans/ask-quality-discovery.md) 与 [阶段一基线计划](../plans/ask-quality-phase-1-baseline.md)。新案例分别覆盖 Domain / Strategy / Conversation / Long-term Memory / Runtime 行为；Runtime、Model / Provider、Research Provider、Memory / Persistence 分开评分，4A 与 4B 分别留存评测证据。新集以 scope=FULL / DIAGNOSTIC 表示目标场景能否完整测试，以 execution_status 的 COMPLETED / REQUEST_FAILED / NOT_RUN 表示实际执行结果；DIAGNOSTIC 保留适用维度的局部评分，但不进入完整场景质量。报告首页展示能力覆盖率、完整场景回答质量、请求成功率与 Critical Failure 次数。Critical Gate 对关键事实 / 来源错误、未经确认把 Strategy / Long-term Memory 提升为有效状态、覆盖有效记录、用于后续决策或复用失效策略记 FAIL；保持 `PENDING` 且不参与决策的 Candidate 本身不触发。当前 Dataset `1.0`、历史结果和运行入口保持原义；新规则尚未实现到 Harness，计划文件不是已执行的评测报告。
+M13 后的 Answer Quality Discovery 方向于 2026-09-13 获批，使用独立的 [整体路线](../plans/ask-quality-discovery.md) 与 [阶段一基线计划](../plans/ask-quality-phase-1-baseline.md)。新案例分别覆盖 Domain / Strategy / Conversation / Long-term Memory / Runtime 行为；Runtime、Model / Provider、Research Provider、Memory / Persistence 分开评分，4A 与 4B 分别留存评测证据。新集以 scope=FULL / DIAGNOSTIC 表示目标场景能否完整测试，以 execution_status 的 COMPLETED / REQUEST_FAILED / NOT_RUN 表示实际执行结果；DIAGNOSTIC 保留适用维度的局部评分，但不进入完整场景质量。报告首页展示能力覆盖率、完整场景回答质量、请求成功率与 Critical Failure 次数。Critical Gate 对关键事实 / 来源错误、未经确认把 Strategy / Long-term Memory 提升为有效状态、覆盖有效记录、用于后续决策或复用失效策略记 FAIL；保持 `PENDING` 且不参与决策的 Candidate 本身不触发。当前 Dataset `1.0`、历史结果和运行入口保持原义。
+
+Ask Quality Dataset `0.1`、固定 Fixture、能力标签、Reporter 与真实模型 opt-in 入口已经实现；当前
+状态是离线检查完成、真实 Baseline 与人工 Rubric Calibration 待执行。阶段一仍不修改 Production
+Prompt、路由、工具或 State 能力。
 
 以下能力推迟到 V1 完成后再评估：Large-scale Dataset、Paraphrase / Prompt Variation、Adversarial Evaluation、Historical Market Scenario Dataset、Investment Backtesting、Statistical Confidence Analysis、Automated LLM-as-a-Judge、Large-scale Regression Benchmark、Latency / Token / Cost Optimization Benchmark、Recommendation Consistency Benchmark 与 Multi-model Ensemble Evaluation。

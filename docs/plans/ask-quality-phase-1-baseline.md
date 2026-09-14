@@ -2,8 +2,9 @@
 
 ## 1. 目标、状态与输入
 
-**Status:** NOT STARTED — 本文是执行指导，未生成或运行新 Dataset。方向性计划已于 2026-09-13
-获批；该批准只确认后续方向，不代表阶段一已执行完成。
+**Status:** IN PROGRESS — Dataset、固定 Fixtures、能力清单与运行 Harness 已实现并通过离线检查；
+真实模型 Baseline、人工 Rubric Calibration 与 Failure Map 尚未完成。方向性计划已于 2026-09-13
+获批；该批准只确认后续方向，不代表阶段一已经完成。
 
 目标：把“回答僵硬”转成可复现的输入、可解释的能力缺口和可比较的质量评分，为阶段二设计提供
 依据。阶段一可以完成时，当前系统仍然表现差；完成标准是证据完整，不是先把分数修到通过。
@@ -27,10 +28,10 @@ Long-term Memory 只表示不适合固定成业务字段的长期偏好或背景
 
 ## Evaluation Methodology
 
-**状态（2026-09-14）：** Methodology 为 **DESIGNED / PLANNED**；Discovery Dataset 尚未生成或正式
-实现；Harness 扩展尚未执行，现有 Harness 能力以 Repository 实际状态为准；Baseline Run 与 Human
-Rubric Calibration 均为 **NOT EXECUTED**，因此 Baseline Result 尚不存在。下表描述计划依据，
-AQ01～AQ20、重复运行、Controlled Contrast 与人工校准都不是已完成工作。
+**状态（2026-09-14）：** Methodology、Discovery Dataset、Controlled Contrast、重复集与 Harness
+已经实现；Baseline Run 与 Human Rubric Calibration 均为 **NOT EXECUTED**，因此 Baseline Result
+尚不存在。当前实现与运行前冻结值见
+[`docs/evaluation/ask-quality-baseline.md`](../evaluation/ask-quality-baseline.md)。
 
 PositionPilot Phase 1 计划采用 product-specific Agent Behavioral / Capability Eval：从真实用户
 Failure 出发，结合 Portfolio、Strategy、Conversation、Research 语义与现有 Harness 设计任务、
@@ -286,8 +287,8 @@ Fixture / Prompt / Tool / 各 State 类别配置、案例及重复序号、逐�
 6. 以后做 A/B 时隐去候选身份并打乱顺序，保留来源与时间标签；不得向用户暗示哪个是新版。
    阶段一只有基线，不伪造 A/B。
 
-当前已有 pytest 入口是 `tests/evaluation/test_real_model_behavior.py`；新 Discovery 入口创建后
-再在报告中记录其真实命令。不要把计划中的文件名写成现在已经能运行的命令。
+Discovery pytest 入口已建立为 `tests/evaluation/test_ask_quality_baseline.py`；正式命令、环境变量与
+本地 Artifact 目录见 [Evaluation README](../evaluation/README.md#ask-quality-discovery-baseline)。
 
 ## 7. P1-T5 — 归因与交接
 
@@ -303,27 +304,28 @@ Long-term Memory、回答约定、Agent 执行循环、模型行为、Provider /
 - **500 美元加仓：** 账户 Cash 与本轮预算如何区分；是否缺少确定性情景计算；缺少 confirmed
   User Strategy State 是否导致全盘拒答；未知实际成交能力是否被错误扩展为无法讨论投资选择。
 
-建议阶段一真正执行时产出：
+阶段一产出：
 
-- `docs/evaluation/ask-quality-baseline.md`：Manifest、案例目录、评分表、覆盖与 Failure Map。
+- `docs/evaluation/ask-quality-baseline.md`：已生成 Manifest、案例目录、评分表与覆盖；Failure Map
+  待真实运行后填写。
 - `docs/evaluation/reports/<date>-ask-quality-baseline.md`：已运行结果、样本数、重复波动、
   人工校准、未运行项和原始记录位置。原始记录先做隐私检查，再决定是否进入 Git。
 - 必要的新增 Evaluation Cases / Fixtures；具体路径在实现时记录。
 
-上述是待生成产物，不是本次文档任务已经完成的结果。
+正式结果报告、评分与 Failure Map 仍是待生成产物，不能由离线 Harness 检查代替。
 
 ## 8. 完成清单与交付记录
 
-- [ ] P1-T0：冻结版本、实际非敏感配置与能力清单。
-- [ ] P1-T1：约 20 个父场景、21 个执行变体覆盖五类需求，Fixture / 能力标签、
+- [x] P1-T0：冻结版本、实际非敏感配置与能力清单。
+- [x] P1-T1：约 20 个父场景、21 个执行变体覆盖五类需求，Fixture / 能力标签、
       `scenario_execution_scope` 与评分维度分开，预期行为与事实约束明确。
-- [ ] P1-T2：scenario_execution_scope 只含 FULL / DIAGNOSTIC；execution_status 单独记录 COMPLETED /
+- [x] P1-T2：scenario_execution_scope 只含 FULL / DIAGNOSTIC；execution_status 单独记录 COMPLETED /
       REQUEST_FAILED / NOT_RUN；capability_gap 与 Critical Failure Gate 分别记录；没有隐藏注入新能力，
       `NOT_RUN` / `NOT_EVALUATED` / `N/A` / `NOT_VERIFIABLE` 不作为 PASS。
-- [ ] P1-T3：无重叠的评分锚点、DIAGNOSTIC 局部评分、四组首页指标、Candidate 安全边界、
+- [x] P1-T3：无重叠的评分锚点、DIAGNOSTIC 局部评分、四组首页指标、Candidate 安全边界、
       Critical Failure Gate、耗时 / 用量记录方式确定。
 - [ ] P1-T4：执行可运行基线与五个可完整执行的关键重复，相关检查 / Review 完成，Rubric 人工
       校准后由开发方完成其余评分并标注 Reviewer。
 - [ ] P1-T5：失败证据和待验证假设可交给阶段二；未完成项与负责人 / 原因已记录。
 
-执行日期、Run ID、报告位置、用户校准记录：**待填写**。
+Harness 实现日期：**2026-09-14**。Run ID、结果报告位置、用户校准记录：**待真实运行后填写**。
