@@ -106,4 +106,6 @@ Git Revision 无法读取时记录 `UNKNOWN`，不阻断 Eval；存在已跟踪�
 
 ## V1 Scope Boundary
 
+M13 后的 Answer Quality Discovery 方向于 2026-09-13 获批，使用独立的 [整体路线](../plans/ask-quality-discovery.md) 与 [阶段一基线计划](../plans/ask-quality-phase-1-baseline.md)。新案例分别覆盖 Domain / Strategy / Conversation / Long-term Memory / Runtime 行为；Runtime、Model / Provider、Research Provider、Memory / Persistence 分开评分，4A 与 4B 分别留存评测证据。新集以 scope=FULL / DIAGNOSTIC 表示目标场景能否完整测试，以 execution_status 的 COMPLETED / REQUEST_FAILED / NOT_RUN 表示实际执行结果；DIAGNOSTIC 保留适用维度的局部评分，但不进入完整场景质量。报告首页展示能力覆盖率、完整场景回答质量、请求成功率与 Critical Failure 次数。Critical Gate 对关键事实 / 来源错误、未经确认把 Strategy / Long-term Memory 提升为有效状态、覆盖有效记录、用于后续决策或复用失效策略记 FAIL；保持 `PENDING` 且不参与决策的 Candidate 本身不触发。当前 Dataset `1.0`、历史结果和运行入口保持原义；新规则尚未实现到 Harness，计划文件不是已执行的评测报告。
+
 以下能力推迟到 V1 完成后再评估：Large-scale Dataset、Paraphrase / Prompt Variation、Adversarial Evaluation、Historical Market Scenario Dataset、Investment Backtesting、Statistical Confidence Analysis、Automated LLM-as-a-Judge、Large-scale Regression Benchmark、Latency / Token / Cost Optimization Benchmark、Recommendation Consistency Benchmark 与 Multi-model Ensemble Evaluation。

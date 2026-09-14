@@ -31,7 +31,7 @@ Milestone 表示内部开发阶段；Version / Release 表示用户可感知的�
 | `v1.2.0` scope（未单独发布） | M11 | 基于 M9 成本、费用与批次语义的第一阶段 Accounting / P&L；纳入 `v1.3.0` |
 | Deferred，暂不绑定版本 | M12 | 按需路由的确定性 Technical Context，后续恢复 |
 | `v1.3.0` | M13 | 从当前持仓和交易历史进入日 K / Volume 图表，展示买卖日期并明确价格与成本口径 |
-| Answer Quality Evolution | Discovery，尚未映射 Release | Conversation / Investment Memory、开放 Web Search、Context Policy 与新质量 Evaluation 共同评估 |
+| Answer Quality Evolution | Discovery，方向已批准、尚未映射 Release | Domain / Strategy / Conversation / Long-term Memory / Runtime 分离，开放研究与新质量 Evaluation 共同评估 |
 | V2 | 后续另行规划 | Connected Product：完整 Account Platform、Broker Sync、多 Portfolio 与完整绩效历史 |
 
 ## 4. V1 Engineering Milestones
@@ -56,7 +56,7 @@ M0 Project Foundation
 
 Human 已确认暂缓 M12、先做 M13；M12 保留编号、暂不绑定版本，M13 不依赖均线与 Technical Context。
 
-M0～M7 是构建 PositionPilot V1 Core 与 Demo Interface 的内部 Engineering Milestones，不直接等同于正式 `v1.0.0`。M8 完成 Local Self-Service 闭环后形成 `v1.0.0`。M8.1 / M9 与 M11 原计划分别形成 `v1.1.0`、`v1.2.0`，但没有创建对应 Git Tag 或 GitHub Release；这些能力与 M13 合并为累计 `v1.3.0` Release，避免用事后补 Tag 制造并未实际发生的发布历史。Answer Quality Evolution 不因列入 Discovery 就自动成为 Milestone；只有 Memory、开放 Web Search、Context Policy 与 Evaluation Contract 形成经 Human Review 批准的最小闭环后，才映射到具体 Release。
+M0～M7 是构建 PositionPilot V1 Core 与 Demo Interface 的内部 Engineering Milestones，不直接等同于正式 `v1.0.0`。M8 完成 Local Self-Service 闭环后形成 `v1.0.0`。M8.1 / M9 与 M11 原计划分别形成 `v1.1.0`、`v1.2.0`，但没有创建对应 Git Tag 或 GitHub Release；这些能力与 M13 合并为累计 `v1.3.0` Release，避免用事后补 Tag 制造并未实际发生的发布历史。Answer Quality Evolution 不因列入 Discovery 就自动成为 Milestone；只有 State / Context、开放 Web Search、Answer 与 Evaluation Contract 形成经 Human Review 批准的最小闭环后，才映射到具体 Release。
 
 ## M0 — Project Foundation
 
@@ -491,22 +491,28 @@ TradingView Lightweight Charts 作为 Frontend Library 使用；其官方 Agent 
 
 **Status:** DISCOVERY — NO RELEASE COMMITMENT
 
-当前真实使用已经证明，Answer Quality 不是单独修改 Prompt 或增加一个 Context Tool 就能闭环的问题。用户策略会影响同一市场事实应如何解释；Conversation Continuity 与长期 Investment Memory 具有不同生命周期；开放 Web Search 可以扩大当前信息覆盖，但也会引入来源选择、时效、冲突、引用、延迟、成本与 Prompt Injection 边界。Technical Context 只是其中一类输入，不能代表完整解决方案。
+2026-09-13 Human Review 已批准 Discovery 方向，并要求区分五类状态、收窄 Runtime 候选、四类选型独立评分、阶段四设置 4A / 4B 检查点与 Critical Failure Gate。执行路线见 [Ask Quality Discovery 计划](docs/plans/ask-quality-discovery.md)：当前基线 → 最小设计 → Framework / Capability Spike → 完整 Ask 闭环 → Long-term Memory 完善 → 优化与验收。前两个阶段分别见 [基线与评测计划](docs/plans/ask-quality-phase-1-baseline.md) 和 [最小设计与 Decision Proposal 计划](docs/plans/ask-quality-phase-2-design.md)。各阶段尚未执行，具体 Framework / Provider、Schema / API 与 Release 尚未确定。
+
+当前真实使用已经证明，Answer Quality 不是单独修改 Prompt 或增加一个 Context Tool 就能闭环的问题。Domain State 是确定性账本事实；User Strategy State 是结构化、可确认、可版本化的业务数据；Conversation State 是 Thread 上下文；Long-term Memory 只承载不适合固定字段的长期偏好 / 背景；Agent Execution State 属于单次 Run，不是产品 Memory。用户策略会影响同一市场事实应如何解释；开放 Web Search 可以扩大信息覆盖，也会引入来源、时效、冲突、引用、延迟、成本与 Prompt Injection 边界。Technical Context 只是其中一类输入。
 
 开放 Web Search 不与 Tool 设计冲突：对 Product Agent 而言，Web Search 本身应作为受授权、可观测、可限制的 Tool / Provider Boundary，由 Agent 按问题调用；模型不得在 Application 不知情的情况下访问外部网络。专用 Quote / Asset / News / Financial Data Tool 继续提供高结构化、可确定验证的事实，Web Search 更适合发现当前事件、宏观信息和需要跨来源综合的开放问题，两者不互相替代。
 
 进入实现前至少需要完成以下 Decision Proposal：
 
-- Conversation Memory 与跨 Session Investment Memory 的职责、存储和 Retrieval Boundary；
-- Memory Candidate、Human Confirmation、编辑 / 删除、冲突、过期与来源追溯；
-- Structured Strategy Memory 是否覆盖 Thesis、Holding Horizon、Risk Budget、Accumulation Plan 与 Exit Conditions；
+- Domain State / Strategy State / Conversation Context / Long-term Memory / Agent Runtime 各自的职责、存储、生命周期和读取边界；
+- Long-term Memory Candidate、Human Confirmation、编辑 / 删除、冲突、过期与来源追溯；
+- User Strategy State 对 Thesis、Holding Horizon、Risk Budget、Accumulation Plan 与 Exit Conditions 的结构化表达、确认、版本与失效规则；
 - Dedicated Financial Provider、News Provider 与开放 Web Search 的 Routing / Source Authority；
 - Web 来源域、时效、Citation、冲突处理、全文边界、Prompt Injection 与 Provider Failure；
 - Answer Contract 如何允许条件式 Decision Support，同时防止把推断、模型建议或用户前提写成金融事实；
 - 新 Evaluation Dataset 如何衡量 Usefulness、Strategy Awareness、Memory Correctness、Research Quality、Groundedness、Latency 与 Cost；
-- 是否需要更换 Model / Provider，且比较必须在相同 Memory、Tool 与 Answer Contract 下进行。
+- 是否需要更换 Model / Provider，且比较必须在相同各类 State / Context、Tool 与 Answer Contract 下进行。
 
-只有上述范围通过 Human Review，并由固定 Evaluation 或真实 Failure Mode 证明最小方案后，才新增对应 Milestone、Plan、ADR 与 Release Mapping。Discovery 不预设 Vector Database、LangGraph、Multi-Agent 或不受控 General Browser。
+首轮正式 Runtime 对比仅 Current Runtime vs Pydantic AI，追加候选需具体缺口证据；Framework、Model / Provider、Research Provider、Memory / Persistence 分别评分。阶段四先完成 4A 对话 / 研究循环及固定 Eval，再完成 4B 持久 Strategy 及连续 Ask Eval。评测以 FULL / DIAGNOSTIC 表示场景能否完整测试，以独立 execution_status 表示是否运行成功；诊断场景保留局部评分。报告首页展示能力覆盖率、完整场景回答质量、请求成功率和 Critical Failure 次数。关键事实 / 来源错误、未经确认提升或使用 Strategy / Long-term Memory，以及失效策略重用触发 Case FAIL，保持待确认且不参与决策的 Candidate 本身不触发。详细执行规则由上述计划维护，不在 Roadmap 复制 Task 拆分。
+
+只有上述范围通过 Human Review，并由固定 Evaluation 或真实 Failure Mode 证明最小方案后，才新增对应正式 Milestone、实施 Plan、ADR 与 Release Mapping；Discovery 工作计划不等于实施或选型批准。Discovery 不预设 Vector Database、LangGraph、Multi-Agent 或不受控 General Browser。
+
+本次方向性批准不等于批准具体实现；已批准方向不重复提审。评审中的“V2 级别变化”指潜在架构影响，不改变下文 V2 Connected Product 的范围，也不形成 V2 发布承诺。
 
 ## 5. V2 — Connected Product
 
