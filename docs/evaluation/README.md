@@ -79,8 +79,9 @@ uv run pytest tests/evaluation/test_real_model_behavior.py \
   tests/evaluation/test_ask_quality_baseline.py -q
 ```
 
-真实模型首次运行覆盖 21 个执行变体，并将不含 HTTP Secret 的 Provider-neutral 记录写到 Git
-忽略目录：
+真实模型首次运行覆盖 21 个唯一执行变体，构成 Primary Baseline，并将不含 HTTP Secret 的
+Provider-neutral 记录写到 Git 忽略目录。Dataset 与 Rubric 不绑定 Provider / Model，实际模型以
+该次 Run Manifest 为准：
 
 ```bash
 RUN_REAL_ASK_QUALITY_EVAL=1 \
@@ -91,7 +92,8 @@ LLM_MODEL=<model-id> \
 uv run pytest -p no:cacheprovider tests/evaluation/test_ask_quality_baseline.py -s -q
 ```
 
-关键重复集 AQ03、AQ05、AQ07、AQ17a、AQ17b 的第二、三次运行分别使用新的 Artifact 目录：
+关键重复集 AQ03、AQ05、AQ07、AQ17a、AQ17b 的第二、三次运行分别使用新的 Artifact 目录；这
+10 次额外执行只用于 Repeat Consistency，不混入 Primary Baseline 的质量分布：
 
 ```bash
 RUN_REAL_ASK_QUALITY_EVAL=1 \
@@ -154,5 +156,12 @@ Ask Quality Dataset `0.1`、固定 Fixture、能力标签、Reporter 与真实�
 `qwen3.7-max` 正式 Baseline、关键重复与 Human Rubric Calibration 已完成，结果见
 [2026-09-15 正式报告](reports/2026-09-15-ask-quality-baseline-qwen37max.md)。阶段一没有修改 Production
 Prompt、路由、工具或 State 能力。
+
+Ask Quality 的 Research Capability 指 Runtime 真实向 Agent 提供并允许使用的外部事实获取机制，
+可以是自定义 Search Tool、Provider / Model Native Web Search、Page Fetch 或 Multi-round Research
+Loop；模型训练知识不算 Search。Research Sufficiency 只评价本次 Runtime 实际可用能力的使用情况，
+缺失的产品能力单独进入 Capability Coverage。AQ04、AQ12、AQ18、AQ19 已在 Phase 1 被观察，后续
+称为 Protected Evaluation Set：不得按具体 wording 直接调优，但可用于 Regression；真正 unseen
+holdout 需在后续另建。
 
 以下能力推迟到 V1 完成后再评估：Large-scale Dataset、Paraphrase / Prompt Variation、Adversarial Evaluation、Historical Market Scenario Dataset、Investment Backtesting、Statistical Confidence Analysis、Automated LLM-as-a-Judge、Large-scale Regression Benchmark、Latency / Token / Cost Optimization Benchmark、Recommendation Consistency Benchmark 与 Multi-model Ensemble Evaluation。

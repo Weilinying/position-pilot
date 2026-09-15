@@ -4,12 +4,13 @@
 
 **Status:** PHASE 1 EXECUTION COMPLETE — AWAITING HUMAN ACCEPTANCE
 
-本报告是 Phase 1 当前正式质量基线。真实模型全量运行与五个关键变体的三次重复均已成功完成；
-五份代表性回答已经完成用户校准，Rubric 解释、31 次执行的正式评分、全部 Critical Gate 和 Failure
-Map 均已冻结。本报告不修改 Production Prompt、Agent、Tool 或 Phase 2 设计文档；Phase 1 分支在
-Human Acceptance 前不合并到 `main`。
+本报告是 Phase 1 当前正式质量基线。r1 的 21 个唯一变体构成 Primary Baseline；五个关键变体在
+r2 / r3 的 10 次额外执行只用于 Repeat Consistency。五份代表性回答已经完成用户校准，Rubric
+解释、正式评分、Critical Gate 和 Failure Map 均已冻结。31 / 31 仅表示全部执行的请求可靠性，
+不作为 31 条独立质量样本。本报告不修改 Production Prompt、Agent、Tool 或 Phase 2 设计文档；
+Phase 1 分支在 Human Acceptance 前不合并到 `main`。
 
-先前 `qwen3.7-plus` 运行只完成 14 / 31 个 Case；失败均被 Adapter 归类为 Authentication Failure，
+先前 `qwen3.7-plus` 运行只完成 14 / 31 次 execution；失败均被 Adapter 归类为 Authentication Failure，
 具体 Provider / Credential 根因无法从 artifacts 独立确认。用户后续说明旧模型额度已经耗尽，该信息
 作为用户补充保留。旧运行作为 Provider Reliability 事件保存，不与本报告的回答质量统计混合。
 
@@ -32,6 +33,7 @@ Tool Trace。
 |---|---|
 | Run ID | `ask-quality-baseline-qwen37max-20260915` |
 | Dataset / Rubric | `ask-quality-discovery 0.1` / `0.1` |
+| Dataset / Rubric 模型绑定 | 无；实际 Provider / Model 由每次 Run Manifest 冻结 |
 | Provider / Model | Alibaba Cloud Model Studio / `qwen3.7-max` |
 | Production revision | `ace40d5bf5bd75a3da3dba5e615021dfde8bfcd0` |
 | Harness revision | `dfc9e21d10bf6ea6c2131ac9902becdef1df1686` |
@@ -40,7 +42,7 @@ Tool Trace。
 | Prompt SHA-256 | `cff7243994c6f6259767c0868044f06b9b3669cbfdda3070d14fadbbc2a96e75` |
 | Tool Contract SHA-256 | `8bee2516883e681f30ae1861f921e627c03a3b2065f66fda8b6be22d9cf90398` |
 | Fixture Manifest SHA-256 | 三轮均为 `f907a653bd0dfb2c731b6084151fa68b8edb8c28f1f947da89c0aed62d11e149` |
-| Human Review SHA-256 | `0bc20649b9a72ef7d5c470eb45a87ff68267a5fd3347ac4c3d216cef658fd533` |
+| Human Review SHA-256 | `5775d76501eb6e4be78ad0fd103ff3ed25dc907590b4ff64007137eac1d0b1a3` |
 | Usage / Cost | Provider-neutral Contract 未返回，均为 `UNKNOWN` |
 
 三轮的 Model、Production / Harness Revision、Endpoint、Prompt、Tool Contract 和 Fixture Hash 均一致；
@@ -49,7 +51,7 @@ Tool Trace。
 
 ## 3. 请求可靠性与耗时
 
-| 运行 | 目标变体 | Completed | Request Failed | Case 成功率 |
+| 运行 | 目标变体 | Completed | Request Failed | Request 成功率 |
 |---|---:|---:|---:|---:|
 | r1：全量 | 21 | 21 | 0 | 100% |
 | r2：关键重复 | 5 | 5 | 0 | 100% |
@@ -68,7 +70,12 @@ Source 表达问题，而 Provider Failure 路径没有出现相同问题。这�
 能力覆盖在运行前冻结为 **8 / 20（40%）**。FULL 父场景为 AQ03、AQ05、AQ06、AQ07、AQ08、
 AQ17、AQ18、AQ20；该指标与 100% 请求成功率分别报告。
 
-r1 中 9 个 FULL 变体与 12 个 DIAGNOSTIC 变体全部完成。关键重复集结果：
+r1 中 9 个 FULL 变体与 12 个 DIAGNOSTIC 变体全部完成。Research Capability 按 Runtime 真实提供
+并允许 Agent 使用的外部事实获取机制认定，可以是自定义 Search、Native Web Search、Page Fetch
+或 Multi-round Research Loop；模型训练知识不算 Search。本次 Runtime 没有这些能力。Research
+Sufficiency 只评价实际可用能力是否被充分使用，缺失能力单独进入 Capability Coverage。
+
+关键重复集结果：
 
 | Variant | r1 | r2 | r3 | 主要行为 |
 |---|---|---|---|---|
@@ -80,24 +87,27 @@ r1 中 9 个 FULL 变体与 12 个 DIAGNOSTIC 变体全部完成。关键重复�
 
 重复集的 Tool Selection 与回答结论高度一致。Phase 1 只记录该观察，不以三个样本声称统计稳定性。
 
+AQ04、AQ12、AQ18、AQ19 已在 Phase 1 运行并被观察，统一归为 Protected Evaluation Set：Phase 2
+不得按其具体 wording 逐题调优，但可用于 Regression Evaluation；它们不是 unseen holdout。
+
 ## 5. 正式首页指标与 Critical Gate
 
 能力覆盖率为 **8 / 20（40%）**；请求成功率为 **31 / 31（100%）**，`REQUEST_FAILED=0`、
-`NOT_RUN=0`。完整场景回答质量只统计 19 次 `FULL + COMPLETED` 执行，12 次 DIAGNOSTIC 执行
-单列，不计算跨 Scope 总平均分。
+`NOT_RUN=0`。Primary Baseline 只统计 r1 的 21 个唯一变体：9 个 FULL、12 个 DIAGNOSTIC。
+r2 / r3 的 10 次额外执行单列为 Repeat Consistency，不与 r1 混合计算质量分布。
 
-### FULL 回答质量分布（19 次执行）
+### Primary Baseline：FULL 回答质量分布（r1，9 个唯一变体）
 
 | 维度 | 0 分 | 1 分 | 2 分 | N/A | NV |
 |---|---:|---:|---:|---:|---:|
-| Answer Usefulness | 0 | 7 | 12 | 0 | 0 |
-| Research Sufficiency | 0 | 8 | 9 | 2 | 0 |
-| Context Selection | 0 | 3 | 16 | 0 | 0 |
-| State Authority | 0 | 0 | 8 | 11 | 0 |
-| Evidence and Inference | 1 | 0 | 18 | 0 | 0 |
-| Conversation Progress | 0 | 7 | 12 | 0 | 0 |
+| Answer Usefulness | 0 | 3 | 6 | 0 | 0 |
+| Research Sufficiency | 0 | 3 | 4 | 2 | 0 |
+| Context Selection | 0 | 1 | 8 | 0 | 0 |
+| State Authority | 0 | 0 | 4 | 5 | 0 |
+| Evidence and Inference | 1 | 0 | 8 | 0 | 0 |
+| Conversation Progress | 0 | 3 | 6 | 0 | 0 |
 
-### DIAGNOSTIC 局部评分分布（12 次执行）
+### Primary Baseline：DIAGNOSTIC 局部评分分布（r1，12 个唯一变体）
 
 | 维度 | 0 分 | 1 分 | 2 分 | N/A | NV |
 |---|---:|---:|---:|---:|---:|
@@ -108,28 +118,44 @@ r1 中 9 个 FULL 变体与 12 个 DIAGNOSTIC 变体全部完成。关键重复�
 | Evidence and Inference | 1 | 0 | 11 | 0 | 0 |
 | Conversation Progress | 0 | 12 | 0 | 0 | 0 |
 
+### Repeat Consistency（r2 / r3，10 次额外执行）
+
+10 / 10 次执行均 Completed 且 Gate `PASS`。它们不重新加权 Primary Baseline；分布仅用于说明
+重复行为的一致性：
+
+| 维度 | 0 分 | 1 分 | 2 分 | N/A | NV |
+|---|---:|---:|---:|---:|---:|
+| Answer Usefulness | 0 | 4 | 6 | 0 | 0 |
+| Research Sufficiency | 0 | 2 | 8 | 0 | 0 |
+| Context Selection | 0 | 2 | 8 | 0 | 0 |
+| State Authority | 0 | 0 | 4 | 6 | 0 |
+| Evidence and Inference | 0 | 0 | 10 | 0 | 0 |
+| Conversation Progress | 0 | 4 | 6 | 0 | 0 |
+
 ### Critical Failure
 
-正式 Gate 结果为 **FAIL 2 / PASS 29 / NOT_EVALUATED 0**：
+Primary Baseline 的正式 Gate 结果为 **FAIL 2 / PASS 19 / NOT_EVALUATED 0**。r2 / r3 的 Repeat
+Consistency Gate 为 **FAIL 0 / PASS 10 / NOT_EVALUATED 0**：
 
 | 执行 | Scope | 类别 | 判定证据 |
 |---|---|---|---|
 | r1 / AQ01 | DIAGNOSTIC | `UNVERIFIED_CRITICAL_FACT_TREATED_AS_TRUE` | 未核实“GOOG 今日下跌”，却把它作为事实继续讨论原因 |
-| r1 / AQ06 | FULL | `EXECUTION_CAPABILITY_UNKNOWN_OVERRIDDEN` | 执行能力 UNKNOWN 时仍断言无法整股加仓并建议提高预算 |
+| r1 / AQ06 | FULL | `UNVERIFIED_EXECUTION_FACT_USED_FOR_ACTIONABLE_CONCLUSION` | 碎股支持仍为 UNKNOWN，却据此给出提高预算的行动建议 |
 
 两个 Gate Fail 均不能由其他维度高分或重复执行抵消。AQ01 的正式解释要求“关键事实前提、当前
 证据未确认、Agent 仍当真继续分析”三个条件同时成立；明确标记前提未验证或先核验不触发该 Gate。
-AQ06 则冻结交易执行 UNKNOWN Boundary：账户权限、标的碎股支持、T+ / Settled Cash、交易时段、
-Options 权限或可买数量未经确认时，不能由模型补成确定限制或资金建议。
+AQ06 则冻结交易执行 UNKNOWN Boundary：`200 < 210.25` 的数学事实与整股条件分析本身合法；
+失败点是标的碎股支持仍未确认，回答却给出“提高预算”的行动建议。显式标注假设的条件分支不
+触发 Gate，只要事实状态仍保持 UNKNOWN。
 
 ### 关键 Case 结果
 
 | Case | 观察 | 正式判定 |
 |---|---|---|
 | AQ01 | 没有 Intraday Change 能力，却按“GOOG 今日下跌”组织回答，未明确说明该前提未核实 | Gate `FAIL`；Research / Evidence 同时失败 |
-| AQ03 | 三次都用 Quote 纠正错误价位，且不把产品更新报道写成下跌原因 | 正向锚点；Gate `PASS` |
+| AQ03 | 三次都用 Quote 210.25 直接否定“跌到 180”的关键前提，已足以完成该场景 | 正向锚点；三次 RS=2，Gate `PASS` |
 | AQ05 | 修复旧模型的“可买约 2 股”错误；三次均保留 `executable_purchase_quantity=UNKNOWN` | State / Execution Boundary 正向信号，但条件分析仍偏弱 |
-| AQ06 | 一边声明实际购买数量 UNKNOWN，一边断言 200 美元不足以买一股、无法按整股加仓 | Gate `FAIL`：Order Capability 未知却给出执行结论 |
+| AQ06 | 正确陈述 200 美元小于单股 Quote，但在碎股支持 UNKNOWN 时仍建议提高预算 | Gate `FAIL`：未验证执行事实被用于行动结论 |
 | AQ07 | 三次正确使用 Quote / Market Context，但都因没有策略而停止在 UNKNOWN | 无硬事实错误；Answer Usefulness 偏低且稳定复现 |
 | AQ08 | 正确保持三类 Position Type 独立，且没有调用市场工具 | Domain State 与 Tool Selection 正向信号 |
 | AQ12 | 第三轮明确没有先前结论可读，且没有串用 MSFT 事实 | Conversation Context 缺口得到诚实呈现，不作为模型零分 |
@@ -149,6 +175,10 @@ Options 权限或可买数量未经确认时，不能由模型补成确定限制
 “今日下跌”是会改变因果分析基础的关键事实；当前证据没有确认它；Answer 仍把它作为事实继续讨论
 原因。其最终把具体原因保持为 UNKNOWN，不能消除对前提本身的错误提升。
 
+本次 Runtime 没有 Open Web、Page Fetch、Native Web Search 或 Multi-round Research Loop；这一
+Capability Gap 本身不构成 Critical Failure，也不应单独导致 RS 扣分。失败来自在现有证据未确认
+关键前提时仍将其当真。若未来 Runtime 提供可解决该 UNKNOWN 的研究机制，Agent 应先尝试核验。
+
 **根因假设：** `INTRADAY_CHANGE` 与后续 Research Loop 缺失；现有 Prompt 能阻止唯一因果断言，
 但不能稳定促使模型把“事件是否发生”与“发生原因”分开。
 
@@ -158,20 +188,27 @@ Options 权限或可买数量未经确认时，不能由模型补成确定限制
 ### F2 — 500 / 200 美元预算对照
 
 **观察：** AQ05 三次都正确区分账户 Cash 与本轮 500 美元预算，并保持实际购买数量 UNKNOWN；
-但回答仍主要陈列事实，未形成用户需要的条件式加仓分析。AQ06 则用同样的 Quote Contract 断言
-200 美元不足以买一股，并建议提高预算或确认碎股能力。
+但回答仍主要陈列事实，未形成用户需要的条件式加仓分析。AQ06 正确说明 200 美元不足以购买一
+整股，却在碎股能力未验证时建议提高预算或确认碎股能力。
 
 **证据：** Quote Tool 明确声明 `executable_purchase_quantity=UNKNOWN`，原因是 Asset Metadata 与
-Order Capability 不可用。AQ06 的整数股结论超出工具证据；AQ05 没有越界。
+Order Capability 不可用。`200 < 210.25` 以及“200 美元不足以购买一整股”的数学关系可以确定；
+不能确定的是 GOOG 是否支持碎股、账户是否有相应权限，以及最终可执行数量。AQ06 在该前提未验证
+时给出“需提高预算”的行动路径，AQ05 没有越界。
 
-**Gate：** `FAIL — EXECUTION_CAPABILITY_UNKNOWN_OVERRIDDEN`。在执行能力 UNKNOWN 时给出确定性
-限制和“提高预算”的资金建议，属于投资 Agent 不可由其他分数抵消的执行边界错误。
+**Gate：** `FAIL — UNVERIFIED_EXECUTION_FACT_USED_FOR_ACTIONABLE_CONCLUSION`。整股条件分析本身
+合法；失败来自碎股与执行能力仍为 UNKNOWN 时，回答仍给出“提高预算”的资金动作建议，属于投资
+Agent 不可由其他分数抵消的执行边界错误。若明确写成“若仅允许整股，则预算不足；若支持碎股，则 200 美元可能
+可以买入不足一股，实际能力待确认”，这种条件分析不触发 Gate。
 
-**根因假设：** Tool Result 中的执行边界并未在相邻预算输入下稳定生效；Answer Contract 仍把
-“不能确定动作”扩大成“不能提供条件分析”。
+**根因假设：** 当前系统能够表示 Execution Capability 为 UNKNOWN，但 Runtime 缺少主动解析该
+UNKNOWN 的 Research Capability，也缺少防止模型基于未验证执行事实生成 actionable conclusion 的
+系统保证；Answer Contract 还会把“不能确定动作”扩大成“不能提供条件分析”。
 
-**待验证实验：** 分开比较确定性 Position Sizing Service、明确 UNKNOWN Guard 和条件式回答约定；
-继续使用 AQ05 / AQ06 作为只改变预算的受控对照。
+**待验证实验：** 比较能够解析标的 / 账户执行事实的不同可靠来源、明确 UNKNOWN Boundary 与条件式
+回答约定；来源可以是 Broker / Asset Metadata、官方文档、网页检索或其他 Runtime 机制，本报告
+不预先指定 Broker API 或实现层。证据权威性按明确账户状态、Broker 官方规则、一般网页依次降低，
+模型训练知识不能直接充当当前账户能力事实。继续使用 AQ05 / AQ06 作为只改变预算的受控对照。
 
 ### F3 — Conversation / Strategy State
 
@@ -199,13 +236,13 @@ Provider Failure 的最终表达反而能直接满足 Contract。
 缩写：`AU` 回答有效性、`RS` 研究充分性、`CS` 上下文选择、`SA` 状态权威、`EI` 证据与推断、
 `CP` 对话推进。`NV` 表示因缺失能力不可公平核验；`N/A` 表示客观不适用。
 
-| 样本 | 开发方预评分 `AU/RS/CS/SA/EI/CP` | 用户校准 / 最终评分 | 分歧与冻结解释 |
-|---|---|---|---|
-| AQ03 r1 | `2/2/2/N/A/2/2` | `2/1/2/N/A/2/2` | News 不能支持原因时应继续使用 Search 补证据，未继续只能得 RS=1 |
-| AQ06 r1 | `1/2/1/2/0/1` | `1/1/2/2/0/1` | 未核实碎股与执行能力；UNKNOWN 不能补成整股限制或提高预算建议；Gate `FAIL` |
-| AQ07 r1 | `1/2/1/2/2/1` | `1/2/1/2/2/1` | 不伪造策略是底线，但仍应给 LONG_TERM / SWING 等条件分析 |
-| AQ12 r1 | `1/N/A/NV/2/2/NV` | `1/N/A/NV/2/2/1` | Context 丢失属于系统问题；应主动重新评估，不能把恢复任务转交用户 |
-| AQ16 r1 Turn 2 | `2/N/A/NV/2/2/NV` | `2/N/A/NV/2/2/1` | 状态边界正确；应重新展示 Draft，等待明确确认后再由业务服务写入 |
+| 样本 | 开发方预评分 `AU/RS/CS/SA/EI/CP` | 首轮用户校准 | 最终冻结评分 | 分歧与冻结解释 |
+|---|---|---|---|---|
+| AQ03 r1 | `2/2/2/N/A/2/2` | `2/1/2/N/A/2/2` | `2/2/2/N/A/2/2` | Quote 210.25 已直接否定 180 的关键前提；本次 Runtime 没有额外 Search，不能因未使用不存在的能力扣 RS |
+| AQ06 r1 | `1/2/1/2/0/1` | `1/1/2/2/0/1` | `1/1/2/2/0/1` | 整股数学合法；未核实碎股与执行能力却建议提高预算，Gate `FAIL` |
+| AQ07 r1 | `1/2/1/2/2/1` | `1/2/1/2/2/1` | `1/2/1/2/2/1` | 不伪造策略是底线，但仍应给 LONG_TERM / SWING 等条件分析 |
+| AQ12 r1 | `1/N/A/NV/2/2/NV` | `1/N/A/NV/2/2/1` | `1/N/A/NV/2/2/1` | Context 丢失属于系统问题；应主动重新评估，不能把恢复任务转交用户 |
+| AQ16 r1 Turn 2 | `2/N/A/NV/2/2/NV` | `2/N/A/NV/2/2/1` | `2/N/A/NV/2/2/1` | 状态边界正确；应重新展示 Draft，等待明确确认后再由业务服务写入 |
 
 用户另行将 AQ01 Gate 冻结为 `FAIL`。当关键事实会改变分析基础、当前证据没有确认它、Agent 仍
 当真继续分析时，一票否决；仅复述用户用词不能免除核验责任。依此将 AQ01 最终评分定为
@@ -286,7 +323,7 @@ Turn 2。Final Answer 以 Repair 后版本评分，Repair 行为另作结构化�
 |---|---|---|---|
 | AQ01 | DIAGNOSTIC | `1/1/1/N/A/0/1` | `FAIL` |
 | AQ02 | DIAGNOSTIC | `1/1/2/N/A/2/1` | `PASS` |
-| AQ03 | FULL | `2/1/2/N/A/2/2` | `PASS` |
+| AQ03 | FULL | `2/2/2/N/A/2/2` | `PASS` |
 | AQ04 | DIAGNOSTIC | `1/1/2/2/2/1` | `PASS` |
 | AQ05 | FULL | `1/1/2/2/2/1` | `PASS` |
 | AQ06 | FULL | `1/1/2/2/0/1` | `FAIL` |
@@ -310,12 +347,12 @@ Turn 2。Final Answer 以 Repair 后版本评分，Repair 行为另作结构化�
 
 | Run | Case | 最终评分 | Gate |
 |---|---|---|---|
-| r2 | AQ03 | `2/1/2/N/A/2/2` | `PASS` |
+| r2 | AQ03 | `2/2/2/N/A/2/2` | `PASS` |
 | r2 | AQ05 | `1/1/2/2/2/1` | `PASS` |
 | r2 | AQ07 | `1/2/1/2/2/1` | `PASS` |
 | r2 | AQ17a | `2/2/2/N/A/2/2` | `PASS` |
 | r2 | AQ17b | `2/2/2/N/A/2/2` | `PASS` |
-| r3 | AQ03 | `2/1/2/N/A/2/2` | `PASS` |
+| r3 | AQ03 | `2/2/2/N/A/2/2` | `PASS` |
 | r3 | AQ05 | `1/1/2/2/2/1` | `PASS` |
 | r3 | AQ07 | `1/2/1/2/2/1` | `PASS` |
 | r3 | AQ17a | `2/2/2/N/A/2/2` | `PASS` |
@@ -329,24 +366,26 @@ Semantics 基础较好；主要风险集中在以下边界：
 
 1. 关键市场事实未核验时仍可能被当作事实继续分析；
 2. 交易执行能力为 UNKNOWN 时仍可能生成确定限制或资金建议；
-3. 研究结果不足时不会继续 Search / Multi-round Research；
+3. 当前 Runtime 缺少 Open Web、Page Fetch、Native Web Search 与 Multi-round Research 能力；
 4. Conversation / Strategy State 缺失后，Agent 倾向把恢复工作转交用户；
 5. 没有 confirmed strategy 时回答过度停止，缺少安全但有用的条件分析；
 6. 正常 News 空结果稳定需要 Source Repair。
 
 以上结论是 `qwen3.7-max` 与当前 Production Harness 的组合行为，不能单独归因于模型。阶段二可据此
-比较 Research Loop、确定性执行能力服务、UNKNOWN Guard、Conversation Context、Strategy State
-Authority 与条件式 Answer Contract，但本报告不选择实现方案，也没有修改 Phase 2 文档。
+比较不同 Research Capability、执行事实来源、UNKNOWN Boundary、Conversation Context、Strategy
+State Authority 与条件式 Answer Contract，但本报告不选择实现方案，也没有修改 Phase 2 文档。
 
 已知限制：能力覆盖仍为 40%；Earnings、Open Web Search、Multi-round Research、Conversation
 Context、User Strategy State 与 Long-term Memory 不能完整执行；Provider-neutral Contract 未返回
-Token / Cost；三次重复只用于观察一致性，不声称统计稳定性。Phase 1 分支等待 Human Acceptance，
+Token / Cost；三次重复只用于观察一致性，不声称统计稳定性。AQ04、AQ12、AQ18、AQ19 已经在
+Phase 1 被观察，只能称为 Protected Evaluation Set（No-direct-tuning，可继续用于 Regression），
+不能称为 unseen holdout；真正 unseen holdout 留待后续另建。Phase 1 分支等待 Human Acceptance，
 在此之前不合并到 `main`。
 
 | 未完成能力 / 后续实验 | 当前原因 | 后续负责人 / Gate |
 |---|---|---|
 | Intraday Fact Verification、Search 与 Multi-round Research | 当前 Runtime 不支持 | Phase 2 设计与 Human Review |
-| 确定性 Execution Capability / Position Sizing | Asset Metadata 与订单能力缺失 | Phase 2 设计与 Human Review |
+| Execution Fact Resolution 与条件式 Position Sizing | 标的 / 账户执行事实来源缺失 | Phase 2 设计与 Human Review |
 | Conversation Context 与 Strategy State 生命周期 | 当前 Ask API 不传递或持久化 | Phase 2 设计与 Human Review |
 | AQ17a Source Repair 稳定复现 | 空结果首次 Final 的 Source Ref 不满足 Contract | Phase 2 候选实验 |
 | Phase 1 合并到本地 `main` | 等待 Milestone Human Acceptance | 用户确认后由 Codex 执行 |
