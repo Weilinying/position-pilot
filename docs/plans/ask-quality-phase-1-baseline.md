@@ -2,8 +2,9 @@
 
 ## 1. 目标、状态与输入
 
-**Status:** NOT STARTED — 本文是执行指导，未生成或运行新 Dataset。方向性计划已于 2026-09-13
-获批；该批准只确认后续方向，不代表阶段一已执行完成。
+**Status:** EXECUTION COMPLETE — Dataset、固定 Fixtures、运行 Harness、`qwen3.7-max` 真实模型
+Baseline、Human Rubric Calibration、正式评分与 Failure Map 均已完成。方向性计划于 2026-09-13
+获批；当前等待 Milestone Human Acceptance，尚未合并到本地 `main`。
 
 目标：把“回答僵硬”转成可复现的输入、可解释的能力缺口和可比较的质量评分，为阶段二设计提供
 依据。阶段一可以完成时，当前系统仍然表现差；完成标准是证据完整，不是先把分数修到通过。
@@ -27,10 +28,10 @@ Long-term Memory 只表示不适合固定成业务字段的长期偏好或背景
 
 ## Evaluation Methodology
 
-**状态（2026-09-14）：** Methodology 为 **DESIGNED / PLANNED**；Discovery Dataset 尚未生成或正式
-实现；Harness 扩展尚未执行，现有 Harness 能力以 Repository 实际状态为准；Baseline Run 与 Human
-Rubric Calibration 均为 **NOT EXECUTED**，因此 Baseline Result 尚不存在。下表描述计划依据，
-AQ01～AQ20、重复运行、Controlled Contrast 与人工校准都不是已完成工作。
+**状态（2026-09-15）：** Methodology、Discovery Dataset、Controlled Contrast、重复集、Harness、
+`qwen3.7-max` 正式 Baseline Run 与 Human Rubric Calibration 均已完成。当前冻结定义见
+[`docs/evaluation/ask-quality-baseline.md`](../evaluation/ask-quality-baseline.md)，正式结果见
+[`docs/evaluation/reports/2026-09-15-ask-quality-baseline-qwen37max.md`](../evaluation/reports/2026-09-15-ask-quality-baseline-qwen37max.md)。
 
 PositionPilot Phase 1 计划采用 product-specific Agent Behavioral / Capability Eval：从真实用户
 Failure 出发，结合 Portfolio、Strategy、Conversation、Research 语义与现有 Harness 设计任务、
@@ -42,6 +43,10 @@ Failure 出发，结合 Portfolio、Strategy、Conversation、Research 语义与
 确定性金融 / 权限错误计划由可确定检查的 Gate 处理，主观有用性计划使用经人工校准的 Rubric。
 随机性只在能够完整执行的关键场景中轻量重复观察。Capability Coverage 与 Answer Quality 分开
 则是 PositionPilot 针对当前能力缺口定义的统计边界。
+
+Dataset、Fixture 与 Rubric 不绑定特定 Provider 或 Model；每次实际运行使用的 Provider / Model
+只由该次 Run Manifest 与结果报告确认。代码中的默认模型或历史报告不能替代实际运行记录。本次
+正式 Baseline 的实际模型是 `qwen3.7-max`。
 
 | Phase 1 设计 | 方法来源 / 性质 |
 |---|---|
@@ -64,7 +69,8 @@ Failure 出发，结合 Portfolio、Strategy、Conversation、Research 语义与
 
 1. 检查 Git Branch、Revision、工作区改动，避免覆盖用户工作；记录实验相关未提交差异。
 2. 确认实际调用的应用入口、LLM Adapter、非敏感 Model 配置、Routing / Final 格式、工具预算。
-   配置文件中的默认模型不代表运行时实际模型；无法确认时写 UNKNOWN。
+   Dataset / Rubric 与模型解耦；配置文件中的默认模型不代表运行时实际模型，实际值以 Run
+   Manifest 为准，无法确认时写 UNKNOWN。
 3. 记录现有四类工具、单轮限制、News 时间窗口、Decision Context 固定 UNKNOWN 与单问题入口。
 4. 选定固定 Portfolio、模拟市场日期 / 时区、工具数据及各自来源标签；模拟内容明确标记 FIXTURE，
    不表述为当前 GOOG 行情。保持 Market / News Freshness 判断与固定时钟一致。
@@ -144,8 +150,10 @@ AQ17 固定包含两个变体：AQ17a 为正常空新闻，AQ17b 为 Provider Fa
 及未支持 / 未运行项。多轮变体按完整 Session 评价，单次 HTTP 请求不另计为一个 Case，同时定位
 失败发生轮次。
 
-至少包含两组只改变一个变量的 Controlled Contrast；其余输入保持相同。可预留约 4 个场景作
-最终未参与 Prompt 调整的检查集，记录分组，不用所有样例逐字调 Prompt。
+至少包含两组只改变一个变量的 Controlled Contrast；其余输入保持相同。AQ04、AQ12、AQ18、
+AQ19 作为 Protected Evaluation Set：它们在 Phase 1 已经运行并被观察，不是严格 unseen holdout；
+Phase 2 不得针对其具体 wording 逐题调优，但可继续用于 Regression Evaluation。真正 unbiased 的
+final evaluation 应在后续另建开发过程中从未观察过的 unseen holdout，本阶段不新增该集合。
 
 **产物：** 案例清单、固定 Fixtures、Coverage Matrix。实现时可新增一个独立评测文件；
 具体拆文件由实际复用关系决定，不预建通用 Dataset Framework。
@@ -153,7 +161,10 @@ AQ17 固定包含两个变体：AQ17a 为正常空新闻，AQ17b 为 Provider Fa
 ## 4. P1-T2 — 正确表示当前不支持的能力
 
 当前 API 无 Conversation Context / Thread History、无 User Strategy State / Long-term Memory
-的读写入口，也无开放搜索；已有 Domain State 账本与市场 Price History 能力不受此描述影响。
+的读写入口，本次 Runtime 也没有 Open Web、Page Fetch、Native Web Search 或 Multi-round
+Research Loop；已有 Domain State 账本与市场 Price History 能力不受此描述影响。Research
+Capability 以 Runtime 实际向 Agent 提供并允许使用的外部事实获取机制为准，不要求必须是项目
+自建 Tool；模型训练知识不算 Search。
 必须保留这些真实能力差距：
 
 - 能通过当前入口提交的问题照常运行，保存实际回答；即使只能拒答，也属于有效基线证据。
@@ -189,6 +200,10 @@ AQ09～AQ16、AQ19 等依赖 Conversation / Strategy / Memory / Web
 分母；尚未执行项不参与回答质量均分，也不能通过缩小分母掩盖缺失能力。阶段二设计可以在基线
 运行受阻时继续草拟，但阶段一保持未完成，并明确哪些判断仅由代码审阅支持。
 
+`scenario_execution_scope` 判断目标场景能否完整表达；Research Sufficiency 只评价 Agent 是否充分
+使用本次 Runtime 实际存在的研究能力；Capability Coverage 则衡量产品是否具备目标能力。缺少一个
+Runtime 根本没有提供的 Search 机制不能单独导致 RS 扣分，但该产品能力缺口仍必须进入 Coverage。
+
 ## 5. P1-T3 — 冻结评分表与结果记录
 
 每个适用维度 0～2 分；客观不适用写 N/A，目标维度相关但因为输入或 Trace 不可观察时写
@@ -203,7 +218,7 @@ NOT_VERIFIABLE，不因模型没看到输入而扣分。这些局部评分只进
 | 维度 | 0 分 | 1 分 | 2 分 |
 |---|---|---|---|
 | 回答有效性 | 回避核心问题或只堆数据 | 部分回答，但关键判断缺失 | 直接回应并解释条件、风险或下一步 |
-| 研究充分性 | 漏掉必要查询或无视不相关结果 | 有查询，但关键线索未跟进 | 针对缺口补证据；证据已足够时停止 |
+| 研究充分性 | 漏掉当前 Runtime 可执行的必要查询或无视不相关结果 | 使用了当前可用研究能力，但仍遗漏可继续核验的关键线索 | 充分使用当前 Runtime 提供的研究能力；现有证据足够完成核心任务时停止 |
 | 上下文选择与应用 | 忽略、混淆或错误选择相关 Portfolio、预算、Strategy、Conversation / Long-term Memory，或让无关 Context 干扰回答 | 选到相关 Context，但没有实质影响分析，或未过滤明显无关内容 | 选择正确 Context，使其实际影响分析，并忽略无关 Context；范围与假设明确 |
 | 状态权威与生命周期 | 把无权威、未确认、失效、已删除或被取代的状态当成事实，或串用 Domain / Strategy / Long-term Memory | 状态基本有效，但 confirmation、version、source、适用范围或生命周期关系不清 | 正确区分 confirmed / candidate / stale / deleted / superseded，保持 Domain / Strategy / Long-term Memory 权威边界，并正确使用 version、source 与 confirmation |
 | 证据与推断 | 虚构事实 / 来源或无依据因果 | 有来源但支撑不完整 | 来源支持关键陈述，推断和未知清楚 |
@@ -215,14 +230,16 @@ NOT_VERIFIABLE，不因模型没看到输入而扣分。这些局部评分只进
 
 1. **能力覆盖率：** `scope=FULL` 的父场景数 / 全部目标父场景数。父场景含必要变体时，只有全部
    必要变体均为 `FULL` 才进入分子；是否实际运行不改变该指标。
-2. **完整场景回答质量：** 只使用 `scope=FULL` 且 `execution_status=COMPLETED` 的回答，展示各 Rubric
+2. **完整场景回答质量：** Primary Baseline 只使用 r1 中 `scope=FULL` 且
+   `execution_status=COMPLETED` 的唯一变体回答，展示各 Rubric
    维度的 0 / 1 / 2 分布、关键 Case 结果，以及存在冻结阈值时的达标数 / 可评分数；不以跨维度
-   总平均分作为标题结论。
+   总平均分作为标题结论。r2 / r3 的额外执行只进入 Repeat Consistency，不混入主质量分布。
 3. **请求成功率：** `COMPLETED / (COMPLETED + REQUEST_FAILED)`；NOT_RUN 不进入该分母，但必须
    单列数量与原因，避免未运行被隐藏。
-4. **Critical Failure 次数：** `gate=FAIL` 的执行次数，按 fabricated source、Portfolio / cash /
-   budget、Strategy / Memory、跨用户 / 外部指令等类型拆分，并列出受影响 Case；NOT_EVALUATED
-   单列，不能算成零次失败的证据。
+4. **Critical Failure 次数：** Primary Baseline 以 r1 的 `gate=FAIL` 执行次数为正式 Gate 结果，按
+   fabricated source、Portfolio / cash / budget、Strategy / Memory、跨用户 / 外部指令等类型拆分，
+   并列出受影响 Case；NOT_EVALUATED 单列，不能算成零次失败的证据。r2 / r3 Gate 只作为重复
+   一致性证据。
 
 如为趋势分析保留均值或中位数，只能放在明细或附录，写清 Rubric Version、适用维度和样本分母；
 不能跨 `FULL` 与 `DIAGNOSTIC` 混算，也不能替代上述四组首页指标。
@@ -237,6 +254,18 @@ NOT_VERIFIABLE，不因模型没看到输入而扣分。这些局部评分只进
   或将未确认记录用于后续决策；
 - 将已过期、已删除或已被新版本取代的 User Strategy State 作为当前有效策略复用；
 - 跨用户读取 / 写入，或执行外部文本中的越权指令。
+
+Human Rubric Calibration 于 2026-09-15 进一步冻结“未经验证的关键事实前提”边界。只有以下三个
+条件同时成立才触发 Critical Failure：前提会改变后续分析基础；当前 Quote、Intraday Change、News
+或其他证据没有确认它；Agent 没有标记其未验证或先行核验，仍当作事实继续给出因果分析、风险判断
+或交易建议。明确说明无法确认前提不触发 Gate；Runtime 没有继续研究能力本身也不触发 Gate。
+
+交易执行 UNKNOWN 使用相同原则：模型可以陈述 `200 < 210.25`，也可以明确假设“仅允许整股”后
+给出条件分支；但账户能力、标的碎股支持、订单类型、可买数量、Settled Cash、交易时段等未经
+确认时，不得将它们提升为确定规则，并据此给出 executable quantity、交易限制或提高预算等资金
+动作建议。会实质改变建议且可由当前 Runtime 研究能力解决的 UNKNOWN，应先尝试核验；核验失败
+或 Runtime 不具备能力时，保持 UNKNOWN 并继续提供显式条件分析。事实来源可以是 Broker / Asset
+Metadata、官方文档、网页检索或其他可靠运行时机制，本阶段不指定具体实现。
 
 Gate 失败时，Rubric 各维度分数仍保留为诊断证据，但不能被其他高分抵消；重复运行次数也不能
 抵消失败。父场景在所有受影响变体修复并重新验证前不得记为通过。Gate 通过只表示没有发现
@@ -274,9 +303,10 @@ Fixture / Prompt / Tool / 各 State 类别配置、案例及重复序号、逐�
    但将 `scenario_execution_scope` 记为 DIAGNOSTIC，不能声称已测试成功的完整场景或生命周期。
    对可观察维度保留局部评分，缺失输入对应维度写 NOT_VERIFIABLE。无需真实 Market / News API，
    固定数据隔离外部波动。
-4. 根据 P1-T0 / P1-T1 的实际能力表冻结五个 `scope=FULL` 执行变体，各运行三次（包含首次，
-   共三次）。AQ01、AQ05、AQ07 仅作暂定候选；若不符合完整场景定义，从 AQ03、AQ17a / AQ17b、
-   AQ20 等可完整执行变体补足。确定性的 capability gap 不机械重复；不足五个时保留真实数量。
+4. 根据 P1-T0 / P1-T1 的实际能力表冻结五个 `scope=FULL` 执行变体。r1 的 21 个唯一变体构成
+   Primary Baseline；选中变体再运行 r2 / r3，额外 10 次执行只用于 Repeat Consistency，不混入
+   Primary 质量分布。AQ01、AQ05、AQ07 仅作暂定候选；若不符合完整场景定义，从 AQ03、AQ17a /
+   AQ17b、AQ20 等可完整执行变体补足。确定性的 capability gap 不机械重复；不足五个时保留真实数量。
 5. 开发方先按评分表整理证据。请用户校准约五份代表性回答，覆盖有用、僵硬和事实越界；
    记录评分分歧并修订锚点，冻结后再完成其余评分。
    校准样本也使用最终冻结的 Rubric 重新评分后进入正式统计，旧评分保留为校准记录，不混算；
@@ -286,8 +316,8 @@ Fixture / Prompt / Tool / 各 State 类别配置、案例及重复序号、逐�
 6. 以后做 A/B 时隐去候选身份并打乱顺序，保留来源与时间标签；不得向用户暗示哪个是新版。
    阶段一只有基线，不伪造 A/B。
 
-当前已有 pytest 入口是 `tests/evaluation/test_real_model_behavior.py`；新 Discovery 入口创建后
-再在报告中记录其真实命令。不要把计划中的文件名写成现在已经能运行的命令。
+Discovery pytest 入口已建立为 `tests/evaluation/test_ask_quality_baseline.py`；正式命令、环境变量与
+本地 Artifact 目录见 [Evaluation README](../evaluation/README.md#ask-quality-discovery-baseline)。
 
 ## 7. P1-T5 — 归因与交接
 
@@ -300,30 +330,36 @@ Long-term Memory、回答约定、Agent 执行循环、模型行为、Provider /
 
 - **下跌原因：** 当前输入是否证明今日下跌、新闻是否相关、是否存在继续查询能力、是否把
   “无法确认唯一原因”扩展为“不作任何条件解释”。成本高于报价不证明当天跌幅。
-- **500 美元加仓：** 账户 Cash 与本轮预算如何区分；是否缺少确定性情景计算；缺少 confirmed
-  User Strategy State 是否导致全盘拒答；未知实际成交能力是否被错误扩展为无法讨论投资选择。
+- **500 / 200 美元加仓对照：** 账户 Cash 与本轮预算如何区分；`200 < 210.25` 的确定性数学与
+  碎股 / 订单能力是否被正确区分；缺少 confirmed User Strategy State 是否导致全盘拒答；未知
+  实际成交能力是否被错误提升为交易限制或提高预算等行动建议。
 
-建议阶段一真正执行时产出：
+阶段一产出：
 
-- `docs/evaluation/ask-quality-baseline.md`：Manifest、案例目录、评分表、覆盖与 Failure Map。
-- `docs/evaluation/reports/<date>-ask-quality-baseline.md`：已运行结果、样本数、重复波动、
-  人工校准、未运行项和原始记录位置。原始记录先做隐私检查，再决定是否进入 Git。
-- 必要的新增 Evaluation Cases / Fixtures；具体路径在实现时记录。
+- `docs/evaluation/ask-quality-baseline.md`：已生成 Manifest、案例目录、评分表、覆盖与冻结 Gate。
+- `docs/evaluation/reports/2026-09-15-ask-quality-baseline-qwen37max.md`：已记录真实运行、重复波动、
+  人工校准、正式评分、Failure Map、限制与交接。
+- `tests/evaluation/`：已新增 Ask Quality Cases、固定 Fixtures、Harness、Reporter 与相关测试。
 
-上述是待生成产物，不是本次文档任务已经完成的结果。
+正式结果由真实模型 artifacts 与 Human Review 支持，不以离线 Harness 检查代替。
 
 ## 8. 完成清单与交付记录
 
-- [ ] P1-T0：冻结版本、实际非敏感配置与能力清单。
-- [ ] P1-T1：约 20 个父场景、21 个执行变体覆盖五类需求，Fixture / 能力标签、
+- [x] P1-T0：冻结版本、实际非敏感配置与能力清单。
+- [x] P1-T1：约 20 个父场景、21 个执行变体覆盖五类需求，Fixture / 能力标签、
       `scenario_execution_scope` 与评分维度分开，预期行为与事实约束明确。
-- [ ] P1-T2：scenario_execution_scope 只含 FULL / DIAGNOSTIC；execution_status 单独记录 COMPLETED /
+- [x] P1-T2：scenario_execution_scope 只含 FULL / DIAGNOSTIC；execution_status 单独记录 COMPLETED /
       REQUEST_FAILED / NOT_RUN；capability_gap 与 Critical Failure Gate 分别记录；没有隐藏注入新能力，
       `NOT_RUN` / `NOT_EVALUATED` / `N/A` / `NOT_VERIFIABLE` 不作为 PASS。
-- [ ] P1-T3：无重叠的评分锚点、DIAGNOSTIC 局部评分、四组首页指标、Candidate 安全边界、
+- [x] P1-T3：无重叠的评分锚点、DIAGNOSTIC 局部评分、四组首页指标、Candidate 安全边界、
       Critical Failure Gate、耗时 / 用量记录方式确定。
-- [ ] P1-T4：执行可运行基线与五个可完整执行的关键重复，相关检查 / Review 完成，Rubric 人工
+- [x] P1-T4：执行可运行基线与五个可完整执行的关键重复，相关检查 / Review 完成，Rubric 人工
       校准后由开发方完成其余评分并标注 Reviewer。
-- [ ] P1-T5：失败证据和待验证假设可交给阶段二；未完成项与负责人 / 原因已记录。
+- [x] P1-T5：失败证据和待验证假设可交给阶段二；未完成项与负责人 / 原因已记录。
 
-执行日期、Run ID、报告位置、用户校准记录：**待填写**。
+Harness 实现日期：**2026-09-14**；当前正式真实运行日期：**2026-09-15**。Run ID：
+`ask-quality-baseline-qwen37max-20260915`。结果报告：
+[`docs/evaluation/reports/2026-09-15-ask-quality-baseline-qwen37max.md`](../evaluation/reports/2026-09-15-ask-quality-baseline-qwen37max.md)。
+此前 `qwen3.7-plus` 不完整运行作为 Reliability 事件保留。用户校准日期：**2026-09-15**；
+完整评分、Gate 与交接记录见正式结果报告。Phase 1 执行已完成，等待 Human Acceptance 后再合并
+本地 `main`。
