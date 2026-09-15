@@ -2,7 +2,8 @@
 
 ## 1. 状态与职责
 
-**Status:** DISCOVERY — DIRECTION APPROVED（2026-09-13）；各阶段尚未执行，不绑定 Milestone 或 Release。
+**Status:** DISCOVERY — Phase 1 HUMAN ACCEPTED（2026-09-15）；Phase 2 IN PROGRESS，不绑定
+Milestone 或 Release。
 
 **记录日期：** 2026-09-13。Human Review 已批准 M13 后的 Discovery 方向，并要求区分五类状态、
 收窄框架候选、独立评价四类选型及在阶段四设置 4A / 4B 检查点；本版落实这些意见。
@@ -158,13 +159,14 @@ capability gap 不靠重复采样证明。报告波动而不只展示最好结�
 
 ## 7. 当前下一步与记录规则
 
-下一次进入执行时，从阶段一的 P1-T0 开始，先核验 Repository 状态与评测入口；本次没有运行
-基线、进行选型、新增依赖或修改 Production。阶段二可先整理待决策清单，最终方案须引用基线证据。
+阶段一已完成并通过 Human Acceptance。当前从阶段二的 P2-T0 开始，以正式基线整理
+待决策清单、最小设计与 Decision Proposal；本阶段不新增生产依赖、不运行 Migration、
+不更换 Runtime / Provider，也不改 Production 行为。
 
 执行时逐项填写阶段计划中的状态与产物位置；未运行的检查、缺失的成本数据、未获批的决策
 明确保留为未完成。不要在报告中回填虚构结果。
 
 M10、M12 与 V2 保持现有 Roadmap 状态。新的正式 Milestone、实施 Plan、ADR 与 Release Mapping
-在所需 Human Review 与 Spike 证据具备后再创建。当前文档任务不创建 Branch 或 Commit。
+在所需 Human Review 与 Spike 证据具备后再创建。阶段二使用独立 Branch 记录文档与评审结果。
 评审所说的“V2 级别变化”描述潜在架构影响，不等于将本 Discovery 改名 V2、批准 V2 Release，
 或启动 Roadmap 中的 Connected Product。方向性评审已通过，后续不重复请求批准同一方向。

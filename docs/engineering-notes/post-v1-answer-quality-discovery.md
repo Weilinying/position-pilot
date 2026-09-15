@@ -36,4 +36,6 @@ Framework 负责执行与状态保存适配，PositionPilot 拥有 portfolio / s
 
 Critical Failure Gate 将虚构来源、错误 Portfolio / cash / budget、未经确认把 Strategy / Long-term Memory 提升为有效状态、覆盖有效记录或用于后续决策，以及复用失效 / 已删除策略等关键错误判为当次 Case FAIL，不能被平均分或其他重复成功抵消。按获批规则生成但保持 `PENDING`、不参与决策的 Candidate 本身不是关键失败。阶段一以 scope=FULL / DIAGNOSTIC 表示目标场景能否完整测试，以 execution_status 表示实际是否运行成功；DIAGNOSTIC 保留适用维度的局部评分但不进入完整场景质量。报告首页固定展示能力覆盖率、完整场景回答质量、请求成功率与 Critical Failure 次数；后续实现验收修复后重测。
 
+2026-09-15 基线将两类系统性硬错误冻结为 Gate：关键事实前提未被当前证据确认仍当真继续分析；交易执行能力为 UNKNOWN 时仍给出确定执行限制或资金建议。可解决且对结论重要的 UNKNOWN 应优先研究；不可解决时保留 UNKNOWN 并给明确条件分支。Search Capability 指 Runtime 实际提供的自定义搜索、Native Web Search、Page Fetch 或 Multi-round Research Loop；模型训练知识不是 Search。缺少能力进 Capability Coverage，不因未使用不存在的能力单独扣 Research Sufficiency。
+
 具体顺序与前两阶段指导见 [Discovery 执行路线](../plans/ask-quality-discovery.md)。方向批准及文档修订不表示阶段已执行。“V2 级别”仅描述架构影响，Release Mapping 仍未决定。

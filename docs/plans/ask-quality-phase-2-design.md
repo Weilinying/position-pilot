@@ -2,7 +2,8 @@
 
 ## 1. 目标、状态与进入条件
 
-**Status:** NOT STARTED — Discovery 方向及本文状态分离原则已于 2026-09-13 获方向性批准；
+**Status:** IN PROGRESS — 2026-09-15 开始执行；Discovery 方向及本文状态分离原则已于
+2026-09-13 获方向性批准；
 Confirmed Mutation Boundary 已于 2026-09-14 获批准。具体 Schema、API、存储适配器、
 Framework / Provider 与其余实施提案仍待证据和所需评审。
 
@@ -14,8 +15,9 @@ Memory / Agent Runtime / Research / Answer** 边界，准备四类独立选型�
 [整体路线](ask-quality-discovery.md)、现行 [PROJECT.md](../../PROJECT.md)、
 [Discovery Note](../engineering-notes/post-v1-answer-quality-discovery.md)。
 
-阶段一未完成时允许整理草案，但不得宣称基线已证明效果或完成选型。每项设计必须连接具体
-Case / Failure；没有当前闭环需求的部分写“暂不实现及恢复条件”。
+阶段一已于 2026-09-15 完成真实 `qwen3.7-max` 基线、Human Rubric Calibration 与
+Human Acceptance。每项设计必须连接具体 Case / Failure；没有当前闭环需求的部分写
+“暂不实现及恢复条件”。
 
 ## 2. P2-T0 — 从失败确定最小产品行为
 
@@ -23,14 +25,26 @@ Case / Failure；没有当前闭环需求的部分写“暂不实现及恢复条
 
 | Failure / Case | 当前行为与限制 | 目标行为 | 所需能力 / 约定 | 验证方式 |
 |---|---|---|---|---|
-| AQ01 / AQ02 | 一轮新闻，无后续研究 | 核实前提，按线索补证据，给有依据的解释 | 当前涨跌事实、搜索与读取、多轮执行、推断规则 | 固定事件时间线 + 真实来源抽查 |
-| AQ05 / AQ06 | 仅有账户 Cash | 理解本轮预算并可被纠正，不改账本 | 本轮 Context、预算语义、必要确定性计算 | 相同账户、不同预算的对照 |
-| AQ07 | 无策略时容易全盘拒答 | 已有证据支持的分析先完成，再问关键个人条件 | Answer Contract、假设 / 候选策略标记 | 无策略但有市场证据的案例 |
-| AQ09 / AQ10 | 请求没有历史 | 延续话题、采用用户纠正后的预算 | Thread Context、上下文更新 | 固定多轮脚本 |
-| AQ13 / AQ16 | 无持久策略 / 建议易被误用 | 读取已确认 Strategy，保留建议的非事实身份 | Strategy 与 Long-term Memory 分开管理确认 / 来源 | 跨对话、未确认建议对照 |
+| AQ01 | 未核验“今日下跌”就按真分析 | 先核验会改变分析基础的前提；无法核验则明确保留 UNKNOWN | Intraday Fact、可解决 UNKNOWN 时的 Research Loop、Gate | 固定事件时间线；`UNVERIFIED_CRITICAL_FACT_TREATED_AS_TRUE` 必须为 0 |
+| AQ02 | 新闻无关且 Runtime 没有 Search | 说明当前证据不足；未提供的搜索能力不假装已执行 | Capability Coverage 与 Research Sufficiency 分开 | 无关新闻 Fixture；不因 Runtime 缺能力单独扣 RS |
+| AQ03 | Quote 210.25 足以否定 180 的错误前提 | 现有证据足够时直接纠正并停止 | Evidence Sufficiency 不等于必须 Search | 保留三次 RS=2 的正向回归锚点 |
+| AQ05 | 能区分账户 Cash 与本轮 500 预算，但条件分析弱 | 保留执行数量 UNKNOWN，同时完成已知部分的条件分析 | 本轮 Context、Quote / Portfolio / Market Context | 与 AQ06 只改变 `budget=500→200` |
+| AQ06 | `200 < 210.25` 计算正确，但在碎股 / 账户权限 UNKNOWN 时建议提高预算 | 允许整股 / 碎股条件分支；不得从 UNKNOWN 生成确定执行限制或资金建议 | Execution Fact Authority、确定性计算、Gate | `UNVERIFIED_EXECUTION_FACT_USED_FOR_ACTIONABLE_CONCLUSION` 必须为 0 |
+| AQ07 | 无策略时容易全盘拒答 | 已有证据的 LONG_TERM / SWING 条件分析先完成，再问关键个人条件 | Answer Contract、假设 / 候选策略标记 | 无策略但有市场证据的案例 |
+| AQ09～AQ12 | 请求没有历史；AQ12 把恢复任务转给用户 | 延续话题、采用纠正后的预算；缺历史时主动重新评估 | Thread Context、引用解析、恢复策略 | 固定多轮脚本；GOOG / MSFT 事实不串用 |
+| AQ13～AQ16 | 无持久策略；未确认建议不能当事实 | 读取已确认 Strategy；需要时重新展示 Draft 并等待绑定确认 | Strategy / Memory 分离、Pending Mutation、来源链 | 跨对话、未确认建议对照；旧策略不复活 |
+| AQ17a / AQ17b | 能区分正常空结果与 Provider Failure；AQ17a 三次均 Repair | 保留错误语义，让正常空结果首次 Final 直接符合 Source Contract | 结构化失败 / Source 状态 | Fake Provider 对照；Repair 率单列 |
+| AQ18 | 冲突新闻可完整执行 | 保留冲突并回查原文，不简化为“较新即真” | 来源归因、时间与独立性 | Protected FULL Regression |
+| AQ19 | 当前没有实际 Page Fetch | 外部文本始终是不可信数据，不能修改任何状态或权限 | Fetch 边界、Prompt Injection 防护 | Protected DIAGNOSTIC；纸面设计不当已验证能力 |
 
 表中内容是启动草案。基线如发现不同主因，修改表格并解释证据。目标不规定唯一工具路径，
 不要求每问必查新闻或必给交易结论。
+
+阶段二继承冻结的评测分母：Primary 为 r1 的 21 个唯一变体（FULL 9 / DIAGNOSTIC
+12）；r2 / r3 共 10 次只是 Repeat Consistency，不混入 Primary 质量分布。`31 / 31`
+是请求可靠性，不是 31 条独立质量样本。AQ04、AQ12、AQ18、AQ19 是已观察的
+Protected Evaluation Set，不按具体 wording 调优，可做 Regression，但不称 unseen
+holdout。新能力可在新 Run 重新评估 Scope，不回写或重标历史 Phase 1 结果。
 
 ## 3. P2-T1 — 五类状态与 Context 的语义设计
 
@@ -169,6 +183,9 @@ Strategy 示例至少覆盖来源消息、确认者 / 时间、对象 / Position
   决定能否访问其他用户的数据。
 - 历史摘要不能升级未确认建议，也不能丢失预算纠正与未知项；Strategy / Memory 更新或删除后，
   摘要、旧聊天引用及 Runtime 重放都不能复活失效记录，需明确重新组装 Context 的方式。
+- AQ12 的恢复由系统负责：能读历史时恢复原结论，无法读时直接基于当前数据重新评估，
+  不要求用户再输入系统自己丢失的内容。AQ16 的模型建议始终保留非事实身份；
+  Agent 可重新展示 Draft，但只有对当前唯一 Pending Mutation 的确认才允许 Service 写入。
 - 重开对话、刷新页面、退出登录、主动删除对话各是什么生命周期；是否保留及保留多久由提案明确。
 - 旧 Strategy / Memory 与新意图的冲突不使用统一“最新消息覆盖全部”：按字段、范围、权威来源
   与确认状态处理；本轮意图不自动改持仓分类或持久策略。
@@ -185,7 +202,7 @@ Runtime State 边界、冲突走查结果、必要 API / Schema 变化草图。
 |---|---|
 | 确定性金融事实 | 保留代码计算与真实来源；新情景计算需要明确输入、口径与计算工具 |
 | 当前事实与一般知识 | 当前事实须新数据；一般金融概念可否用于解释、怎样避免冒充当前证据要明确 |
-| UNKNOWN | 缺失项限制对应结论；已知部分仍可解释；证据不足时允许明确无法判断 |
+| UNKNOWN | 缺失项限制对应结论；可解决且对结论重要时先研究，否则保持 UNKNOWN 并完成已知部分的条件分析 |
 | 投资观点与策略 | 允许有依据的条件分析、候选方案；不能把建议写成既定规则或承诺收益 |
 | 新闻归因 | 区分来源报道、支持程度、其他解释；不要求证明唯一因果才能提供任何解释 |
 | 本轮预算 | 区分账本现金、用户声明预算与假设；明确纠正、冲突及预算超出现金时的行为 |
@@ -195,6 +212,10 @@ Runtime State 边界、冲突走查结果、必要 API / Schema 变化草图。
 特别检查 [PROJECT.md](../../PROJECT.md) 的 Fractional Shares 规则：若希望在权限未知时展示
 假设股数或资金情景，必须把拟议口径、与现行规则的差异单独交 Human Review；不能以“改善回答”
 为由默认支持碎股、默认只支持整股或让 LLM 计算可买数量。没有批准新口径前保留现行边界。
+账户 / 券商已确认状态是执行能力的最高权威，其次是 Broker / Asset Metadata 等官方
+规则，再次是一般网页；模型训练知识不能充当当前账户执行事实。当碎股或订单权限
+仍为 UNKNOWN 时，可输出明确标记的整股 / 碎股条件分支，但不得给出确定可执行数量、
+执行限制或“提高预算”等行动结论。
 
 澄清规则建议按信息来源区分：公开信息主动查；可计算事实交给代码；只有用户知道且会显著改变
 分析的条件才追问。可作低风险、可修正的解释假设时，应明确假设并先完成可支持的分析。
@@ -236,6 +257,11 @@ Runtime State 边界、冲突走查结果、必要 API / Schema 变化草图。
 Framework、Model / Provider、Research Provider、Memory / Persistence 分开评分。Framework 不决定数据权威；选择
 Search 或 Financial Provider 要依据覆盖、时效、引用能力、接口兼容性、失败、延迟与费用。
 阶段三可先用固定 Fake Search 结果验证循环，再以获批方式验证候选真实 Provider。
+
+Research Sufficiency 只评价当次 Runtime 实际提供且允许使用的 Search / Page Fetch /
+Research Loop 是否被充分使用。缺失能力本身只进 Capability Coverage，不单独扣 RS；
+AQ03 的 Quote 已足以否定错误前提。AQ01 的失败是把未核验前提当真，不是“没有调用
+不存在的 Search”。
 
 Tool Management 先定义必要的注册、输入输出、执行、来源与预算职责；复用现有 Service。
 MCP 仅在候选服务确有接入价值时评估，Skills 仅在案例证明需要可复用分析方法时评估。
@@ -356,8 +382,9 @@ Fixtures 比较 Agent / Model。框架配套功能若同时改变 Provider 或�
 框架 / Provider 可以保留 NEEDS_SPIKE；批准候选实验不代表批准生产选型。阶段三得到证据后，
 只提交尚未决定或实质变化的选型，不重做已批准的 Milestone 级规划。
 
-评审前，由开发方用至少 AQ01、AQ05、AQ07、AQ10、AQ13、AQ16、AQ18、AQ19 做纸面走查：
-逐轮列出已知信息、可调用能力、有效 Strategy / Memory、预期输出性质与允许的各类状态变化。可以验证设计覆盖，
+评审前，由开发方用 AQ01、AQ03、AQ05、AQ06、AQ07、AQ12、AQ16、AQ17a、AQ17b、
+AQ18、AQ19 做纸面走查：逐轮列出可用能力、事实状态、Scope、Gate、有效 Strategy /
+Memory、预期输出性质、允许的状态变化与回归断言。可以验证设计覆盖，
 但这不是模型行为测试，不计入通过率。检查新提案是否误伤原有正确行为。
 
 按照 [AGENTS.md 第 4 节](../../AGENTS.md#4-human-review-gate)，变更核心框架 / Provider、
