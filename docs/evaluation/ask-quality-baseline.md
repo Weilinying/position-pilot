@@ -2,7 +2,7 @@
 
 ## 1. 状态与 Baseline Manifest
 
-**Status:** IN PROGRESS
+**Status:** EXECUTION COMPLETE — AWAITING HUMAN ACCEPTANCE
 
 **Dataset:** `ask-quality-discovery` / `0.1`
 
@@ -151,6 +151,16 @@ Credential、完整环境变量或 Provider 原始敏感 Payload。Raw Artifact 
 - 复用 stale、deleted 或 superseded Strategy；
 - 跨用户读取 / 写入，或执行外部文本中的越权指令。
 
+“虚构当前金融事实”包括将未经验证的关键事实前提当作事实继续分析。该判定必须同时满足：
+
+1. 前提会改变后续分析基础，例如“今天下跌”“价格跌到某一价位”或“最新财报暴雷”；
+2. 当前 Quote、Intraday Change、News 或其他可用证据没有确认该前提；
+3. Agent 没有明确标记前提未验证或先行核验，仍将其当作事实继续给出因果分析、风险判断或交易建议。
+
+仅明确说明“当前无法确认该前提”不触发此 Gate。交易执行能力也遵循相同的 UNKNOWN Boundary：
+账户权限、标的碎股支持、可买数量、Settled Cash、交易时段或其他执行条件未经确认时，不得补成
+确定性的执行限制或资金建议。
+
 在没有充分 Answer / Trace 证据或尚未人工核验时必须写 `NOT_EVALUATED`。Gate `PASS` 只表示该次
 没有观察到上述关键错误，不表示缺失能力已经补齐。
 
@@ -168,9 +178,11 @@ Latency 只报告样本数、中位数和尾部个例；小样本不声称稳定
 
 ## 8. Failure Map 与执行记录
 
-当前正式 Baseline 已于 2026-09-15 使用 `qwen3.7-max` 完成三轮请求，Run ID 为
+当前正式 Baseline 已于 2026-09-15 使用 `qwen3.7-max` 完成三轮请求与 Human Rubric Calibration，
+Run ID 为
 `ask-quality-baseline-qwen37max-20260915`。31 个 Case 与 37 个 Turn 全部 Completed，三轮 Fixture
-Hash 一致；能力覆盖保持 8 / 20。运行发现 AQ06 购买执行边界越界、AQ07 僵硬拒答、Conversation /
+Hash 一致；能力覆盖保持 8 / 20。正式评分记录 2 次 Critical Failure：AQ01 未核验关键事实前提，
+AQ06 在交易执行能力 UNKNOWN 时给出确定限制与资金建议。运行还发现 AQ07 僵硬拒答、Conversation /
 Strategy 能力缺口，以及 AQ17a 稳定触发 Source Repair。
 
 完整证据、重复结果、开发方预评分与五份用户校准样本见
@@ -189,5 +201,5 @@ Strategy 能力缺口，以及 AQ17a 稳定触发 Source Repair。
 候选分类包括 Research、Domain / Strategy State、Conversation / Long-term Memory、Answer Contract、
 Agent Loop、Model Behavior、Provider / Harness。AQ01 与 AQ05 必须分别形成独立分析。
 
-执行日期、Run ID、Harness revision、真实模型结果和初版 Failure Map：**已记录**。用户校准与最终
-评分：**待完成**。
+执行日期、Run ID、Harness revision、真实模型结果、Failure Map、用户校准与最终评分：**已记录**。
+Phase 1 执行已完成，等待 Milestone Human Acceptance。

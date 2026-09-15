@@ -148,10 +148,11 @@ Fixtures 和 Evaluation Rules，并保持工作区干净。
 
 ## V1 Scope Boundary
 
-M13 后的 Answer Quality Discovery 方向于 2026-09-13 获批，使用独立的 [整体路线](../plans/ask-quality-discovery.md) 与 [阶段一基线计划](../plans/ask-quality-phase-1-baseline.md)。新案例分别覆盖 Domain / Strategy / Conversation / Long-term Memory / Runtime 行为；Runtime、Model / Provider、Research Provider、Memory / Persistence 分开评分，4A 与 4B 分别留存评测证据。新集以 scope=FULL / DIAGNOSTIC 表示目标场景能否完整测试，以 execution_status 的 COMPLETED / REQUEST_FAILED / NOT_RUN 表示实际执行结果；DIAGNOSTIC 保留适用维度的局部评分，但不进入完整场景质量。报告首页展示能力覆盖率、完整场景回答质量、请求成功率与 Critical Failure 次数。Critical Gate 对关键事实 / 来源错误、未经确认把 Strategy / Long-term Memory 提升为有效状态、覆盖有效记录、用于后续决策或复用失效策略记 FAIL；保持 `PENDING` 且不参与决策的 Candidate 本身不触发。当前 Dataset `1.0`、历史结果和运行入口保持原义。
+M13 后的 Answer Quality Discovery 方向于 2026-09-13 获批，使用独立的 [整体路线](../plans/ask-quality-discovery.md) 与 [阶段一基线计划](../plans/ask-quality-phase-1-baseline.md)。新案例分别覆盖 Domain / Strategy / Conversation / Long-term Memory / Runtime 行为；Runtime、Model / Provider、Research Provider、Memory / Persistence 分开评分，4A 与 4B 分别留存评测证据。新集以 scope=FULL / DIAGNOSTIC 表示目标场景能否完整测试，以 execution_status 的 COMPLETED / REQUEST_FAILED / NOT_RUN 表示实际执行结果；DIAGNOSTIC 保留适用维度的局部评分，但不进入完整场景质量。报告首页展示能力覆盖率、完整场景回答质量、请求成功率与 Critical Failure 次数。Critical Gate 对关键事实 / 来源错误、未经确认把 Strategy / Long-term Memory 提升为有效状态、覆盖有效记录、用于后续决策或复用失效策略记 FAIL；保持 `PENDING` 且不参与决策的 Candidate 本身不触发。未经证据确认的关键事实前提，只有在 Agent 未标记未验证或先行核验、仍将其当真继续给出因果分析、风险判断或交易建议时触发 Gate Fail。当前 Dataset `1.0`、历史结果和运行入口保持原义。
 
 Ask Quality Dataset `0.1`、固定 Fixture、能力标签、Reporter 与真实模型 opt-in 入口已经实现；当前
-状态是离线检查完成、真实 Baseline 与人工 Rubric Calibration 待执行。阶段一仍不修改 Production
+`qwen3.7-max` 正式 Baseline、关键重复与 Human Rubric Calibration 已完成，结果见
+[2026-09-15 正式报告](reports/2026-09-15-ask-quality-baseline-qwen37max.md)。阶段一没有修改 Production
 Prompt、路由、工具或 State 能力。
 
 以下能力推迟到 V1 完成后再评估：Large-scale Dataset、Paraphrase / Prompt Variation、Adversarial Evaluation、Historical Market Scenario Dataset、Investment Backtesting、Statistical Confidence Analysis、Automated LLM-as-a-Judge、Large-scale Regression Benchmark、Latency / Token / Cost Optimization Benchmark、Recommendation Consistency Benchmark 与 Multi-model Ensemble Evaluation。
