@@ -3,7 +3,8 @@
 ## 1. 目标、状态与进入条件
 
 **Status:** NOT STARTED — Discovery 方向及本文状态分离原则已于 2026-09-13 获方向性批准；
-具体 Schema、API、存储适配器、Framework / Provider 与实施提案仍待证据和所需评审。
+Confirmed Mutation Boundary 已于 2026-09-14 获批准。具体 Schema、API、存储适配器、
+Framework / Provider 与其余实施提案仍待证据和所需评审。
 
 目标：用阶段一证据明确 **Domain State / Strategy State / Conversation Context / Long-term
 Memory / Agent Runtime / Research / Answer** 边界，准备四类独立选型评分与后续实现。
@@ -46,6 +47,44 @@ Case / Failure；没有当前闭环需求的部分写“暂不实现及恢复条
 | Long-term Memory | 反复出现、但不适合固定策略字段的长期偏好 / 背景 | 独立候选、确认、来源、过期与 Retrieval；不得作为结构化策略事实的替身 |
 | Agent Execution State | 一次 Run 的 tool call、observation、next action 与执行状态 | Runtime 内部状态；可按需求持久化 / 恢复，但不进入产品 Memory |
 
+**Confirmed Mutation Boundary：Ask 可以提出状态变更，但不能自行使状态生效。** 任何会改变
+Domain State、Strategy State 或有效 Long-term Memory 的操作，都必须经过明确的目标解析、
+结构化草案、影响展示、用户确认和对应业务服务的确定性校验；只有业务服务成功提交后，Agent
+才能声明更新完成：
+
+```text
+识别变更
+→ 生成结构化草案
+→ 展示将改变的目标、范围与值
+→ 用户确认当前唯一的 Pending Mutation
+→ Domain / Strategy / Memory Service 校验并提交
+→ Agent 返回实际提交结果
+```
+
+Confirmation 必须绑定一个明确、当前且唯一的 Pending Mutation，而不是绑定一组硬编码肯定词。
+`嗯`、`可以`、`确认`、`保存吧` 等回复只有在上一条系统消息明确展示了即将保存的内容，且当前
+不存在多个可能目标时，才可能确认该 Pending Mutation。用户的确认只授权该 Candidate 已展示的
+operation、scope 与字段，不构成对其他推断、派生字段或后续变更的授权。候选已过期、已被替代、
+存在多个候选或指代不清时必须重新确认。
+
+Mutation 按影响分为三个层级，不能因为都从对话发起就共用一套宽松写入规则：
+
+| 层级 | 示例 | 生效边界 |
+|---|---|---|
+| Conversation-only update | “这次最多投 500”、本轮 ticker / 意图纠正 | 当前 Thread Context 生效；不写持久业务状态，不需要持久化确认 |
+| Persistent semantic update | Strategy、有效 Long-term Memory | `PENDING` Candidate → 明确确认 → 对应 Service 写入；Strategy 与 Memory 仍分开建模 |
+| Financial fact mutation | 已发生的 DEPOSIT / WITHDRAWAL、BUY / SELL Ledger Transaction、现有 Position Reconciliation；`CashReconciliation` 为 Deferred 且当前没有 Command | 更严格的结构化草案、影响展示与确认；只能调用获批的 Domain Command，并通过确定性校验，不触发订单或券商操作 |
+
+金融事实草案必须包含对应 Domain Command 所需的确定字段。Cash Event 至少明确 event type、金额与
+已确认的 `occurred_at`；用户也可以明确授权“按现在记录”。时间未知且用户没有授权使用当前时间时
+不得写入不可变 Ledger。BUY / SELL 同样只记录用户确认的已发生交易，不把讨论中的建议变成成交事实。
+
+Pending Mutation 的逻辑信息至少能够表达 `candidate_id`、state / operation、scope、拟议字段、
+origin、source turn、status，以及更新已有记录时的目标版本或替代关系；确认后保留 confirmer、
+confirmation turn 与时间。`origin=AGENT_PROPOSAL → confirmed_by=USER` 与用户主动声明必须能够区分。
+这些是 Contract 草图，不预先决定共用表、具体 Schema 或由框架拥有 Candidate；未确认 Candidate
+不得进入后续决策 Context，也不得覆盖有效记录。
+
 Hypothesis / Model Proposal 是作者与可信状态标记，不是混合存储以上五类事实的第六个通用库。
 可能原因、候选行动与模型建议先留在本轮 Context / Run 中。用户表达若符合未来获批的 Candidate
 Contract，可以由业务服务生成 `PENDING` Candidate 供确认；未经明确确认，不得提升为可用于决策
@@ -79,9 +118,15 @@ PositionPilot 负责 portfolio / strategy / memory truth、source / confirmation
 2. “以后每月计划投入 500 美元。”——Strategy Record 候选；不代表未来资金已经入账。
 3. “GOOG 是我的长期配置。”——确认其适用范围；不能仅凭聊天自动重分类现有 Lot。
 4. “这次我想做短线。”——可能只改变本次意图，不能默认否定全部长期 Thesis。
-5. 模型说“可以考虑分批”，用户只回复“嗯”。——提案必须明确何种行为算确认，不能默认接受。
+5. 模型说“可以考虑分批”，用户只回复“嗯”。——这里只表示接受回答，不确认保存；只有 Agent
+   随后展示一条明确、当前、唯一的 Pending Mutation 并说明确认后的影响，用户的直接肯定回复才
+   能绑定并确认该 Candidate，不按固定关键词列表判断。
 6. “忘掉之前那条分批计划。”——通过 Strategy Service 删除 / 失效该记录；明确旧聊天、摘要与存档的处理方式。
-7. “其实账户现金只有 500。”——与账本冲突；指出冲突并进入已有事实维护流程，Ask 不直接改账本。
+7. “其实账户现金只有 500。”——先区分 `current-turn budget = 500`、`cash balance = 500` 与
+   `deposit = 500`。本轮预算只更新 Conversation Context；明确的实际入金可在结构化确认后调用
+   现有 Cash Event Service，但草案必须包含已确认的金额和发生时间，或取得“按现在记录”的明确
+   授权；余额校准不能伪造成 DEPOSIT / WITHDRAWAL。Ask 只能发起已有 Domain Command 支持的维护
+   流程，不能覆盖账本、绕过 Domain Service，或在 CashReconciliation 尚未获批时假装已完成校准。
 8. “我长期仓最大允许回撤 15%。”——confirmed strategy 候选；明确回撤基准、范围和单位后确认，
    不能让模型替用户决定基准，更不能将规则直接作为已发生回撤的事实。
 9. “我最近似乎更偏向回调买入。”——软性 Long-term Memory 候选；不是已确认的价格阈值或交易规则。
@@ -91,12 +136,19 @@ PositionPilot 负责 portfolio / strategy / memory truth、source / confirmation
 - **Strategy：** 提取结构化草案 → 可选持久化为 `PENDING` Candidate → 校验字段 / 口径 → 用户明确
   确认 → 版本化有效业务记录；更新绑定原记录与确认来源，旧版本被替代、失效或删除后不作为
   有效策略读取。模型可提议变更，但 Candidate 存储、确认与有效记录写入都由 PositionPilot 的
-  业务服务处理。
+  业务服务处理。Agent 提案经用户采用后保留 `AGENT_PROPOSAL → USER_CONFIRMATION` 来源链，不能
+  改写成用户最初主动声明，也不能从确认的一条 accumulation plan 扩张出 risk budget、期限或
+  exit condition。
 - **Long-term Memory：** 软性背景候选 → 可选持久化为 `PENDING` → 用户确认 → 有效记忆；支持
   修订、删除、冲突与过期。不能从行为频率直接推断成已确认偏好，不能通过 Memory 更新间接改
   Strategy；未确认 Candidate 只用于确认流程，不进入后续决策 Context。
 - **Conversation / Runtime：** 分别定义 Thread 与单次 Run 的生命周期；重启恢复的执行
   Checkpoint 不自动成为用户长期记忆，原始消息不自动等于当前有效策略。
+
+`CashReconciliation` 只记录为独立 Domain Open Question，不纳入 Phase 2 或 4B 的实现范围。
+后续提案必须单独决定它表达 target balance 还是 adjustment delta、对 cash flow / 收益口径的影响、
+Replay 顺序以及 correction / invalidation 语义，并按核心金融计算与 Domain Model 变化进入 Human
+Review。没有该获批能力时，Agent 不得为了匹配用户声称的当前余额而伪造 DEPOSIT / WITHDRAWAL。
 
 Strategy 示例至少覆盖来源消息、确认者 / 时间、对象 / Position Type、类型化值 / 单位、
 版本、有效范围与替代关系；Long-term Memory 示例独立覆盖内容、来源、确认、适用范围与有效性。
@@ -208,6 +260,7 @@ MCP 仅在候选服务确有接入价值时评估，Skills 仅在案例证明需
 | Long-term Memory | 阶段五按真实需要管理软性长期背景 | 不作为 4A / 4B 前置条件；没有独立需求可暂缓 |
 | Research | 一个获批搜索边界及必要页面读取，复用现有金融工具 | 不预设通用浏览器、全市场数据平台或全部 Financial Providers |
 | 产品体验 | Answer、来源、必要研究进度及确认入口 | 不展示模型隐式思维链；展示动作、证据与结论调整 |
+| Mutation / Confirmation | Phase 2 定义 Confirmed Mutation Contract；4B 实现并验证 Strategy 路径 | 不在 Phase 2 实现通用写入平台或 CashReconciliation |
 
 表格是候选切片，最后范围必须回指阶段一最重要的案例。对 Strategy 的确认与版本、Long-term
 Memory 候选确认、API 的 Thread 身份、Session Ownership、存储、清理 / 删除与日志分别提出
@@ -221,7 +274,7 @@ Memory 候选确认、API 的 Thread 身份、Session Ownership、存储、清�
 | Checkpoint | 开启的能力 | 评测及进入下一步的证据 |
 |---|---|---|
 | 4A — Ask Runtime / Research Loop | Conversation History、本轮 budget / context、Open Search + Page Fetch、多轮 Tool Loop | 固定 Eval 核验研究、指代、预算、部分失败与回答修正；记录未启用持久 Strategy / Long-term Memory |
-| 4B — Minimum Persistent Strategy | confirmed strategy read / update、来源 / 确认 / 版本、correction / invalidation、cross-session retrieval | 连续 Ask Eval 与跨 Session 对照，确认状态持久化、纠正后新回答改变、旧策略不复活 |
+| 4B — Minimum Persistent Strategy | confirmed strategy read / update、绑定唯一 Pending Mutation 的确认、来源 / 版本、correction / invalidation、cross-session retrieval | 连续 Ask Eval 与跨 Session 对照，确认状态持久化、确认范围不膨胀、纠正后新回答改变、旧策略不复活 |
 
 4A 完成固定评测并通过其范围内的 Critical Failure Gate 后再启用 4B。4B 对照固定 4A 的模型、
 Research Provider、市场 Fixture 与 Answer 约定，只新增必要 Strategy 接线 / Context 并记录差异。
@@ -324,6 +377,17 @@ Fixtures 比较 Agent / Model。框架配套功能若同时改变 Provider 或�
       Critical Failure Gate、验收阈值与待测量项明确。
 - [ ] P2-T5：案例走查、文档一致性检查与 Automated Review 完成；用户已审阅具体提案。
 
-提案位置、评审日期、已批准项、NEEDS_SPIKE 项、后续负责人：**待填写**。
+### 已确认设计原则（2026-09-14）
+
+- **ACCEPTED：** Confirmed Mutation Boundary；Ask 可以生成变更草案和发起确认，但只有对应业务
+  服务成功提交后才能声明生效。
+- **ACCEPTED：** Confirmation 绑定明确、当前、唯一的 Pending Mutation，不绑定固定肯定词；授权
+  仅覆盖已展示的 operation、scope 与字段。
+- **ACCEPTED：** Conversation-only、Persistent semantic、Financial fact mutation 使用不同生效
+  门槛；Agent Proposal 经用户确认后必须保留来源链。
+- **DEFERRED / OPEN DOMAIN DECISION：** CashReconciliation 不纳入 Phase 2 实现；不得用虚构 Cash
+  Event 代替，恢复时单独确定 Ledger / Accounting 语义并进入所需 Human Review。
+
+提案位置、其余评审日期、NEEDS_SPIKE 项、后续负责人：**待填写**。
 只有明确的决策与允许的后续范围已记录，才将阶段二标为完成；待选型项可以进入阶段三，
 但不能在没有选型证据与所需批准时进入生产替换。
