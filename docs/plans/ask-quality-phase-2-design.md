@@ -2,8 +2,8 @@
 
 ## 1. 目标、状态与进入条件
 
-**Status:** IN PROGRESS — 2026-09-15 开始执行；Discovery 方向及本文状态分离原则已于
-2026-09-13 获方向性批准；
+**Status:** IN PROGRESS — 设计与 Automated Review 已于 2026-09-15 完成，等待
+Human Review；Discovery 方向及本文状态分离原则已于 2026-09-13 获方向性批准；
 Confirmed Mutation Boundary 已于 2026-09-14 获批准。具体 Schema、API、存储适配器、
 Framework / Provider 与其余实施提案仍待证据和所需评审。
 
@@ -396,13 +396,14 @@ Memory、预期输出性质、允许的状态变化与回归断言。可以验�
 
 ## 8. 完成清单与交付记录
 
-- [ ] P2-T0：每个最小行为对应基线 Case / Failure，范围不依赖猜测。
-- [ ] P2-T1：五类状态分别归属，Strategy / Memory 分开建模、确认 / 版本 / 纠正 / 删除、读取与生命周期明确。
-- [ ] P2-T2：回答约定新旧差异、保留边界、三个合成回答示例完成。
-- [ ] P2-T3：Research Source Policy、执行 / Failure 语义、收窄候选与四类 Spike 验收表完成。
-- [ ] P2-T4：四类独立评分、4A / 4B 检查点、场景执行范围、等价实验、Candidate 安全边界、
+- [x] P2-T0：每个最小行为对应基线 Case / Failure，范围不依赖猜测。
+- [x] P2-T1：五类状态分别归属，Strategy / Memory 分开建模、确认 / 版本 / 纠正 / 删除、读取与生命周期明确。
+- [x] P2-T2：回答约定新旧差异、保留边界、三个合成回答示例完成。
+- [x] P2-T3：Research Source Policy、执行 / Failure 语义、收窄候选与四类 Spike 验收表完成。
+- [x] P2-T4：四类独立评分、4A / 4B 检查点、场景执行范围、等价实验、Candidate 安全边界、
       Critical Failure Gate、验收阈值与待测量项明确。
-- [ ] P2-T5：案例走查、文档一致性检查与 Automated Review 完成；用户已审阅具体提案。
+- [ ] P2-T5：案例走查、文档一致性检查与 Automated Review 已完成；
+      等待用户审阅具体提案。
 
 ### 已确认设计原则（2026-09-14）
 
@@ -415,6 +416,7 @@ Memory、预期输出性质、允许的状态变化与回归断言。可以验�
 - **DEFERRED / OPEN DOMAIN DECISION：** CashReconciliation 不纳入 Phase 2 实现；不得用虚构 Cash
   Event 代替，恢复时单独确定 Ledger / Accounting 语义并进入所需 Human Review。
 
-提案位置、其余评审日期、NEEDS_SPIKE 项、后续负责人：**待填写**。
+提案位置：[Phase 2 Decision Proposal](ask-quality-decision-proposal.md)。Automated Review 日期：
+**2026-09-15**；原始 P1 发现已修正。Human Review 日期与结果：**待填写**。
 只有明确的决策与允许的后续范围已记录，才将阶段二标为完成；待选型项可以进入阶段三，
 但不能在没有选型证据与所需批准时进入生产替换。

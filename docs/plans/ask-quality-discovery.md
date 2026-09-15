@@ -50,6 +50,7 @@ Milestone 或 Release。
 
 - [阶段一：基线与评测执行计划](ask-quality-phase-1-baseline.md)
 - [阶段二：最小设计与 Decision Proposal 执行计划](ask-quality-phase-2-design.md)
+- [Phase 2 Decision Proposal](ask-quality-decision-proposal.md)
 
 阶段二先明确五类状态。阶段四仍是一个阶段，内部顺序固定为 4A → 固定 Eval → 4B → 连续 Ask Eval：
 
