@@ -328,6 +328,7 @@ Long-term Memory、回答约定、Agent 执行循环、模型行为、Provider /
       校准后由开发方完成其余评分并标注 Reviewer。
 - [ ] P1-T5：失败证据和待验证假设可交给阶段二；未完成项与负责人 / 原因已记录。
 
-Harness 实现与真实运行日期：**2026-09-14**。Run ID：`ask-quality-baseline-20260914`。结果报告：
-[`docs/evaluation/reports/2026-09-14-ask-quality-baseline.md`](../evaluation/reports/2026-09-14-ask-quality-baseline.md)。
-用户校准记录：**待完成**。
+Harness 实现日期：**2026-09-14**；当前正式真实运行日期：**2026-09-15**。Run ID：
+`ask-quality-baseline-qwen37max-20260915`。结果报告：
+[`docs/evaluation/reports/2026-09-15-ask-quality-baseline-qwen37max.md`](../evaluation/reports/2026-09-15-ask-quality-baseline-qwen37max.md)。
+此前 `qwen3.7-plus` 不完整运行作为 Reliability 事件保留。用户校准记录：**待完成**。

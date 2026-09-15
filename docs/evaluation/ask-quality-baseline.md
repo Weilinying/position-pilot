@@ -168,13 +168,14 @@ Latency 只报告样本数、中位数和尾部个例；小样本不声称稳定
 
 ## 8. Failure Map 与执行记录
 
-真实 Baseline 已于 2026-09-14 使用 `qwen3.7-plus` 完成三轮请求，Run ID 为
-`ask-quality-baseline-20260914`。31 个 Case 尝试中 14 个 Completed、17 个 Request Failed；能力覆盖
-保持 8 / 20。运行发现间歇性 Authentication Failure、购买执行边界越界、僵硬拒答、Conversation /
-Strategy 能力缺口，以及随机 Transaction ID 导致 Fixture Hash 漂移的 Harness Failure。
+当前正式 Baseline 已于 2026-09-15 使用 `qwen3.7-max` 完成三轮请求，Run ID 为
+`ask-quality-baseline-qwen37max-20260915`。31 个 Case 与 37 个 Turn 全部 Completed，三轮 Fixture
+Hash 一致；能力覆盖保持 8 / 20。运行发现 AQ06 购买执行边界越界、AQ07 僵硬拒答、Conversation /
+Strategy 能力缺口，以及 AQ17a 稳定触发 Source Repair。
 
 完整证据、重复结果、开发方预评分与五份用户校准样本见
-[2026-09-14 Ask Quality Baseline Report](reports/2026-09-14-ask-quality-baseline.md)。每个主要失败按
+[2026-09-15 qwen3.7-max Baseline Report](reports/2026-09-15-ask-quality-baseline-qwen37max.md)。
+此前 `qwen3.7-plus` 不完整运行继续作为独立 Provider / Harness Failure 证据保留。每个主要失败按
 以下结构记录：
 
 ```text

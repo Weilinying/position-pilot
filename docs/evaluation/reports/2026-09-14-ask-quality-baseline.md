@@ -2,11 +2,16 @@
 
 ## 1. 状态
 
-**Status:** AWAITING HUMAN RUBRIC CALIBRATION
+**Status:** INCOMPLETE — SUPERSEDED AS QUALITY BASELINE
 
-真实模型运行与关键重复已经完成；正式 Human Rubric 分布、全部 Critical Gate 和最终 Failure Map
-要在五份代表性回答完成用户校准后冻结。本报告不修改 Production Prompt、Agent、Tool 或 Phase 2
-设计文档。
+本次 `qwen3.7-plus` 运行只完成 14 / 31 个 Case；失败均被 Adapter 归类为 Authentication Failure，
+具体 Provider / Credential 根因无法从 artifacts 独立确认。用户后续说明旧模型额度已经耗尽，该信息
+作为用户补充保留，不改写原始错误分类。本运行作为 Provider Reliability 与 Harness Failure 事件证据；
+2026-09-15 完成的 `qwen3.7-max` 三轮运行是当前正式质量基线，请使用
+[qwen3.7-max 报告](2026-09-15-ask-quality-baseline-qwen37max.md) 进行 Rubric Calibration。
+
+本报告中的旧模型预评分不再用于冻结正式 Rubric，也不与新模型回答质量统计混合。本报告不修改
+Production Prompt、Agent、Tool 或 Phase 2 设计文档。
 
 原始记录位于 Git 忽略目录：
 
