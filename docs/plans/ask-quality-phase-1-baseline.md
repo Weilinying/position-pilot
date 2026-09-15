@@ -4,7 +4,7 @@
 
 **Status:** EXECUTION COMPLETE — Dataset、固定 Fixtures、运行 Harness、`qwen3.7-max` 真实模型
 Baseline、Human Rubric Calibration、正式评分与 Failure Map 均已完成。方向性计划于 2026-09-13
-获批；当前等待 Milestone Human Acceptance，尚未合并到本地 `main`。
+获批；2026-09-15 已通过 Milestone Human Acceptance 并合并到本地 `main`。
 
 目标：把“回答僵硬”转成可复现的输入、可解释的能力缺口和可比较的质量评分，为阶段二设计提供
 依据。阶段一可以完成时，当前系统仍然表现差；完成标准是证据完整，不是先把分数修到通过。
@@ -361,5 +361,5 @@ Harness 实现日期：**2026-09-14**；当前正式真实运行日期：**2026-
 `ask-quality-baseline-qwen37max-20260915`。结果报告：
 [`docs/evaluation/reports/2026-09-15-ask-quality-baseline-qwen37max.md`](../evaluation/reports/2026-09-15-ask-quality-baseline-qwen37max.md)。
 此前 `qwen3.7-plus` 不完整运行作为 Reliability 事件保留。用户校准日期：**2026-09-15**；
-完整评分、Gate 与交接记录见正式结果报告。Phase 1 执行已完成，等待 Human Acceptance 后再合并
-本地 `main`。
+完整评分、Gate 与交接记录见正式结果报告。Phase 1 已于 2026-09-15 通过 Human Acceptance 并
+合并到本地 `main`。

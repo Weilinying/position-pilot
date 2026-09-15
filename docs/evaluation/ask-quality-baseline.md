@@ -2,7 +2,7 @@
 
 ## 1. 状态与 Baseline Manifest
 
-**Status:** EXECUTION COMPLETE — AWAITING HUMAN ACCEPTANCE
+**Status:** HUMAN ACCEPTED — 2026-09-15
 
 **Dataset:** `ask-quality-discovery` / `0.1`
 

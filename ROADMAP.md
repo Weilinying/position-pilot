@@ -491,7 +491,7 @@ TradingView Lightweight Charts 作为 Frontend Library 使用；其官方 Agent 
 
 **Status:** DISCOVERY — NO RELEASE COMMITMENT
 
-2026-09-13 Human Review 已批准 Discovery 方向，并要求区分五类状态、收窄 Runtime 候选、四类选型独立评分、阶段四设置 4A / 4B 检查点与 Critical Failure Gate。执行路线见 [Ask Quality Discovery 计划](docs/plans/ask-quality-discovery.md)：当前基线 → 最小设计 → Framework / Capability Spike → 完整 Ask 闭环 → Long-term Memory 完善 → 优化与验收。前两个阶段分别见 [基线与评测计划](docs/plans/ask-quality-phase-1-baseline.md) 和 [最小设计与 Decision Proposal 计划](docs/plans/ask-quality-phase-2-design.md)。各阶段尚未执行，具体 Framework / Provider、Schema / API 与 Release 尚未确定。
+2026-09-13 Human Review 已批准 Discovery 方向，并要求区分五类状态、收窄 Runtime 候选、四类选型独立评分、阶段四设置 4A / 4B 检查点与 Critical Failure Gate。执行路线见 [Ask Quality Discovery 计划](docs/plans/ask-quality-discovery.md)：当前基线 → 最小设计 → Framework / Capability Spike → 完整 Ask 闭环 → Long-term Memory 完善 → 优化与验收。前两个阶段分别见 [基线与评测计划](docs/plans/ask-quality-phase-1-baseline.md) 和 [最小设计与 Decision Proposal 计划](docs/plans/ask-quality-phase-2-design.md)。Phase 1 已于 2026-09-15 通过 Human Acceptance 并合并到本地 `main`；Phase 2 尚未开始，具体 Framework / Provider、Schema / API 与 Release 尚未确定。
 
 当前真实使用已经证明，Answer Quality 不是单独修改 Prompt 或增加一个 Context Tool 就能闭环的问题。Domain State 是确定性账本事实；User Strategy State 是结构化、可确认、可版本化的业务数据；Conversation State 是 Thread 上下文；Long-term Memory 只承载不适合固定字段的长期偏好 / 背景；Agent Execution State 属于单次 Run，不是产品 Memory。用户策略会影响同一市场事实应如何解释；开放 Web Search 可以扩大信息覆盖，也会引入来源、时效、冲突、引用、延迟、成本与 Prompt Injection 边界。Technical Context 只是其中一类输入。
 

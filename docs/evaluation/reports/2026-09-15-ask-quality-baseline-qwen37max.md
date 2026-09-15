@@ -2,13 +2,13 @@
 
 ## 1. 状态
 
-**Status:** PHASE 1 EXECUTION COMPLETE — AWAITING HUMAN ACCEPTANCE
+**Status:** PHASE 1 HUMAN ACCEPTED — 2026-09-15
 
 本报告是 Phase 1 当前正式质量基线。r1 的 21 个唯一变体构成 Primary Baseline；五个关键变体在
 r2 / r3 的 10 次额外执行只用于 Repeat Consistency。五份代表性回答已经完成用户校准，Rubric
 解释、正式评分、Critical Gate 和 Failure Map 均已冻结。31 / 31 仅表示全部执行的请求可靠性，
-不作为 31 条独立质量样本。本报告不修改 Production Prompt、Agent、Tool 或 Phase 2 设计文档；
-Phase 1 分支在 Human Acceptance 前不合并到 `main`。
+不作为 31 条独立质量样本。本报告不修改 Production Prompt、Agent、Tool 或 Phase 2 设计文档。
+Phase 1 已于 2026-09-15 通过 Human Acceptance 并合并到本地 `main`。
 
 先前 `qwen3.7-plus` 运行只完成 14 / 31 次 execution；失败均被 Adapter 归类为 Authentication Failure，
 具体 Provider / Credential 根因无法从 artifacts 独立确认。用户后续说明旧模型额度已经耗尽，该信息
@@ -379,8 +379,8 @@ State Authority 与条件式 Answer Contract，但本报告不选择实现方案
 Context、User Strategy State 与 Long-term Memory 不能完整执行；Provider-neutral Contract 未返回
 Token / Cost；三次重复只用于观察一致性，不声称统计稳定性。AQ04、AQ12、AQ18、AQ19 已经在
 Phase 1 被观察，只能称为 Protected Evaluation Set（No-direct-tuning，可继续用于 Regression），
-不能称为 unseen holdout；真正 unseen holdout 留待后续另建。Phase 1 分支等待 Human Acceptance，
-在此之前不合并到 `main`。
+不能称为 unseen holdout；真正 unseen holdout 留待后续另建。Phase 1 已通过 Human Acceptance 并
+合并到本地 `main`。
 
 | 未完成能力 / 后续实验 | 当前原因 | 后续负责人 / Gate |
 |---|---|---|
@@ -388,4 +388,4 @@ Phase 1 被观察，只能称为 Protected Evaluation Set（No-direct-tuning，�
 | Execution Fact Resolution 与条件式 Position Sizing | 标的 / 账户执行事实来源缺失 | Phase 2 设计与 Human Review |
 | Conversation Context 与 Strategy State 生命周期 | 当前 Ask API 不传递或持久化 | Phase 2 设计与 Human Review |
 | AQ17a Source Repair 稳定复现 | 空结果首次 Final 的 Source Ref 不满足 Contract | Phase 2 候选实验 |
-| Phase 1 合并到本地 `main` | 等待 Milestone Human Acceptance | 用户确认后由 Codex 执行 |
+| Phase 1 合并到本地 `main` | 已完成 | 2026-09-15 Human Acceptance 后合并 |
