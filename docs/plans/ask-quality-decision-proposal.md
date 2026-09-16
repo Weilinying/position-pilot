@@ -4,16 +4,16 @@
 
 **Status:** HUMAN REVIEW REQUIRED
 
-**日期：** 2026-09-15
+**日期：** 2026-09-15（2026-09-16 小范围修订）
 **依据：** [Phase 1 正式 Baseline](../evaluation/reports/2026-09-15-ask-quality-baseline-qwen37max.md)、
 [Phase 2 执行计划](ask-quality-phase-2-design.md)、[PROJECT.md](../../PROJECT.md) 与当前代码。
 
 本提案请求批准后续 Spike 与实施可以依赖的产品边界，不请求现在选择生产 Runtime、Model 或
 Research Provider，也不修改 Production。需要 Human Review 的具体事项是：
 
-1. 4A 使用服务端 Thread / Message，并采用新增而非破坏现有接口的 API 迁移方式；
+1. 4A 使用服务端 Thread / Message；具体 API 与迁移机制留待 Phase 3 / Implementation Plan；
 2. 4A 将开放 Search / Page Fetch 建成 PositionPilot 可观测的 Tool Boundary；
-3. 4B 使用独立、版本化的 Strategy Record 与 Pending Mutation，不写 Portfolio Ledger 或通用 Memory；
+3. 4B 使用独立的 Strategy State 与 Pending Mutation，不写 Portfolio Ledger 或通用 Memory；
 4. 继承已接受的 Critical Gate 定义，并将它们作为 4A / 4B 发布门槛；
 5. 允许 Phase 3 对 Current Runtime / Pydantic AI 以及 Native / Application-owned Research 做受控 Spike。
 6. 采用本文的 Execution Fact / Fractional Share Contract，但不预先批准某个
@@ -77,7 +77,7 @@ Authenticated Account
    └─ Current-turn Context（预算、ticker、意图与纠正）
 → Single Agent Runtime
 → Dedicated Financial Tools / Open Search / Page Fetch
-→ Source Registry + Evidence-aware Answer
+→ Observable Evidence / Source Boundary + Evidence-aware Answer
 → 可选 Pending Strategy Mutation（仅草案）
 → 用户确认当前唯一 Candidate
 → Strategy Service 校验并提交
@@ -100,18 +100,21 @@ UNKNOWN：GOOG 是否支持碎股、当前账户是否具备碎股权限。
 下一步：可继续查询标的 / 券商公开规则；账户专属权限仍需账户侧确认。
 ```
 
-执行事实的证据权威顺序为：当前账户 / Broker API 已确认状态 > Broker / Asset Metadata 官方规则 >
-一般网页 > 模型训练知识。低权威来源不能伪装成高权威账户事实。
+执行事实不得被简化为一个全局 `asset_fractionable` 属性。逻辑上至少要区分：
 
-4A 提出 `ExecutionCapabilityReader` 逻辑边界，Phase 3 分别验证现有 Asset Metadata、
-Broker 官方规则与可得账户状态能否填充 `asset_fractionable`、
-`account_fractional_permission`、最小金额 / 数量与交易时段等结构化字段。本 Track 不新增
-Broker Account 连接；没有可靠账户状态时，账户权限继续是 UNKNOWN。
+- Broker 是否支持 fractional trading；
+- 目标 ticker 是否在该 Broker 的 fractional eligibility 范围内；
+- 当前 Account 是否具备对应权限；
+- minimum notional / quantity、rounding 与其他 execution constraints。
 
-可买数量必须由确定性代码根据 budget、quote、已确认的 fractionable / account permission、
-minimum notional / quantity 与 rounding rule 计算，不交给 LLM。只有可执行前提被足够权威
-证据确认后，才能输出确定数量；若已确认只能整股，“购买一股需要的金额”可作为
-选项展示，但不得要求用户突破自己声明的预算上限。
+执行事实的证据权威顺序为：当前账户 / Broker API 已确认状态 > Broker 官方规则与
+标的 eligibility > 一般网页 > 模型训练知识。如果系统不知道用户使用哪个 Broker，
+Web Search 不能确认“该账户能否买 0.01 GOOG”；此时必须保持 UNKNOWN、给条件分析，
+如果 Broker 信息会实质改变结论，再向用户询问。
+
+可买数量只能在必要执行前提均被足够权威证据确认后，由确定性代码计算，
+不交给 LLM。Phase 2 只冻结这个 Execution Fact Contract；具体字段、接口和数据来源
+由 Phase 3 Spike 比较。本 Track 不新增 Broker Account 连接。
 
 ### 3.3 没有 Strategy 时仍应回答
 
@@ -162,229 +165,62 @@ AQ16 的默认路径是说明“目前没有 confirmed strategy”，并可重�
 | Long-term Memory | 独立 Memory Service（Phase 5） | 按需检索 confirmed、未过期记录 | 4A / 4B 不实现；不能替代 Strategy 或 Ledger |
 | Agent Execution State | 单次 Run / Runtime | 当前执行过程与可观测 Trace | 4A 不做 durable resume；不进入产品 Memory |
 
-同一 PostgreSQL 基础设施可以承载前三类持久状态，但必须使用不同模型、Repository 与 Service。
-不得创建把 Portfolio、Strategy、Conversation 和软性偏好混在一起的自由格式 `memory` 真相表。
+前三类持久状态可以复用现有基础设施，但逻辑边界、写入权限与 Source of Truth 必须分离；
+具体模型、Repository / Service 拆分由后续设计决定。不得创建把 Portfolio、Strategy、
+Conversation 和软性偏好混在一起的自由格式 `memory` 真相表。
 
 ### 4.2 Conversation 推荐方案
 
-**推荐：** 在现有 PostgreSQL 中增加服务端拥有的 Thread / Message；身份仍来自 HttpOnly Session，
-客户端不得提交 `user_id`。Thread 归属 Account，Context Builder 每次由 Account 解析当前
-`portfolio_user_id`，继续通过现有 Portfolio Service 获取 Domain State。
+**推荐边界：** Thread / Message 由服务端拥有，身份从当前 Session 解析，客户端不得
+提交 `user_id` 或自行上传完整历史代替服务端状态。Conversation、Strategy 与 Portfolio
+分别管理；Context Builder 只组合已授权、当前有效的输入。
 
-逻辑记录：
+4A 不持久化模型隐式思维链，也不把历史 tool result 当作当前金融事实重放。历史
+Answer 只用于显示与理解指代，当前 Quote / News / Market Context 仍按时效重新查询。
+本轮 budget、ticker 和意图纠正属于 Conversation Context，不覆盖账户 Cash 或持久 Strategy。
 
-```text
-InvestmentThread
-- id
-- account_id
-- status: ACTIVE | ARCHIVED | DELETED
-- created_at / updated_at
-
-InvestmentMessage
-- id / thread_id
-- role: USER | ASSISTANT
-- content
-- created_at
-- client_request_id（仅 USER，在 thread 内唯一）
-- answer_payload / source_snapshot（仅 ASSISTANT，必填）
-
-AskRun
-- id / user_message_id / status: RUNNING | COMPLETED | FAILED
-- failure_kind: AGENT_FAILURE | RUN_ORPHANED（仅 FAILED）
-- agent_failure_code（仅 AGENT_FAILURE，保留现有 InvestmentFailureCode）
-- started_at / completed_at
-- lease_expires_at
-- usage / latency / trace reference（可得则记录）
-```
-
-4A 不持久化模型隐式思维链，也不把 tool result 作为当前金融事实重放。历史 Answer / Source Snapshot
-只用于显示与理解指代，并带原始时间；需要当前事实时重新调用工具。当前预算、ticker 与意图从消息
-和纠正构造为本次 `ConversationContext`，带 source message id，不覆盖账户 Cash 或持久 Strategy。
-
-生命周期推荐为：刷新、退出登录和重新登录后保留；用户显式删除后立即从产品读取和 Context Builder
-排除。物理删除时限及审计保留属于隐私 / 运维政策，必须在 Phase 4A 实施前冻结，不默认
-无限保存，也不让客户端上传完整历史代替服务端状态。
-
-未完成 Portfolio Setup 的 Account 不允许创建 Thread；Thread / Message / Strategy /
-Candidate 接口统一复用现有 `PORTFOLIO_SETUP_REQUIRED` 语义。这避免出现无法绑定
-Domain Context 的孤立对话。
-
-Context Builder 只读完整的 USER → ASSISTANT Turn，不将跨 Turn 的 tool call / result 作为
-对话事实持久重放。`GET /threads/{thread_id}` 使用 cursor 分页；API page size、
-Context 的 message / token budget 与裁剪顺序在 Phase 3 测量后、Phase 4A 实施前冻结。
-裁剪不拆散一个完整 Turn，也不让历史 Answer 取代当前市场工具。
-没有 ASSISTANT Answer 的失败 USER Message 可在 UI 显示，但不进入模型历史或完整 Turn 分母。
-
-Conversation 幂等与事务顺序冻结为：
-
-1. 短事务校验 owner 与 `(thread_id, client_request_id)` 唯一性，创建 USER Message 与
-   `AskRun(status=RUNNING)` 后提交；
-2. LLM 与外部工具在数据库事务之外执行；
-3. 另一个短事务原子写入 ASSISTANT Answer、Source Snapshot 并将 Run 终结为
-   `COMPLETED`，或仅将 Run 终结为 `FAILED` 并保留原始 failure code；
-4. 重复的 `client_request_id` 返回原 Run 的当前 / 终态结果，不再调用 LLM 或 Tool。
-
-重复请求对应未过期 RUNNING 时返回 202 与同一 `run_id`；COMPLETED 时重放原 200 响应；
-FAILED 时重放原 failure code。失败的 USER Message 和 Run 保留用于对话可见性与审计，但
-Context Builder 将该不完整 Turn 排除，不伪造 Assistant Answer；用户主动重试使用新
-`client_request_id`。每次 Run 创建时写入与 wall-clock 上限一致的 lease；进程崩溃后，
-下一次读取或相同幂等键请求通过短事务将过期 RUNNING 终结为
-`FAILED/RUN_ORPHANED`，不自动重放 LLM / Tool。
-
-`AskRun` 是幂等、失败和可观测的最小持久元数据，不是可恢复的 Runtime
-checkpoint；`run_id` 是 correlation id，4A 不提供通用 Run Query / Resume API。
-
-Conversation 和 Strategy 分别引入专用 Service / Repository / Unit of Work Protocol，复用
-现有 SQLAlchemy Session Factory，但不向 `PortfolioUnitOfWork` 堆入 Thread / Strategy 方法。
-跨状态的组合读取由 Context Builder 协调，不改变 Ledger 事务边界。
+产品语义上，Thread 可跨刷新 / 重新登录恢复；用户删除后不再进入产品读取或
+Context。具体存储 Schema、Run 状态、幂等 / 崩溃恢复、分页 / 裁剪、物理删除、
+Repository / Unit of Work 和同步 / 异步 HTTP 语义，由 Phase 3 Spike 及后续 Implementation
+Plan 决定，不在 Phase 2 冻结。无论采用何种机制，都必须保留 owner 隔离、失败可观测、
+重试不重复产生外部副作用，以及失败 Turn 不伪造 Assistant Answer 的边界。
 
 ### 4.3 Strategy 推荐方案
 
-**推荐：** Strategy 归属 `portfolio_user_id`，按 ticker、可选 Position Type 与 Strategy Kind
-限定范围；它不修改现有 Lot 的 `LONG_TERM / SWING` 分类。
+**推荐边界：** Strategy 是 PositionPilot 拥有的结构化业务状态，与 Conversation 和
+Portfolio Ledger 分离。它必须能表达 owner、适用 scope、类型化值、当前有效性、版本 /
+替代关系、来源与确认链；但 Phase 2 不冻结表结构、枚举、ID、外键或删除实现。
 
-```text
-StrategyRecord
-- id / portfolio_user_id
-- ticker / position_type / scope
-- kind: ACCUMULATION_PLAN（4B 首个切片）
-- typed_value / unit
-- version
-- status: ACTIVE | SUPERSEDED | INVALIDATED
-- origin: USER_STATEMENT | AGENT_PROPOSAL
-- source_thread_id / source_message_id
-- confirmed_by_account_id / confirmed_at
-- supersedes_id
-
-PendingStrategyMutation
-- candidate_id / portfolio_user_id / thread_id
-- operation: CREATE | UPDATE | INVALIDATE
-- target_record_id / expected_version
-- proposed_fields / display_snapshot_hash
-- origin / source_message_id
-- status: PENDING | CONFIRMED | APPLIED | EXPIRED | CANCELLED | FAILED
-- expires_at / confirmed_by_account_id / confirmation_message_id / confirmed_at
-```
-
-4B 的最小 UI / API 只需要证明：读取有效策略、提出 Draft、展示影响、确认当前唯一 Candidate、更新 /
-替代 / 失效、跨 Session 读取，以及旧消息 / 摘要不复活旧版本。模型可以提出草案，只有 Strategy
-Service 能生成 Candidate、绑定 owner / expected version 并提交有效记录。
-
-4B 首个 Vertical Slice 推荐只实现 `ACCUMULATION_PLAN`，并用 `position_type` 表达该计划适用于
-LONG_TERM 还是 SWING；这直接覆盖 AQ13～AQ16 的“分批方案”与完整讨论链，同时避免再造一份持仓
-分类。`THESIS`、`RISK_BUDGET`、`EXIT_CONDITION` 等 Kind 等到各自口径和案例批准后再用 Migration
-增加，不在首版 Schema 预留不可写枚举。
-
-`position_type` 复用现有 `PositionType`；4B 的 `ACCUMULATION_PLAN` 必须明确为
-LONG_TERM 或 SWING，不接受 `UNSPECIFIED`。这个 scope 只限定 Strategy 的适用对象，不修改
-现有 Lot / Position 分类。
-
-用户说“删除 / 忘掉策略”在业务上执行 `INVALIDATE`：记录从 Effective Strategy 读取中立即消失，
-但保留最小 tombstone、版本与确认审计；Schema 不再增加语义重复的 `DELETED`。因此测试或 Gate 中的
-stale / deleted Strategy 均指已被 supersede / invalidate、不得再参与决策的记录。
-
-Thread 内容物理删除时，Strategy 审计链保留 source / confirmation id、时间与内容 hash，不保留已删除
-消息正文；外键采用允许保留 tombstone 的策略，不级联删除有效 Strategy。具体物理保留时限仍按
-Conversation 隐私决策在 4A 实施前冻结。
+4B 的最小产品闭环只需证明：读取已确认且当前有效的 Strategy，提出 Draft、展示影响、
+绑定用户确认，再由 Strategy Service 执行更新 / 替代 / 失效；跨 Session 可读，而旧消息、
+摘要或运行记录不能复活旧策略。首个 Vertical Slice 仍以“分批方案”覆盖
+AQ13～AQ16；其具体 Schema 与 API 由后续 Implementation Plan 决定。
 
 ### 4.4 Confirmed Mutation Invariants
 
-- 每个 Thread 同时最多一个可由自然语言“确认”解析的当前 Pending Mutation。
-- Strategy Service 还按 `(portfolio_user_id, ticker, position_type, kind)` 限定同一个可写
-  scope 的当前 Candidate；来自另一 Thread 的新 Candidate 必须显式取代旧候选。
-- UPDATE / INVALIDATE 必须绑定 target record 与 expected version；CREATE 在确认时也检查
-  同 scope 是否已出现新的 ACTIVE Record。
-- Confirmation 绑定 `candidate_id + display_snapshot_hash + expected_version`，不绑定固定肯定词。
+- Confirmation 必须绑定当前明确、唯一且已展示的 Pending Mutation，不绑定固定肯定词。
 - 用户确认只覆盖已展示 operation、scope 与字段；不授权派生字段或后续变化。
 - `AGENT_PROPOSAL → USER_CONFIRMATION` 来源链永久保留，不能重写成用户最初主动声明。
 - 未确认、过期、取消、失败的 Candidate 不进入决策 Context。
-- Apply 使用独立事务和幂等键；并发版本冲突返回待重新展示，而不是静默覆盖。
+- Strategy Service 必须防止过期或并发的 Candidate 静默覆盖当前有效记录。
 - External page、tool result、assistant message 都不能充当用户确认。
 
-CREATE Candidate 的 `expected_version=0` 表示确认时该 scope / kind 必须没有 ACTIVE
-Record，成功后创建 version 1；UPDATE / INVALIDATE 使用当前正整数 version。
-`display_snapshot_hash` 由服务端对 candidate id、operation、scope、target id、expected version、
-proposed fields 和 expiry 的规范化 JSON（字段排序、Decimal 字符串、UTC ISO-8601）做
-SHA-256；展示响应返回该 hash，确认时客户端只回传，不自行生成。
+Candidate 唯一性、并发保护、版本检查、幂等与确认绑定机制必须在实现时可独立测试；
+是使用 version、token、hash 或其他机制，由 Phase 3 / Implementation Plan 决定。
 
 `CashReconciliation`、BUY / SELL、Cash Event 与 Broker Order 不属于 4B。Ask 不能用 Strategy Mutation
 写入 Financial Fact，也不能用虚构 DEPOSIT / WITHDRAWAL 校准余额。
 
-## 5. Public API Proposal
+## 5. Public API Boundary
 
-### 5.1 推荐：新增 Thread API，保留旧接口过渡
+Phase 2 只冻结：新的连续对话必须由服务端 Thread / Message 身份承载，所有读写从
+Session 解析 owner 并拒绝跨 Account 访问；旧 `/v1/investment/questions` 在迁移期保持现有
+单问语义与响应兼容。响应不暴露隐式思维链，但必须能表达 Answer、已用来源、
+研究或工具失败、部分完成与可确认 Candidate。
 
-现行 `POST /v1/investment/questions` 只有 `{question}`。推荐新增接口并让现有前端迁移；旧接口在 4A
-期间继续提供独立单问语义，避免用可选 `thread_id` 让同一路径同时承担两套隐式生命周期。
-
-```http
-POST /v1/investment/threads
-{}
-
-201
-{"thread_id":"thr_...","status":"ACTIVE","created_at":"..."}
-```
-
-```http
-POST /v1/investment/threads/{thread_id}/messages
-{"question":"回到 GOOG，刚才结论要不要改？","client_request_id":"..."}
-
-200
-{
-  "thread_id":"thr_...",
-  "message_id":"msg_...",
-  "run_id":"run_...",
-  "status":"OK",
-  "answer":"...",
-  "sources":[...],
-  "tool_attempts":[{"tool":"recent_news","status":"NO_NEWS_FOUND","raw_status":"NO_NEWS_FOUND"}],
-  "research_status":"COMPLETE | PARTIAL | NOT_NEEDED",
-  "pending_mutation":null
-}
-```
-
-```http
-GET /v1/investment/threads/{thread_id}?cursor=...
-DELETE /v1/investment/threads/{thread_id}
-```
-
-正常首次 POST 在 Run 终结前保持请求；同一幂等键并发命中未过期 RUNNING 时：
-
-```http
-202
-{"thread_id":"...","message_id":"...","run_id":"...","status":"RUNNING"}
-```
-
-Run 终结为 FAILED 时，使用与现有 `InvestmentFailure` 对应的非 2xx HTTP 状态，
-同时返回 `thread_id` / `message_id` / `run_id` / `status=FAILED` / `failure_kind` /
-`agent_failure_code`。`RUN_ORPHANED` 是 Conversation 层新增的稳定 failure kind，HTTP 固定映射
-为 503，不伪装成现有 `InvestmentFailureCode`。同一
-`client_request_id` 只重放该结果；用户明确重试时使用新幂等键生成新 Message / Run。
-
-所有接口从 Session 解析 Account 并验证 owner；跨 Account 统一拒绝。`client_request_id` 仅用于一次
-消息追加 / Run 的幂等，不是业务身份。响应不暴露内部 chain of thought，只暴露已执行动作、来源、
-失败 / 部分完成状态和可确认 Candidate。
-
-ID 沿用项目 UUID 规则；示例中的 `thr_...` / `msg_...` 只是可读占位符，不是新的
-字符串 ID Contract。旧 `/v1/investment/questions` 请求 / 响应保持现有 JSON 精确兼容；
-新 Source Registry、`run_id` 与 `research_status` 只进 Thread API，直到旧路径单独走完
-deprecation / Human Review。
-
-4B 对 Candidate 的推荐接口为显式业务动作，而不是再发一句自由文本给模型决定写入：
-
-```http
-POST /v1/investment/strategy-candidates/{candidate_id}/confirm
-{"display_snapshot_hash":"...","expected_version":3}
-
-POST /v1/investment/strategies/{strategy_id}/invalidate
-{"expected_version":3,"client_request_id":"..."}
-```
-
-首次 CREATE 的同一接口传 `expected_version: 0`；服务端仍需重新检查 owner、scope 内
-ACTIVE Record / Candidate 与 hash，不把客户端回传值当授权边界。
-
-Ask 仍可理解自然语言确认，但必须先解析到当前唯一 Candidate，再调用相同 Strategy Service；没有唯一
-目标时不得提交。是否同时暴露独立 Strategy CRUD UI 可延后，不影响 4B 通过 Ask 验证最小闭环。
+4B 的确认 / 失效必须是 Strategy Service 的显式业务动作；自然语言确认也必须先解析到
+当前唯一 Pending Mutation，不得由模型直接写有效 Strategy。具体路径、payload、ID、幂等、
+同步 / 异步、失败码与迁移节奏由后续 API / Implementation Plan 决定，不在 Phase 2 锁定。
 
 ## 6. Research / Source Contract
 
@@ -403,77 +239,31 @@ Ask 仍可理解自然语言确认，但必须先解析到当前唯一 Candidate
 Search 能力且该事实可公开验证，Agent 应继续 Search / Fetch，而不是只依赖原 News Tool；但正常
 无结果、Provider Failure 和“Runtime 根本没有 Search”仍是不同状态。
 
-### 6.2 Application-owned Tool Boundary
+### 6.2 Observable Tool Boundary
 
-无论底层使用 Provider-native Search 还是自定义服务，PositionPilot 都只接受能映射到以下逻辑接口
-和可观测事件的方案：
+无论底层使用 Provider-native Search 还是 Application-owned Search / Fetch，PositionPilot
+都必须知道该能力是否被执行、取得了哪些来源、使用了多少预算，以及是正常空结果、
+Provider Failure、访问受限还是预算耗尽。Native Search 不是例外；模型不得在 Application
+不知情时联网，模型训练知识也不是 Search。
 
-```text
-SearchReader.search(query, scope, limit) -> SearchResult
-PageReader.fetch(source_id | url) -> PageResult
+现有 News Tool 的 `NO_NEWS_FOUND` 与 `PROVIDER_UNAVAILABLE` 继续保持不同语义；
+Answer 级汇总不得改写底层工具原始状态。具体接口、状态枚举、预算字段与
+Native / Application-owned Adapter 由 Phase 3 Spike 决定。
 
-status:
-  OK | NO_RESULTS | PROVIDER_UNAVAILABLE | ACCESS_RESTRICTED |
-  INVALID_REQUEST | BUDGET_EXHAUSTED
-```
+### 6.3 Source 与 Claim Binding
 
-Native Search 不是例外：Application 必须知道它是否执行、使用次数、返回来源和失败状态。不能让
-模型在 Application 不知情时联网，也不能把模型训练知识登记为 Search。
+来源边界必须能表达来源身份、URL / publisher / title、获取时间、可得的发布时间 /
+事件时间、实际读取范围与状态。摘要、全文、报道发布时间和事件发生时间必须分开，
+不能把只读到摘要说成已核对全文。模型不得自由生成未被当次运行取得和验证的来源。
 
-`OK` 与现有 `ContextSource.status=OK` 对齐。通用 `NO_RESULTS` 只适用于新的
-Search / Page Research Adapter；News Tool 继续以 `status=NO_NEWS_FOUND` 保留原始
-业务状态，不规范化为 `NO_RESULTS`。`PROVIDER_UNAVAILABLE` 也不得映射为二者。`research_status=COMPLETE |
-PARTIAL | NOT_NEEDED` 只是 Answer 级汇总，不替代 `tool_attempts[].raw_status`。
+**Claim-level Source Binding：** 关键外部事实、冲突事实与因果主张必须支持 claim-level /
+near-claim source binding。“回答总体使用了这些来源”不足以证明某个 claim 被对应来源支持；
+冲突主张还必须保留各自归属和未解状态。具体采用 inline citation、
+`claims[] -> source_ids[]` 或其他结构，以及来源身份、运行时 Registry 与持久化方式，
+由 Phase 3 Spike 验证，不在 Phase 2 锁定。
 
-### 6.3 Source Identity
-
-开放来源至少记录：
-
-```text
-source_id
-source_kind: PORTFOLIO | QUOTE | PRICE_HISTORY | NEWS | MARKET_CONTEXT |
-             SEARCH_RESULT | WEB_PAGE | OFFICIAL_FILING | BROKER_RULE
-external_id（可选；例如 NewsArticle.article_id）
-url / canonical_url
-provider / publisher / title
-published_at / event_at（可选且分开）
-fetched_at
-content_scope: SNIPPET | FULL_TEXT | PARTIAL_TEXT | METADATA_ONLY
-status
-query_id / fetch_id
-```
-
-Answer 的 claim 应引用本次 Source Registry 中实际成功取得的 source id。Source Reference 合法只证明
-“该来源被取得”，不自动证明自然语言主张被来源支持；关键事实与因果仍进入 Evidence Review。
-摘要、全文、报道发布时间和事件发生时间必须分开，不能把只读到摘要说成已核对全文。
-
-Source Contract 采用新旧版本隔离：旧 `/questions` 继续使用 `type + ticker` 的
-`SourceReference v1`；Thread API 使用含 `source_id` 的 v2，多个同 ticker 网页不合并。
-v2 Source Registry 的每条内部记录生成 UUID `source_id`，`source_kind` 必须与该 Registry
-记录一致。News 记录复用现有 `NewsArticle` 的字符串 `article_id`、URL、source 和时间元数据；
-`article_id` 写入 `external_id`，不冒充 Registry UUID，也不复制一套 News Domain。
-Portfolio / Quote / History / Market 由 adapter 生成当前 Run 的 Registry UUID。新旧
-Schema 的映射、`NewsStatus` / `MarketDataStatus` / `InvestmentFailureCode` 原始值都在
-tool attempt 中保留，不让通用汇总状态改写它们。
-
-Thread API 的 Structured Answer v2 最小 Schema 冻结为：
-
-```text
-StructuredInvestmentAnswerV2
-- answer: string
-- source_refs: SourceReferenceV2[]
-
-SourceReferenceV2
-- source_id: UUID
-- source_kind: PORTFOLIO | QUOTE | PRICE_HISTORY | NEWS | MARKET_CONTEXT |
-               SEARCH_RESULT | WEB_PAGE | OFFICIAL_FILING | BROKER_RULE
-```
-
-Model 只能从当前 Run 的 Source Registry 中选择 `source_id`，不能在 Final 中自由生成
-URL 或来源元数据。Application 在写入 Answer 前验证 id 存在、该 attempt 状态为
-`OK`、owner / run 相符，再将 Registry Metadata 展开为 API `sources`。空结果与失败只进
-`tool_attempts`，不伪造可引用 Source。v2 保留现有一次 Source Validation Repair 作为候选
-实验变量；AQ17 验收仍要求首次 Final 直接合法。
+旧 `/questions` 的 Source Contract 在迁移期保持兼容；新 Contract 不得放宽现有“空结果 /
+失败不伪造可引用 Source”与 AQ17 首次 Final 直接合法的验收边界。
 
 ### 6.4 安全与隐私
 
@@ -529,9 +319,10 @@ Pydantic AI 提供 [Web Search](https://pydantic.dev/docs/ai/capabilities/web-se
 
 ### 7.4 Persistence
 
-推荐继续使用现有 PostgreSQL、Repository / UoW 与 Alembic，不引入 Vector Database 或框架默认
-Memory Store。Conversation 与 Strategy 的具体 Migration 只能在本提案通过、实施计划和 Schema
-Review 完成后执行。Runtime checkpoint 不作为 4A / 4B 持久化需求。
+Phase 3 应优先评估复用现有 PostgreSQL 与 Migration 能力，不引入 Vector Database 或框架默认
+Memory Store。Conversation / Strategy 的存储模型、Repository / UoW、删除与 Migration 机制由
+Spike 和后续 Implementation Plan 决定，不在 Phase 2 冻结。Runtime checkpoint 不作为
+4A / 4B 持久化需求；若 Spike 发现必须引入新的核心基础设施，需重新进入 Human Review Gate。
 
 ## 8. Phase 3 Spike Plan
 
@@ -560,7 +351,7 @@ Responses 与当前可行的 Alibaba 原生路径，不假设它们等价。
 限制、Prompt Injection Fixture、raw artifact replay、失败映射、费用与 latency。
 
 **History / Persistence：** owner 隔离、server-side history、裁剪不拆散 tool call / result、删除后不
-进入 Context、Strategy expected version、重复确认幂等、旧版本不复活。
+进入 Context、Strategy 的 stale / concurrent update 保护、重复确认不重复提交、旧版本不复活。
 
 ### 8.3 预算冻结
 
@@ -612,16 +403,17 @@ Run 的 Scope，不修改 Phase 1 历史记录。
 | AQ20 | FULL Regression | `2/N/A/2/N/A/2/2` | 只问 Cash 时保持直接，无无意义 Tool |
 | AQ04 | DIAGNOSTIC Regression | 不低于 `1/1/2/2/2/1` | Protected；Repair 次数单列，不假装 Earnings 已得 |
 
-4A Target FULL 的 AU 和 CP 分别计算“2 分 Case 数 / 14”，两项都必须至少
-12 / 14（85.7%）；不排除低分 Case，不混入 Regression、Repeat、N/A 或 NV。全部
-4A Target FULL 的其他适用维度不得出现 0，并展示完整分布。
+4A Target FULL 的 AU 和 CP 继续展示“2 分 Case 数 / 14”；按上表逐 Case 最低分可推导两项
+均至少为 12 / 14（85.7%）。该比例只是汇总展示指标，不是额外独立发布门槛，也不能替代
+逐 Case 最低分、Repeat 每次通过与 Critical Gate `FAIL=0`。全部 4A Target FULL 的其他适用
+维度不得出现 0，并展示完整分布。
 
 ### 9.2 Checkpoint 4B
 
 - AQ13～AQ16 与完整讨论链可跨 Session 读取 confirmed Strategy。
 - AQ13 / AQ14 的最低分均为 `2/2/2/2/2/2`；AQ15 / AQ16 均为
   `2/N/A/2/2/2/2`。未确认建议始终不是有效 Strategy。
-- Create / Update / Invalidate、expected-version 冲突、重复确认、过期 Candidate、跨 Owner 访问、
+- Create / Update / Invalidate、stale / concurrent update 冲突、重复确认、过期 Candidate、跨 Owner 访问、
   old-message / summary replay 均有确定性测试。
 - 任一未经确认提升、确认范围膨胀、覆盖有效版本或复活 stale / deleted Strategy 均 Critical FAIL，
   阻止后续上线。
@@ -675,9 +467,9 @@ Run 的 Scope，不修改 Phase 1 历史记录。
 
 ## 11. Impact 与明确不做
 
-若后续获批并实施，将新增公开 API、Conversation / Strategy Domain Model、Repository、Migration、
-Context Builder、Research Provider Boundary 与多轮 Runtime；因此必须在实现计划中更新 API 测试、
-安全测试、ARCHITECTURE，并在最终选型后记录 ADR。
+若后续获批并实施，将影响 Public API、Conversation / Strategy State、Persistence、Context Builder、
+Research Boundary 与多轮 Runtime；具体实现形态由 Spike 与 Implementation Plan 决定。实施时必须
+同步更新相关 API / 安全测试与 ARCHITECTURE，并在最终选型后记录必要 ADR。
 
 本提案不改变 Portfolio Ledger、现金、Transaction、Average Cost、Position Type 或金融计算规则；
 不接券商下单，不实现 CashReconciliation，不持久化 Long-term Memory，不引入 Vector Database、
@@ -692,12 +484,12 @@ Multi-Agent、Durable workflow、Queue 或无限历史摘要，不展示模型�
 | Confirmation 绑定唯一 Pending Mutation | `ACCEPTED — 2026-09-14` | 不依赖肯定词，不扩大授权 |
 | AQ01 / AQ06 Critical Gate | `ACCEPTED — 2026-09-15` | Human Calibration 已冻结 |
 | Primary / Repeat / Protected 统计口径 | `ACCEPTED — 2026-09-15` | Phase 1 Human Acceptance 已冻结 |
-| 4A 服务端 Thread / Message + 新增 API | `PROPOSED — HUMAN DECISION` | 批准后进入 Schema / API 实施计划 |
-| Thread 保留 / 删除政策 | `PROPOSED — HUMAN DECISION` | 推荐跨登录保留、显式删除即排除；物理时限 Phase 3 冻结 |
-| 4A Application-owned Search / Fetch Contract | `PROPOSED — HUMAN DECISION` | 底层 Native / Custom 仍独立 Spike |
-| Execution Fact / Fractional Share Contract | `PROPOSED — HUMAN DECISION` | 数量由代码计算；不默认整股 / 碎股 |
-| Asset / Broker Metadata 与账户能力来源 | `NEEDS_SPIKE` | 只验证可靠来源；本 Track 不新接 Broker Account |
-| 4B Strategy Record / Pending Mutation Schema | `PROPOSED — HUMAN DECISION` | 推荐首切片只实现 Accumulation Plan |
+| 4A 服务端 Thread / Message Boundary | `PROPOSED — HUMAN DECISION` | Exact API、Run 与 Persistence mechanism 留待 Spike / Implementation |
+| Thread 保留 / 删除产品语义 | `PROPOSED — HUMAN DECISION` | 推荐跨登录保留、显式删除即排除；保留期与删除机制后续冻结 |
+| 4A 可观测 Search / Fetch Boundary | `PROPOSED — HUMAN DECISION` | 底层 Native / Application-owned 仍独立 Spike |
+| Execution Fact / Fractional Share Contract | `PROPOSED — HUMAN DECISION` | 区分 Broker、ticker、Account 与执行约束；不默认整股 / 碎股 |
+| Execution Fact 字段与可靠来源 | `NEEDS_SPIKE` | 本 Track 不新接 Broker Account；Broker 未知时保持 UNKNOWN |
+| 4B Strategy / Pending Mutation Boundary | `PROPOSED — HUMAN DECISION` | 推荐首切片验证 Accumulation Plan；Schema / API 后定 |
 | 4A / 4B Acceptance Contract | `PROPOSED — HUMAN DECISION` | 通过后冻结；候选结果出来后不得反向挑阈值 |
 | Current Runtime vs Pydantic AI | `NEEDS_SPIKE` | 二者以等价输入正式比较 |
 | Native vs Application-owned Research Provider | `NEEDS_SPIKE` | 必须验证来源、失败、预算、安全、费用 |
@@ -712,12 +504,12 @@ Multi-Agent、Durable workflow、Queue 或无限历史摘要，不展示模型�
 Human 可以直接回复“同意提案”，表示批准上述六项请求并允许进入 Phase 3 Spike 计划；也可以逐项
 修改。最可能需要调整的具体决策是：
 
-1. 是否接受新增 Thread API，而不是给旧 `/questions` 增加可选 `thread_id`；
-2. Thread 是否跨登录保留，以及用户删除后的物理删除政策何时冻结；
-3. 4B 首个可写 Strategy Kind 是否只包含 `ACCUMULATION_PLAN`，并用 Position Type 限定范围；
+1. 是否接受服务端拥有 Thread / Message，并让具体 API 与迁移机制进入 Phase 3 / Implementation；
+2. 是否接受 Thread 跨登录保留、显式删除后不再进入产品读取或 Context，而保留期与删除机制后定；
+3. 是否接受 4B 首个 Vertical Slice 只验证“分批方案”，而精确 Strategy Schema 与 scope 表达后定；
 4. 是否接受 4A / 4B 的关键 Case 最低分、100% Fixture Reliability 与零 Critical Fail；
 5. 是否允许 Phase 3 同时 Spike Alibaba Native 与 Application-owned Search / Fetch。
-6. 是否接受 Execution Fact / Fractional Share Contract，并在 Phase 3 独立验证可靠的
-   Asset / Broker Metadata 来源。
+6. 是否接受 Execution Fact Contract 区分 Broker 能力、ticker eligibility、Account 权限与
+   execution constraints，并在 Phase 3 决定字段和可靠数据来源。
 
 任何未明确批准的生产 Framework / Provider / Schema / API 变化都保持未授权。
