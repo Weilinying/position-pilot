@@ -467,13 +467,11 @@ Run 的 Scope，不修改 Phase 1 历史记录。
 
 ## 11. Impact 与明确不做
 
-若后续获批并实施，将影响 Public API、Conversation / Strategy State、Persistence、Context Builder、
-Research Boundary 与多轮 Runtime；具体实现形态由 Spike 与 Implementation Plan 决定。实施时必须
-同步更新相关 API / 安全测试与 ARCHITECTURE，并在最终选型后记录必要 ADR。
+若后续获批并实施，将影响 Public API、Conversation / Strategy State、Persistence、Context Builder、Research Boundary 与多轮 Runtime；具体实现形态由 Spike 与 Implementation Plan 决定。实施时必须同步更新相关 API / 安全测试与 ARCHITECTURE，并在最终选型后记录必要 ADR。
 
-本提案不改变 Portfolio Ledger、现金、Transaction、Average Cost、Position Type 或金融计算规则；
-不接券商下单，不实现 CashReconciliation，不持久化 Long-term Memory，不引入 Vector Database、
-Multi-Agent、Durable workflow、Queue 或无限历史摘要，不展示模型隐式思维链，也不安装生产插件。
+本提案不改变 Portfolio Ledger、现金、Transaction、Average Cost、Position Type 或金融计算规则；不接券商下单，不实现 CashReconciliation，不持久化 Long-term Memory，不引入 Vector Database、Durable Workflow、Queue 或无限历史摘要，不展示模型隐式思维链，也不安装生产插件。
+
+当前默认采用 Single Agent，不将 Multi-Agent 作为预设架构或本轮实施范围。若后续 Eval / Spike 证明存在明确的上下文隔离、专业化推理、独立并行任务或 Tool / Prompt overload，且这些问题无法通过 Single Agent + Deterministic Services / Tools 合理解决，再评估 manager + specialist、subagent 或其他 Multi-Agent 模式。
 
 ## 12. Decision Log
 
