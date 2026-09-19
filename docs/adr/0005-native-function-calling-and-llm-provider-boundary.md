@@ -11,6 +11,16 @@
 - 一次 No-Tool Repair 继续存在，但只处理非法 Structured Answer 或 Source Reference；不再由自然语言 Financial Claim Guard 触发。
 - 当前一个 Tool Round 最多四次调用，支持 Quote、Price History、Recent News 与 Market Context；M6 同时加入当前 Positions 的有界历史 BUY Facts。下文“三次 Quote”和“不包含 Transaction History”保留为 M3 当时的历史决策背景。
 
+## Provider Independence Audit（2026-09-19）
+
+- `LLMProvider`、Message、Tool、Completion 与 Structured Answer Contract 继续保持 Provider-neutral；
+  Agent / Domain 不读取 OpenAI-compatible 原始 JSON。
+- Integration 使用薄 `OpenAICompatibleLLMProvider`；Alibaba Adapter 只负责隔离其
+  `enable_thinking` 扩展。`LLM_PROVIDER`、Base URL、Credential、Model 与 Timeout 可独立配置。
+- `LLMResult` 统一携带可得的 Provider、Model、Latency、Response ID 与 Token Usage；缺失 Usage
+  保持不可用，不估算。不同 Provider 的 Tool / JSON / Reasoning 差异仍由 Adapter 与真实 Spike
+  验证，不进入 Portfolio、Strategy 或 Research 业务逻辑。
+
 ## 背景
 
 M3 需要完成第一个 Stateful Investment Vertical Slice，让 Single Investment Agent 读取 Portfolio Snapshot、按需获取 Current Quote，并生成个性化回答。`PROJECT.md` 已确定 V1 使用 Single Investment Agent；M3 仍需选择最小 Agent Orchestration 方式与初始 LLM Integration，同时避免具体 Provider 或 Model 进入核心业务边界。

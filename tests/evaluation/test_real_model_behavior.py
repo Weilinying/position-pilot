@@ -1,4 +1,4 @@
-"""使用真实 Aliyun LLM 与固定 Context 的 V1 Behavioral Evaluation。"""
+"""使用真实 OpenAI-compatible LLM 与固定 Context 的 V1 Behavioral Evaluation。"""
 
 import json
 import os
@@ -72,7 +72,11 @@ from position_pilot.domain.portfolio import (
     User,
     rebuild_portfolio,
 )
-from position_pilot.integrations.aliyun_llm import AliyunLLMProvider
+from position_pilot.integrations.aliyun_llm import (
+    ALIYUN_MODEL_STUDIO,
+    AliyunLLMProvider,
+    OpenAICompatibleLLMProvider,
+)
 
 DATASET_VERSION = "1.0"
 EVALUATION_PROVIDER = "ALIYUN_MODEL_STUDIO"
@@ -199,7 +203,8 @@ def create_evaluation_run_metadata(
         run_id = f"eval-{timestamp}-{run_suffix_factory()}"
     return EvaluationRunMetadata(
         dataset_version=DATASET_VERSION,
-        provider=EVALUATION_PROVIDER,
+        provider=values.get("LLM_PROVIDER", EVALUATION_PROVIDER).strip().upper()
+        or EVALUATION_PROVIDER,
         model=values.get("LLM_MODEL", DEFAULT_EVALUATION_MODEL),
         git_revision=revision_reader() or UNKNOWN_GIT_REVISION,
         run_id=run_id,
@@ -1432,20 +1437,32 @@ def test_routing_completion_is_excluded_from_final_json_metrics() -> None:
     assert metrics["repair_count"] == 0
 
 
-def create_real_llm() -> AliyunLLMProvider:
+def create_real_llm() -> OpenAICompatibleLLMProvider:
     """只从显式 Process Environment 创建真实 Adapter，不读取仓库 .env。"""
 
     api_key = os.getenv("LLM_API_KEY")
     if not api_key:
         pytest.skip("LLM_API_KEY 未配置")
-    return AliyunLLMProvider(
+    provider_name = os.getenv("LLM_PROVIDER", EVALUATION_PROVIDER).strip().upper()
+    base_url = os.getenv(
+        "LLM_BASE_URL",
+        "https://dashscope.aliyuncs.com/compatible-mode/v1",
+    )
+    model = os.getenv("LLM_MODEL", DEFAULT_EVALUATION_MODEL)
+    timeout_seconds = float(os.getenv("LLM_REQUEST_TIMEOUT_SECONDS", "30"))
+    if provider_name == ALIYUN_MODEL_STUDIO:
+        return AliyunLLMProvider(
+            api_key=api_key,
+            base_url=base_url,
+            model=model,
+            timeout_seconds=timeout_seconds,
+        )
+    return OpenAICompatibleLLMProvider(
+        provider_name=provider_name,
         api_key=api_key,
-        base_url=os.getenv(
-            "LLM_BASE_URL",
-            "https://dashscope.aliyuncs.com/compatible-mode/v1",
-        ),
-        model=os.getenv("LLM_MODEL", DEFAULT_EVALUATION_MODEL),
-        timeout_seconds=float(os.getenv("LLM_REQUEST_TIMEOUT_SECONDS", "30")),
+        base_url=base_url,
+        model=model,
+        timeout_seconds=timeout_seconds,
     )
 
 

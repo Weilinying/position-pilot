@@ -98,6 +98,7 @@ def test_settings_uses_configurable_generic_llm_defaults(
     settings = Settings(_env_file=None)  # type: ignore[call-arg]
 
     assert str(settings.llm_base_url) == ("https://dashscope.aliyuncs.com/compatible-mode/v1")
+    assert settings.llm_provider == "ALIYUN_MODEL_STUDIO"
     assert settings.llm_model == "deepseek-v4-pro-0813"
     assert settings.llm_api_key is None
 
@@ -110,12 +111,14 @@ def test_settings_reads_llm_api_key_as_secret(monkeypatch: pytest.MonkeyPatch) -
         "postgresql+psycopg://position_pilot:secret@localhost:5432/position_pilot",
     )
     monkeypatch.setenv("LLM_API_KEY", "llm-secret")
+    monkeypatch.setenv("LLM_PROVIDER", " openai ")
     monkeypatch.setenv("LLM_MODEL", " replacement-model ")
 
     settings = Settings(_env_file=None)  # type: ignore[call-arg]
 
     assert settings.llm_api_key is not None
     assert settings.llm_api_key.get_secret_value() == "llm-secret"
+    assert settings.llm_provider == "OPENAI"
     assert settings.llm_model == "replacement-model"
     assert "llm-secret" not in repr(settings)
 

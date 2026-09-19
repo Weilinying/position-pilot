@@ -3,6 +3,7 @@
 from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import StrEnum
+from math import isfinite
 from typing import Protocol
 
 
@@ -121,16 +122,66 @@ class LLMCompletion:
 
 
 @dataclass(frozen=True, slots=True)
+class LLMUsage:
+    """Provider-neutral Token Usage。"""
+
+    input_tokens: int
+    output_tokens: int
+    total_tokens: int
+
+    def __post_init__(self) -> None:
+        values = (self.input_tokens, self.output_tokens, self.total_tokens)
+        if any(
+            isinstance(value, bool) or not isinstance(value, int) or value < 0
+            for value in values
+        ):
+            raise ValueError("LLM Usage 必须是非负整数")
+
+
+@dataclass(frozen=True, slots=True)
+class LLMResponseMetadata:
+    """一次 Provider 调用的通用可观测元数据。"""
+
+    provider: str
+    model: str
+    latency_ms: float
+    usage: LLMUsage | None = None
+    response_id: str | None = None
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.provider, str) or not self.provider.strip():
+            raise ValueError("LLM Provider 名称不能为空")
+        if not isinstance(self.model, str) or not self.model.strip():
+            raise ValueError("LLM Model 名称不能为空")
+        if (
+            isinstance(self.latency_ms, bool)
+            or not isinstance(self.latency_ms, (int, float))
+            or not isfinite(self.latency_ms)
+            or self.latency_ms < 0
+        ):
+            raise ValueError("LLM Latency 必须是非负数")
+        if self.usage is not None and not isinstance(self.usage, LLMUsage):
+            raise ValueError("LLM Usage 类型无效")
+        if self.response_id is not None and (
+            not isinstance(self.response_id, str) or not self.response_id.strip()
+        ):
+            raise ValueError("LLM Response id 必须是非空字符串或 None")
+
+
+@dataclass(frozen=True, slots=True)
 class LLMResult:
     """明确区分成功 Completion 与 LLM Provider Failure。"""
 
     status: LLMStatus
     completion: LLMCompletion | None
     error_message: str | None
+    metadata: LLMResponseMetadata | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.status, LLMStatus):
             raise ValueError("LLM Result status 无效")
+        if self.metadata is not None and not isinstance(self.metadata, LLMResponseMetadata):
+            raise ValueError("LLM Result metadata 类型无效")
         if self.status is LLMStatus.OK:
             if self.completion is None or self.error_message is not None:
                 raise ValueError("OK Result 必须只包含 completion")
@@ -141,18 +192,27 @@ class LLMResult:
             raise ValueError("Failure Result 必须包含安全错误消息")
 
     @classmethod
-    def success(cls, message: LLMMessage) -> "LLMResult":
+    def success(
+        cls,
+        message: LLMMessage,
+        metadata: LLMResponseMetadata | None = None,
+    ) -> "LLMResult":
         """创建成功结果。"""
 
-        return cls(LLMStatus.OK, LLMCompletion(message), None)
+        return cls(LLMStatus.OK, LLMCompletion(message), None, metadata)
 
     @classmethod
-    def failure(cls, status: LLMStatus, message: str) -> "LLMResult":
+    def failure(
+        cls,
+        status: LLMStatus,
+        message: str,
+        metadata: LLMResponseMetadata | None = None,
+    ) -> "LLMResult":
         """创建不携带伪造 Completion 的失败结果。"""
 
         if status is LLMStatus.OK:
             raise ValueError("failure 不能使用 OK status")
-        return cls(status, None, message)
+        return cls(status, None, message, metadata)
 
 
 class LLMProvider(Protocol):

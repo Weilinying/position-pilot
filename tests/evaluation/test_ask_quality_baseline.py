@@ -40,13 +40,19 @@ from ask_quality_harness import (
 from position_pilot.application.llm import (
     LLMMessage,
     LLMResponseFormat,
+    LLMResponseMetadata,
     LLMResult,
     LLMRole,
     LLMStatus,
     LLMToolCall,
     LLMToolDefinition,
+    LLMUsage,
 )
-from position_pilot.integrations.aliyun_llm import AliyunLLMProvider
+from position_pilot.integrations.aliyun_llm import (
+    ALIYUN_MODEL_STUDIO,
+    AliyunLLMProvider,
+    OpenAICompatibleLLMProvider,
+)
 
 
 @dataclass(slots=True)
@@ -54,6 +60,7 @@ class RecordingLLM:
     """记录每次独立请求收到的消息，并返回固定合法 Answer。"""
 
     calls: list[tuple[LLMMessage, ...]] = field(default_factory=list)
+    usage: LLMUsage | None = None
 
     def complete(
         self,
@@ -65,17 +72,24 @@ class RecordingLLM:
         """返回只声明 Portfolio Snapshot 的固定 Structured Answer。"""
 
         self.calls.append(messages)
+        message = LLMMessage(
+            LLMRole.ASSISTANT,
+            json.dumps(
+                {
+                    "answer": "固定回答。",
+                    "source_refs": [{"type": "PORTFOLIO_SNAPSHOT"}],
+                },
+                ensure_ascii=False,
+            ),
+        )
+        metadata = (
+            LLMResponseMetadata("FIXED", "fixed-model", 1.0, self.usage)
+            if self.usage is not None
+            else None
+        )
         return LLMResult.success(
-            LLMMessage(
-                LLMRole.ASSISTANT,
-                json.dumps(
-                    {
-                        "answer": "固定回答。",
-                        "source_refs": [{"type": "PORTFOLIO_SNAPSHOT"}],
-                    },
-                    ensure_ascii=False,
-                ),
-            )
+            message,
+            metadata,
         )
 
 
@@ -278,6 +292,7 @@ def test_metadata_records_versions_hashes_and_unknown_git(tmp_path: Path) -> Non
             "EVAL_RUN_ID": "fixed-run",
             "EVAL_REPETITION_INDEX": "2",
             "LLM_MODEL": "fixed-model",
+            "LLM_PROVIDER": "openai",
             "LLM_BASE_URL": "https://user:secret@example.test/compatible/v1?token=hidden",
             "LLM_REQUEST_TIMEOUT_SECONDS": "45",
         },
@@ -287,6 +302,7 @@ def test_metadata_records_versions_hashes_and_unknown_git(tmp_path: Path) -> Non
     assert metadata.run_id == "fixed-run"
     assert metadata.repetition_index == 2
     assert metadata.model == "fixed-model"
+    assert metadata.provider == "OPENAI"
     assert metadata.production_revision == PRODUCTION_BEHAVIOR_REVISION
     assert metadata.harness_revision == "UNKNOWN"
     assert metadata.llm_base_url == "https://example.test/compatible/v1"
@@ -351,6 +367,22 @@ def test_execution_records_fixed_tool_result_and_declared_source() -> None:
     assert attempts == [{"name": "get_current_quote", "ticker": "GOOG", "status": "OK"}]
     sources = cast(list[dict[str, object]], turn["sources"])
     assert {source["type"] for source in sources} == {"PORTFOLIO_SNAPSHOT", "CURRENT_QUOTE"}
+
+
+def test_execution_aggregates_provider_usage_without_guessing_missing_values() -> None:
+    """每次 Completion 都有 Usage 时才写入 Case 汇总。"""
+
+    record = execute_case(
+        CASES_BY_ID["AQ20"],
+        RecordingLLM(usage=LLMUsage(11, 7, 18)),
+        LLMResponseFormat.TEXT,
+    )
+
+    assert record["usage"] == {
+        "input_tokens": 11,
+        "output_tokens": 7,
+        "total_tokens": 18,
+    }
 
 
 def test_summary_keeps_coverage_reliability_quality_and_gate_separate(tmp_path: Path) -> None:
@@ -460,16 +492,29 @@ def ask_quality_reporter() -> Iterator[AskQualityReporter]:
     reporter.finalize()
 
 
-def _real_llm() -> AliyunLLMProvider:
+def _real_llm() -> OpenAICompatibleLLMProvider:
     """只从当前进程环境创建真实 Adapter，不读取 Repository `.env`。"""
 
-    return AliyunLLMProvider(
-        api_key=os.getenv("LLM_API_KEY"),
-        base_url=os.getenv("LLM_BASE_URL", DEFAULT_LLM_BASE_URL),
-        model=os.getenv("LLM_MODEL", DEFAULT_EVALUATION_MODEL),
-        timeout_seconds=float(
-            os.getenv("LLM_REQUEST_TIMEOUT_SECONDS", DEFAULT_LLM_TIMEOUT_SECONDS)
-        ),
+    provider_name = os.getenv("LLM_PROVIDER", ALIYUN_MODEL_STUDIO).strip().upper()
+    api_key = os.getenv("LLM_API_KEY")
+    base_url = os.getenv("LLM_BASE_URL", DEFAULT_LLM_BASE_URL)
+    model = os.getenv("LLM_MODEL", DEFAULT_EVALUATION_MODEL)
+    timeout_seconds = float(
+        os.getenv("LLM_REQUEST_TIMEOUT_SECONDS", DEFAULT_LLM_TIMEOUT_SECONDS)
+    )
+    if provider_name == ALIYUN_MODEL_STUDIO:
+        return AliyunLLMProvider(
+            api_key=api_key,
+            base_url=base_url,
+            model=model,
+            timeout_seconds=timeout_seconds,
+        )
+    return OpenAICompatibleLLMProvider(
+        provider_name=provider_name,
+        api_key=api_key,
+        base_url=base_url,
+        model=model,
+        timeout_seconds=timeout_seconds,
     )
 
 

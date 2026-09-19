@@ -49,6 +49,7 @@ from position_pilot.application.llm import LLMProvider, LLMResponseFormat
 from position_pilot.domain.portfolio import CashBalance, PortfolioState
 
 EVALUATION_PROVIDER = "ALIYUN_MODEL_STUDIO"
+EVALUATION_PROVIDER_ENV = "LLM_PROVIDER"
 DEFAULT_EVALUATION_MODEL = "deepseek-v4-pro-0813"
 DEFAULT_LLM_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 DEFAULT_LLM_TIMEOUT_SECONDS = "30"
@@ -366,7 +367,8 @@ def create_run_metadata(
         dataset_id=DATASET_ID,
         dataset_version=DATASET_VERSION,
         rubric_version=RUBRIC_VERSION,
-        provider=EVALUATION_PROVIDER,
+        provider=values.get(EVALUATION_PROVIDER_ENV, EVALUATION_PROVIDER).strip().upper()
+        or UNKNOWN,
         model=values.get("LLM_MODEL", DEFAULT_EVALUATION_MODEL).strip() or UNKNOWN,
         production_revision=PRODUCTION_BEHAVIOR_REVISION,
         harness_revision=_read_git_revision(root),
@@ -398,6 +400,22 @@ def _raw_completions(llm: CountingLLM) -> list[dict[str, object]]:
             "response_format": response_format.value,
             "error_message": result.error_message,
         }
+        if result.metadata is not None:
+            entry["metadata"] = {
+                "provider": result.metadata.provider,
+                "model": result.metadata.model,
+                "latency_ms": result.metadata.latency_ms,
+                "response_id": result.metadata.response_id,
+                "usage": (
+                    {
+                        "input_tokens": result.metadata.usage.input_tokens,
+                        "output_tokens": result.metadata.usage.output_tokens,
+                        "total_tokens": result.metadata.usage.total_tokens,
+                    }
+                    if result.metadata.usage is not None
+                    else None
+                ),
+            }
         if result.completion is not None:
             message = result.completion.message
             entry["content"] = message.content
@@ -411,6 +429,50 @@ def _raw_completions(llm: CountingLLM) -> list[dict[str, object]]:
             ]
         completions.append(entry)
     return completions
+
+
+def _usage_payload(llm: CountingLLM) -> dict[str, int | str]:
+    """仅在每次真实 Completion 都提供 Usage 时汇总，避免部分数据冒充完整成本。"""
+
+    usages = [
+        result.metadata.usage
+        for result in llm.results
+        if result.metadata is not None and result.metadata.usage is not None
+    ]
+    if len(usages) != len(llm.results):
+        return {
+            "input_tokens": UNKNOWN,
+            "output_tokens": UNKNOWN,
+            "total_tokens": UNKNOWN,
+        }
+    return {
+        "input_tokens": sum(usage.input_tokens for usage in usages),
+        "output_tokens": sum(usage.output_tokens for usage in usages),
+        "total_tokens": sum(usage.total_tokens for usage in usages),
+    }
+
+
+def _aggregate_turn_usage(turns: list[dict[str, object]]) -> dict[str, int | str]:
+    """汇总 Case 内全部 Turn；任一 Turn 缺失 Usage 时保持 UNKNOWN。"""
+
+    values: list[dict[str, object]] = []
+    for turn in turns:
+        usage = turn.get("usage")
+        if not isinstance(usage, dict) or any(
+            not isinstance(usage.get(field), int)
+            for field in ("input_tokens", "output_tokens", "total_tokens")
+        ):
+            return {
+                "input_tokens": UNKNOWN,
+                "output_tokens": UNKNOWN,
+                "total_tokens": UNKNOWN,
+            }
+        values.append(usage)
+    return {
+        "input_tokens": sum(cast(int, usage["input_tokens"]) for usage in values),
+        "output_tokens": sum(cast(int, usage["output_tokens"]) for usage in values),
+        "total_tokens": sum(cast(int, usage["total_tokens"]) for usage in values),
+    }
 
 
 def _source_records(result: InvestmentAnswer) -> list[dict[str, object]]:
@@ -477,6 +539,7 @@ def _execute_turn(
         "raw_completions": _raw_completions(llm),
         "structured_response_diagnostics": diagnostics,
         "completion_metrics": metrics,
+        "usage": _usage_payload(llm),
     }
     if isinstance(result, InvestmentRequestFailure):
         return {
@@ -551,11 +614,7 @@ def execute_case(
             "reviewer": None,
             "reviewed_at": None,
         },
-        "usage": {
-            "input_tokens": UNKNOWN,
-            "output_tokens": UNKNOWN,
-            "total_tokens": UNKNOWN,
-        },
+        "usage": _aggregate_turn_usage(turns),
         "cost": {
             "amount": UNKNOWN,
             "currency": UNKNOWN,

@@ -6,7 +6,8 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import StrEnum
 from http.client import HTTPResponse
-from typing import Protocol
+from time import monotonic
+from typing import Protocol, cast
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
@@ -14,11 +15,13 @@ from position_pilot.application.llm import (
     LLMMessage,
     LLMProvider,
     LLMResponseFormat,
+    LLMResponseMetadata,
     LLMResult,
     LLMRole,
     LLMStatus,
     LLMToolCall,
     LLMToolDefinition,
+    LLMUsage,
 )
 from position_pilot.config import Settings
 
@@ -103,22 +106,31 @@ class UrllibLLMJsonHttpTransport:
         return LLMTransportFailureKind.NETWORK_ERROR
 
 
-class AliyunLLMProvider(LLMProvider):
-    """将阿里云 OpenAI-compatible 语义转换为通用 LLM Result。"""
+ALIYUN_MODEL_STUDIO = "ALIYUN_MODEL_STUDIO"
+
+
+class OpenAICompatibleLLMProvider(LLMProvider):
+    """将 OpenAI-compatible Chat Completions 转换为通用 LLM Result。"""
 
     def __init__(
         self,
         *,
+        provider_name: str,
         api_key: str | None,
         base_url: str,
         model: str,
         timeout_seconds: float = 30.0,
+        enable_thinking: bool | None = None,
+        parallel_tool_calls: bool | None = True,
         transport: LLMJsonHttpTransport | None = None,
     ) -> None:
+        self._provider_name = provider_name.strip().upper()
         self._api_key = api_key.strip() if api_key else None
         self._base_url = base_url.rstrip("/")
         self._model = model.strip()
         self._timeout_seconds = timeout_seconds
+        self._enable_thinking = enable_thinking
+        self._parallel_tool_calls = parallel_tool_calls
         self._transport = transport or UrllibLLMJsonHttpTransport()
 
     def complete(
@@ -130,23 +142,30 @@ class AliyunLLMProvider(LLMProvider):
     ) -> LLMResult:
         """执行一次非流式 Completion，并隐藏 Provider Payload。"""
 
+        started_at = monotonic()
         if not self._api_key:
             return LLMResult.failure(
                 LLMStatus.AUTHENTICATION_FAILED,
                 "LLM API credential 未配置",
+                self._metadata(None, started_at),
             )
         if not messages:
-            return LLMResult.failure(LLMStatus.INVALID_REQUEST, "LLM messages 不能为空")
+            return LLMResult.failure(
+                LLMStatus.INVALID_REQUEST,
+                "LLM messages 不能为空",
+                self._metadata(None, started_at),
+            )
 
         payload: dict[str, object] = {
             "model": self._model,
             "messages": [self._serialize_message(message) for message in messages],
-            # M3 优先控制 Latency 与 Token 成本，复杂推理可在后续 Evaluation 中再评估。
-            "enable_thinking": False,
         }
+        if self._enable_thinking is not None:
+            payload["enable_thinking"] = self._enable_thinking
         if tools:
             payload["tools"] = [self._serialize_tool(tool) for tool in tools]
-            payload["parallel_tool_calls"] = True
+            if self._parallel_tool_calls is not None:
+                payload["parallel_tool_calls"] = self._parallel_tool_calls
         if response_format is LLMResponseFormat.JSON_OBJECT:
             payload["response_format"] = {"type": "json_object"}
 
@@ -165,18 +184,64 @@ class AliyunLLMProvider(LLMProvider):
             return LLMResult.failure(
                 LLMStatus.PROVIDER_UNAVAILABLE,
                 self._transport_failure_message(error.kind),
+                self._metadata(None, started_at),
             )
         failure = self._response_failure(response)
         if failure is not None:
-            return LLMResult.failure(*failure)
+            return LLMResult.failure(
+                *failure,
+                self._metadata(response.payload, started_at),
+            )
         try:
             message = self._parse_completion_message(response.payload)
         except (TypeError, ValueError, json.JSONDecodeError):
             return LLMResult.failure(
                 LLMStatus.INVALID_PROVIDER_RESPONSE,
                 "LLM Provider response 格式无效",
+                self._metadata(response.payload, started_at),
             )
-        return LLMResult.success(message)
+        return LLMResult.success(message, self._metadata(response.payload, started_at))
+
+    def _metadata(self, payload: object, started_at: float) -> LLMResponseMetadata:
+        """从兼容响应提取通用可观测字段，不把原始 Payload 泄露给 Application。"""
+
+        model = self._model
+        response_id: str | None = None
+        usage: LLMUsage | None = None
+        if isinstance(payload, Mapping):
+            raw_model = payload.get("model")
+            if isinstance(raw_model, str) and raw_model.strip():
+                model = raw_model.strip()
+            raw_response_id = payload.get("id")
+            if isinstance(raw_response_id, str) and raw_response_id.strip():
+                response_id = raw_response_id.strip()
+            usage = self._parse_usage(payload.get("usage"))
+        return LLMResponseMetadata(
+            provider=self._provider_name,
+            model=model,
+            latency_ms=round((monotonic() - started_at) * 1000, 2),
+            usage=usage,
+            response_id=response_id,
+        )
+
+    @staticmethod
+    def _parse_usage(value: object) -> LLMUsage | None:
+        """只接收完整的 OpenAI-compatible Token Usage；缺失时明确保持不可用。"""
+
+        if not isinstance(value, Mapping):
+            return None
+        raw_values = (
+            value.get("prompt_tokens"),
+            value.get("completion_tokens"),
+            value.get("total_tokens"),
+        )
+        if any(
+            isinstance(item, bool) or not isinstance(item, int) or item < 0
+            for item in raw_values
+        ):
+            return None
+        input_tokens, output_tokens, total_tokens = cast(tuple[int, int, int], raw_values)
+        return LLMUsage(input_tokens, output_tokens, total_tokens)
 
     @staticmethod
     def _serialize_message(message: LLMMessage) -> dict[str, object]:
@@ -275,6 +340,8 @@ class AliyunLLMProvider(LLMProvider):
             return LLMStatus.INVALID_REQUEST, "LLM Provider 拒绝了请求"
         if status_code in {401, 403}:
             return LLMStatus.AUTHENTICATION_FAILED, "LLM Provider credential 无效"
+        if status_code == 408:
+            return LLMStatus.PROVIDER_UNAVAILABLE, "LLM Provider 请求超时"
         if status_code == 429:
             return LLMStatus.RATE_LIMITED, "LLM Provider 请求达到限流"
         if status_code >= 500:
@@ -290,11 +357,43 @@ class AliyunLLMProvider(LLMProvider):
         return "LLM Provider 网络连接失败"
 
 
-def create_aliyun_llm_provider(settings: Settings) -> AliyunLLMProvider:
-    """从通用 Settings 创建 Aliyun Adapter，不向 Application 暴露 Secret。"""
+class AliyunLLMProvider(OpenAICompatibleLLMProvider):
+    """隔离 Alibaba Model Studio 的 OpenAI-compatible 扩展参数。"""
+
+    def __init__(
+        self,
+        *,
+        api_key: str | None,
+        base_url: str,
+        model: str,
+        timeout_seconds: float = 30.0,
+        transport: LLMJsonHttpTransport | None = None,
+    ) -> None:
+        super().__init__(
+            provider_name=ALIYUN_MODEL_STUDIO,
+            api_key=api_key,
+            base_url=base_url,
+            model=model,
+            timeout_seconds=timeout_seconds,
+            enable_thinking=False,
+            parallel_tool_calls=True,
+            transport=transport,
+        )
+
+
+def create_llm_provider(settings: Settings) -> OpenAICompatibleLLMProvider:
+    """按配置创建薄 OpenAI-compatible Adapter。"""
 
     api_key = settings.llm_api_key.get_secret_value() if settings.llm_api_key else None
-    return AliyunLLMProvider(
+    if settings.llm_provider == ALIYUN_MODEL_STUDIO:
+        return AliyunLLMProvider(
+            api_key=api_key,
+            base_url=str(settings.llm_base_url),
+            model=settings.llm_model,
+            timeout_seconds=settings.llm_request_timeout_seconds,
+        )
+    return OpenAICompatibleLLMProvider(
+        provider_name=settings.llm_provider,
         api_key=api_key,
         base_url=str(settings.llm_base_url),
         model=settings.llm_model,

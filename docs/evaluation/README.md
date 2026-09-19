@@ -60,13 +60,16 @@ uv run pytest tests/evaluation/test_real_model_behavior.py -s \
 必要环境变量：
 
 - `LLM_API_KEY`：本地 Credential，不得进入报告或 Git；
+- `LLM_PROVIDER`：本轮 Provider 标签；默认 `ALIYUN_MODEL_STUDIO`，跨 Provider 比较时必须显式设置；
 - `RUN_REAL_LLM_BEHAVIORAL_EVAL=1`：显式启用真实模型；
 - `LLM_MODEL`：本轮实际候选模型；
 - `EVAL_RUN_ID`：同一实验的稳定标识；
 - `EVAL_REPETITION_INDEX`：从 1 开始的正整数。
 - `EVAL_ROUTING_RESPONSE_FORMAT`：Evaluation-only RCA 开关，支持 `text`（默认）或 `json_object`；只覆盖带 Tool 的 Routing Completion。
 
-`LLM_BASE_URL` 和 `LLM_REQUEST_TIMEOUT_SECONDS` 可覆盖当前 Adapter 默认配置。Harness 不读取 Repository `.env`。
+`LLM_BASE_URL` 和 `LLM_REQUEST_TIMEOUT_SECONDS` 可覆盖当前 Adapter 默认配置。Harness 记录每次
+Completion 的统一 model / latency / token usage；Provider 未返回完整 Usage 时保持 `UNKNOWN`。
+Harness 不读取 Repository `.env`。
 
 ### Ask Quality Discovery Baseline
 

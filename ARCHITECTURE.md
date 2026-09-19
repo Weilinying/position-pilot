@@ -442,9 +442,10 @@ InvestmentAgent
 validate minimum context floor
       ↓ only declared discretionary current risk action may add Market Context
       ↓ LLMProvider Contract
-AliyunLLMProvider
+config-selected OpenAICompatibleLLMProvider
+      ↓ Alibaba subclass only for Alibaba request extensions
       ↓ OpenAI-compatible HTTPS
-Alibaba Cloud Model Studio
+Alibaba Cloud Model Studio（default）/ compatible Provider
 
 Final LLM {answer, source_refs}
       ↓ provider-neutral JSON_OBJECT → Aliyun response_format=json_object
@@ -459,6 +460,9 @@ LLM_INVALID_PROVIDER_RESPONSE
 
 - Snapshot 明确声明 Positions 是完整当前集合；未出现的 Ticker 表示当前无持仓。Historical BUY Facts 只投影当前 Position、保持 `LONG_TERM` / `SWING` 独立并声明截断，不能用于重算当前 Shares、Average Cost、Cash 或收益。Agent 不额外执行确定性 Ticker Extraction。
 - `LLMProvider` 的 Message、Tool Definition、Tool Call 与 Result 均为项目自身 Schema；Aliyun/OpenAI-compatible Payload 只存在于 Adapter。
+- `LLM_PROVIDER`、Base URL、Credential、Model 与 Timeout 由配置切换；Alibaba-only
+  `enable_thinking` 不进入通用 Adapter 请求。统一 Result 可记录 Provider、Model、Latency、
+  Response ID 与完整 Token Usage，Provider 缺失 Usage 时保持不可用。
 - `deepseek-v4-pro-0813` 是可通过 `LLM_MODEL` 覆盖的默认配置，不是 Domain 或 Application 类型。
 - Current Quote、Recent Price History、Recent News 或 Market Context Failure 会作为缺失事实返回 LLM，安全 Final Answer 由 Application 标记为 `DEGRADED`；LLM Failure 无法形成 Final Answer，返回 Request Failure。
 - Native Function Calling 可选择四类 Context Tool，LLM 仍是 primary router，单轮总调用预算保持为 4。Market Context 是 Portfolio Risk Context / risk modifier；只有没有明确既定交易规则、并要求判断当前是否应该增加或减少风险暴露时才是 minimum context。购买能力、纯事实查询和既定规则/已决定动作的确认执行不机械调用。
