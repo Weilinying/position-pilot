@@ -489,6 +489,7 @@ dev = [
     { name = "ruff" },
 ]
 spike = [
+    { name = "httpx" },
     { name = "pydantic-ai-slim", extra = ["openai"] },
 ]
 
@@ -509,7 +510,10 @@ dev = [
     { name = "pytest", specifier = ">=8.4,<9" },
     { name = "ruff", specifier = ">=0.12,<1" },
 ]
-spike = [{ name = "pydantic-ai-slim", extras = ["openai"], specifier = ">=1,<2" }]
+spike = [
+    { name = "httpx", specifier = ">=0.28,<1" },
+    { name = "pydantic-ai-slim", extras = ["openai"], specifier = ">=1,<2" },
+]
 
 [[package]]
 name = "psycopg"
