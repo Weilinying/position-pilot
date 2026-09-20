@@ -192,6 +192,50 @@ def test_pydantic_runtime_uses_native_tool_loop_and_records_source() -> None:
     assert "quote-1" in serialized_messages
 
 
+def test_pydantic_runtime_completes_multi_round_search_and_fetch() -> None:
+    """PydanticAI 原生 Loop 支持 Search → Fetch → Final 的 2+ Tool 场景。"""
+
+    script = ScriptedModel(
+        [
+            _tool_response("search_web", {"query": "GOOG latest filing"}),
+            ModelResponse(
+                parts=(
+                    ToolCallPart(
+                        "fetch_page",
+                        {"url": "https://example.test/filing"},
+                        "call-2",
+                    ),
+                )
+            ),
+            _text_response("已核验搜索与原文。[source:search-1] [source:fetch-1]"),
+        ]
+    )
+    search = FunctionToolExecutor(
+        lambda arguments: ToolObservation(
+            "OK",
+            {"query": arguments["query"]},
+            (SourceRecord("search-1", "FAKE_SEARCH", "https://example.test/filing"),),
+        )
+    )
+    fetch = FunctionToolExecutor(
+        lambda arguments: ToolObservation(
+            "OK",
+            {"url": arguments["url"], "text": "公开文件正文"},
+            (SourceRecord("fetch-1", "FAKE_FETCH", "https://example.test/filing"),),
+        )
+    )
+
+    result = PydanticRuntimeCandidate(
+        _model(script),
+        {"search_web": search, "fetch_page": fetch},
+    ).run(_runtime_input())
+
+    assert result.status is RuntimeExecutionStatus.COMPLETED
+    assert [event.tool_name for event in result.tool_trace] == ["search_web", "fetch_page"]
+    assert [source.source_id for source in result.sources] == ["search-1", "fetch-1"]
+    assert len(result.model_trace) == 3
+
+
 def test_pydantic_runtime_rejects_unobserved_source_reference() -> None:
     """模型不得凭空输出本轮未观察到的来源。"""
 

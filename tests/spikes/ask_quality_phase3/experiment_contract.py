@@ -88,9 +88,9 @@ def experiment_manifest(
         "research_candidates": list(RESEARCH_CANDIDATES),
         "candidate_versions": {
             "current": revision,
-            "pydantic-ai": "NOT_MEASURED",
+            "pydantic-ai": "1.107.6",
             "alibaba-native": "PROVIDER_MANAGED",
-            "application-owned": "NOT_SELECTED",
+            "application-owned": "brave-search-http-api+controlled-fetch-0.1",
         },
         "representative_case_ids": list(REPRESENTATIVE_CASE_IDS),
         "critical_gates": list(CRITICAL_GATES),

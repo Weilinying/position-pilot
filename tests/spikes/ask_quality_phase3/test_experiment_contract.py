@@ -52,6 +52,12 @@ def test_manifest_distinguishes_safety_ceiling_from_production_slo() -> None:
         "wall_clock_seconds": 30,
     }
     assert SAFETY_CEILING.wall_clock_seconds == 30
+    assert manifest["candidate_versions"] == {
+        "current": "test-revision",
+        "pydantic-ai": "1.107.6",
+        "alibaba-native": "PROVIDER_MANAGED",
+        "application-owned": "brave-search-http-api+controlled-fetch-0.1",
+    }
     assert "UNVERIFIED_CRITICAL_FACT_TREATED_AS_TRUE" in CRITICAL_GATES
     for field in ("prompt_hash", "tool_contract_hash", "fixture_hash"):
         value = manifest[field]
