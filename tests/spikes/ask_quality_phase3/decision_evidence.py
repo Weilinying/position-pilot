@@ -91,7 +91,7 @@ def decision_evidence(*, revision: str) -> dict[str, object]:
             "pydantic-ai": {
                 "offline_status": ArtifactStatus.SUPPORTED.value,
                 "live_status": ArtifactStatus.NOT_MEASURED.value,
-                "deterministic_script_request_range": [1, 2],
+                "deterministic_script_request_range": [1, 3],
                 "notes": [
                     "native history and usage limits",
                     "AlibabaProvider constructible",
