@@ -37,7 +37,6 @@ class RuntimeFixture:
 
     name: str
     result: RuntimeResult
-    hard_gate_status: str = "NOT_MEASURED"
 
 
 @dataclass(slots=True)

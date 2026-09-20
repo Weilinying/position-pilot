@@ -202,6 +202,7 @@ def test_partial_success_source_is_observed() -> None:
         _runtime_input(),
         RuntimeExecutionStatus.COMPLETED,
         capability_evidence=True,
+        observed_source_ids=frozenset({"partial-1"}),
     )
 
     assert artifact.status is ArtifactStatus.SUPPORTED
@@ -378,6 +379,63 @@ def test_unobserved_source_is_a_prototype_gap() -> None:
 
     assert artifact.status is ArtifactStatus.PROTOTYPE_GAP
     assert artifact.result["gap"] == "UNOBSERVED_SOURCE:invented-source"
+
+
+def test_candidate_trace_cannot_replace_external_tool_source_registry() -> None:
+    """候选自报的成功 Trace 不能把未由 Tool Recorder 观察的来源变成证据。"""
+
+    invented = SourceRecord("invented-source", "FAKE", "https://example.test/invented")
+    result = completed_runtime_result(
+        sources=(invented,),
+        tool_events=(TraceEvent("tool-source", 1, "OK", "search_web", "invented-source"),),
+    )
+
+    artifact = run_runtime_fixture(
+        RecordingRuntimeCandidate("current", result),
+        "source-integrity",
+        _runtime_input(),
+        RuntimeExecutionStatus.COMPLETED,
+        capability_evidence=True,
+        observed_source_ids=frozenset({"actually-observed"}),
+    )
+
+    assert artifact.status is ArtifactStatus.PROTOTYPE_GAP
+    assert artifact.result["gap"] == "SOURCE_NOT_IN_TOOL_REGISTRY:invented-source"
+
+
+def test_research_result_must_match_request_and_external_source_registry() -> None:
+    """跨请求结果或候选自报来源不能成为 Research 能力证据。"""
+
+    request = ResearchRequest("GOOG", "latest filing", "last-7-days")
+    other_request = ResearchRequest("MSFT", "latest filing", "last-7-days")
+    mismatched = run_research_fixture(
+        RecordingResearchCandidate(
+            "application-owned",
+            research_result(other_request, ResearchStatus.COMPLETED),
+        ),
+        "request-binding",
+        request,
+        ResearchStatus.COMPLETED,
+        capability_evidence=True,
+        observed_source_ids=frozenset({"source-1"}),
+    )
+    fake_registry = run_research_fixture(
+        RecordingResearchCandidate(
+            "application-owned",
+            research_result(request, ResearchStatus.COMPLETED),
+        ),
+        "source-registry",
+        request,
+        ResearchStatus.COMPLETED,
+        capability_evidence=True,
+        observed_source_ids=frozenset({"different-source"}),
+    )
+
+    assert mismatched.status is ArtifactStatus.PROTOTYPE_GAP
+    assert mismatched.result["gap"] == "MISMATCHED_RESEARCH_REQUEST"
+    assert isinstance(mismatched.result["request_hash"], str)
+    assert fake_registry.status is ArtifactStatus.PROTOTYPE_GAP
+    assert fake_registry.result["gap"] == "SOURCE_NOT_IN_RESEARCH_REGISTRY:source-1"
 
 
 def test_reporter_requires_explicit_absolute_directory(tmp_path: Path) -> None:

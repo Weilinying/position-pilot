@@ -142,6 +142,7 @@ def run_runtime_fixture(
     *,
     capability_evidence: bool = False,
     expected_warnings: tuple[str, ...] = (),
+    observed_source_ids: frozenset[str] | None = None,
 ) -> ComparisonArtifact:
     """执行 Runtime Fixture，并保留 Candidate Failure。"""
 
@@ -182,10 +183,22 @@ def run_runtime_fixture(
     elif integrity_failure is not None:
         status = ArtifactStatus.PROTOTYPE_GAP
         gap = integrity_failure
-    elif result.status is not expected_status:
+    elif capability_evidence and result.sources and observed_source_ids is None:
+        status = ArtifactStatus.PROTOTYPE_GAP
+        gap = "OBSERVED_SOURCE_REGISTRY_REQUIRED"
+    elif observed_source_ids is not None:
+        unregistered = sorted(
+            source.source_id
+            for source in result.sources
+            if source.source_id not in observed_source_ids
+        )
+        if unregistered:
+            status = ArtifactStatus.PROTOTYPE_GAP
+            gap = f"SOURCE_NOT_IN_TOOL_REGISTRY:{','.join(unregistered)}"
+    if gap is None and result.status is not expected_status:
         status = ArtifactStatus.PROTOTYPE_GAP
         gap = "UNEXPECTED_RUNTIME_STATUS"
-    elif result.warnings != expected_warnings:
+    elif gap is None and result.warnings != expected_warnings:
         status = ArtifactStatus.PROTOTYPE_GAP
         gap = "UNEXPECTED_RUNTIME_WARNINGS"
     result_payload = asdict(result)
@@ -207,6 +220,7 @@ def run_research_fixture(
     expected_status: ResearchStatus,
     *,
     capability_evidence: bool = False,
+    observed_source_ids: frozenset[str] | None = None,
 ) -> ComparisonArtifact:
     """执行 Research Fixture，不把正常空结果标成 Provider Failure。"""
 
@@ -250,7 +264,27 @@ def run_research_fixture(
     elif unobserved:
         status = ArtifactStatus.PROTOTYPE_GAP
         gap = f"UNOBSERVED_SOURCE:{','.join(unobserved)}"
+    elif capability_evidence and result.sources and observed_source_ids is None:
+        status = ArtifactStatus.PROTOTYPE_GAP
+        gap = "OBSERVED_SOURCE_REGISTRY_REQUIRED"
+    elif observed_source_ids is not None:
+        unregistered = sorted(
+            source.source_id
+            for source in result.sources
+            if source.source_id not in observed_source_ids
+        )
+        if unregistered:
+            status = ArtifactStatus.PROTOTYPE_GAP
+            gap = f"SOURCE_NOT_IN_RESEARCH_REGISTRY:{','.join(unregistered)}"
     result_payload = asdict(result)
+    result_payload["request_hash"] = sha256(
+        json.dumps(
+            asdict(request),
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    ).hexdigest()
     result_payload["gap"] = gap
     return ComparisonArtifact(
         category="research",
@@ -332,6 +366,7 @@ class ArtifactReporter:
         "request",
         "research_status",
         "research_trace",
+        "request_hash",
         "search_count",
         "sources",
         "status",
