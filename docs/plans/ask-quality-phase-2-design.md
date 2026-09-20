@@ -2,10 +2,10 @@
 
 ## 1. 目标、状态与进入条件
 
-**Status:** IN PROGRESS — 设计与 Automated Review 已于 2026-09-15 完成，等待
-Human Review；Discovery 方向及本文状态分离原则已于 2026-09-13 获方向性批准；
-Confirmed Mutation Boundary 已于 2026-09-14 获批准。具体 Schema、API、存储适配器、
-Framework / Provider 与其余实施提案仍待证据和所需评审。
+**Status:** DONE — HUMAN ACCEPTED（2026-09-20）。设计与 Automated Review 已于 2026-09-15
+完成；Discovery 方向及本文状态分离原则已于 2026-09-13 获方向性批准；Confirmed Mutation
+Boundary 已于 2026-09-14 获批准。具体 Schema、API、存储适配器与 Framework / Provider 继续由
+Phase 3 Spike 提供证据，不因 Phase 2 Acceptance 自动成为生产选择。
 
 目标：用阶段一证据明确 **Domain State / Strategy State / Conversation Context / Long-term
 Memory / Agent Runtime / Research / Answer** 边界，准备四类独立选型评分与后续实现。
@@ -312,53 +312,56 @@ Research Provider、市场 Fixture 与 Answer 约定，只新增必要 Strategy 
 answer revision。链内说“长期仓”不自动写策略；另有明确确认步骤才验证 4B 写入。关联 AQ01、
 AQ05、AQ09～AQ11、AQ13～AQ16，整链按 Session 记录；不修改阶段一原有案例分母。
 
-### 6.2 四类选型分别评分
+### 6.2 四类关注点分别归因
 
-使用四张评分表，各项可用 0（不满足）、1（有缺口）、2（满足）并附证据；它们不与 Answer
-Rubric 混算。未测项写 NOT_MEASURED，不给默认分；权重及必须通过项在候选结果产生前冻结。
+四类关注点仍须分开归因，不与 Answer Rubric 混算；但精简后的 Phase 3 只将 Runtime 与 Research
+作为两组核心对照，固定一个实验模型并做 Compatibility Smoke，Persistence 只做最小接入验证。
+结果用 `SUPPORTED`、`PROTOTYPE_GAP`、`ARCHITECTURE_LIMIT`、`NOT_MEASURED` 记录，不以 Prototype
+尚未达到生产完整度直接淘汰可行架构。
 
 | 选型维度 | 固定其他变量 | 独立评分内容 |
 |---|---|---|
 | Agent Runtime | 同模型 / Provider、等价工具与结果、五类 State 输入、Prompt、预算 | 连续工具调用、停止、错误、history wiring、streaming / usage limits（按已定需求）、Trace 与维护 / 接入成本 |
-| Model / Model Provider | 同 Runtime、Context / Strategy / Memory、工具、输出约定和预算 | 研究与推断质量、工具选择、结构化输出、纠正能力、接口兼容性、延迟 / Token 费用；Model 与 Provider 各自标识 |
+| Model / Model Provider | 固定一个当前可用实验模型 | 必要的 Provider Compatibility Smoke；正式换模时再做独立 Eval |
 | Research Provider | 同任务集、时间窗口、查询 / 读取脚本和来源规则 | News / Market / Search / Fetch 各自的覆盖、相关性、时效、原文 / 引用、失败、延迟与费用 |
-| Memory / Persistence | 同状态记录、业务服务、确认 / 版本 / 删除与检索脚本 | PositionPilot-owned DB 及可选框架适配器的隔离、正确读写、有效性、可追溯性与接入成本；五类状态不混存为通用事实 |
+| Memory / Persistence | Account owner、Conversation、Confirmed Strategy Fixture | PositionPilot-owned DB 及候选 Runtime 的最小接入、Owner 隔离与未确认内容排除；完整生命周期移至 Phase 4 |
 
 Research Provider 真实结果有时变性，记录运行时间、返回内容及独立观察，再用固定 Evidence
 Fixtures 比较 Agent / Model。框架配套功能若同时改变 Provider 或存储，另列为组合实验；
 不能写成“Pydantic AI 效果最好”来替代对实际组合中各因素的评估。
 
-在四张选型表之外设计能力增量与端到端实验，避免因多个变量一起变而误归因：
+在两组核心对照之外仍须避免因多个变量一起变而误归因：
 
-1. **能力增量实验：** 固定模型，在单独记录的条件下调整回答约定、增加对话 / Strategy / Long-term Memory、增加多轮研究；
-   区分哪个变化改善哪个 Case。允许测有意义的组合，不必穷举全排列。
-2. **框架实验：** 现有实现与候选采用等价的多轮能力、Prompt、Tool、各类 State / Context 与预算；比较运行
+1. **框架实验：** 现有实现与候选采用等价的最小多轮能力、Prompt、Tool、各类 State / Context 与预算；比较运行
    正确性、接入成本与可观测性。旧一轮系统只能作为产品基线，不能假装与多轮框架公平对比。
-3. **模型实验：** 冻结已选择的同一能力与约定后比较候选模型；记录 Provider 参数与实际可用
-   功能差异。真实 Web 的时变结果不作为唯一排名依据。
+2. **模型兼容性：** Phase 3 固定一个当前可用模型，记录 Provider 参数与实际可用功能差异；不做
+   完整横向比较。正式更换默认模型时再以冻结能力与约定执行独立 Eval。
+3. **后续能力增量：** Strategy 写入、Long-term Memory 和完整端到端能力增量实验分别进入
+   Phase 4 / Phase 5，不作为 Phase 3 执行或 Done Criteria。
 
 所有正式回答质量比较只纳入当次候选真实运行路径下 scope=FULL 且 execution_status=COMPLETED
 的执行；原先因缺少能力而属于 scope=DIAGNOSTIC 的场景，只有新能力确实通过被测路径提供后才
 转为 FULL。DIAGNOSTIC 的适用维度仍保留局部评分和证据，但不形成完整 Case 总分。诊断结果、
 请求失败与整个目标集能力覆盖分别报告，不能混入完整场景质量或从覆盖分母删除。
 
-执行前填入验收阈值草案并经 Human Review 冻结：
+Phase 3 候选运行前只冻结代表性 Case、实验 safety ceiling 与以下不可带入生产的 Critical
+Failure Gate。完整质量、覆盖、体验与发布阈值属于 Phase 4 Acceptance，在 Phase 3 证据产生后冻结：
 
 - **Critical Failure Gate：** 任一虚构来源、错误 Portfolio / cash / budget、未经用户确认将
   Strategy / Long-term Memory 提升为有效状态、覆盖已有有效记录或把未确认记录用于后续决策，
   失效 / 已删除策略当作有效记录重用，或其他关键事实 / 权限错误，都使该次 Case FAIL，不被
   其他 Rubric 分数或重复成功抵消。按获批 Candidate Contract 生成且保持 `PENDING`、不参与决策
   的 Candidate 本身不触发 Gate。基线记录错误不阻止完成证据采集；实现验收需修复并重测。
-- 质量：主要维度需达到的绝对锚点、相对基线改善、关键案例最低分、可接受的重复波动。
-- 覆盖：必须支持的案例 / 多轮脚本，仍不支持项及原因；不能仅报告可运行子集均分。
-- 体验：可接受的典型与较慢请求时间、调用 / Token / 外部费用预算，UNKNOWN 用量的处理。
+- 质量（Phase 4）：主要维度的绝对锚点、相对基线改善、关键案例最低分与可接受重复波动。
+- 覆盖（Phase 4）：必须支持的案例 / 多轮脚本与仍不支持项；不能仅报告可运行子集均分。
+- 体验（Phase 4）：典型与较慢请求时间、调用 / Token / 外部费用预算及 UNKNOWN 用量处理。
 - 回归：需要保留的 Portfolio-only、Position Type、确定性事实与 Provider Failure 行为。
 
 提案中的报告首页固定采用能力覆盖率、完整场景回答质量、请求成功率与 Critical Failure 次数；
 各项写清分母与 NOT_RUN / NOT_EVALUATED 数量，不用跨维度单一平均分替代。
 
-不要等候选结果出来后再挑阈值；若基线不足以给出具体数字，在提案中列明需由 Spike 补齐的
-测量项和冻结时点。该项未解决前不声称发布验收通过。
+不得根据候选结果反向修改 Critical Gate。质量、覆盖和体验阈值由 Phase 3 提供测量依据并在
+Phase 4 实现前明确冻结时点；Phase 3 不声称发布验收通过。
 
 ## 7. P2-T5 — 形成 Decision Proposal 与评审包
 
@@ -370,13 +373,14 @@ Fixtures 比较 Agent / Model。框架配套功能若同时改变 Provider 或�
    读写 / 失效，Conversation 与 Runtime 生命周期，Research 来源语义。
 4. **Options / Recommendation：** 各选项解决的已知问题、Trade-off、推荐与暂不实现项。
 5. **Impact：** 与现行 PROJECT / API / Domain / Security / Architecture 的差异及所需 Migration。
-6. **Spike Plan：** 收窄的 Runtime 候选、四张独立选型评分表、等价输入、允许验证的范围；4A / 4B 检查点。
+6. **Spike Plan：** 收窄的 Runtime / Research 两组核心对照、固定模型 Compatibility Smoke、
+   最小 Persistence 验证、等价输入与允许验证的范围；4A / 4B 检查点。
 7. **Acceptance：** 固定案例、scope=FULL / DIAGNOSTIC 与 execution_status 的正交统计口径、
-   DIAGNOSTIC 局部评分、四组报告首页指标、评分阈值、硬错误、重复次数、耗时 / 成本与真实使用
+   DIAGNOSTIC 局部评分、报告首页指标、Critical Gate、代表性重复、耗时 / 成本估算与后续真实使用
    验证方式。
 8. **Decision Log：** 每项 ACCEPTED / REJECTED / DEFERRED / NEEDS_SPIKE、日期、理由与负责人。
 
-本次方向性批准已覆盖状态分离、收窄候选、四类选型分评、4A / 4B 与 Critical Failure Gate。
+本次方向性批准已覆盖状态分离、收窄候选、各类关注点独立归因、4A / 4B 与 Critical Failure Gate。
 后续提交 Domain / Strategy / Conversation / Long-term Memory / Runtime / Research / Answer 的
 具体方案与待定项，不重复询问是否接受已批准方向，也不要求用户逐 Task 批准普通实现。
 框架 / Provider 可以保留 NEEDS_SPIKE；批准候选实验不代表批准生产选型。阶段三得到证据后，
@@ -402,8 +406,7 @@ Memory、预期输出性质、允许的状态变化与回归断言。可以验�
 - [x] P2-T3：Research Source Policy、执行 / Failure 语义、收窄候选与四类 Spike 验收表完成。
 - [x] P2-T4：四类独立评分、4A / 4B 检查点、场景执行范围、等价实验、Candidate 安全边界、
       Critical Failure Gate、验收阈值与待测量项明确。
-- [ ] P2-T5：案例走查、文档一致性检查与 Automated Review 已完成；
-      等待用户审阅具体提案。
+- [x] P2-T5：案例走查、文档一致性检查、Automated Review 与 Human Review 已完成。
 
 ### 已确认设计原则（2026-09-14）
 
@@ -417,6 +420,5 @@ Memory、预期输出性质、允许的状态变化与回归断言。可以验�
   Event 代替，恢复时单独确定 Ledger / Accounting 语义并进入所需 Human Review。
 
 提案位置：[Phase 2 Decision Proposal](ask-quality-decision-proposal.md)。Automated Review 日期：
-**2026-09-15**；原始 P1 发现已修正。Human Review 日期与结果：**待填写**。
-只有明确的决策与允许的后续范围已记录，才将阶段二标为完成；待选型项可以进入阶段三，
-但不能在没有选型证据与所需批准时进入生产替换。
+**2026-09-15**；原始 P1 发现已修正。Human Review 日期与结果：**2026-09-20，ACCEPTED**。
+待选型项进入 Phase 3，但不能在没有选型证据与所需批准时进入生产替换。
