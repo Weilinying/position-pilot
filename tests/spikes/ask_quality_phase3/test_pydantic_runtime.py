@@ -1,0 +1,297 @@
+"""PydanticAI Runtime 候选的离线 Capability 测试。"""
+
+from collections.abc import Mapping
+from dataclasses import dataclass, field, replace
+
+from pydantic_ai.messages import (
+    ModelMessage,
+    ModelRequest,
+    ModelResponse,
+    TextPart,
+    ToolCallPart,
+    UserPromptPart,
+)
+from pydantic_ai.models.function import AgentInfo, FunctionModel
+
+from position_pilot.application.llm import (
+    LLMMessage,
+    LLMRole,
+    LLMToolDefinition,
+)
+
+from .contracts import RuntimeBudget, RuntimeExecutionStatus, RuntimeInput, SourceRecord
+from .current_runtime import FunctionToolExecutor, ToolObservation
+from .harness import canonical_input_hash
+from .pydantic_runtime import PydanticRuntimeCandidate, build_alibaba_chat_model
+
+
+@dataclass(slots=True)
+class ScriptedModel:
+    """按顺序返回 PydanticAI ModelResponse，并保存框架消息。"""
+
+    responses: list[ModelResponse]
+    calls: list[list[ModelMessage]] = field(default_factory=list)
+    infos: list[AgentInfo] = field(default_factory=list)
+
+    def __call__(
+        self,
+        messages: list[ModelMessage],
+        info: AgentInfo,
+    ) -> ModelResponse:
+        """返回下一条离线响应。"""
+
+        self.calls.append(list(messages))
+        self.infos.append(info)
+        return self.responses.pop(0)
+
+
+def _runtime_input(*, budget: RuntimeBudget | None = None) -> RuntimeInput:
+    """创建与 Current Runtime 测试语义相同的固定输入。"""
+
+    return RuntimeInput(
+        conversation=(
+            LLMMessage(LLMRole.USER, "先分析 GOOG"),
+            LLMMessage(LLMRole.ASSISTANT, "我会先核验当前事实。"),
+            LLMMessage(LLMRole.USER, "本轮预算改为 500 美元，继续。"),
+        ),
+        current_turn_context={"ticker": "GOOG", "budget": "500"},
+        portfolio_context={"cash": "10000", "positions": ["GOOG"]},
+        confirmed_strategy=({"scope": "GOOG", "plan": "分三次", "confirmed": True},),
+        tools=(
+            LLMToolDefinition(
+                "get_current_quote",
+                "读取报价",
+                {
+                    "type": "object",
+                    "properties": {"ticker": {"type": "string"}},
+                    "required": ["ticker"],
+                    "additionalProperties": False,
+                },
+            ),
+            LLMToolDefinition(
+                "search_web",
+                "搜索公开信息",
+                {
+                    "type": "object",
+                    "properties": {"query": {"type": "string"}},
+                    "required": ["query"],
+                    "additionalProperties": False,
+                },
+            ),
+            LLMToolDefinition(
+                "fetch_page",
+                "读取公开页面",
+                {
+                    "type": "object",
+                    "properties": {"url": {"type": "string"}},
+                    "required": ["url"],
+                    "additionalProperties": False,
+                },
+            ),
+        ),
+        budget=budget or RuntimeBudget(4, 4, 2, 2, 30),
+    )
+
+
+def _model(script: ScriptedModel) -> FunctionModel:
+    """把脚本包装为 PydanticAI 官方离线 Model。"""
+
+    def scripted_model(
+        messages: list[ModelMessage],
+        info: AgentInfo,
+    ) -> ModelResponse:
+        """使用具名函数满足 FunctionModel 的诊断名称要求。"""
+
+        return script(messages, info)
+
+    return FunctionModel(scripted_model, model_name="qwen3.7-max-fixture")
+
+
+def _text_response(content: str) -> ModelResponse:
+    """创建文本响应。"""
+
+    return ModelResponse(parts=(TextPart(content),), model_name="qwen3.7-max-fixture")
+
+
+def _tool_response(name: str, arguments: Mapping[str, object]) -> ModelResponse:
+    """创建 Tool Call 响应。"""
+
+    return ModelResponse(
+        parts=(ToolCallPart(name, dict(arguments), "call-1"),),
+        model_name="qwen3.7-max-fixture",
+    )
+
+
+def test_pydantic_runtime_uses_native_history_and_shared_context() -> None:
+    """框架原生 History 保持 Conversation 顺序，并接收同语义 Context。"""
+
+    script = ScriptedModel([_text_response("条件分析完成。")])
+    runtime_input = _runtime_input()
+    before_hash = canonical_input_hash(runtime_input)
+
+    result = PydanticRuntimeCandidate(_model(script), {}).run(runtime_input)
+
+    assert result.status is RuntimeExecutionStatus.COMPLETED
+    assert result.answer == "条件分析完成。"
+    assert canonical_input_hash(runtime_input) == before_hash
+    assert len(script.calls) == 1
+    messages = script.calls[0]
+    assert isinstance(messages[0], ModelRequest)
+    assert isinstance(messages[0].parts[0], UserPromptPart)
+    assert messages[0].parts[0].content == "先分析 GOOG"
+    assert isinstance(messages[1], ModelResponse)
+    assistant_part = messages[1].parts[0]
+    assert isinstance(assistant_part, TextPart)
+    assert assistant_part.content == "我会先核验当前事实。"
+    assert isinstance(messages[-1], ModelRequest)
+    request_text = " ".join(
+        part.content
+        for part in messages[-1].parts
+        if isinstance(part, UserPromptPart) and isinstance(part.content, str)
+    )
+    assert "本轮预算改为 500 美元" in request_text
+    instructions = script.infos[0].instructions
+    assert instructions is not None
+    assert '"budget":"500"' in instructions
+    assert '"plan":"分三次"' in instructions
+
+
+def test_pydantic_runtime_uses_native_tool_loop_and_records_source() -> None:
+    """原生 Tool Loop 经过薄 Bridge，并保留来源、Usage 与不可信边界。"""
+
+    script = ScriptedModel(
+        [
+            _tool_response("get_current_quote", {"ticker": "GOOG"}),
+            _text_response("当前报价已核验。[source:quote-1]"),
+        ]
+    )
+    source = SourceRecord("quote-1", "FAKE_MARKET", None)
+    quote = FunctionToolExecutor(
+        lambda arguments: ToolObservation(
+            "OK",
+            {"ticker": arguments["ticker"], "price": "210.25"},
+            (source,),
+        )
+    )
+
+    result = PydanticRuntimeCandidate(
+        _model(script),
+        {"get_current_quote": quote},
+    ).run(_runtime_input())
+
+    assert result.status is RuntimeExecutionStatus.COMPLETED
+    assert result.sources == (source,)
+    assert len(result.model_trace) == 2
+    assert result.tool_trace[0].source_id == "quote-1"
+    assert result.usage is not None
+    assert result.usage.input_tokens > 0
+    assert result.usage.total_tokens >= result.usage.input_tokens
+    second_call = script.calls[1]
+    serialized_messages = repr(second_call)
+    assert "UNTRUSTED_TOOL_DATA" in serialized_messages
+    assert "quote-1" in serialized_messages
+
+
+def test_pydantic_runtime_rejects_unobserved_source_reference() -> None:
+    """模型不得凭空输出本轮未观察到的来源。"""
+
+    script = ScriptedModel([_text_response("请见 https://invented.test/source")])
+
+    result = PydanticRuntimeCandidate(_model(script), {}).run(_runtime_input())
+
+    assert result.status is RuntimeExecutionStatus.CANDIDATE_FAILURE
+    assert result.failure == "UNOBSERVED_SOURCE_REFERENCE"
+    assert result.answer is None
+
+
+def test_pydantic_runtime_preserves_tool_failure_as_warning() -> None:
+    """Tool Adapter 失败是显式观察，不直接判定框架架构不支持。"""
+
+    script = ScriptedModel(
+        [
+            _tool_response("get_current_quote", {"ticker": "GOOG"}),
+            _text_response("报价 Provider 当前不可用，因此保持 UNKNOWN。"),
+        ]
+    )
+
+    def fail(arguments: Mapping[str, object]) -> ToolObservation:
+        """模拟受控 Tool Provider Failure。"""
+
+        del arguments
+        raise RuntimeError("provider unavailable")
+
+    result = PydanticRuntimeCandidate(
+        _model(script),
+        {"get_current_quote": FunctionToolExecutor(fail)},
+    ).run(_runtime_input())
+
+    assert result.status is RuntimeExecutionStatus.COMPLETED
+    assert result.warnings == ("TOOL_FAILURE:get_current_quote",)
+    assert result.sources == ()
+
+
+def test_pydantic_runtime_stops_at_native_request_limit() -> None:
+    """框架原生 UsageLimits 在额外 Model Request 前停止循环。"""
+
+    script = ScriptedModel(
+        [
+            _tool_response("get_current_quote", {"ticker": "GOOG"}),
+            _text_response("不应执行到这里。"),
+        ]
+    )
+    quote = FunctionToolExecutor(
+        lambda arguments: ToolObservation("OK", {"ticker": arguments["ticker"]})
+    )
+    runtime_input = replace(
+        _runtime_input(),
+        budget=RuntimeBudget(1, 2, 1, 1, 30),
+    )
+
+    result = PydanticRuntimeCandidate(
+        _model(script),
+        {"get_current_quote": quote},
+    ).run(runtime_input)
+
+    assert result.status is RuntimeExecutionStatus.BUDGET_EXHAUSTED
+    assert result.failure == "PYDANTIC_USAGE_LIMIT_EXCEEDED"
+    assert len(script.calls) == 1
+
+
+def test_unsupported_bridge_tool_is_prototype_failure_not_architecture_limit() -> None:
+    """未实现的薄 Bridge 能力必须记录为 Prototype Gap 证据。"""
+
+    runtime_input = replace(
+        _runtime_input(),
+        tools=(
+            LLMToolDefinition(
+                "calculate_scenario",
+                "计算情景",
+                {
+                    "type": "object",
+                    "properties": {},
+                    "additionalProperties": False,
+                },
+            ),
+        ),
+    )
+
+    result = PydanticRuntimeCandidate(
+        _model(ScriptedModel([_text_response("不会执行。")])),
+        {},
+    ).run(runtime_input)
+
+    assert result.status is RuntimeExecutionStatus.CANDIDATE_FAILURE
+    assert result.failure == "HARNESS_INPUT_UNSUPPORTED:ValueError"
+
+
+def test_alibaba_provider_builder_uses_native_provider() -> None:
+    """Provider Smoke 证明无需额外 OpenAI-compatible Bridge。"""
+
+    model = build_alibaba_chat_model(
+        "qwen3.7-max",
+        api_key="test-key",
+        base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+    )
+
+    assert model.model_name == "qwen3.7-max"
+    assert model.system == "alibaba"
