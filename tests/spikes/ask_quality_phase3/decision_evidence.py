@@ -115,8 +115,8 @@ def decision_evidence(*, revision: str) -> dict[str, object]:
         },
         "persistence": {
             "application_boundary": ArtifactStatus.SUPPORTED.value,
-            "postgres_live": ArtifactStatus.NOT_MEASURED.value,
-            "reason": "SPIKE_DATABASE_URL unavailable",
+            "postgres_live": ArtifactStatus.SUPPORTED.value,
+            "evidence": "isolated PostgreSQL 17 temporary-schema integration",
         },
         "representative_cases": [
             {

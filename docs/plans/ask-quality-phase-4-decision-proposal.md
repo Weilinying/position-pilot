@@ -5,8 +5,8 @@
 **Status:** PROPOSED — NO-GO PENDING LIVE EVIDENCE
 
 Phase 3 已证明两个 Runtime、两条 Research Contract 和最小 Persistence Boundary 在架构上可支持。
-但固定模型 Runtime、两条 Research 路径和 PostgreSQL Prototype 均缺少受控 Live Evidence，因此本提案
-不请求立即开始 Phase 4 Production Implementation。
+但固定模型 Runtime 与两条 Research 路径均缺少受控 Live Evidence，因此本提案不请求立即开始
+Phase 4 Production Implementation。PostgreSQL 17 临时 Schema Prototype 已补测通过。
 
 ## 2. 暂定推荐
 
@@ -48,8 +48,7 @@ Schema、Migration、API 和生命周期必须在 Phase 4 计划中设计并重�
 2. Alibaba Responses `web_search` / `web_extractor` 的一个公开研究任务，确认实际 Search、Source
    Citation、Usage 与 Failure；
 3. 一个 Brave Search + Controlled Fetch 的同任务运行，记录 Source、读取状态、Latency 与可得费用；
-4. 一个显式 `SPIKE_DATABASE_URL` 临时 Schema Integration Test；
-5. 更新 `decision-evidence.json` 和 Phase 3 Report，不新增模型或第二个 Search Provider。
+4. 更新 `decision-evidence.json` 和 Phase 3 Report，不新增模型或第二个 Search Provider。
 
 如果固定模型或 Endpoint 不支持 Native Research，记录实际限制，不更换 Runtime 实验模型。只有另行
 标记的 Native Capability Test 才能使用其他模型，其结果不得参与同模型 Runtime / Research 比较。

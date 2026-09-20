@@ -2,8 +2,9 @@
 
 ## 1. 状态与结论
 
-**Status:** EXECUTION CONCLUDED — NO-GO / HUMAN REVIEW REQUIRED；固定模型、Research 与 PostgreSQL
-Live Evidence 因当前进程没有显式 Credential / `SPIKE_DATABASE_URL` 而为 `NOT_MEASURED`。
+**Status:** EXECUTION CONCLUDED — NO-GO / HUMAN REVIEW REQUIRED；固定模型与 Research Live Evidence
+因当前进程没有显式 Provider Credential 而为 `NOT_MEASURED`。PostgreSQL 17 临时 Schema Integration
+已补测通过。
 
 Phase 3 已完成 Runtime、Research、安全、最小 Persistence、AQ05 / AQ06 和代表性证据的离线
 Capability Spike。Spike 没有修改 Production Runtime、Provider、Schema、Public API 或默认模型，所有
@@ -16,7 +17,7 @@ Capability Spike。Spike 没有修改 Production Runtime、Provider、Schema、P
 - **Research：** 两条路径的 Contract 与安全边界可支持，但没有受控 Live Evidence，暂不选择
   Production Research 路径。
 - **Persistence：** PositionPilot-owned Conversation、Confirmed Strategy 与 Account Ownership 的
-  Application Boundary 已验证；PostgreSQL 临时 Schema Live Integration 为 `NOT_MEASURED`。
+  Application Boundary，以及 PostgreSQL 17 临时 Schema Integration 均已验证。
 - **Phase 4 Entry：** `NO_GO_PENDING_LIVE_EVIDENCE`。这是一项证据不足的 No-go，不是架构失败。
 
 ## 2. 实验合同与隔离
@@ -103,8 +104,9 @@ Search Provider 和受控 Fetch 的离线路径为 `SUPPORTED`；真实搜索、
 - Runtime 不拥有 Conversation、Strategy、确认或 Portfolio Truth。
 
 另有只接受显式 `SPIKE_DATABASE_URL` 的 PostgreSQL 临时 Schema Prototype。缺少该变量时直接拒绝，
-不会回退 `DATABASE_URL`、`get_settings()` 或 Repository `.env`。当前 PostgreSQL Integration Test 跳过，
-状态为 `NOT_MEASURED`。没有创建 Production Migration、API 或最终 Schema。
+不会回退 `DATABASE_URL`、`get_settings()` 或 Repository `.env`。已在隔离的本地 PostgreSQL 17 数据库
+运行临时 Schema Integration Test，Owner 与 Confirmed Strategy Boundary 通过。没有创建 Production
+Migration、API 或最终 Schema。
 
 ## 6. AQ05 / AQ06 与代表性 Case
 
@@ -139,8 +141,8 @@ Live Evidence 可用于收窄。代表性组合预算估算整体保持 `NOT_MEA
 ## 8. 验证与已知限制
 
 已运行 Phase 3 Spike 的 `ruff check`、`mypy`、定向 `pytest`、相关 LLM / Ask Quality Regression 与
-`git diff --check`。最终离线验证为 120 passed、26 skipped；其中 4 个 Phase 3 Live Smoke、1 个临时
-PostgreSQL Integration 和 21 个既有真实模型评测因未显式启用而跳过。在线测试为显式
+`git diff --check`。补测 PostgreSQL 后最终验证为 121 passed、25 skipped；其中 4 个 Phase 3 Live
+Smoke 和 21 个既有真实模型评测因未显式启用而跳过。在线测试为显式
 `RUN_PHASE3_LIVE=1` Opt-in；当前因缺少 Credential 按设计跳过。PydanticAI 离线测试产生一条其内部
 Event Loop 获取方式的 Deprecation Warning，不影响本次结果，但在正式采用前需要随锁定版本复核。
 
@@ -148,7 +150,6 @@ Event Loop 获取方式的 Deprecation Warning，不影响本次结果，但在�
 
 - 两个 Runtime 尚无同一固定模型的 Live 对照；
 - 两条 Research 路径尚无同一时间窗的 Live Evidence；
-- PostgreSQL 临时 Schema 尚未真实连接；
 - Current Runtime 与 PydanticAI 的真实 Latency / Usage / Cost 差异未测量；
 - 代表性组合运行与预算聚合尚未测量；
 - PydanticAI Bridge 只覆盖三个代表性 Tool，不是 Production Adapter；
