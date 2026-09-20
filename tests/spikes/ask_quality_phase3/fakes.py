@@ -116,6 +116,7 @@ def research_result(request: ResearchRequest, status: ResearchStatus) -> Researc
             status,
             (source("source-1"),),
             None,
+            (TraceEvent("research", 1, "OK", "search", "source-1"),),
             search_count=1,
             latency_ms=12.5,
         )
@@ -125,6 +126,10 @@ def research_result(request: ResearchRequest, status: ResearchStatus) -> Researc
             status,
             (source("source-1"),),
             "FETCH_PROVIDER_FAILURE",
+            (
+                TraceEvent("research", 1, "OK", "search", "source-1"),
+                TraceEvent("research", 2, "PROVIDER_FAILURE", "fetch"),
+            ),
             search_count=1,
             fetch_count=1,
             latency_ms=20.0,

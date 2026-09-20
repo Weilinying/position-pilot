@@ -90,6 +90,8 @@ def run_runtime_fixture(
     fixture: str,
     runtime_input: RuntimeInput,
     expected_status: RuntimeExecutionStatus,
+    *,
+    capability_evidence: bool = False,
 ) -> ComparisonArtifact:
     """执行 Runtime Fixture，并保留 Candidate Failure。"""
 
@@ -122,7 +124,7 @@ def run_runtime_fixture(
         )
     after_hash = canonical_input_hash(candidate_input)
     integrity_failure = _source_integrity_failure(result)
-    status = ArtifactStatus.SUPPORTED
+    status = ArtifactStatus.SUPPORTED if capability_evidence else ArtifactStatus.NOT_MEASURED
     gap: str | None = None
     if after_hash != input_hash:
         status = ArtifactStatus.PROTOTYPE_GAP
@@ -150,6 +152,8 @@ def run_research_fixture(
     fixture: str,
     request: ResearchRequest,
     expected_status: ResearchStatus,
+    *,
+    capability_evidence: bool = False,
 ) -> ComparisonArtifact:
     """执行 Research Fixture，不把正常空结果标成 Provider Failure。"""
 
@@ -174,17 +178,33 @@ def run_research_fixture(
             ArtifactStatus.PROTOTYPE_GAP,
             {"research_status": "INVALID_CANDIDATE_RESULT"},
         )
-    status = (
-        ArtifactStatus.SUPPORTED
-        if result.status is expected_status
-        else ArtifactStatus.PROTOTYPE_GAP
+    observed = {
+        event.source_id
+        for event in result.research_trace
+        if event.source_id is not None and event.status == "OK"
+    }
+    unobserved = sorted(
+        source.source_id for source in result.sources if source.source_id not in observed
     )
+    status = ArtifactStatus.SUPPORTED if capability_evidence else ArtifactStatus.NOT_MEASURED
+    gap: str | None = None
+    if result.request != request:
+        status = ArtifactStatus.PROTOTYPE_GAP
+        gap = "MISMATCHED_RESEARCH_REQUEST"
+    elif result.status is not expected_status:
+        status = ArtifactStatus.PROTOTYPE_GAP
+        gap = "UNEXPECTED_RESEARCH_STATUS"
+    elif unobserved:
+        status = ArtifactStatus.PROTOTYPE_GAP
+        gap = f"UNOBSERVED_SOURCE:{','.join(unobserved)}"
+    result_payload = asdict(result)
+    result_payload["gap"] = gap
     return ComparisonArtifact(
         category="research",
         candidate=name,
         fixture=fixture,
         status=status,
-        result=asdict(result),
+        result=result_payload,
     )
 
 
@@ -210,6 +230,60 @@ def not_measured_artifact(
 class ArtifactReporter:
     """只向调用方显式提供的目录写入可比较 JSON。"""
 
+    _manifest_fields = {
+        "artifact_schema_version",
+        "candidate_versions",
+        "critical_gates",
+        "endpoint_type",
+        "experiment_model",
+        "fixture_hash",
+        "fixture_version",
+        "prompt_hash",
+        "prompt_semantics_version",
+        "provider",
+        "region",
+        "research_candidates",
+        "representative_case_ids",
+        "revision",
+        "run_id",
+        "runtime_candidates",
+        "safety_ceiling",
+        "safety_ceiling_is_production_slo",
+        "safety_ceiling_provenance",
+        "tool_contract_hash",
+        "tool_contract_version",
+    }
+    _runtime_result_fields = {
+        "answer",
+        "execution_status",
+        "failure",
+        "failure_type",
+        "gap",
+        "input_hash",
+        "latency_ms",
+        "model_trace",
+        "sources",
+        "status",
+        "tool_trace",
+        "usage",
+    }
+    _research_result_fields = {
+        "cost_amount",
+        "cost_currency",
+        "failure",
+        "failure_type",
+        "fetch_count",
+        "gap",
+        "latency_ms",
+        "request",
+        "research_status",
+        "research_trace",
+        "search_count",
+        "sources",
+        "status",
+        "usage",
+    }
+
     def __init__(self, output_directory: Path) -> None:
         if not output_directory.is_absolute():
             raise HarnessConfigurationError("Artifact 目录必须是绝对路径")
@@ -225,6 +299,13 @@ class ArtifactReporter:
 
         if not filename.endswith(".json") or Path(filename).name != filename:
             raise HarnessConfigurationError("Artifact 文件名必须是单一 JSON 文件名")
+        unknown_manifest_fields = set(manifest) - self._manifest_fields
+        if unknown_manifest_fields:
+            raise HarnessConfigurationError(
+                f"Manifest 包含未允许字段: {sorted(unknown_manifest_fields)}"
+            )
+        for artifact in artifacts:
+            self._validate_result_schema(artifact)
         self._output_directory.mkdir(parents=True, exist_ok=True)
         path = self._output_directory / filename
         payload = {
@@ -237,6 +318,22 @@ class ArtifactReporter:
             encoding="utf-8",
         )
         return path
+
+    @classmethod
+    def _validate_result_schema(cls, artifact: ComparisonArtifact) -> None:
+        """只允许 Harness 已定义的结果字段进入 Artifact。"""
+
+        allowed_by_category = {
+            "runtime": cls._runtime_result_fields,
+            "research": cls._research_result_fields,
+            "security": {"reason"},
+        }
+        allowed = allowed_by_category.get(artifact.category)
+        if allowed is None:
+            raise HarnessConfigurationError(f"未知 Artifact category: {artifact.category}")
+        unknown = set(artifact.result) - allowed
+        if unknown:
+            raise HarnessConfigurationError(f"Artifact 包含未允许字段: {sorted(unknown)}")
 
     @classmethod
     def _reject_sensitive_keys(cls, value: object) -> None:

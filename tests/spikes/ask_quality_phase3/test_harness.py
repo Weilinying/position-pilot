@@ -10,6 +10,7 @@ from position_pilot.application.llm import LLMMessage, LLMRole, LLMToolDefinitio
 
 from .contracts import (
     ArtifactStatus,
+    ComparisonArtifact,
     ResearchRequest,
     ResearchStatus,
     RuntimeBudget,
@@ -83,8 +84,8 @@ def test_runtime_candidates_consume_the_same_provider_neutral_input() -> None:
     assert current.received is not None
     assert pydantic_ai.received is not None
     assert canonical_input_hash(current.received) == canonical_input_hash(pydantic_ai.received)
-    assert current_artifact.status is ArtifactStatus.SUPPORTED
-    assert pydantic_artifact.status is ArtifactStatus.SUPPORTED
+    assert current_artifact.status is ArtifactStatus.NOT_MEASURED
+    assert pydantic_artifact.status is ArtifactStatus.NOT_MEASURED
 
 
 def test_research_keeps_no_results_distinct_from_provider_failure() -> None:
@@ -117,6 +118,8 @@ def test_research_keeps_no_results_distinct_from_provider_failure() -> None:
     assert empty_artifact.result["failure"] is None
     assert failed_artifact.result["status"] is ResearchStatus.PROVIDER_FAILURE
     assert failed_artifact.result["failure"] == "FAKE_RESEARCH_FAILURE"
+    assert empty_artifact.status is ArtifactStatus.NOT_MEASURED
+    assert failed_artifact.status is ArtifactStatus.NOT_MEASURED
 
 
 def test_research_candidates_consume_equivalent_public_only_requests() -> None:
@@ -158,8 +161,8 @@ def test_research_candidates_consume_equivalent_public_only_requests() -> None:
         "event",
         "time_window",
     }
-    assert native_artifact.status is ArtifactStatus.SUPPORTED
-    assert application_artifact.status is ArtifactStatus.SUPPORTED
+    assert native_artifact.status is ArtifactStatus.NOT_MEASURED
+    assert application_artifact.status is ArtifactStatus.NOT_MEASURED
 
 
 def test_research_partial_success_preserves_sources_and_failure() -> None:
@@ -178,7 +181,7 @@ def test_research_partial_success_preserves_sources_and_failure() -> None:
         ResearchStatus.PARTIAL_SUCCESS,
     )
 
-    assert artifact.status is ArtifactStatus.SUPPORTED
+    assert artifact.status is ArtifactStatus.NOT_MEASURED
     assert artifact.result["sources"]
     assert artifact.result["failure"] == "FETCH_PROVIDER_FAILURE"
 
@@ -239,7 +242,7 @@ def test_fixture_inventory_has_executable_fake_scripts() -> None:
     )
 
     assert {artifact.fixture for artifact in artifacts} == set(FIXTURE_NAMES)
-    assert all(artifact.status is ArtifactStatus.SUPPORTED for artifact in artifacts)
+    assert all(artifact.status is ArtifactStatus.NOT_MEASURED for artifact in artifacts)
 
 
 def test_harness_error_and_candidate_exception_are_distinct() -> None:
@@ -367,10 +370,27 @@ def test_reporter_rejects_sensitive_or_raw_content(tmp_path: Path) -> None:
     )
     manifest["api_key"] = "must-not-be-written"
 
-    with pytest.raises(HarnessConfigurationError, match="敏感字段"):
+    with pytest.raises(HarnessConfigurationError, match="未允许字段"):
         ArtifactReporter(tmp_path).write("unsafe.json", manifest, ())
 
     assert not (tmp_path / "unsafe.json").exists()
+
+    safe_manifest = experiment_manifest(
+        run_id="test-run",
+        revision="test-revision",
+        provider="FAKE",
+        endpoint_type="FAKE",
+        region="FAKE",
+    )
+    raw_content = ComparisonArtifact(
+        "security",
+        "fake",
+        "malicious-page",
+        ArtifactStatus.NOT_MEASURED,
+        {"page_content": "完整网页正文"},
+    )
+    with pytest.raises(HarnessConfigurationError, match="未允许字段"):
+        ArtifactReporter(tmp_path).write("raw.json", safe_manifest, (raw_content,))
 
 
 def test_source_url_rejects_embedded_credentials() -> None:

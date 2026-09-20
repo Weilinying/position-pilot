@@ -183,6 +183,7 @@ class ResearchResult:
     status: ResearchStatus
     sources: tuple[SourceRecord, ...] = ()
     failure: str | None = None
+    research_trace: tuple[TraceEvent, ...] = ()
     search_count: int = 0
     fetch_count: int = 0
     latency_ms: float | None = None
