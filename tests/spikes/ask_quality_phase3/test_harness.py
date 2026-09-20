@@ -1,7 +1,7 @@
 """Phase 3 Provider-neutral Fake Harness 测试。"""
 
 import json
-from dataclasses import fields
+from dataclasses import fields, replace
 from pathlib import Path
 
 import pytest
@@ -18,6 +18,7 @@ from .contracts import (
     RuntimeInput,
     RuntimeResult,
     SourceRecord,
+    TraceEvent,
 )
 from .experiment_contract import experiment_manifest
 from .fakes import (
@@ -184,6 +185,56 @@ def test_research_partial_success_preserves_sources_and_failure() -> None:
     assert artifact.status is ArtifactStatus.NOT_MEASURED
     assert artifact.result["sources"]
     assert artifact.result["failure"] == "FETCH_PROVIDER_FAILURE"
+
+
+def test_partial_success_source_is_observed() -> None:
+    """合法的部分成功来源不能被误判为虚构来源。"""
+
+    partial_source = source("partial-1")
+    result = completed_runtime_result(
+        sources=(partial_source,),
+        tool_events=(TraceEvent("research", 1, "PARTIAL_SUCCESS", "fetch", "partial-1"),),
+    )
+
+    artifact = run_runtime_fixture(
+        RecordingRuntimeCandidate("current", result),
+        "partial-success",
+        _runtime_input(),
+        RuntimeExecutionStatus.COMPLETED,
+        capability_evidence=True,
+    )
+
+    assert artifact.status is ArtifactStatus.SUPPORTED
+
+
+def test_unexpected_tool_warning_cannot_be_reported_as_supported() -> None:
+    """请求完成但 Tool Failure 未在预期中时仍是 Prototype Gap。"""
+
+    result = replace(
+        completed_runtime_result(),
+        warnings=("TOOL_FAILURE:get_current_quote",),
+    )
+    candidate = RecordingRuntimeCandidate("current", result)
+
+    unexpected = run_runtime_fixture(
+        candidate,
+        "provider-failure",
+        _runtime_input(),
+        RuntimeExecutionStatus.COMPLETED,
+        capability_evidence=True,
+    )
+    expected = run_runtime_fixture(
+        RecordingRuntimeCandidate("current", result),
+        "provider-failure",
+        _runtime_input(),
+        RuntimeExecutionStatus.COMPLETED,
+        capability_evidence=True,
+        expected_warnings=("TOOL_FAILURE:get_current_quote",),
+    )
+
+    assert unexpected.status is ArtifactStatus.PROTOTYPE_GAP
+    assert unexpected.result["gap"] == "UNEXPECTED_RUNTIME_WARNINGS"
+    assert expected.status is ArtifactStatus.SUPPORTED
 
 
 def test_source_metadata_can_remain_unknown() -> None:

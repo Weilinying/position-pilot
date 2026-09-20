@@ -128,6 +128,7 @@ class RuntimeResult:
     tool_trace: tuple[TraceEvent, ...] = ()
     usage: LLMUsage | None = None
     latency_ms: float | None = None
+    warnings: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if not isinstance(self.status, RuntimeExecutionStatus):

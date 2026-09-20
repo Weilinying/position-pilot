@@ -71,17 +71,32 @@ def _runtime_input(*, budget: RuntimeBudget | None = None) -> RuntimeInput:
             LLMToolDefinition(
                 "get_current_quote",
                 "读取报价",
-                {"type": "object", "properties": {"ticker": {"type": "string"}}},
+                {
+                    "type": "object",
+                    "properties": {"ticker": {"type": "string"}},
+                    "required": ["ticker"],
+                    "additionalProperties": False,
+                },
             ),
             LLMToolDefinition(
                 "search_web",
                 "搜索公开信息",
-                {"type": "object", "properties": {"query": {"type": "string"}}},
+                {
+                    "type": "object",
+                    "properties": {"query": {"type": "string"}},
+                    "required": ["query"],
+                    "additionalProperties": False,
+                },
             ),
             LLMToolDefinition(
                 "fetch_page",
                 "读取公开页面",
-                {"type": "object", "properties": {"url": {"type": "string"}}},
+                {
+                    "type": "object",
+                    "properties": {"url": {"type": "string"}},
+                    "required": ["url"],
+                    "additionalProperties": False,
+                },
             ),
         ),
         budget=budget or RuntimeBudget(4, 4, 2, 2, 30),
@@ -314,4 +329,113 @@ def test_runtime_preserves_provider_failure_without_fake_answer() -> None:
 
     assert result.status is RuntimeExecutionStatus.CANDIDATE_FAILURE
     assert result.failure == "模型服务暂不可用"
+    assert result.answer is None
+
+
+def test_runtime_validates_tool_arguments_before_execution() -> None:
+    """缺少必填参数时不调用 Executor，并把 Validation Failure 返回给模型。"""
+
+    llm = ScriptedLLM(
+        [
+            _tool_call("call-1", "get_current_quote", {}),
+            _success(LLMMessage(LLMRole.ASSISTANT, "报价参数无效，未伪造价格。")),
+        ]
+    )
+    executions = 0
+
+    def quote(arguments: Mapping[str, object]) -> ToolObservation:
+        """记录是否越过 Schema Validation。"""
+
+        nonlocal executions
+        executions += 1
+        return ToolObservation("OK", arguments)
+
+    result = CurrentRuntimeCandidate(
+        llm,
+        {"get_current_quote": FunctionToolExecutor(quote)},
+    ).run(_runtime_input())
+
+    assert result.status is RuntimeExecutionStatus.COMPLETED
+    assert executions == 0
+    assert result.warnings == ("INVALID_ARGUMENTS:get_current_quote",)
+    assert result.tool_trace[0].status == "INVALID_ARGUMENTS"
+
+
+def test_runtime_rejects_unobserved_source_reference_in_final_answer() -> None:
+    """Answer 中显式 URL / source-id 引用必须来自本轮 Tool Observation。"""
+
+    llm = ScriptedLLM(
+        [
+            _success(
+                LLMMessage(
+                    LLMRole.ASSISTANT,
+                    "依据 https://invented.example.test/report 可以确认。",
+                )
+            )
+        ]
+    )
+
+    result = CurrentRuntimeCandidate(llm, {}).run(_runtime_input())
+
+    assert result.status is RuntimeExecutionStatus.CANDIDATE_FAILURE
+    assert result.failure == "UNOBSERVED_SOURCE_REFERENCE"
+    assert result.answer is None
+
+
+def test_runtime_preserves_tool_failure_as_warning_in_partial_answer() -> None:
+    """Tool Failure 后可给已知部分，但 Artifact 必须保留失败而非假装全成功。"""
+
+    llm = ScriptedLLM(
+        [
+            _tool_call("call-1", "get_current_quote", {"ticker": "GOOG"}),
+            _success(LLMMessage(LLMRole.ASSISTANT, "报价工具失败，当前价格保持 UNKNOWN。")),
+        ]
+    )
+
+    def unavailable(arguments: Mapping[str, object]) -> ToolObservation:
+        """模拟 Provider Failure。"""
+
+        del arguments
+        raise RuntimeError("provider unavailable")
+
+    result = CurrentRuntimeCandidate(
+        llm,
+        {"get_current_quote": FunctionToolExecutor(unavailable)},
+    ).run(_runtime_input())
+
+    assert result.status is RuntimeExecutionStatus.COMPLETED
+    assert result.warnings == ("TOOL_FAILURE:get_current_quote",)
+    assert result.tool_trace[0].status == "TOOL_FAILURE"
+    assert "UNKNOWN" in (result.answer or "")
+
+
+def test_runtime_checks_wall_clock_after_slow_model_call() -> None:
+    """单次慢调用返回后也不能绕过 Wall-clock Ceiling。"""
+
+    @dataclass(slots=True)
+    class MutableClock:
+        now: float = 0.0
+
+        def __call__(self) -> float:
+            return self.now
+
+    clock = MutableClock()
+
+    @dataclass(slots=True)
+    class SlowLLM:
+        def complete(
+            self,
+            messages: tuple[LLMMessage, ...],
+            *,
+            tools: tuple[LLMToolDefinition, ...] = (),
+            response_format: LLMResponseFormat = LLMResponseFormat.TEXT,
+        ) -> LLMResult:
+            del messages, tools, response_format
+            clock.now = 31.0
+            return _success(LLMMessage(LLMRole.ASSISTANT, "太迟返回的答案"))
+
+    result = CurrentRuntimeCandidate(SlowLLM(), {}, clock=clock).run(_runtime_input())
+
+    assert result.status is RuntimeExecutionStatus.BUDGET_EXHAUSTED
+    assert result.failure == "WALL_CLOCK_BUDGET_EXHAUSTED"
     assert result.answer is None
