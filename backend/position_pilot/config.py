@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     finnhub_api_key: SecretStr | None = None
     finnhub_base_url: AnyHttpUrl = AnyHttpUrl("https://finnhub.io/api/v1")
     finnhub_request_timeout_seconds: float = 10.0
+    llm_provider: str = "ALIYUN_MODEL_STUDIO"
     llm_base_url: AnyHttpUrl = AnyHttpUrl("https://dashscope.aliyuncs.com/compatible-mode/v1")
     llm_api_key: SecretStr | None = None
     llm_model: str = "deepseek-v4-pro-0813"
@@ -104,6 +105,16 @@ class Settings(BaseSettings):
         normalized = value.strip()
         if not normalized:
             raise ValueError("LLM_MODEL 不能为空")
+        return normalized
+
+    @field_validator("llm_provider")
+    @classmethod
+    def require_nonempty_llm_provider(cls, value: str) -> str:
+        """Provider 标签用于选择 Adapter 行为并记录可复现元数据。"""
+
+        normalized = value.strip().upper()
+        if not normalized:
+            raise ValueError("LLM_PROVIDER 不能为空")
         return normalized
 
     @field_validator("vision_request_timeout_seconds")

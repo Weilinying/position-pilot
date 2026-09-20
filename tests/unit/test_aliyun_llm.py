@@ -4,6 +4,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 
 import pytest
+from pydantic import AnyHttpUrl, PostgresDsn, SecretStr
 
 from position_pilot.application.llm import (
     LLMMessage,
@@ -13,12 +14,17 @@ from position_pilot.application.llm import (
     LLMToolCall,
     LLMToolDefinition,
 )
+from position_pilot.config import Settings
 from position_pilot.integrations.aliyun_llm import (
     AliyunLLMProvider,
     LLMJsonHttpResponse,
     LLMTransportFailureKind,
     LLMTransportUnavailable,
+    OpenAICompatibleLLMProvider,
+    create_llm_provider,
 )
+
+DATABASE_URL = "postgresql+psycopg://position_pilot:secret@localhost:5432/position_pilot"
 
 
 @dataclass(frozen=True, slots=True)
@@ -125,6 +131,86 @@ def test_serializes_generic_messages_tools_and_configured_model() -> None:
     assert "response_format" not in request.payload
     assert request.headers["Authorization"] == "Bearer test-secret"
     assert "get_current_quote" in str(request.payload["tools"])
+
+
+def test_generic_openai_compatible_adapter_omits_aliyun_extension() -> None:
+    """非 Alibaba Provider 不得收到 enable_thinking 扩展参数。"""
+
+    transport = FakeLLMTransport(
+        [
+            LLMJsonHttpResponse(
+                200,
+                {"choices": [{"message": {"role": "assistant", "content": "ok"}}]},
+            )
+        ]
+    )
+    provider = OpenAICompatibleLLMProvider(
+        provider_name="OPENAI",
+        api_key="test-secret",
+        base_url="https://api.example.test/v1",
+        model="configured-model",
+        transport=transport,
+    )
+
+    result = provider.complete((LLMMessage(LLMRole.USER, "question"),))
+
+    assert result.status is LLMStatus.OK
+    assert "enable_thinking" not in transport.requests[0].payload
+    assert result.metadata is not None
+    assert result.metadata.provider == "OPENAI"
+
+
+def test_factory_selects_provider_specific_request_behavior_from_config() -> None:
+    """配置切换 Provider 时不要求 Agent 或业务逻辑选择 Adapter。"""
+
+    settings = Settings(
+        _env_file=None,  # type: ignore[call-arg]
+        database_url=PostgresDsn(DATABASE_URL),
+        llm_provider="OPENAI",
+        llm_api_key=SecretStr("test-secret"),
+        llm_base_url=AnyHttpUrl("https://api.openai.example/v1"),
+        llm_model="configured-model",
+    )
+
+    provider = create_llm_provider(settings)
+
+    assert type(provider) is OpenAICompatibleLLMProvider
+    assert provider._provider_name == "OPENAI"
+    assert provider._enable_thinking is None
+
+
+def test_extracts_provider_neutral_usage_and_response_metadata() -> None:
+    """兼容响应的 model、id、usage 与 latency 进入统一结果。"""
+
+    transport = FakeLLMTransport(
+        [
+            LLMJsonHttpResponse(
+                200,
+                {
+                    "id": "response-1",
+                    "model": "served-model",
+                    "usage": {
+                        "prompt_tokens": 11,
+                        "completion_tokens": 7,
+                        "total_tokens": 18,
+                    },
+                    "choices": [{"message": {"role": "assistant", "content": "ok"}}],
+                },
+            )
+        ]
+    )
+
+    result = make_provider(transport).complete((LLMMessage(LLMRole.USER, "question"),))
+
+    assert result.metadata is not None
+    assert result.metadata.provider == "ALIYUN_MODEL_STUDIO"
+    assert result.metadata.model == "served-model"
+    assert result.metadata.response_id == "response-1"
+    assert result.metadata.latency_ms >= 0
+    assert result.metadata.usage is not None
+    assert result.metadata.usage.input_tokens == 11
+    assert result.metadata.usage.output_tokens == 7
+    assert result.metadata.usage.total_tokens == 18
 
 
 @pytest.mark.parametrize("with_tools", [False, True])
@@ -240,6 +326,7 @@ def test_serializes_assistant_tool_call_and_tool_result_for_final_completion() -
     [
         (400, LLMStatus.INVALID_REQUEST),
         (401, LLMStatus.AUTHENTICATION_FAILED),
+        (408, LLMStatus.PROVIDER_UNAVAILABLE),
         (429, LLMStatus.RATE_LIMITED),
         (503, LLMStatus.PROVIDER_UNAVAILABLE),
     ],
@@ -259,6 +346,17 @@ def test_maps_http_failure_without_exposing_provider_payload(
     assert result.status is expected
     assert result.error_message is not None
     assert "test-secret" not in result.error_message
+
+
+def test_maps_http_timeout_to_stable_provider_failure() -> None:
+    """HTTP 408 与 Transport Timeout 都必须保留可诊断的超时语义。"""
+
+    result = make_provider(
+        FakeLLMTransport([LLMJsonHttpResponse(408, {"error": "upstream timeout"})])
+    ).complete((LLMMessage(LLMRole.USER, "question"),))
+
+    assert result.status is LLMStatus.PROVIDER_UNAVAILABLE
+    assert result.error_message == "LLM Provider 请求超时"
 
 
 def test_missing_credential_fails_before_transport_call() -> None:

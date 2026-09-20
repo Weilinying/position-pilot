@@ -2,7 +2,8 @@
 
 ## 1. 状态与职责
 
-**Status:** DISCOVERY — DIRECTION APPROVED（2026-09-13）；各阶段尚未执行，不绑定 Milestone 或 Release。
+**Status:** DISCOVERY — Phase 1 HUMAN ACCEPTED（2026-09-15）；Phase 2 HUMAN ACCEPTED
+（2026-09-20）；Phase 3 IN PROGRESS，不绑定 Milestone 或 Release。
 
 **记录日期：** 2026-09-13。Human Review 已批准 M13 后的 Discovery 方向，并要求区分五类状态、
 收窄框架候选、独立评价四类选型及在阶段四设置 4A / 4B 检查点；本版落实这些意见。
@@ -40,7 +41,7 @@
 |---|---|---|
 | 1 — 当前基线 | 约 20 个固定案例、冻结输入与运行配置、当前回答记录、评分及 Failure Map | 首先测当前版本；记录不支持和未运行，不为基线修改 Production 行为 |
 | 2 — 最小设计 | Domain State / Strategy State / Conversation Context / Long-term Memory / Agent Runtime / Research / Answer 边界、最小闭环与 Decision Proposal | 用案例走查；Human Review 确认具体实施边界与待验证项 |
-| 3 — Framework / Capability Spike | Current Runtime 与 Pydantic AI 正式对照；Runtime、Model / Provider、Research Provider、Memory / Persistence 四类独立评分 | 固定非目标变量，验证循环与兼容性；按各自证据选型，批准后记录 ADR |
+| 3 — Framework / Capability Spike | Current Runtime 与 Pydantic AI、Native 与 Application-owned Research 两组核心对照；固定模型 Smoke 与最小 Persistence 验证 | 固定非目标变量，形成足以支持 Phase 4 路线选择的代表性证据；不提前实现生产完整度 |
 | 4 — 第一个完整 Ask 闭环 | 4A：对话、本轮预算、Search / Fetch、多轮循环；4B：已确认 Strategy 的持久读取 / 更新、纠正 / 失效与跨会话检索 | 4A 后固定 Eval，4B 后连续 Ask Eval，最后验证完整讨论链 |
 | 5 — Long-term Memory 完善 | 对确有检索需求的非固定字段长期背景，完善候选、确认、编辑删除、冲突、过期与检索 | 不混入 Strategy / Ledger；没有独立需求可暂缓，已上线状态的正确性不得延期 |
 | 6 — 优化与验收 | 按失败补数据 / 调 Prompt、必要的模型对比、来源与进度体验、验收报告 | 相关检查与 Automated Review 后完成固定评测和 Human Acceptance；再落实发布 |
@@ -49,6 +50,8 @@
 
 - [阶段一：基线与评测执行计划](ask-quality-phase-1-baseline.md)
 - [阶段二：最小设计与 Decision Proposal 执行计划](ask-quality-phase-2-design.md)
+- [Phase 2 Decision Proposal](ask-quality-decision-proposal.md)
+- [Phase 3：Framework / Capability Spike 实现计划](ask-quality-phase-3-spike.md)
 
 阶段二先明确五类状态。阶段四仍是一个阶段，内部顺序固定为 4A → 固定 Eval → 4B → 连续 Ask Eval：
 
@@ -90,7 +93,7 @@ Context Builder 按各自边界组合 Portfolio / Ledger、Confirmed Strategy、
 Runtime 管理 loop、tool execution、history wiring、streaming 与 usage limits；PositionPilot
 管理 portfolio truth、strategy truth、memory truth、source、confirmation 与 staleness semantics。
 
-## 5. 框架候选与四类选型
+## 5. 框架候选与 Phase 3 选型证据
 
 ReAct 指“根据当前上下文选择行动 → 执行工具 → 利用观察结果继续判断”的工作模式，
 不指定软件依赖。程序管理执行边界，模型选择问题所需路径，不按题型预写完整分析顺序。
@@ -100,14 +103,15 @@ ReAct 指“根据当前上下文选择行动 → 执行工具 → 利用观察�
 显式状态图需求出现时才评估 LangGraph。smolagents 仅作技术参考，不进入首轮正式 Benchmark。
 这不是已选型或质量排名；阶段三开始时核验官方文档、实际版本与接口兼容性。
 
-阶段三使用四张独立评分表，每张记录固定项、变化项、能力 / 正确性、成本与证据：
+最初的四类关注点继续分开归因，但精简后的 Phase 3 只把 Runtime 与 Research 作为两组核心对照；
+Model / Provider 固定一个当前可用模型并做 Compatibility Smoke，Persistence 只验证最小接入边界：
 
 | 选型维度 | 评价对象与边界 |
 |---|---|
 | Agent Runtime | Current Runtime / Pydantic AI；评 loop、tool execution、history wiring、streaming、usage limits 与接入成本 |
-| Model / Model Provider | 在同 Runtime、工具、Context、Answer 约定下评模型行为及 Provider 兼容性，不预选新模型 |
-| Research Provider | 现有 News / Market + 候选 Open Search / Page Fetch；评覆盖、时效、来源、失败、延迟和费用 |
-| Memory / Persistence | PositionPilot-owned DB + 可选框架适配器；分别评 Strategy、Conversation、Long-term Memory 与 Run State 的存取，确认业务规则未交给框架 |
+| Model / Model Provider | 固定一个当前可用实验模型；只验证 Provider 兼容性，不做完整横向比较 |
+| Research Provider | Alibaba Native Research 与最多一个 Search Provider；Page Fetch 可由该 Provider 或独立受控 Prototype 提供 |
+| Memory / Persistence | PositionPilot-owned DB + 可选框架适配器；只验证 Conversation、Confirmed Strategy 与 Account Ownership，不实现完整生命周期 |
 
 组合的端到端质量单独报告，不能因某个 Runtime + 模型 + Search 组合得分高就把增益全归给
 Runtime。Framework 自带 Web / Memory 能力若使用，同样登记 Provider、存储与业务边界，不绕过
@@ -158,13 +162,14 @@ capability gap 不靠重复采样证明。报告波动而不只展示最好结�
 
 ## 7. 当前下一步与记录规则
 
-下一次进入执行时，从阶段一的 P1-T0 开始，先核验 Repository 状态与评测入口；本次没有运行
-基线、进行选型、新增依赖或修改 Production。阶段二可先整理待决策清单，最终方案须引用基线证据。
+阶段一、二已完成并通过 Human Acceptance。当前执行 Phase 3 Framework / Capability Spike，
+只比较获批的最小 Runtime / Research 候选并验证必要 Persistence Boundary；不修改 Production
+Runtime / Provider，不运行 Production Migration，也不提前实现 Phase 4。
 
 执行时逐项填写阶段计划中的状态与产物位置；未运行的检查、缺失的成本数据、未获批的决策
 明确保留为未完成。不要在报告中回填虚构结果。
 
 M10、M12 与 V2 保持现有 Roadmap 状态。新的正式 Milestone、实施 Plan、ADR 与 Release Mapping
-在所需 Human Review 与 Spike 证据具备后再创建。当前文档任务不创建 Branch 或 Commit。
+在所需 Human Review 与 Spike 证据具备后再创建。Phase 3 使用独立 Branch 记录实验和评审结果。
 评审所说的“V2 级别变化”描述潜在架构影响，不等于将本 Discovery 改名 V2、批准 V2 Release，
 或启动 Roadmap 中的 Connected Product。方向性评审已通过，后续不重复请求批准同一方向。

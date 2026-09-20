@@ -20,7 +20,7 @@ from position_pilot.application.recognition_service import RecognitionService
 from position_pilot.config import get_settings
 from position_pilot.database import create_database_engine, create_session_factory
 from position_pilot.infrastructure.unit_of_work import SqlAlchemyPortfolioUnitOfWorkFactory
-from position_pilot.integrations.aliyun_llm import create_aliyun_llm_provider
+from position_pilot.integrations.aliyun_llm import create_llm_provider
 from position_pilot.integrations.aliyun_vision import AliyunVisionProvider
 from position_pilot.integrations.alpaca_market_data import create_alpaca_market_data_provider
 from position_pilot.integrations.alpaca_news import create_alpaca_news_provider
@@ -124,7 +124,7 @@ def get_investment_agent() -> InvestmentAgent:
     settings = get_settings()
     market_data_service = get_market_data_service()
     news_service = NewsService(create_alpaca_news_provider(settings))
-    llm_provider = create_aliyun_llm_provider(settings)
+    llm_provider = create_llm_provider(settings)
     return InvestmentAgent(
         get_portfolio_service(),
         market_data_service,

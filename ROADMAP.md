@@ -13,7 +13,7 @@
 **Current Milestone:** M13 — Position-Aware Market Chart
 **Status:** DONE — Human Accepted and merged to local `main`（2026-09-13）
 **Current Release State:** `v1.3.0` Release Candidate 已进入本地 `main`；Git Tag / GitHub Release 尚待发布
-**Next Planned Work:** Answer Quality / Memory / Open Web Research Discovery；M10、M12 继续暂缓
+**Next Planned Work:** Answer Quality Phase 3 Framework / Capability Spike（IN PROGRESS）；M10、M12 继续暂缓
 
 Milestone 状态统一使用 `NOT STARTED`、`IN PROGRESS`、`DONE`，不维护百分比进度。
 
@@ -491,7 +491,7 @@ TradingView Lightweight Charts 作为 Frontend Library 使用；其官方 Agent 
 
 **Status:** DISCOVERY — NO RELEASE COMMITMENT
 
-2026-09-13 Human Review 已批准 Discovery 方向，并要求区分五类状态、收窄 Runtime 候选、四类选型独立评分、阶段四设置 4A / 4B 检查点与 Critical Failure Gate。执行路线见 [Ask Quality Discovery 计划](docs/plans/ask-quality-discovery.md)：当前基线 → 最小设计 → Framework / Capability Spike → 完整 Ask 闭环 → Long-term Memory 完善 → 优化与验收。前两个阶段分别见 [基线与评测计划](docs/plans/ask-quality-phase-1-baseline.md) 和 [最小设计与 Decision Proposal 计划](docs/plans/ask-quality-phase-2-design.md)。Phase 1 已于 2026-09-15 通过 Human Acceptance 并合并到本地 `main`；Phase 2 尚未开始，具体 Framework / Provider、Schema / API 与 Release 尚未确定。
+2026-09-13 Human Review 已批准 Discovery 方向，并要求区分五类状态、收窄 Runtime 候选、各类关注点独立归因、阶段四设置 4A / 4B 检查点与 Critical Failure Gate。执行路线见 [Ask Quality Discovery 计划](docs/plans/ask-quality-discovery.md)：当前基线 → 最小设计 → Framework / Capability Spike → 完整 Ask 闭环 → Long-term Memory 完善 → 优化与验收。前两个阶段分别见 [基线与评测计划](docs/plans/ask-quality-phase-1-baseline.md) 和 [最小设计与 Decision Proposal 计划](docs/plans/ask-quality-phase-2-design.md)。Phase 1 已于 2026-09-15 通过 Human Acceptance 并合并到本地 `main`；Phase 2 已于 2026-09-20 通过 Human Acceptance；Phase 3 Capability Spike 已于同日开始。精简后的 Phase 3 只执行 Runtime / Research 两组核心对照、固定模型 Compatibility Smoke 与最小 Persistence 验证；具体生产选型、Schema / API、精确预算与 Release 仍待后续证据和 Human Review。
 
 当前真实使用已经证明，Answer Quality 不是单独修改 Prompt 或增加一个 Context Tool 就能闭环的问题。Domain State 是确定性账本事实；User Strategy State 是结构化、可确认、可版本化的业务数据；Conversation State 是 Thread 上下文；Long-term Memory 只承载不适合固定字段的长期偏好 / 背景；Agent Execution State 属于单次 Run，不是产品 Memory。用户策略会影响同一市场事实应如何解释；开放 Web Search 可以扩大信息覆盖，也会引入来源、时效、冲突、引用、延迟、成本与 Prompt Injection 边界。Technical Context 只是其中一类输入。
 
@@ -508,7 +508,7 @@ TradingView Lightweight Charts 作为 Frontend Library 使用；其官方 Agent 
 - 新 Evaluation Dataset 如何衡量 Usefulness、Strategy Awareness、Memory Correctness、Research Quality、Groundedness、Latency 与 Cost；
 - 是否需要更换 Model / Provider，且比较必须在相同各类 State / Context、Tool 与 Answer Contract 下进行。
 
-首轮正式 Runtime 对比仅 Current Runtime vs Pydantic AI，追加候选需具体缺口证据；Framework、Model / Provider、Research Provider、Memory / Persistence 分别评分。阶段四先完成 4A 对话 / 研究循环及固定 Eval，再完成 4B 持久 Strategy 及连续 Ask Eval。评测以 FULL / DIAGNOSTIC 表示场景能否完整测试，以独立 execution_status 表示是否运行成功；诊断场景保留局部评分。报告首页展示能力覆盖率、完整场景回答质量、请求成功率和 Critical Failure 次数。关键事实 / 来源错误、未经确认提升或使用 Strategy / Long-term Memory，以及失效策略重用触发 Case FAIL，保持待确认且不参与决策的 Candidate 本身不触发。详细执行规则由上述计划维护，不在 Roadmap 复制 Task 拆分。
+首轮正式 Runtime 对比仅 Current Runtime vs Pydantic AI，追加候选需具体缺口证据；Research 只比较 Alibaba Native 与最多一个 Application-owned Search 路径，Page Fetch 可使用独立受控 Prototype。Phase 3 固定一个实验模型，只做 Provider Compatibility Smoke；Persistence 只验证 Conversation、Confirmed Strategy 与 Account Ownership 的最小接入。阶段四先完成 4A 对话 / 研究循环及固定 Eval，再完成 4B 持久 Strategy 及连续 Ask Eval。评测以 FULL / DIAGNOSTIC 表示场景能否完整测试，以独立 execution_status 表示是否运行成功；诊断场景保留局部评分。报告首页展示能力覆盖率、完整场景回答质量、请求成功率和 Critical Failure 次数。关键事实 / 来源错误、未经确认提升或使用 Strategy / Long-term Memory，以及失效策略重用触发 Case FAIL，保持待确认且不参与决策的 Candidate 本身不触发。详细执行规则由上述计划维护，不在 Roadmap 复制 Task 拆分。
 
 只有上述范围通过 Human Review，并由固定 Evaluation 或真实 Failure Mode 证明最小方案后，才新增对应正式 Milestone、实施 Plan、ADR 与 Release Mapping；Discovery 工作计划不等于实施或选型批准。Discovery 不预设 Vector Database、LangGraph、Multi-Agent 或不受控 General Browser。
 

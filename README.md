@@ -153,7 +153,9 @@ curl -b /tmp/positionpilot-cookie.txt \
   -d '{"question":"GOOG 今天还能加一点吗？"}'
 ```
 
-`LLM_BASE_URL`、`LLM_MODEL` 和 `LLM_REQUEST_TIMEOUT_SECONDS` 均可覆盖。Authentication 仍只适合本地或受控开发环境，不应直接公开部署。
+`LLM_PROVIDER`、`LLM_BASE_URL`、`LLM_MODEL` 和 `LLM_REQUEST_TIMEOUT_SECONDS` 均可覆盖。
+Alibaba 使用专用薄 Adapter 隔离 `enable_thinking`；其他 OpenAI-compatible Provider 不接收该扩展。
+Authentication 仍只适合本地或受控开发环境，不应直接公开部署。
 
 真实模型 Behavioral Eval 使用固定 Fake Market Data，不进入默认 CI：
 
