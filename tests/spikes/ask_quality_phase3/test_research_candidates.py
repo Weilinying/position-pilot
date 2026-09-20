@@ -223,6 +223,27 @@ def test_fetcher_revalidates_redirect_target() -> None:
     assert [call[0] for call in transport.calls] == [start]
 
 
+def test_fetcher_rejects_dns_rebinding_peer() -> None:
+    """解析为公网但实际连接私网时仍必须阻止。"""
+
+    url = "https://public.example/page"
+    transport = RecordingTransport(
+        {
+            url: HttpResponse(
+                200,
+                {"content-type": "text/html"},
+                b"private response",
+                peer_ip="127.0.0.1",
+            )
+        }
+    )
+
+    result = ControlledPageFetcher(transport, resolver=_resolver).fetch(url)
+
+    assert result.status == "BLOCKED"
+    assert result.failure == "PEER_ADDRESS_MISMATCH"
+
+
 def test_fetcher_enforces_timeout_size_and_content_type() -> None:
     """必要 Fetch Security 对 Timeout、Size 与非文本响应均显式失败。"""
 

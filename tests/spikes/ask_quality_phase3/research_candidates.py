@@ -67,6 +67,7 @@ class HttpResponse:
     status_code: int
     headers: Mapping[str, str]
     body: bytes
+    peer_ip: str | None = None
 
 
 class HttpTransport(Protocol):
@@ -103,7 +104,25 @@ class HttpxTransport:
                     body.extend(chunk)
                     if len(body) > self._max_response_bytes:
                         break
-                return HttpResponse(response.status_code, dict(response.headers), bytes(body))
+                network_stream = response.extensions.get("network_stream")
+                server_address = (
+                    network_stream.get_extra_info("server_addr")
+                    if network_stream is not None
+                    else None
+                )
+                peer_ip = (
+                    server_address[0]
+                    if isinstance(server_address, tuple)
+                    and server_address
+                    and isinstance(server_address[0], str)
+                    else None
+                )
+                return HttpResponse(
+                    response.status_code,
+                    dict(response.headers),
+                    bytes(body),
+                    peer_ip,
+                )
 
 
 @dataclass(frozen=True, slots=True)
@@ -139,7 +158,7 @@ class ControlledPageFetcher:
 
         current = url
         for redirect_count in range(self._max_redirects + 1):
-            failure = self._validate_url(current)
+            addresses, failure = self._validated_addresses(current)
             if failure is not None:
                 return FetchResult("BLOCKED", failure=failure)
             try:
@@ -152,6 +171,9 @@ class ControlledPageFetcher:
                 return FetchResult("TIMEOUT", failure="FETCH_TIMEOUT")
             except Exception as exc:  # noqa: BLE001 - Transport Failure 必须安全归一化。
                 return FetchResult("PROVIDER_FAILURE", failure=type(exc).__name__)
+            peer_failure = self._peer_failure(response.peer_ip, addresses)
+            if peer_failure is not None:
+                return FetchResult("BLOCKED", failure=peer_failure)
             if response.status_code in {301, 302, 303, 307, 308}:
                 location = response.headers.get("location") or response.headers.get("Location")
                 if not location:
@@ -179,27 +201,42 @@ class ControlledPageFetcher:
             )
         raise AssertionError("Redirect Loop 必须在循环内结束")
 
-    def _validate_url(self, url: str) -> str | None:
+    def _validated_addresses(self, url: str) -> tuple[tuple[str, ...], str | None]:
         """拒绝非公开 HTTP(S) 地址、Credential 与解析失败。"""
 
         parsed = urlsplit(url)
         if parsed.scheme not in {"http", "https"}:
-            return "UNSUPPORTED_SCHEME"
+            return (), "UNSUPPORTED_SCHEME"
         if not parsed.hostname or parsed.username is not None or parsed.password is not None:
-            return "INVALID_URL_AUTHORITY"
+            return (), "INVALID_URL_AUTHORITY"
         try:
-            addresses = self._resolver(parsed.hostname)
+            addresses = tuple(self._resolver(parsed.hostname))
         except OSError:
-            return "DNS_RESOLUTION_FAILED"
+            return (), "DNS_RESOLUTION_FAILED"
         if not addresses:
-            return "DNS_RESOLUTION_FAILED"
+            return (), "DNS_RESOLUTION_FAILED"
         for value in addresses:
             try:
                 address = ipaddress.ip_address(value)
             except ValueError:
-                return "INVALID_DNS_ADDRESS"
+                return (), "INVALID_DNS_ADDRESS"
             if not address.is_global:
-                return "NON_PUBLIC_DESTINATION"
+                return (), "NON_PUBLIC_DESTINATION"
+        return addresses, None
+
+    def _peer_failure(self, peer_ip: str | None, resolved: tuple[str, ...]) -> str | None:
+        """真实 Transport 必须校验连接 Peer，避免 DNS Rebinding 绕过预检查。"""
+
+        if peer_ip is None:
+            return (
+                "PEER_ADDRESS_UNAVAILABLE" if isinstance(self._transport, HttpxTransport) else None
+            )
+        try:
+            peer_address = ipaddress.ip_address(peer_ip)
+        except ValueError:
+            return "INVALID_PEER_ADDRESS"
+        if not peer_address.is_global or peer_ip not in resolved:
+            return "PEER_ADDRESS_MISMATCH"
         return None
 
     @staticmethod
