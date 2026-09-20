@@ -501,6 +501,36 @@ def test_reporter_rejects_sensitive_or_raw_content(tmp_path: Path) -> None:
     with pytest.raises(HarnessConfigurationError, match="未允许字段"):
         ArtifactReporter(tmp_path).write("raw.json", safe_manifest, (raw_content,))
 
+    credential_value = ComparisonArtifact(
+        "security",
+        "fake",
+        "credential-value",
+        ArtifactStatus.NOT_MEASURED,
+        {"reason": "Bearer fixture-secret-token"},
+    )
+    with pytest.raises(HarnessConfigurationError, match="Credential Value"):
+        ArtifactReporter(tmp_path).write(
+            "credential.json",
+            safe_manifest,
+            (credential_value,),
+        )
+
+
+def test_reporter_requires_complete_manifest(tmp_path: Path) -> None:
+    """缺失关键 Provenance 的 Artifact 不得写入。"""
+
+    manifest = experiment_manifest(
+        run_id="test-run",
+        revision="test-revision",
+        provider="FAKE",
+        endpoint_type="FAKE",
+        region="FAKE",
+    )
+    del manifest["region"]
+
+    with pytest.raises(HarnessConfigurationError, match="缺少必填字段"):
+        ArtifactReporter(tmp_path).write("missing.json", manifest, ())
+
 
 def test_source_url_rejects_embedded_credentials() -> None:
     """Artifact 来源 URL 不得携带认证信息或敏感 Query。"""

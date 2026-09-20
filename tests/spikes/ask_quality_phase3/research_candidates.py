@@ -300,7 +300,7 @@ class BraveSearchProvider:
                 timeout_seconds=self._timeout_seconds,
             )
         except TimeoutError:
-            return SearchResponse(ResearchStatus.PROVIDER_FAILURE, failure="SEARCH_TIMEOUT")
+            return SearchResponse(ResearchStatus.TIMEOUT, failure="SEARCH_TIMEOUT")
         except Exception as exc:  # noqa: BLE001 - Provider Failure 必须安全归一化。
             return SearchResponse(
                 ResearchStatus.PROVIDER_FAILURE,
@@ -370,9 +370,9 @@ class ApplicationOwnedResearchCandidate:
         if response.status is not ResearchStatus.COMPLETED:
             return ResearchResult(
                 request,
-                ResearchStatus.PROVIDER_FAILURE,
+                response.status,
                 failure=response.failure or "SEARCH_PROVIDER_FAILURE",
-                research_trace=(TraceEvent("research", 1, "PROVIDER_FAILURE", "search"),),
+                research_trace=(TraceEvent("research", 1, response.status.value, "search"),),
                 search_count=1,
                 latency_ms=self._latency_ms(started_at),
             )
@@ -489,6 +489,20 @@ class AlibabaResponsesGateway:
             for item in output
             if isinstance(item, dict) and item.get("type") == "web_extractor_call"
         )
+        failed_native_calls = [
+            item
+            for item in output
+            if isinstance(item, dict)
+            and item.get("type") in {"web_search_call", "web_extractor_call"}
+            and item.get("status") not in {None, "completed"}
+        ]
+        if failed_native_calls:
+            return NativeResearchObservation(
+                ResearchStatus.PROVIDER_FAILURE,
+                failure="NATIVE_TOOL_CALL_FAILED",
+                search_count=search_count,
+                fetch_count=fetch_count,
+            )
         citations: dict[str, SourceRecord] = {}
         for item in output:
             if not isinstance(item, dict):

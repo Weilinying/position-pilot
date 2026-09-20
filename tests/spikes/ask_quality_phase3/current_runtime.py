@@ -23,10 +23,17 @@ from .contracts import (
     SourceRecord,
     TraceEvent,
 )
-from .harness import answer_source_failure, runtime_instructions, untrusted_tool_payload
+from .harness import (
+    answer_source_failure,
+    register_source,
+    runtime_instructions,
+    unresolved_tool_failure,
+    untrusted_tool_payload,
+)
 
 SEARCH_TOOL_NAME = "search_web"
 FETCH_TOOL_NAME = "fetch_page"
+READ_ONLY_TOOL_NAMES = frozenset({"get_current_quote", SEARCH_TOOL_NAME, FETCH_TOOL_NAME})
 
 
 @dataclass(frozen=True, slots=True)
@@ -88,7 +95,10 @@ class CurrentRuntimeCandidate:
         sources: dict[str, SourceRecord] = {}
         usages: list[LLMUsage] = []
         seen_calls: set[str] = set()
-        allowed_tools = {tool.name: tool for tool in runtime_input.tools}
+        safe_tools = tuple(
+            tool for tool in runtime_input.tools if tool.name in READ_ONLY_TOOL_NAMES
+        )
+        allowed_tools = {tool.name: tool for tool in safe_tools}
         model_requests = 0
         tool_calls = 0
         search_calls = 0
@@ -120,7 +130,7 @@ class CurrentRuntimeCandidate:
                 )
 
             model_requests += 1
-            result = self._llm.complete(tuple(messages), tools=runtime_input.tools)
+            result = self._llm.complete(tuple(messages), tools=safe_tools)
             if result.metadata is not None and result.metadata.usage is not None:
                 usages.append(result.metadata.usage)
             model_trace.append(
@@ -171,10 +181,14 @@ class CurrentRuntimeCandidate:
                     assistant.content,
                     tuple(sources.values()),
                 )
-                if citation_failure is not None:
+                final_failure = citation_failure or unresolved_tool_failure(
+                    assistant.content,
+                    warnings,
+                )
+                if final_failure is not None:
                     return self._failure(
                         RuntimeExecutionStatus.CANDIDATE_FAILURE,
-                        citation_failure,
+                        final_failure,
                         started_at,
                         model_trace,
                         tool_trace,
@@ -244,7 +258,18 @@ class CurrentRuntimeCandidate:
                 }:
                     warnings.append(f"{observation.status}:{tool_call.name}")
                 for source in observation.sources:
-                    sources[source.source_id] = source
+                    source_failure = register_source(sources, source)
+                    if source_failure is not None:
+                        return self._failure(
+                            RuntimeExecutionStatus.CANDIDATE_FAILURE,
+                            source_failure,
+                            started_at,
+                            model_trace,
+                            tool_trace,
+                            tuple(sources.values()),
+                            usages,
+                            warnings,
+                        )
                     tool_trace.append(
                         TraceEvent(
                             "tool-source",

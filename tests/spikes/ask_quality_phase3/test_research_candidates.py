@@ -296,6 +296,22 @@ def test_brave_search_maps_sources_without_fetch_coupling() -> None:
     assert transport.calls[0][1]["X-Subscription-Token"] == "fixture-key"
 
 
+def test_application_search_timeout_is_distinct_from_provider_failure() -> None:
+    """Search Timeout 进入统一 ResearchResult 后仍保持独立状态。"""
+
+    request = ResearchRequest("GOOG", "filing", "last-7-days")
+    endpoint = "https://api.search.brave.com/res/v1/web/search?q=GOOG+filing+last-7-days&count=3"
+    transport = RecordingTransport({endpoint: TimeoutError()})
+    provider = BraveSearchProvider(transport, api_key="fixture-key")
+    fetcher = RecordingFetcher(FetchResult("OK", "https://example.test", "unused"))
+
+    result = ApplicationOwnedResearchCandidate(provider, fetcher).research(request)
+
+    assert result.status is ResearchStatus.TIMEOUT
+    assert result.failure == "SEARCH_TIMEOUT"
+    assert result.sources == ()
+
+
 def test_native_research_keeps_fixed_model_and_observed_sources() -> None:
     """Native Research 不为完成对照更换 Runtime 固定模型。"""
 
@@ -389,3 +405,27 @@ def test_alibaba_responses_gateway_extracts_observed_url_citations() -> None:
         {"type": "web_search"},
         {"type": "web_extractor"},
     ]
+
+
+def test_alibaba_gateway_does_not_turn_failed_native_call_into_no_results() -> None:
+    """Native Tool Call 失败不能因为没有 Citation 被误写成空结果。"""
+
+    responses = FakeResponses(
+        FakeNativeResponse(
+            {
+                "output": [
+                    {"type": "web_search_call", "status": "failed"},
+                ]
+            }
+        )
+    )
+    gateway = AlibabaResponsesGateway(
+        api_key="fixture-key",
+        base_url="https://example.test/compatible-mode/v1",
+        client=FakeOpenAIClient(responses),
+    )
+
+    result = gateway.run(model="qwen3.7-max", query="GOOG filing")
+
+    assert result.status is ResearchStatus.PROVIDER_FAILURE
+    assert result.failure == "NATIVE_TOOL_CALL_FAILED"

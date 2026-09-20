@@ -230,6 +230,54 @@ def test_pydantic_runtime_preserves_tool_failure_as_warning() -> None:
     assert result.sources == ()
 
 
+def test_pydantic_runtime_rejects_definite_answer_after_tool_failure() -> None:
+    """框架候选不能在 Tool Failure 后输出无保留的确定事实。"""
+
+    script = ScriptedModel(
+        [
+            _tool_response("get_current_quote", {"ticker": "GOOG"}),
+            _text_response("GOOG 当前价格确定为 210.25 美元。"),
+        ]
+    )
+
+    def fail(arguments: Mapping[str, object]) -> ToolObservation:
+        del arguments
+        raise RuntimeError("provider unavailable")
+
+    result = PydanticRuntimeCandidate(
+        _model(script),
+        {"get_current_quote": FunctionToolExecutor(fail)},
+    ).run(_runtime_input())
+
+    assert result.status is RuntimeExecutionStatus.CANDIDATE_FAILURE
+    assert result.failure == "UNRESOLVED_TOOL_FAILURE"
+
+
+def test_pydantic_runtime_rejects_conflicting_source_identity() -> None:
+    """Pydantic Tool Bridge 也不得静默覆盖重复 Source ID。"""
+
+    script = ScriptedModel([_tool_response("get_current_quote", {"ticker": "GOOG"})])
+    quote = FunctionToolExecutor(
+        lambda arguments: ToolObservation(
+            "OK",
+            {"ticker": arguments["ticker"]},
+            (
+                SourceRecord("source-1", "FAKE", "https://example.test/one"),
+                SourceRecord("source-1", "FAKE", "https://example.test/two"),
+            ),
+        )
+    )
+
+    result = PydanticRuntimeCandidate(
+        _model(script),
+        {"get_current_quote": quote},
+    ).run(_runtime_input())
+
+    assert result.status is RuntimeExecutionStatus.CANDIDATE_FAILURE
+    assert result.answer is None
+    assert "SOURCE_ID_CONFLICT" in result.warnings
+
+
 def test_pydantic_runtime_stops_at_native_request_limit() -> None:
     """框架原生 UsageLimits 在额外 Model Request 前停止循环。"""
 

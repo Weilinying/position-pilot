@@ -2,7 +2,7 @@
 
 import json
 import re
-from collections.abc import Mapping
+from collections.abc import Mapping, MutableMapping
 from copy import deepcopy
 from dataclasses import asdict
 from hashlib import sha256
@@ -67,6 +67,29 @@ def answer_source_failure(answer: str, sources: tuple[SourceRecord, ...]) -> str
     if referenced_ids - observed_ids or referenced_urls - observed_urls:
         return "UNOBSERVED_SOURCE_REFERENCE"
     return None
+
+
+def register_source(
+    registry: MutableMapping[str, SourceRecord],
+    source: SourceRecord,
+) -> str | None:
+    """同一 Source ID 不得静默覆盖为不同来源。"""
+
+    existing = registry.get(source.source_id)
+    if existing is not None and existing != source:
+        return "SOURCE_ID_CONFLICT"
+    registry[source.source_id] = source
+    return None
+
+
+def unresolved_tool_failure(answer: str, warnings: tuple[str, ...] | list[str]) -> str | None:
+    """关键 Tool Failure 后的最终回答必须明确保留未知或不可用。"""
+
+    if not any(warning.startswith("TOOL_FAILURE:") for warning in warnings):
+        return None
+    normalized = answer.lower()
+    acknowledged = ("unknown", "不可用", "无法", "未知", "失败")
+    return None if any(term in normalized for term in acknowledged) else "UNRESOLVED_TOOL_FAILURE"
 
 
 class HarnessConfigurationError(ValueError):
@@ -393,6 +416,11 @@ class ArtifactReporter:
             raise HarnessConfigurationError(
                 f"Manifest 包含未允许字段: {sorted(unknown_manifest_fields)}"
             )
+        missing_manifest_fields = self._manifest_fields - set(manifest)
+        if missing_manifest_fields:
+            raise HarnessConfigurationError(
+                f"Manifest 缺少必填字段: {sorted(missing_manifest_fields)}"
+            )
         for artifact in artifacts:
             self._validate_result_schema(artifact)
         self._output_directory.mkdir(parents=True, exist_ok=True)
@@ -446,3 +474,9 @@ class ArtifactReporter:
         elif isinstance(value, (list, tuple)):
             for item in value:
                 cls._reject_sensitive_keys(item)
+        elif isinstance(value, str):
+            normalized = value.lower()
+            if len(value) > 20_000:
+                raise HarnessConfigurationError("Artifact 字符串超过允许长度")
+            if "bearer " in normalized or re.search(r"\bsk-[a-z0-9_-]{8,}", normalized):
+                raise HarnessConfigurationError("Artifact 不得包含 Credential Value")

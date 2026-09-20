@@ -32,7 +32,13 @@ from .current_runtime import (
     ToolExecutor,
     ToolObservation,
 )
-from .harness import answer_source_failure, runtime_instructions, untrusted_tool_payload
+from .harness import (
+    answer_source_failure,
+    register_source,
+    runtime_instructions,
+    unresolved_tool_failure,
+    untrusted_tool_payload,
+)
 
 
 def build_alibaba_chat_model(
@@ -112,7 +118,10 @@ class _ToolBridge:
             self.warnings.append(f"{observation.status}:{name}")
         if observation.sources:
             for source in observation.sources:
-                self.sources[source.source_id] = source
+                source_failure = register_source(self.sources, source)
+                if source_failure is not None:
+                    self.warnings.append(source_failure)
+                    raise RuntimeError(source_failure)
                 self.trace.append(
                     TraceEvent(
                         "tool-source",
@@ -214,10 +223,13 @@ class PydanticRuntimeCandidate:
                 tuple(bridge.warnings),
             )
         sources = tuple(bridge.sources.values())
-        citation_failure = answer_source_failure(result.output, sources)
-        if citation_failure is not None:
+        final_failure = answer_source_failure(result.output, sources) or unresolved_tool_failure(
+            result.output,
+            bridge.warnings,
+        )
+        if final_failure is not None:
             return self._failure(
-                citation_failure,
+                final_failure,
                 started_at,
                 bridge=bridge,
             )

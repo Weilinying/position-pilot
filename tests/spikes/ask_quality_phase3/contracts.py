@@ -34,6 +34,7 @@ class ResearchStatus(StrEnum):
     NO_RESULTS = "NO_RESULTS"
     PROVIDER_FAILURE = "PROVIDER_FAILURE"
     BLOCKED = "BLOCKED"
+    TIMEOUT = "TIMEOUT"
 
 
 @dataclass(frozen=True, slots=True)

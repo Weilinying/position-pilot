@@ -33,13 +33,15 @@ CASE_EVIDENCE = (
     ),
     CaseEvidence(
         "AQ05",
-        ArtifactStatus.SUPPORTED,
+        ArtifactStatus.PROTOTYPE_GAP,
         ("budget/cash controlled contrast", "execution quantity omitted"),
+        "fixed-model final answer gate not measured",
     ),
     CaseEvidence(
         "AQ06",
-        ArtifactStatus.SUPPORTED,
+        ArtifactStatus.PROTOTYPE_GAP,
         ("budget below one-share quote", "fractional/account permission UNKNOWN"),
+        "fixed-model final answer gate not measured",
     ),
     CaseEvidence(
         "AQ08",
@@ -63,8 +65,9 @@ CASE_EVIDENCE = (
     ),
     CaseEvidence(
         "AQ19",
-        ArtifactStatus.SUPPORTED,
+        ArtifactStatus.PROTOTYPE_GAP,
         ("untrusted tool payload", "mutation allowlist", "controlled fetch security"),
+        "fixed-model malicious-page run not measured",
     ),
 )
 
@@ -82,13 +85,13 @@ def decision_evidence(*, revision: str) -> dict[str, object]:
             "current": {
                 "offline_status": ArtifactStatus.SUPPORTED.value,
                 "live_status": ArtifactStatus.NOT_MEASURED.value,
-                "observed_model_request_range": [1, 3],
+                "deterministic_script_request_range": [1, 3],
                 "notes": ["generic provider-neutral tool contract", "application-owned loop"],
             },
             "pydantic-ai": {
                 "offline_status": ArtifactStatus.SUPPORTED.value,
                 "live_status": ArtifactStatus.NOT_MEASURED.value,
-                "observed_model_request_range": [1, 2],
+                "deterministic_script_request_range": [1, 2],
                 "notes": [
                     "native history and usage limits",
                     "AlibabaProvider constructible",
@@ -130,6 +133,7 @@ def decision_evidence(*, revision: str) -> dict[str, object]:
             "cost": ArtifactStatus.NOT_MEASURED.value,
             "live_latency": ArtifactStatus.NOT_MEASURED.value,
         },
+        "representative_combination_status": ArtifactStatus.NOT_MEASURED.value,
         "phase4_entry": "NO_GO_PENDING_LIVE_EVIDENCE",
     }
 

@@ -207,6 +207,68 @@ def test_runtime_blocks_unknown_mutation_tool_from_untrusted_page() -> None:
     assert writes == 0
 
 
+def test_runtime_blocks_declared_mutation_tool_during_phase3() -> None:
+    """即使调用方传入写 Tool 定义和 Executor，Spike Runtime 仍保持只读。"""
+
+    save_definition = LLMToolDefinition(
+        "save_strategy",
+        "保存策略",
+        {
+            "type": "object",
+            "properties": {"plan": {"type": "string"}},
+            "required": ["plan"],
+            "additionalProperties": False,
+        },
+    )
+    runtime_input = replace(_runtime_input(), tools=(*_runtime_input().tools, save_definition))
+    llm = ScriptedLLM(
+        [
+            _tool_call("call-save", "save_strategy", {"plan": "激进加仓"}),
+            _success(LLMMessage(LLMRole.ASSISTANT, "未执行写入。")),
+        ]
+    )
+    writes = 0
+
+    def save(arguments: Mapping[str, object]) -> ToolObservation:
+        """记录任何越界写入。"""
+
+        nonlocal writes
+        del arguments
+        writes += 1
+        return ToolObservation("OK", {"saved": True})
+
+    result = CurrentRuntimeCandidate(
+        llm,
+        {"save_strategy": FunctionToolExecutor(save)},
+    ).run(runtime_input)
+
+    assert result.status is RuntimeExecutionStatus.COMPLETED
+    assert writes == 0
+    assert result.warnings == ("UNKNOWN_TOOL:save_strategy",)
+
+
+def test_runtime_rejects_conflicting_source_identity() -> None:
+    """相同 Source ID 不得被不同 URL 静默覆盖。"""
+
+    llm = ScriptedLLM([_tool_call("call-1", "search_web", {"query": "GOOG filing"})])
+    search = FunctionToolExecutor(
+        lambda arguments: ToolObservation(
+            "OK",
+            {"query": arguments["query"]},
+            (
+                SourceRecord("source-1", "FAKE", "https://example.test/one"),
+                SourceRecord("source-1", "FAKE", "https://example.test/two"),
+            ),
+        )
+    )
+
+    result = CurrentRuntimeCandidate(llm, {"search_web": search}).run(_runtime_input())
+
+    assert result.status is RuntimeExecutionStatus.CANDIDATE_FAILURE
+    assert result.failure == "SOURCE_ID_CONFLICT"
+    assert result.sources[0].url == "https://example.test/one"
+
+
 def test_runtime_completes_multi_round_search_and_fetch() -> None:
     """两轮 Research Observation 后才形成 Final。"""
 
@@ -407,6 +469,29 @@ def test_runtime_preserves_tool_failure_as_warning_in_partial_answer() -> None:
     assert result.warnings == ("TOOL_FAILURE:get_current_quote",)
     assert result.tool_trace[0].status == "TOOL_FAILURE"
     assert "UNKNOWN" in (result.answer or "")
+
+
+def test_runtime_rejects_definite_answer_after_tool_failure() -> None:
+    """Tool Failure 后若模型仍给确定事实，不能返回 COMPLETED。"""
+
+    llm = ScriptedLLM(
+        [
+            _tool_call("call-1", "get_current_quote", {"ticker": "GOOG"}),
+            _success(LLMMessage(LLMRole.ASSISTANT, "GOOG 当前价格确定为 210.25 美元。")),
+        ]
+    )
+
+    def unavailable(arguments: Mapping[str, object]) -> ToolObservation:
+        del arguments
+        raise RuntimeError("provider unavailable")
+
+    result = CurrentRuntimeCandidate(
+        llm,
+        {"get_current_quote": FunctionToolExecutor(unavailable)},
+    ).run(_runtime_input())
+
+    assert result.status is RuntimeExecutionStatus.CANDIDATE_FAILURE
+    assert result.failure == "UNRESOLVED_TOOL_FAILURE"
 
 
 def test_runtime_checks_wall_clock_after_slow_model_call() -> None:

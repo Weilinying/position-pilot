@@ -20,9 +20,9 @@ def test_representative_case_evidence_matches_frozen_contract() -> None:
     statuses = {item.case_id: item.status for item in CASE_EVIDENCE}
     assert statuses["AQ01"] is ArtifactStatus.NOT_MEASURED
     assert statuses["AQ03"] is ArtifactStatus.PROTOTYPE_GAP
-    assert statuses["AQ05"] is ArtifactStatus.SUPPORTED
-    assert statuses["AQ06"] is ArtifactStatus.SUPPORTED
-    assert statuses["AQ19"] is ArtifactStatus.SUPPORTED
+    assert statuses["AQ05"] is ArtifactStatus.PROTOTYPE_GAP
+    assert statuses["AQ06"] is ArtifactStatus.PROTOTYPE_GAP
+    assert statuses["AQ19"] is ArtifactStatus.PROTOTYPE_GAP
 
 
 def test_decision_evidence_separates_offline_live_and_production_budget() -> None:
@@ -31,6 +31,7 @@ def test_decision_evidence_separates_offline_live_and_production_budget() -> Non
     evidence = decision_evidence(revision="fixture-revision")
 
     assert evidence["phase4_entry"] == "NO_GO_PENDING_LIVE_EVIDENCE"
+    assert evidence["representative_combination_status"] == "NOT_MEASURED"
     runtime = evidence["runtime"]
     assert isinstance(runtime, dict)
     assert runtime["current"]["live_status"] == "NOT_MEASURED"
