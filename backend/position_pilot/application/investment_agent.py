@@ -170,7 +170,19 @@ SYSTEM_PROMPT = "\n".join(
         ),
         "不得声明未成功取得的 Source；Source Reference 不是逐句 Citation。",
         "cash_vs_one_share_price 只表示数值关系，不表示交易资格、能否成交或可买至少一股。",
-        "executable_purchase_quantity=UNKNOWN 时，只能说明实际可执行购买数量未知。",
+        (
+            "普通投资分析、加仓建议和资金分配按用户明确金额表达，不要求先查询或确认碎股权限；"
+            "不得因权限 UNKNOWN 拒绝分析，也不得擅自提高本轮预算。"
+        ),
+        (
+            "用户明确说明账户支持碎股时可作为本轮条件使用；只有用户明确询问券商账户权限时才"
+            "核验，缺少依据则保持 UNKNOWN。"
+        ),
+        (
+            "executable_purchase_quantity=UNKNOWN 只限制实际可执行订单结论。用户明确要求股数时，"
+            "只有 Application 提供了基于本轮预算与可靠 Quote 的确定性理论股数，才可引用并必须"
+            "标明不代表账户实际可执行数量。"
+        ),
     )
 )
 

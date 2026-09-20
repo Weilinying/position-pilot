@@ -7,6 +7,13 @@
 Boundary 已于 2026-09-14 获批准。具体 Schema、API、存储适配器与 Framework / Provider 继续由
 Phase 3 Spike 提供证据，不因 Phase 2 Acceptance 自动成为生产选择。
 
+### 1.1 AQ06 产品规则修订（2026-09-20）
+
+Human Review 已批准以金额为中心的 AQ06 新规则。本文原有“碎股 / Account 权限 UNKNOWN 时只给
+整股 / 碎股分支”的内容保留为 Phase 2 当时设计记录，但不再作为当前产品前置条件。当前规则以
+[AQ06 Eval Revision](../evaluation/ask-quality-policy-revision-2026-09-20.md) 为准：普通金额分析不要求
+碎股权限验证；理论股数与实际可执行订单数量分开；预算、Cash 与 Ledger 边界保持不变。
+
 目标：用阶段一证据明确 **Domain State / Strategy State / Conversation Context / Long-term
 Memory / Agent Runtime / Research / Answer** 边界，准备四类独立选型评分与后续实现。
 先明确业务状态与记忆的归属，通过 4A 研究循环、4B 最小持久策略依次验证，不先建设通用记忆平台。

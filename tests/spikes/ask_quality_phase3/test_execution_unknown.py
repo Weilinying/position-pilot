@@ -1,119 +1,121 @@
-"""AQ05 / AQ06 UNKNOWN 与来源权威测试。"""
+"""AQ05 / AQ06 金额分析、预算与执行 UNKNOWN 测试。"""
 
-from dataclasses import fields
 from decimal import Decimal
 
 import pytest
 
 from .execution_unknown import (
-    Authority,
-    ExecutionBoundaryResult,
-    ExecutionUnknownFixture,
-    FactState,
-    apply_execution_evidence,
-    execution_boundary,
+    InvestmentAnalysisFixture,
+    PermissionStatus,
+    investment_analysis_boundary,
 )
 
 
-def test_execution_boundary_does_not_invent_quantity_or_budget_advice() -> None:
-    """Prototype 只表达条件，不输出确定数量或提高预算建议。"""
+def test_aq06_allows_amount_plan_without_fractional_permission_lookup() -> None:
+    """普通金额分配不以碎股权限为前置条件。"""
 
-    assert {field.name for field in fields(ExecutionBoundaryResult)} == {
-        "account_cash",
-        "current_turn_budget",
-        "quote",
-        "whole_share_budget_condition",
-        "fractional_condition",
-        "account_permission",
-    }
-
-
-@pytest.mark.parametrize(
-    ("budget", "expected_condition"),
-    [
-        (Decimal("500"), "BUDGET_AT_OR_ABOVE_ONE_SHARE_QUOTE"),
-        (Decimal("200"), "BUDGET_BELOW_ONE_SHARE_QUOTE"),
-    ],
-)
-def test_aq05_aq06_budget_changes_condition_without_overwriting_cash(
-    budget: Decimal,
-    expected_condition: str,
-) -> None:
-    """受控对照只改变本轮 Budget，Ledger Cash 保持不变。"""
-
-    result = execution_boundary(
-        ExecutionUnknownFixture(
+    result = investment_analysis_boundary(
+        InvestmentAnalysisFixture(
             account_cash=Decimal("4875.77"),
-            current_turn_budget=budget,
+            current_turn_budget=Decimal("200"),
             quote=Decimal("210.25"),
+            proposed_amounts=(Decimal("80"), Decimal("120")),
         )
     )
 
     assert result.account_cash == Decimal("4875.77")
-    assert result.current_turn_budget == budget
-    assert result.quote == Decimal("210.25")
-    assert result.whole_share_budget_condition == expected_condition
-    assert result.fractional_condition == "FRACTIONAL_EXECUTION_UNKNOWN"
-    assert result.account_permission is FactState.UNKNOWN
+    assert result.current_turn_budget == Decimal("200")
+    assert result.proposed_amounts == (Decimal("80"), Decimal("120"))
+    assert result.permission_status is PermissionStatus.NOT_REQUESTED
+    assert result.fractional_research_required is False
+    assert result.executable_purchase_quantity == "UNKNOWN"
 
 
-def test_public_fractional_rule_cannot_confirm_account_permission() -> None:
-    """公开 Broker / Ticker 规则不能冒充当前 Account 权限。"""
+def test_amount_plan_has_no_hard_coded_allocation_ratio() -> None:
+    """不同的预算内金额方案都可通过，不冻结示例比例。"""
 
-    ticker_rule, account_permission = apply_execution_evidence(
-        observed_state=FactState.VERIFIED_TRUE,
-        authority=Authority.PUBLIC,
-    )
-    result = execution_boundary(
-        ExecutionUnknownFixture(
+    for amounts in ((Decimal("50"), Decimal("150")), (Decimal("200"),)):
+        result = investment_analysis_boundary(
+            InvestmentAnalysisFixture(
+                Decimal("4875.77"), Decimal("200"), Decimal("210.25"), amounts
+            )
+        )
+        assert sum(result.proposed_amounts, start=Decimal("0")) == Decimal("200")
+
+
+def test_user_stated_fractional_support_is_accepted_without_reverification() -> None:
+    """用户明确提供的碎股条件可直接用于本轮分析。"""
+
+    result = investment_analysis_boundary(
+        InvestmentAnalysisFixture(
             Decimal("4875.77"),
             Decimal("200"),
             Decimal("210.25"),
-            ticker_rule,
-            account_permission,
+            user_states_fractional_support=True,
         )
     )
 
-    assert ticker_rule is FactState.VERIFIED_TRUE
-    assert account_permission is FactState.UNKNOWN
-    assert result.fractional_condition == "FRACTIONAL_EXECUTION_UNKNOWN"
+    assert result.permission_status is PermissionStatus.USER_PROVIDED_CONDITION
+    assert result.fractional_research_required is False
 
 
-@pytest.mark.parametrize("authority", [Authority.PUBLIC, Authority.ACCOUNT_AUTHENTICATED])
-def test_no_result_or_provider_failure_keeps_execution_fact_unknown(
-    authority: Authority,
+def test_requested_share_count_is_theoretical_not_executable() -> None:
+    """理论股数由预算和可靠价格计算，但不升级为订单数量。"""
+
+    result = investment_analysis_boundary(
+        InvestmentAnalysisFixture(
+            Decimal("4875.77"),
+            Decimal("200"),
+            Decimal("210.25"),
+            share_count_requested=True,
+        )
+    )
+
+    assert result.theoretical_share_quantity == Decimal("0.9512")
+    assert result.executable_purchase_quantity == "UNKNOWN"
+
+
+def test_only_explicit_permission_question_requests_permission_research() -> None:
+    """只有明确的券商权限问题才保留 UNKNOWN 并触发查证需求。"""
+
+    result = investment_analysis_boundary(
+        InvestmentAnalysisFixture(
+            Decimal("4875.77"),
+            Decimal("200"),
+            Decimal("210.25"),
+            broker_permission_question=True,
+        )
+    )
+
+    assert result.permission_status is PermissionStatus.UNKNOWN
+    assert result.fractional_research_required is True
+
+
+def test_budget_above_ledger_cash_remains_separate_analysis_context() -> None:
+    """本轮 Budget 不覆盖 Ledger Cash，也不自动成为可执行资金。"""
+
+    result = investment_analysis_boundary(
+        InvestmentAnalysisFixture(
+            Decimal("100"),
+            Decimal("200"),
+            Decimal("210.25"),
+            proposed_amounts=(Decimal("200"),),
+        )
+    )
+
+    assert result.account_cash == Decimal("100")
+    assert result.current_turn_budget == Decimal("200")
+    assert result.executable_purchase_quantity == "UNKNOWN"
+
+
+@pytest.mark.parametrize(
+    "amounts",
+    [(Decimal("201"),), (Decimal("100"), Decimal("101"))],
+)
+def test_amount_plan_cannot_exceed_current_turn_budget(
+    amounts: tuple[Decimal, ...],
 ) -> None:
-    """没有观察到规则时不得把 Failure / No Result 改写成已确认能力。"""
+    """建议不得擅自提高用户本轮 Budget。"""
 
-    ticker_rule, account_permission = apply_execution_evidence(
-        observed_state=FactState.UNKNOWN,
-        authority=authority,
-    )
-
-    assert ticker_rule is FactState.UNKNOWN
-    assert account_permission is FactState.UNKNOWN
-
-
-def test_fractional_condition_requires_both_rule_and_account_authority() -> None:
-    """只有公开规则与 Account 权限分别确认后才允许确认碎股条件。"""
-
-    public_rule, _ = apply_execution_evidence(
-        observed_state=FactState.VERIFIED_TRUE,
-        authority=Authority.PUBLIC,
-    )
-    _, account_permission = apply_execution_evidence(
-        observed_state=FactState.VERIFIED_TRUE,
-        authority=Authority.ACCOUNT_AUTHENTICATED,
-    )
-
-    result = execution_boundary(
-        ExecutionUnknownFixture(
-            Decimal("4875.77"),
-            Decimal("200"),
-            Decimal("210.25"),
-            public_rule,
-            account_permission,
-        )
-    )
-
-    assert result.fractional_condition == "FRACTIONAL_CONDITION_CONFIRMED"
+    with pytest.raises(ValueError, match="本轮 Budget"):
+        InvestmentAnalysisFixture(Decimal("4875.77"), Decimal("200"), Decimal("210.25"), amounts)

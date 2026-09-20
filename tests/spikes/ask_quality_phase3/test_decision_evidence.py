@@ -36,6 +36,12 @@ def test_decision_evidence_separates_offline_live_and_production_budget() -> Non
     assert isinstance(runtime, dict)
     assert runtime["current"]["live_status"] == "NOT_MEASURED"
     assert runtime["pydantic-ai"]["live_status"] == "NOT_MEASURED"
+    research = evidence["research"]
+    assert isinstance(research, dict)
+    assert research["application-owned"]["model_content_integration"] == "PROTOTYPE_GAP"
+    assert research["existing-financial-data"]["role"] == (
+        "structured fact tools; not a third runtime candidate"
+    )
     budget = evidence["budget_estimate"]
     assert isinstance(budget, dict)
     assert budget["production_slo"] == "NOT_MEASURED"

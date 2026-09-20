@@ -1,88 +1,81 @@
-"""AQ05 / AQ06 所需的最小 Execution UNKNOWN 边界。"""
+"""AQ05 / AQ06 所需的最小金额分析与执行 UNKNOWN 边界。"""
 
 from dataclasses import dataclass
-from decimal import Decimal
+from decimal import ROUND_DOWN, Decimal
 from enum import StrEnum
 
 
-class FactState(StrEnum):
-    """Phase 3 只区分已确认与 UNKNOWN，不定义完整执行 Contract。"""
+class PermissionStatus(StrEnum):
+    """只表达本轮是否需要讨论账户权限。"""
 
-    VERIFIED_TRUE = "VERIFIED_TRUE"
-    VERIFIED_FALSE = "VERIFIED_FALSE"
+    NOT_REQUESTED = "NOT_REQUESTED"
+    USER_PROVIDED_CONDITION = "USER_PROVIDED_CONDITION"
     UNKNOWN = "UNKNOWN"
 
 
-class Authority(StrEnum):
-    """来源能否确认公开规则或当前 Account 权限。"""
-
-    PUBLIC = "PUBLIC"
-    ACCOUNT_AUTHENTICATED = "ACCOUNT_AUTHENTICATED"
-    NONE = "NONE"
-
-
 @dataclass(frozen=True, slots=True)
-class ExecutionUnknownFixture:
-    """只包含 AQ05 / AQ06 的必要事实。"""
+class InvestmentAnalysisFixture:
+    """只包含金额分析、理论股数和预算边界所需事实。"""
 
     account_cash: Decimal
     current_turn_budget: Decimal
     quote: Decimal
-    ticker_fractional_rule: FactState = FactState.UNKNOWN
-    account_permission: FactState = FactState.UNKNOWN
+    proposed_amounts: tuple[Decimal, ...] = ()
+    share_count_requested: bool = False
+    broker_permission_question: bool = False
+    user_states_fractional_support: bool = False
 
     def __post_init__(self) -> None:
-        if any(value < 0 for value in (self.account_cash, self.current_turn_budget, self.quote)):
-            raise ValueError("Cash、Budget 与 Quote 不得为负")
+        if self.account_cash < 0 or self.current_turn_budget < 0 or self.quote <= 0:
+            raise ValueError("Cash、Budget 不得为负，Quote 必须为正")
+        if any(amount < 0 for amount in self.proposed_amounts):
+            raise ValueError("资金分配金额不得为负")
+        proposed_total = sum(self.proposed_amounts, start=Decimal("0"))
+        if proposed_total > self.current_turn_budget:
+            raise ValueError("资金分配不得超过用户本轮 Budget")
 
 
 @dataclass(frozen=True, slots=True)
-class ExecutionBoundaryResult:
-    """供回答使用的条件结论，不是 Broker Execution Contract。"""
+class InvestmentAnalysisBoundary:
+    """允许金额分析，同时保持实际订单能力 UNKNOWN。"""
 
     account_cash: Decimal
     current_turn_budget: Decimal
-    quote: Decimal
-    whole_share_budget_condition: str
-    fractional_condition: str
-    account_permission: FactState
+    proposed_amounts: tuple[Decimal, ...]
+    theoretical_share_quantity: Decimal | None
+    executable_purchase_quantity: str
+    permission_status: PermissionStatus
+    fractional_research_required: bool
 
 
-def execution_boundary(fixture: ExecutionUnknownFixture) -> ExecutionBoundaryResult:
-    """预算只影响本轮分析，不覆盖 Cash，也不把未知权限补成事实。"""
+def investment_analysis_boundary(
+    fixture: InvestmentAnalysisFixture,
+) -> InvestmentAnalysisBoundary:
+    """验证金额计划并在用户要求时计算非执行性的理论股数。"""
 
-    if fixture.current_turn_budget < fixture.quote:
-        whole_share_condition = "BUDGET_BELOW_ONE_SHARE_QUOTE"
+    theoretical_quantity = None
+    if fixture.share_count_requested:
+        theoretical_quantity = (fixture.current_turn_budget / fixture.quote).quantize(
+            Decimal("0.0001"),
+            rounding=ROUND_DOWN,
+        )
+
+    if fixture.user_states_fractional_support:
+        permission_status = PermissionStatus.USER_PROVIDED_CONDITION
+        research_required = False
+    elif fixture.broker_permission_question:
+        permission_status = PermissionStatus.UNKNOWN
+        research_required = True
     else:
-        whole_share_condition = "BUDGET_AT_OR_ABOVE_ONE_SHARE_QUOTE"
-    if fixture.ticker_fractional_rule is FactState.VERIFIED_FALSE:
-        fractional_condition = "FRACTIONAL_NOT_SUPPORTED"
-    elif (
-        fixture.ticker_fractional_rule is FactState.VERIFIED_TRUE
-        and fixture.account_permission is FactState.VERIFIED_TRUE
-    ):
-        fractional_condition = "FRACTIONAL_CONDITION_CONFIRMED"
-    else:
-        fractional_condition = "FRACTIONAL_EXECUTION_UNKNOWN"
-    return ExecutionBoundaryResult(
-        fixture.account_cash,
-        fixture.current_turn_budget,
-        fixture.quote,
-        whole_share_condition,
-        fractional_condition,
-        fixture.account_permission,
+        permission_status = PermissionStatus.NOT_REQUESTED
+        research_required = False
+
+    return InvestmentAnalysisBoundary(
+        account_cash=fixture.account_cash,
+        current_turn_budget=fixture.current_turn_budget,
+        proposed_amounts=fixture.proposed_amounts,
+        theoretical_share_quantity=theoretical_quantity,
+        executable_purchase_quantity="UNKNOWN",
+        permission_status=permission_status,
+        fractional_research_required=research_required,
     )
-
-
-def apply_execution_evidence(
-    *,
-    observed_state: FactState,
-    authority: Authority,
-) -> tuple[FactState, FactState]:
-    """公开来源只能确认公开规则，不能确认当前 Account 权限。"""
-
-    if authority is Authority.NONE:
-        return FactState.UNKNOWN, FactState.UNKNOWN
-    if authority is Authority.PUBLIC:
-        return observed_state, FactState.UNKNOWN
-    return FactState.UNKNOWN, observed_state

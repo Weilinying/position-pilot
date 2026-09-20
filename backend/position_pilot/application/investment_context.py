@@ -485,9 +485,14 @@ def quote_response_contract() -> dict[str, object]:
         "current_quote_value_in_answer": "ALLOWED_FROM_SUCCESSFUL_TOOL_CONTEXT",
         "source_reference_required_if_used": True,
         "cross_ticker_quote_comparison": "PROHIBITED_UNLESS_PROVIDED",
-        "new_financial_calculations": "PROHIBITED",
+        "new_financial_calculations": "ONLY_APPLICATION_PROVIDED_DETERMINISTIC_FACTS",
         "purchase_execution_conclusion": "PROHIBITED",
         "cash_quote_relation_allowed_use": "repeat_relation_only",
+        "amount_based_analysis": "ALLOWED_WITHIN_EXPLICIT_BUDGET_WITH_CASH_REPORTED_SEPARATELY",
+        "fractional_permission_required_for_amount_analysis": False,
+        "theoretical_share_quantity": (
+            "ALLOWED_ONLY_WHEN_APPLICATION_PROVIDED_AND_LABELLED_NON_EXECUTABLE"
+        ),
         "required_purchase_execution_status": "UNKNOWN",
     }
 

@@ -34,13 +34,16 @@ CASE_EVIDENCE = (
     CaseEvidence(
         "AQ05",
         ArtifactStatus.PROTOTYPE_GAP,
-        ("budget/cash controlled contrast", "execution quantity omitted"),
+        ("budget/cash controlled contrast", "amount plan remains within budget"),
         "fixed-model final answer gate not measured",
     ),
     CaseEvidence(
         "AQ06",
         ArtifactStatus.PROTOTYPE_GAP,
-        ("budget below one-share quote", "fractional/account permission UNKNOWN"),
+        (
+            "amount analysis needs no fractional permission lookup",
+            "theoretical quantity differs from executable quantity",
+        ),
         "fixed-model final answer gate not measured",
     ),
     CaseEvidence(
@@ -78,7 +81,7 @@ def decision_evidence(*, revision: str) -> dict[str, object]:
     if not revision.strip():
         raise ValueError("Revision 不能为空")
     return {
-        "schema_version": "phase3-decision-evidence-0.1",
+        "schema_version": "phase3-decision-evidence-0.2",
         "revision": revision,
         "experiment_model": EXPERIMENT_MODEL,
         "runtime": {
@@ -110,7 +113,12 @@ def decision_evidence(*, revision: str) -> dict[str, object]:
                 "live_status": ArtifactStatus.NOT_MEASURED.value,
                 "search_provider": "brave-search",
                 "fetch": "controlled independent fetch prototype",
+                "model_content_integration": ArtifactStatus.PROTOTYPE_GAP.value,
                 "reason": "search provider credential unavailable",
+            },
+            "existing-financial-data": {
+                "role": "structured fact tools; not a third runtime candidate",
+                "providers": ["alpaca-market-data", "alpaca-news", "spy-market-context"],
             },
         },
         "persistence": {

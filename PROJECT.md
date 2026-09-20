@@ -148,7 +148,13 @@ Tool 负责获取外部事实或暴露系统能力，例如当前价格、历史
 
 确定性代码负责平均成本、金额、仓位比例、技术指标以及能够明确编码的 Market Regime 规则。
 
-交易能力同样属于确定性事实。标的是否可交易、是否支持 Fractional Shares，应由 Broker / Asset Metadata 等可靠来源提供 `tradable` 与 `fractionable` 状态，不能由 LLM 根据训练知识判断。规划新增买入时，若 `fractionable` 未知，Agent 不得默认只支持整股，也不得默认支持碎股；只有明确支持碎股时，潜在可购买数量才允许为 Decimal，明确不支持时才应用整股约束，具体数量仍由确定性代码计算。Available Cash 低于单股价格不能作为通用的“无法买入”判断。这一未来交易规划边界不要求 M9 Asset Selector 提前规范化 `fractionable` 或建设通用 Metadata Model。
+PositionPilot 提供投资分析，不接入券商下单。普通投资分析、加仓建议与资金分配默认按金额表达，
+不以 Broker、Account 或 Ticker 的碎股权限验证为前置条件，也不因权限未知拒绝分析。用户明确说明
+账户支持碎股时，Agent 可以把它作为本轮条件使用，无需重复验证。用户明确要求股数时，可以用用户
+预算与可靠价格做确定性的理论股数计算，但必须标明这不是账户实际可执行订单数量；只有用户明确询问
+券商账户权限时，才根据可用证据回答，缺少依据则保持 UNKNOWN。任何建议都不得扩大用户本轮预算、
+覆盖 Available Cash 或直接修改 Portfolio / Ledger。若未来接入真实订单执行，tradable、fractionable、
+minimum notional / quantity、rounding 与账户权限必须另行建立可靠来源和执行 Contract。
 
 Portfolio Import 中的识别结果只生成可审查 Draft，不直接成为 Structured State。Recognition Confidence 只用于帮助用户定位需要复核的字段，不是 Portfolio Domain Truth，也不形成独立 Write Gate；最终写入只接受用户明确确认、在本地 Browser Draft 中已绑定 Provider-validated Asset Identity 且通过 deterministic Domain Validation 的确定字段。M9 接受仅限 loopback 本地产品的受信任 Browser 边界，Confirm 不重复调用 Asset Provider；若未来暴露到公网或不受控客户端，必须恢复写入时验证或引入后端签名的短期 Asset Receipt。Asset Metadata Provider 与 Vision / OCR Capability 必须在实现前通过短 Capability Spike 完成选型，并通过各自的 Provider-neutral Boundary 接入。Recognition 输出只作为数据处理，不进入 PositionPilot Agent 的指令链路。
 

@@ -22,6 +22,14 @@ Provider，也不修改 Production。以下事项已于 2026-09-20 通过 Human 
 Model / Provider、Research Provider、Runtime 的最终生产选型保持 `NEEDS_SPIKE`。批准实验范围不等于
 批准生产替换、Migration 或 Release Mapping。
 
+### 1.1 AQ06 修订记录（2026-09-20）
+
+Human Review 已撤销本提案中把碎股 / Account 权限查询作为普通投资分析前置条件的部分。第 2.2、
+2.3、3.2、3.5、Paper Walkthrough 与 Decision Log 中相冲突的内容保留为历史决策与 Baseline 解释，
+不再作为当前规则。现行行为与 Gate 见
+[AQ06 Eval Revision](../evaluation/ask-quality-policy-revision-2026-09-20.md)：金额分析不要求执行权限；
+理论股数不得冒充可执行订单；只有明确的账户权限问题才需要证据，缺少时保持 UNKNOWN。
+
 ## 2. Problem / Evidence
 
 ### 2.1 冻结的统计口径

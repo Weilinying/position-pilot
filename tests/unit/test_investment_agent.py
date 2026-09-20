@@ -581,7 +581,8 @@ def test_always_injects_complete_portfolio_snapshot_with_bounded_buy_history() -
     assert "Structured Facts、Tool Results 和 Deterministic Derived Facts" in system_prompt
     assert "不得自行生成未提供的确定性金融计算结果" in system_prompt
     assert "分析必须服从 Context Capabilities" in system_prompt
-    assert "实际可执行购买数量未知" in system_prompt
+    assert "只限制实际可执行订单结论" in system_prompt
+    assert "不要求先查询或确认碎股权限" in system_prompt
     assert "是否加仓、减仓或建仓，本身即需要 Current Quote" in system_prompt
     assert "Average Cost 不能替代历史买入位置" in system_prompt
     assert "Portfolio 中出现 Ticker 本身不是调用 Quote 的理由" in system_prompt
@@ -1005,13 +1006,18 @@ def test_quote_result_includes_only_proven_deterministic_relations() -> None:
     assert tool_payload["bid_price"] is None
     assert tool_payload["ask_price"] is None
     assert tool_payload["response_contract"] == {
+        "amount_based_analysis": ("ALLOWED_WITHIN_EXPLICIT_BUDGET_WITH_CASH_REPORTED_SEPARATELY"),
         "cash_quote_relation_allowed_use": "repeat_relation_only",
         "current_quote_value_in_answer": "ALLOWED_FROM_SUCCESSFUL_TOOL_CONTEXT",
         "cross_ticker_quote_comparison": "PROHIBITED_UNLESS_PROVIDED",
-        "new_financial_calculations": "PROHIBITED",
+        "fractional_permission_required_for_amount_analysis": False,
+        "new_financial_calculations": "ONLY_APPLICATION_PROVIDED_DETERMINISTIC_FACTS",
         "purchase_execution_conclusion": "PROHIBITED",
         "required_purchase_execution_status": "UNKNOWN",
         "source_reference_required_if_used": True,
+        "theoretical_share_quantity": (
+            "ALLOWED_ONLY_WHEN_APPLICATION_PROVIDED_AND_LABELLED_NON_EXECUTABLE"
+        ),
     }
 
 

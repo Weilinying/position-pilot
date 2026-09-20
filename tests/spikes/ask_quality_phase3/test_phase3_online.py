@@ -1,10 +1,12 @@
 """Phase 3 固定模型与两条 Research 路径的显式 Opt-in Live Smoke。"""
 
 import os
+from collections.abc import Mapping
+from dataclasses import replace
 
 import pytest
 
-from position_pilot.application.llm import LLMMessage, LLMRole
+from position_pilot.application.llm import LLMMessage, LLMRole, LLMToolDefinition
 from position_pilot.integrations.aliyun_llm import AliyunLLMProvider
 
 from .contracts import (
@@ -13,9 +15,11 @@ from .contracts import (
     RuntimeBudget,
     RuntimeExecutionStatus,
     RuntimeInput,
+    SourceRecord,
 )
-from .current_runtime import CurrentRuntimeCandidate
+from .current_runtime import CurrentRuntimeCandidate, FunctionToolExecutor, ToolObservation
 from .experiment_contract import EXPERIMENT_MODEL
+from .harness import RuntimeCandidate
 from .pydantic_runtime import PydanticRuntimeCandidate, build_alibaba_chat_model
 from .research_candidates import (
     AlibabaNativeResearchCandidate,
@@ -58,6 +62,107 @@ def _runtime_input() -> RuntimeInput:
     )
 
 
+def _runtime_tool_input(*, multi_round: bool = False) -> RuntimeInput:
+    """使用确定性本地 Tool 验证真实模型 Tool Calling 兼容性。"""
+
+    prompt = (
+        "先调用 search_web 搜索 GOOG official filing，再使用返回的 URL 调用 fetch_page，"
+        "最后简短说明已经读取正文。"
+        if multi_round
+        else "调用 get_current_quote 查询 GOOG，然后只回答已取得报价。"
+    )
+    tool_names = ("search_web", "fetch_page") if multi_round else ("get_current_quote",)
+    definitions = {
+        "get_current_quote": LLMToolDefinition(
+            "get_current_quote",
+            "读取当前报价；本测试必须调用一次。",
+            {
+                "type": "object",
+                "properties": {"ticker": {"type": "string"}},
+                "required": ["ticker"],
+                "additionalProperties": False,
+            },
+        ),
+        "search_web": LLMToolDefinition(
+            "search_web",
+            "搜索公开网页并返回可读取 URL；本测试必须先调用。",
+            {
+                "type": "object",
+                "properties": {"query": {"type": "string"}},
+                "required": ["query"],
+                "additionalProperties": False,
+            },
+        ),
+        "fetch_page": LLMToolDefinition(
+            "fetch_page",
+            "读取 search_web 返回的公开 URL；搜索后必须调用。",
+            {
+                "type": "object",
+                "properties": {"url": {"type": "string"}},
+                "required": ["url"],
+                "additionalProperties": False,
+            },
+        ),
+    }
+    return replace(
+        _runtime_input(),
+        conversation=(LLMMessage(LLMRole.USER, prompt),),
+        tools=tuple(definitions[name] for name in tool_names),
+        budget=RuntimeBudget(4, 3, 1, 1, 30),
+    )
+
+
+def _runtime_executors(
+    calls: list[tuple[str, Mapping[str, object]]],
+) -> dict[str, FunctionToolExecutor]:
+    """返回无网络、无副作用的确定性 Tool，并记录真实模型参数。"""
+
+    def quote(arguments: Mapping[str, object]) -> ToolObservation:
+        calls.append(("get_current_quote", arguments))
+        return ToolObservation(
+            "OK",
+            {"ticker": arguments.get("ticker"), "price": "210.25"},
+            (SourceRecord("quote-live-1", "FIXED_LIVE_TOOL", None),),
+        )
+
+    def search(arguments: Mapping[str, object]) -> ToolObservation:
+        calls.append(("search_web", arguments))
+        return ToolObservation(
+            "OK",
+            {
+                "query": arguments.get("query"),
+                "results": [{"url": "https://example.test/filing"}],
+            },
+            (
+                SourceRecord(
+                    "search-live-1",
+                    "FIXED_LIVE_TOOL",
+                    "https://example.test/filing",
+                ),
+            ),
+        )
+
+    def fetch(arguments: Mapping[str, object]) -> ToolObservation:
+        calls.append(("fetch_page", arguments))
+        return ToolObservation(
+            "OK",
+            {"url": arguments.get("url"), "text": "固定公开文件正文。"},
+            (
+                SourceRecord(
+                    "fetch-live-1",
+                    "FIXED_LIVE_TOOL",
+                    "https://example.test/filing",
+                ),
+            ),
+        )
+
+    return {
+        "get_current_quote": FunctionToolExecutor(quote),
+        "search_web": FunctionToolExecutor(search),
+        "fetch_page": FunctionToolExecutor(fetch),
+    }
+
+
 def test_fixed_model_current_runtime_live_smoke() -> None:
     """Current Runtime 使用固定 qwen3.7-max，而非 Production Default。"""
 
@@ -88,6 +193,49 @@ def test_fixed_model_pydantic_runtime_live_smoke() -> None:
 
     assert result.status is RuntimeExecutionStatus.COMPLETED
     assert result.usage is not None
+
+
+@pytest.mark.parametrize("runtime_name", ["current", "pydantic-ai"])
+@pytest.mark.parametrize("multi_round", [False, True], ids=["one-tool", "multi-tool"])
+def test_fixed_model_runtime_tool_calling_live_smoke(
+    runtime_name: str,
+    multi_round: bool,
+) -> None:
+    """真实模型验证 Tool 选择、参数、轮次、Usage 与 Latency。"""
+
+    api_key, base_url = _alibaba_config()
+    calls: list[tuple[str, Mapping[str, object]]] = []
+    executors = _runtime_executors(calls)
+    runtime_input = _runtime_tool_input(multi_round=multi_round)
+    if runtime_name == "current":
+        provider = AliyunLLMProvider(
+            api_key=api_key,
+            base_url=base_url,
+            model=EXPERIMENT_MODEL,
+        )
+        candidate: RuntimeCandidate = CurrentRuntimeCandidate(provider, executors)
+    else:
+        model = build_alibaba_chat_model(
+            EXPERIMENT_MODEL,
+            api_key=api_key,
+            base_url=base_url,
+        )
+        candidate = PydanticRuntimeCandidate(model, executors)
+
+    result = candidate.run(runtime_input)
+
+    expected_tools = ["search_web", "fetch_page"] if multi_round else ["get_current_quote"]
+    assert result.status is RuntimeExecutionStatus.COMPLETED
+    assert [name for name, _ in calls] == expected_tools
+    assert [event.tool_name for event in result.tool_trace] == expected_tools
+    assert result.usage is not None
+    assert result.usage.total_tokens > 0
+    assert result.latency_ms is not None
+    assert result.latency_ms > 0
+    if multi_round:
+        assert calls[1][1]["url"] == "https://example.test/filing"
+    else:
+        assert calls[0][1]["ticker"] == "GOOG"
 
 
 def test_fixed_model_alibaba_native_research_live_smoke() -> None:

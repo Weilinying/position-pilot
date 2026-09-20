@@ -510,6 +510,13 @@ TradingView Lightweight Charts 作为 Frontend Library 使用；其官方 Agent 
 
 首轮正式 Runtime 对比仅 Current Runtime vs Pydantic AI，追加候选需具体缺口证据；Research 只比较 Alibaba Native 与最多一个 Application-owned Search 路径，Page Fetch 可使用独立受控 Prototype。Phase 3 固定一个实验模型，只做 Provider Compatibility Smoke；Persistence 只验证 Conversation、Confirmed Strategy 与 Account Ownership 的最小接入。阶段四先完成 4A 对话 / 研究循环及固定 Eval，再完成 4B 持久 Strategy 及连续 Ask Eval。评测以 FULL / DIAGNOSTIC 表示场景能否完整测试，以独立 execution_status 表示是否运行成功；诊断场景保留局部评分。报告首页展示能力覆盖率、完整场景回答质量、请求成功率和 Critical Failure 次数。关键事实 / 来源错误、未经确认提升或使用 Strategy / Long-term Memory，以及失效策略重用触发 Case FAIL，保持待确认且不参与决策的 Candidate 本身不触发。详细执行规则由上述计划维护，不在 Roadmap 复制 Task 拆分。
 
+2026-09-20 AQ06 修订：普通投资分析、加仓建议与资金分配按金额表达，不把 Broker / Account /
+Ticker 碎股权限验证作为前置条件。理论股数可以由本轮 Budget 与可靠 Quote 确定性计算，但不得冒充
+账户实际可执行数量；Budget、Available Cash、Portfolio 与 Ledger Mutation 边界保持不变。现有
+Alpaca Quote、History、Recent News 与 SPY Market Context 是 Existing Financial Data，不与 Alibaba
+Native Research 或 Application-owned Research 构成互斥的第三套 Runtime；优先使用结构化金融数据，
+只有问题缺口需要开放来源时才进入 Research。Skills 仅作为未来扩展候选，不纳入 Phase 3。
+
 只有上述范围通过 Human Review，并由固定 Evaluation 或真实 Failure Mode 证明最小方案后，才新增对应正式 Milestone、实施 Plan、ADR 与 Release Mapping；Discovery 工作计划不等于实施或选型批准。Discovery 不预设 Vector Database、LangGraph、Multi-Agent 或不受控 General Browser。
 
 本次方向性批准不等于批准具体实现；已批准方向不重复提审。评审中的“V2 级别变化”指潜在架构影响，不改变下文 V2 Connected Product 的范围，也不形成 V2 发布承诺。

@@ -16,7 +16,7 @@ Phase 3 是用于决定 Phase 4 技术路线的最小 Capability Spike，不提�
 2. Alibaba Native Research 与一个实际可运行的 Application-owned Search / Fetch 候选，哪个更适合
    PositionPilot 的来源、失败、安全和预算边界；
 3. 候选 Runtime 能否接入 Account-owned Conversation 与已确认 Strategy，而不把业务状态交给框架；
-4. 在 AQ05 / AQ06 中，现有事实与 UNKNOWN 边界能否阻止错误执行结论；
+4. 在 AQ05 / AQ06 中，金额分析能否遵守 Cash / Budget 边界，并把理论股数与实际执行能力分开；
 5. 使用一个当前可用的实验模型时，候选 Runtime / Research 路径能否真实运行并提供决策所需证据。
 
 Phase 3 的产物是代表性测试证据、Runtime / Research 比较结果、最小 Persistence 验证、预算估算和
@@ -279,16 +279,19 @@ Runtime 上可验证；跨 Owner 与未确认 Strategy Negative Fixture 通过�
 
 ### P3-T6 — AQ05 / AQ06 Execution UNKNOWN 验证
 
-不设计完整 Execution Fact / Fractional Share Domain Contract，只冻结当前问题所需边界：
+2026-09-20 AQ06 修订后，不设计完整 Execution Fact / Fractional Share Domain Contract，只验证当前
+投资分析产品真正需要的边界：
 
 - Account Cash、current-turn budget、Quote 和 `budget < one-share quote` 保持不同事实；
-- Broker / Ticker Fractional Eligibility 与当前 Account Permission 未经权威来源确认时保持 UNKNOWN；
-- UNKNOWN 时可以给整股 / 碎股条件分支，但不能输出确定可买数量、确定执行限制或“提高预算”的建议；
-- Public Research 可以支持公开 Broker / Ticker 规则，不能冒充当前 Account 权限；
-- Provider Failure 与 No Result 不得被改写成已确认规则。
+- 普通投资分析、加仓建议和资金分配按金额表达，不要求先确认碎股权限，也不因权限 UNKNOWN 拒答；
+- 用户明确提供账户支持碎股的条件时直接采用，不重复验证；
+- 用户明确要求股数时可确定性计算理论股数，但不得表述为账户实际可执行订单数量；
+- 只有用户明确询问 Broker / Account 权限时才查证，缺少依据时保持 UNKNOWN；
+- 金额方案不得超过本轮 Budget；Available Cash 另行准确报告，二者不得互相覆盖，也不得修改
+  Portfolio / Ledger。
 
-**完成标准：** AQ05 / AQ06 的固定 Fixture 不触发对应 Critical Gate。完整 Broker、Account、Minimum
-Notional / Quantity、Precision、Rounding 与 Execution Constraints 设计移至后续独立任务。
+**完成标准：** AQ05 / AQ06 Revision Fixture 通过金额、预算、理论股数与 Mutation Boundary 测试。
+Broker Order Execution Contract 只有在未来接入执行能力时再立独立任务，不作为 Phase 4 前置条件。
 
 ### P3-T7 — 固定模型与 Provider Compatibility Smoke
 
@@ -340,7 +343,7 @@ Schema、API 或 Security Boundary 替换。
 | Harness / Runtime | Fake 0 / 1 / 2+ Tool、Failure、Budget、History、Source Validation | 完整 Production Runtime Test Suite |
 | Research | Fake Failure、Query Privacy、Prompt Injection、必要 Fetch Security、每条路径 Live Smoke | 大规模 Provider Benchmark |
 | Persistence | 临时 PostgreSQL、跨 Owner、Conversation 恢复、Confirmed / Unconfirmed Strategy | Candidate 状态机、并发 / 删除 / Migration |
-| AQ05 / AQ06 | 固定 Fixture 与 Critical Gate | 完整 Execution Constraints Model |
+| AQ05 / AQ06 | 金额方案、Cash / Budget、理论与可执行数量边界 | Broker Order Execution Contract |
 | Integration | 代表性 Case、定向 Regression、Artifact 完整性 | Phase 4 全量 Acceptance / unseen |
 
 Phase 3 实现期间运行受影响文件的 `ruff check`、`mypy` 和 `pytest`；修改共享 LLM / Evaluation
@@ -368,7 +371,7 @@ Phase 3 同时满足以下条件即可进入 Human Review，不要求提前完�
 - Alibaba Native Research 与最多一个 Application-owned Research 候选完成受控对照；
 - 推荐候选通过 Security、Ownership、Source Integrity、Mutation Boundary 与 Phase 2 Critical Gate；
 - Conversation、Confirmed Strategy 与 Account Ownership 的最小 Persistence 接线已验证；
-- AQ05 / AQ06 的 UNKNOWN 和来源权威边界已验证；
+- AQ05 / AQ06 的金额、Cash / Budget、理论股数和执行声明边界已验证；
 - 一个固定实验模型完成必要 Provider Compatibility Smoke；没有执行模型横评；
 - 代表性组合测试、可重复 Artifact 与初始预算估算已形成；
 - `ARCHITECTURE_LIMIT`、`PROTOTYPE_GAP` 与 `NOT_MEASURED` 已分开记录；
@@ -385,7 +388,7 @@ Phase 3 同时满足以下条件即可进入 Human Review，不要求提前完�
 - 最终 Answer / Claim-level Citation Public Contract 与完整 Source Metadata Policy；
 - 精确 Production Budget、Latency / Cost SLO、完整 Failure Code 和 Observability；
 - Phase 4A / 4B 完整 Dataset、Repeat、unseen、连续 Ask 与 Human Acceptance；
-- 完整 Broker / Account Execution Constraints 和 Fractional Share Domain 设计；
+- Broker Order Execution Contract（仅在未来接入真实执行能力时另立任务）；
 - 正式 Model / Provider 横向比较或默认模型切换。
 
 ## 10. 失败与停止条件
