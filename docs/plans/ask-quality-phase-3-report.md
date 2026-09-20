@@ -1,0 +1,158 @@
+# Ask Quality Discovery — Phase 3 Capability Spike Report
+
+## 1. 状态与结论
+
+**Status:** EXECUTION CONCLUDED — NO-GO / HUMAN REVIEW REQUIRED；固定模型、Research 与 PostgreSQL
+Live Evidence 因当前进程没有显式 Credential / `SPIKE_DATABASE_URL` 而为 `NOT_MEASURED`。
+
+Phase 3 已完成 Runtime、Research、安全、最小 Persistence、AQ05 / AQ06 和代表性证据的离线
+Capability Spike。Spike 没有修改 Production Runtime、Provider、Schema、Public API 或默认模型，所有
+实现位于 `tests/spikes/ask_quality_phase3/`，新增依赖只在 `spike` Dependency Group。
+
+当前结论：
+
+- **Runtime：** 两个候选都证明架构可支持目标边界。Current Runtime 是 Phase 4 的暂定推荐；
+  PydanticAI 保留为可行候选，不判定为 `ARCHITECTURE_LIMIT`。
+- **Research：** 两条路径的 Contract 与安全边界可支持，但没有受控 Live Evidence，暂不选择
+  Production Research 路径。
+- **Persistence：** PositionPilot-owned Conversation、Confirmed Strategy 与 Account Ownership 的
+  Application Boundary 已验证；PostgreSQL 临时 Schema Live Integration 为 `NOT_MEASURED`。
+- **Phase 4 Entry：** `NO_GO_PENDING_LIVE_EVIDENCE`。这是一项证据不足的 No-go，不是架构失败。
+
+## 2. 实验合同与隔离
+
+固定实验模型为 `qwen3.7-max`，与当前 Production Default `deepseek-v4-pro-0813` 明确区分。Safety
+Ceiling 为 4 次 Model Request、4 次 Tool Call、2 次 Search、2 次 Fetch 和 30 秒；它只防止 Spike
+失控，不是 Production SLO。
+
+两个 Runtime 使用相同的 Application Input、Prompt 语义、事实、Tool Contract、Budget 和场景；
+没有强制内部 Message 或 Request Payload Hash 一致。Artifact 记录规范化 Input Hash、候选实际 Trace、
+Usage、Latency 和差异。外部 Tool 数据使用统一 `UNTRUSTED_TOOL_DATA` 包装。
+
+统一 Comparison Runner 已用两个真实离线 Runtime 候选和两个真实 Research Adapter 执行同一输入 / 请求，
+校验 Input / Request Hash 等价，同时保留 Message、Trace、Usage、Provider-managed / Application-owned
+Search 和 Fetch Observability 差异。
+
+Artifact Reporter 使用字段 Allowlist、必填 Provenance、Credential Value 检查与字符串长度限制；
+Research Artifact 不允许原始网页正文或私有 Context 字段。调用方仍只允许使用冻结的公开 Fixture。
+Fake Fixture 默认是 `NOT_MEASURED`，只有真实候选执行的确定性能力测试才能成为 `SUPPORTED`。
+
+## 3. Runtime 对照结果
+
+| 项目 | Current Runtime | PydanticAI 1.107.6 |
+|---|---|---|
+| 0 / 1 / 2+ Tool Loop | `SUPPORTED` | `SUPPORTED` |
+| History / Confirmed Strategy | `SUPPORTED` | `SUPPORTED`，使用框架原生 `message_history` |
+| Tool / Request Budget | Application-owned 检查 | 原生 `UsageLimits` + Search / Fetch / Wall-clock Bridge |
+| Source Validation | `SUPPORTED` | `SUPPORTED` |
+| Provider Failure / Tool Failure | 显式状态 / Warning；无 UNKNOWN 保留则拒绝 Final | 同左 |
+| Alibaba 接入 | 复用现有 Provider-neutral Adapter | 原生 `AlibabaProvider` 可构造 |
+| Provider Live Smoke | `NOT_MEASURED` | `NOT_MEASURED` |
+| 主要 Production Gap | 无 Streaming / Cancellation / Production 接线 | 仅实现三个代表性 Tool 的薄 Bridge；最终 Tool Schema 接线未完成 |
+
+Current Runtime 候选约 433 行，包含 JSON Schema 子集校验、循环、预算、Trace 和来源边界；
+PydanticAI 候选约 348 行，但额外引入 `pydantic-ai-slim`、`openai` 及其锁定依赖，并需要维护
+PositionPilot Tool Observation 与框架 Function Tool 之间的 Bridge。PydanticAI 的内部 Message、Tool
+Schema 和 Usage 估算与 Current Runtime 不同；这些差异已保留，没有为了 Payload 一致性改写框架。
+
+离线结果证明 PydanticAI 可以支持目标结构，但尚未证明新增依赖与 Bridge 能带来足以抵消维护成本的
+实际质量、Latency 或可靠性收益。因此暂定推荐 Current Runtime，而不是把 PydanticAI 的 Prototype
+Bridge 缺口误判为框架不合适。
+
+## 4. Research 对照结果
+
+### 4.1 Alibaba Native Research
+
+实现通过 OpenAI-compatible Responses API 启用 `web_search` 与 `web_extractor`，只把实际
+`url_citation` 映射为 Source。固定模型始终是 `qwen3.7-max`；若当前 Region / Endpoint 不支持，
+Gateway 返回显式 Failure，不换模型完成对照。
+
+Alibaba 当前官方文档说明 `qwen3.7-max` 的 Web Search 应使用 Responses API；同时说明普通
+OpenAI-compatible Chat Completions 不返回搜索来源。因此 Source Integrity 对照不能用
+`enable_search` 的 Chat Completion 结果替代 Responses Citation Evidence。参考：
+[Alibaba Web Search](https://www.alibabacloud.com/help/en/model-studio/web-search)、
+[Alibaba Text Generation API](https://www.alibabacloud.com/help/en/model-studio/qwen-api-reference)。
+
+离线 Source Mapping、公开 Query 和 Failure Contract 为 `SUPPORTED`；固定 Region / Endpoint 的真实
+Search、Fetch、Citation、Usage、Latency 与 Cost 均为 `NOT_MEASURED`。
+
+### 4.2 Application-owned Research
+
+只选择一个 Search Provider 候选：Brave Search。Page Fetch 使用独立受控 Prototype，不把它算作
+第二个 Research Provider。已验证：
+
+- Query 只由 ticker、company、event、time window 构造；
+- Search、Fetch、空结果、Provider Failure 与部分成功可观察；
+- Source Identity、URL、读取状态与内容范围被保留；其他 Metadata 允许 `UNKNOWN`；
+- Fetch 只允许 HTTP(S)，拒绝 Credential、loopback、private、link-local 与非公开 DNS 结果；
+- 每次 Redirect 重新校验，并核对实际连接 Peer 防止 DNS Rebinding，限制 Timeout、Response Size 和
+  Content Type；
+- 网页正文只作为不可信数据，不具有 Mutation 或状态写入接口。
+
+Search Provider 和受控 Fetch 的离线路径为 `SUPPORTED`；真实搜索、页面读取、相关性、时效、Latency
+与费用为 `NOT_MEASURED`。
+
+## 5. Persistence 与 Ownership
+
+最小 Prototype 提供 Account-owned Thread、有序 Message、按 Owner / Scope 读取的 Confirmed Strategy
+以及统一 State Injection Boundary。测试证明：
+
+- Conversation 可有界恢复并被两个 Runtime 使用；
+- 未确认模型建议不会进入 Confirmed Strategy Context；
+- Account B 无法读取 Account A 的 Thread 或 Strategy；
+- Runtime 不拥有 Conversation、Strategy、确认或 Portfolio Truth。
+
+另有只接受显式 `SPIKE_DATABASE_URL` 的 PostgreSQL 临时 Schema Prototype。缺少该变量时直接拒绝，
+不会回退 `DATABASE_URL`、`get_settings()` 或 Repository `.env`。当前 PostgreSQL Integration Test 跳过，
+状态为 `NOT_MEASURED`。没有创建 Production Migration、API 或最终 Schema。
+
+## 6. AQ05 / AQ06 与代表性 Case
+
+AQ05 / AQ06 只冻结必要边界：Ledger Cash `4875.77`、本轮 Budget `500 / 200`、Quote `210.25`、
+Ticker Fractional Rule 与当前 Account Permission。结果证明 Budget 改变条件分析但不覆盖 Cash；公开
+Broker / Ticker 来源不能确认 Account Permission；No Result / Provider Failure 保持 `UNKNOWN`；输出
+Contract 不包含确定购买数量或提高预算建议。
+
+| Case | 状态 | 主要证据 / 限制 |
+|---|---|---|
+| AQ01 | `NOT_MEASURED` | Research Contract 已验证；无 Live Research |
+| AQ03 | `PROTOTYPE_GAP` | Quote Loop / Source Validation 已验证；固定模型 Live 纠错未测 |
+| AQ05 | `PROTOTYPE_GAP` | Cash / Budget 对照与无确定执行数量已验证；固定模型 Final 未测 |
+| AQ06 | `PROTOTYPE_GAP` | 低于一股价格、Fractional / Account Permission UNKNOWN；固定模型 Final 未测 |
+| AQ08 | `SUPPORTED` | Portfolio-only / No-tool Regression |
+| AQ12 | `SUPPORTED` | GOOG → MSFT → GOOG History 与 State Injection |
+| AQ17a | `SUPPORTED` | `NO_RESULTS` 独立状态 |
+| AQ17b | `SUPPORTED` | `PROVIDER_FAILURE` 独立状态 |
+| AQ19 | `PROTOTYPE_GAP` | 不可信 Tool Payload、静态只读 Allowlist、Fetch Security 已验证；真实模型恶意页未测 |
+
+这些状态是 Capability Evidence，不是 Phase 4 Acceptance。
+
+## 7. Budget 与可观察性
+
+确定性脚本分别使用 1 次 No-tool Request、2 次 One-tool Request 和 3 次 Search / Fetch Request；
+这不是代表性组合运行的统计。Phase 4 初始安全上限建议继续沿用本次 4 / 4 / 2 / 2 / 30 秒，直到
+Live Evidence 可用于收窄。代表性组合预算估算整体保持 `NOT_MEASURED`。
+
+以下值保持 `NOT_MEASURED`：真实 Provider Latency、Token / Tool Usage 可比性、Search / Fetch 费用、
+慢请求分布和 Production SLO。不得把离线 FunctionModel Usage 或本次 Safety Ceiling 当作生产预算。
+
+## 8. 验证与已知限制
+
+已运行 Phase 3 Spike 的 `ruff check`、`mypy`、定向 `pytest`、相关 LLM / Ask Quality Regression 与
+`git diff --check`。最终离线验证为 120 passed、26 skipped；其中 4 个 Phase 3 Live Smoke、1 个临时
+PostgreSQL Integration 和 21 个既有真实模型评测因未显式启用而跳过。在线测试为显式
+`RUN_PHASE3_LIVE=1` Opt-in；当前因缺少 Credential 按设计跳过。PydanticAI 离线测试产生一条其内部
+Event Loop 获取方式的 Deprecation Warning，不影响本次结果，但在正式采用前需要随锁定版本复核。
+
+已知限制：
+
+- 两个 Runtime 尚无同一固定模型的 Live 对照；
+- 两条 Research 路径尚无同一时间窗的 Live Evidence；
+- PostgreSQL 临时 Schema 尚未真实连接；
+- Current Runtime 与 PydanticAI 的真实 Latency / Usage / Cost 差异未测量；
+- 代表性组合运行与预算聚合尚未测量；
+- PydanticAI Bridge 只覆盖三个代表性 Tool，不是 Production Adapter；
+- AQ01 / AQ03 尚不能作为 Phase 4 质量通过证据。
+
+没有新增 ADR 或更新 `ARCHITECTURE.md`：尚未作出 Production 架构选择。完整 Strategy Lifecycle、
+Execution Contract、API / Schema、Retention、Streaming、预算冻结和 Phase 4 Acceptance 仍按计划推迟。
