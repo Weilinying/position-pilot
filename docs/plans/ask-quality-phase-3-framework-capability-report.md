@@ -2,7 +2,10 @@
 
 ## 1. 状态与历史关系
 
-**Status:** CAPABILITY SPIKE COMPLETE — PYDANTICAI RECOMMENDED / HUMAN REVIEW REQUIRED
+**Status:** HUMAN ACCEPTED（2026-09-21）— PYDANTICAI SELECTED FOR PHASE 4
+
+本报告的实验结果保持不变。Human Review 已接受 PydanticAI 作为 Phase 4 Production Agent Framework；
+Current Runtime 仅作为迁移回归基线，OpenAI Agents SDK 暂不进入 Production，Phase 3 至此完成。
 
 本报告是 2026-09-21 的追加证据，不覆盖
 [Phase 3 Capability Spike Report](ask-quality-phase-3-report.md) 的历史实验、分数或当时暂定结论。

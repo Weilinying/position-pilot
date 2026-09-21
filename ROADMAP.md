@@ -13,7 +13,7 @@
 **Current Milestone:** M13 — Position-Aware Market Chart
 **Status:** DONE — Human Accepted and merged to local `main`（2026-09-13）
 **Current Release State:** `v1.3.0` Release Candidate 已进入本地 `main`；Git Tag / GitHub Release 尚待发布
-**Next Planned Work:** Answer Quality Phase 3 Framework / Capability Spike（IN PROGRESS）；M10、M12 继续暂缓
+**Next Planned Work:** Answer Quality Phase 4 P4-T0（IN PROGRESS）；M10、M12 继续暂缓
 
 Milestone 状态统一使用 `NOT STARTED`、`IN PROGRESS`、`DONE`，不维护百分比进度。
 
@@ -528,7 +528,9 @@ Agent、引入完整 Memory / Skills 系统或把 Framework History 作为产品
 Conversation / Strategy / Memory Retrieval 注入。OpenAI Agents SDK 的固定 Qwen No-tool、One-tool
 Live 完成；Multi-tool 完成 Search / Fetch 调用后被 Source Validation 安全拒绝，归类为固定模型
 Grounding Gap，不是 Framework Tool Calling Failure。综合当前 Qwen 接入、未来 OpenAI Provider 与维护
-成本，建议 Phase 4 选择 PydanticAI，Current Runtime 保留为迁移对照；该建议仍待 Human Review，
+成本，建议 Phase 4 选择 PydanticAI，Current Runtime 保留为迁移对照；该建议已于 2026-09-21 通过
+Human Review，Phase 3 至此完成。Phase 4 具体实施仍须先批准
+[Implementation Plan](docs/plans/ask-quality-phase-4-implementation.md)，
 不自动授权 Production Implementation。
 
 只有上述范围通过 Human Review，并由固定 Evaluation 或真实 Failure Mode 证明最小方案后，才新增对应正式 Milestone、实施 Plan、ADR 与 Release Mapping；Discovery 工作计划不等于实施或选型批准。Discovery 不预设 Vector Database、LangGraph、Multi-Agent 或不受控 General Browser。

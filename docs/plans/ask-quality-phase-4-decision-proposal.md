@@ -2,13 +2,18 @@
 
 ## 1. 决策状态
 
-**Current Status (2026-09-21):** FRAMEWORK RECOMMENDATION READY — HUMAN REVIEW REQUIRED
+**Current Status (2026-09-21):** HUMAN ACCEPTED — PHASE 4 PLAN REQUESTED
 
 **Historical Status (2026-09-20):** PROPOSED — NO-GO PENDING LIVE EVIDENCE
 
 Phase 3 已证明两个 Runtime、两条 Research Contract 和最小 Persistence Boundary 在架构上可支持。
 但固定模型 Runtime 与两条 Research 路径均缺少受控 Live Evidence，因此本提案不请求立即开始
 Phase 4 Production Implementation。PostgreSQL 17 临时 Schema Prototype 已补测通过。
+
+2026-09-21 Human Acceptance：Phase 4 Production Agent Framework 采用 PydanticAI；Current Runtime
+仅保留为迁移回归基线，不建设长期双 Runtime；OpenAI Agents SDK 暂不进入 Production；Research
+Provider 继续独立选型，Brave `NOT_MEASURED` 不阻塞 Phase 4；业务状态与安全边界继续由
+PositionPilot 持有。该批准只授权制定 Phase 4 Implementation Plan，不授权开始 Production Migration。
 
 2026-09-20 收口 Review：AQ06 已改为金额分析优先，旧 Execution Gate 只作为历史 Baseline；完整
 Broker / Fractional Execution Contract 不再是 Phase 4 前置工作。Research 结论同时区分 A Alibaba
@@ -87,8 +92,9 @@ Research 继续独立处理。Alibaba Native Capability 已执行；Application-
 规划，不因缺少 Brave Key 阻塞 Conversation、Strategy、Tool Catalog 或 Runtime 实现。若未来具体问题
 证明需要 Application-owned Search / Fetch，再单独验证并进入 Provider Human Review Gate。
 
-进入 Phase 4 Implementation Plan 前剩余 Gate 只有：Human 明确批准 PydanticAI 选型、确认 Current
-Runtime 仅作为迁移回归基线，以及批准 Phase 4 的具体范围。该批准不等于自动开始 Production 实现。
+PydanticAI 选型、Current Runtime 迁移定位及 Phase 3 收口已经 Human Accepted。当前 Gate 是对
+[Phase 4 Implementation Plan](ask-quality-phase-4-implementation.md) 的范围、Schema、API、Research
+Adapter、生命周期与验收规则进行 Human Review；该 Review 通过前不开始 Production 实现。
 
 ## 4. Phase 4 后续工作
 
@@ -103,9 +109,9 @@ Runtime 仅作为迁移回归基线，以及批准 Phase 4 的具体范围。该
 - 4A / 4B Dataset、Repeat、unseen、连续 Ask 与 Human Acceptance；
 - 正式默认模型或 Provider 更换所需的独立 Eval。
 
-## 5. Human Review 请求
+## 5. Human Review 结果（2026-09-21）
 
-请确认：
+Human 已确认：
 
 1. 接受 PydanticAI 作为 Phase 4 Agent Framework，Current Runtime 只保留为迁移回归基线；
 2. 不为 OpenAI Agents SDK 建立 Production 双轨实现，出现 OpenAI 专属真实需求时再重评；
