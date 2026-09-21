@@ -4,21 +4,18 @@ import json
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from enum import StrEnum
 from time import monotonic
-from typing import Protocol
+from typing import Protocol, cast
 from uuid import UUID
 
+from position_pilot.application.agent_runtime import AgentRuntime
 from position_pilot.application.investment_answer import (
     InvalidStructuredAnswer,
-    SourceReference,
-    SourceReferenceType,
     StructuredInvestmentAnswer,
     UnresolvedSourceReference,
-    parse_structured_answer,
     structured_answer_schema,
-    validate_source_references,
 )
 from position_pilot.application.investment_context import (
     M5_CONTEXT_CAPABILITIES,
@@ -32,10 +29,26 @@ from position_pilot.application.investment_context import (
     quote_response_contract,
     recent_price_history_response_contract,
 )
+from position_pilot.application.investment_context_builder import InvestmentContextBuilder
 from position_pilot.application.investment_routing import ContextSelectionTrace
+from position_pilot.application.investment_tool_executor import (
+    CURRENT_QUOTE_TOOL_NAME as CURRENT_QUOTE_TOOL_NAME,
+)
+from position_pilot.application.investment_tool_executor import (
+    MARKET_CONTEXT_TOOL_NAME as MARKET_CONTEXT_TOOL_NAME,
+)
+from position_pilot.application.investment_tool_executor import (
+    RECENT_NEWS_TOOL_NAME as RECENT_NEWS_TOOL_NAME,
+)
+from position_pilot.application.investment_tool_executor import (
+    RECENT_PRICE_HISTORY_TOOL_NAME as RECENT_PRICE_HISTORY_TOOL_NAME,
+)
+from position_pilot.application.investment_tool_executor import (
+    FinancialToolExecutor,
+    InvalidFinancialToolResult,
+)
 from position_pilot.application.llm import (
     LLMMessage,
-    LLMProvider,
     LLMResponseFormat,
     LLMResult,
     LLMRole,
@@ -45,6 +58,23 @@ from position_pilot.application.llm import (
 )
 from position_pilot.application.market_data_service import HistoricalBarsQuery
 from position_pilot.application.news_service import NewsQuery
+from position_pilot.application.source_registry import (
+    ContextSource as ContextSource,
+)
+from position_pilot.application.source_registry import (
+    ContextSourceType as ContextSourceType,
+)
+from position_pilot.application.source_registry import (
+    SourceValidator,
+)
+from position_pilot.application.tool_catalog import (
+    DescriptorToolProvider,
+    StaticToolAccessPolicy,
+    ToolCatalog,
+    ToolCatalogError,
+    ToolExposurePlanner,
+    current_financial_tool_descriptors,
+)
 from position_pilot.domain.market_context import (
     MARKET_PROXY_TICKER,
     MarketRegimeContext,
@@ -59,18 +89,8 @@ from position_pilot.domain.market_data import (
 from position_pilot.domain.news import NewsResult, NewsStatus, RecentNews
 
 LOGGER = logging.getLogger(__name__)
-CURRENT_QUOTE_TOOL_NAME = "get_current_quote"
-RECENT_PRICE_HISTORY_TOOL_NAME = "get_recent_price_history"
-RECENT_NEWS_TOOL_NAME = "get_recent_news"
-MARKET_CONTEXT_TOOL_NAME = "get_market_context"
 MAX_TOOL_CALLS_PER_ROUND = 4
 MAX_QUESTION_LENGTH = 4_000
-PRICE_HISTORY_LOOKBACK_DAYS = 45
-PRICE_HISTORY_LIMIT = 30
-PRICE_HISTORY_END_LAG = timedelta(minutes=15)
-NEWS_LOOKBACK_DAYS = 5
-NEWS_LIMIT = 5
-NEWS_END_LAG = timedelta(minutes=15)
 
 
 class QuoteRequestPurpose(StrEnum):
@@ -336,37 +356,6 @@ class InvestmentFailureCode(StrEnum):
     LLM_INVALID_PROVIDER_RESPONSE = "LLM_INVALID_PROVIDER_RESPONSE"
 
 
-class ContextSourceType(StrEnum):
-    """Final Answer 可追溯的事实来源类别。"""
-
-    PORTFOLIO_SNAPSHOT = "PORTFOLIO_SNAPSHOT"
-    CURRENT_QUOTE = "CURRENT_QUOTE"
-    PRICE_HISTORY = "PRICE_HISTORY"
-    RECENT_NEWS = "RECENT_NEWS"
-    MARKET_CONTEXT = "MARKET_CONTEXT"
-
-
-@dataclass(frozen=True, slots=True)
-class ContextSource:
-    """Final Answer 声明使用的成功 Context，或保留的失败 Tool Attempt。"""
-
-    type: ContextSourceType
-    status: str
-    ticker: str | None = None
-    provider: str | None = None
-    feed: str | None = None
-    market_timestamp: datetime | None = None
-    fetched_at: datetime | None = None
-
-    def as_reference(self) -> SourceReference | None:
-        """只有成功取得的 Context 才能成为模型可声明的来源。"""
-
-        if self.status != InvestmentResponseStatus.OK.value:
-            return None
-        reference_type = SourceReferenceType(self.type.value)
-        return SourceReference(reference_type, self.ticker)
-
-
 @dataclass(frozen=True, slots=True)
 class InvestmentAnswer:
     """包含确定性状态和来源追踪的 Final Answer。"""
@@ -394,11 +383,12 @@ class InvestmentAgent:
         self,
         portfolio_reader: PortfolioContextReader,
         market_data: MarketDataReader,
-        llm_provider: LLMProvider,
+        llm_provider: AgentRuntime,
         *,
         news: RecentNewsReader,
         market_context: MarketContextReader,
         clock: Callable[[], datetime] | None = None,
+        enabled_tool_names: frozenset[str] | None = None,
     ) -> None:
         self._portfolio_reader = portfolio_reader
         self._market_data = market_data
@@ -406,6 +396,11 @@ class InvestmentAgent:
         self._news = news
         self._market_context = market_context
         self._clock = clock or (lambda: datetime.now(UTC))
+        self._tool_catalog = ToolCatalog(
+            (DescriptorToolProvider(current_financial_tool_descriptors(CONTEXT_TOOLS)),)
+        )
+        self._enabled_tool_names = enabled_tool_names
+        self._tool_policy = StaticToolAccessPolicy(enabled_names=enabled_tool_names)
 
     def answer(self, user_id: UUID, question: str) -> InvestmentAgentResult:
         """执行最多一个 Tool Round，并返回 Answer 或明确 Request Failure。"""
@@ -426,19 +421,35 @@ class InvestmentAgent:
                 InvestmentResponseStatus.OK.value,
             )
         ]
-        initial_messages = self._initial_messages(snapshot, normalized_question)
+        initial_messages = InvestmentContextBuilder(SYSTEM_PROMPT).build(
+            portfolio_context,
+            normalized_question,
+        )
+        exposure_planner = ToolExposurePlanner(
+            self._tool_catalog,
+            self._tool_policy,
+            account_id=user_id,
+        )
+        requested_tool_names = (
+            self._tool_catalog.names
+            if self._enabled_tool_names is None
+            else tuple(
+                name for name in self._tool_catalog.names if name in self._enabled_tool_names
+            )
+        )
+        exposed_tools = exposure_planner.plan(requested_tool_names)
         LOGGER.info(
             "investment_agent_context_ready",
             extra={
                 "position_count": len(snapshot.positions),
-                "tool_count": len(CONTEXT_TOOLS),
+                "tool_count": len(exposed_tools.definitions),
             },
         )
 
         routing_started_at = monotonic()
         first_result = self._llm_provider.complete(
             initial_messages,
-            tools=CONTEXT_TOOLS,
+            tools=exposed_tools.definitions,
             response_format=LLMResponseFormat.TEXT,
         )
         first_failure = self._from_llm_failure(first_result)
@@ -451,12 +462,19 @@ class InvestmentAgent:
         if tool_call_failure is not None:
             self._log_failure(tool_call_failure, started_at)
             return tool_call_failure
-        required_tool_calls = self._required_context_floor(first_message.tool_calls)
-        effective_tool_calls = (*first_message.tool_calls, *required_tool_calls)
-        floor_failure = self._validate_tool_calls(effective_tool_calls)
-        if floor_failure is not None:
+        try:
+            call_exposure = exposure_planner.plan_calls(first_message.tool_calls)
+        except ToolCatalogError as error:
+            failure_code = (
+                InvestmentFailureCode.TOOL_CALL_LIMIT_EXCEEDED
+                if str(error).startswith("TOOL_CALL_LIMIT_EXCEEDED")
+                else InvestmentFailureCode.INVALID_TOOL_CALL
+            )
+            floor_failure = InvestmentRequestFailure(failure_code, str(error))
             self._log_failure(floor_failure, started_at)
             return floor_failure
+        required_tool_calls = call_exposure.required_tool_calls
+        effective_tool_calls = call_exposure.effective_tool_calls
         effective_first_message = (
             first_message
             if not required_tool_calls
@@ -468,7 +486,7 @@ class InvestmentAgent:
         )
         selection_trace = ContextSelectionTrace.from_tool_calls(
             snapshot=snapshot,
-            available_tools=CONTEXT_TOOL_NAMES,
+            available_tools=tuple(tool.name for tool in exposed_tools.definitions),
             model_tool_calls=first_message.tool_calls,
             required_tool_calls=required_tool_calls,
         )
@@ -497,96 +515,57 @@ class InvestmentAgent:
             return answer
 
         tool_messages: list[LLMMessage] = []
-        market_results_by_ticker: dict[str, MarketDataResult[MarketQuote]] = {}
-        historical_results_by_ticker: dict[str, MarketDataResult[HistoricalBars]] = {}
-        news_results_by_ticker: dict[str, NewsResult[RecentNews]] = {}
-        market_context_result: MarketDataResult[MarketRegimeContext] | None = None
+        tool_executor = FinancialToolExecutor(
+            self._market_data,
+            self._news,
+            self._market_context,
+            clock=self._clock,
+        )
         degraded = False
         for tool_call in effective_tool_calls:
+            try:
+                execution = tool_executor.execute(tool_call)
+            except InvalidFinancialToolResult as error:
+                failure = InvestmentRequestFailure(
+                    InvestmentFailureCode.INVALID_TOOL_CALL,
+                    str(error),
+                )
+                self._log_failure(failure, started_at)
+                return failure
             if tool_call.name == MARKET_CONTEXT_TOOL_NAME:
-                is_duplicate = market_context_result is not None
-                if is_duplicate:
-                    assert market_context_result is not None
-                else:
-                    market_context_result = self._market_context.get_current_market_context()
-                assert market_context_result is not None
+                market_context_result = cast(
+                    MarketDataResult[MarketRegimeContext], execution.result
+                )
                 tool_message, source = self._market_context_tool_result(
                     tool_call,
                     market_context_result,
                 )
                 tool_succeeded = market_context_result.status is MarketDataStatus.OK
                 tool_status_value = market_context_result.status.value
+            elif tool_call.name == CURRENT_QUOTE_TOOL_NAME:
+                market_result = cast(MarketDataResult[MarketQuote], execution.result)
+                tool_message, source = self._quote_tool_result(
+                    tool_call,
+                    market_result,
+                    snapshot,
+                )
+                tool_succeeded = market_result.status is MarketDataStatus.OK
+                tool_status_value = market_result.status.value
+            elif tool_call.name == RECENT_PRICE_HISTORY_TOOL_NAME:
+                historical_result = cast(MarketDataResult[HistoricalBars], execution.result)
+                tool_message, source = self._history_tool_result(
+                    tool_call,
+                    historical_result,
+                )
+                tool_succeeded = historical_result.status is MarketDataStatus.OK
+                tool_status_value = historical_result.status.value
             else:
-                ticker = tool_call.arguments["ticker"]
-                assert isinstance(ticker, str)
-                normalized_ticker = ticker.strip().upper()
-                if tool_call.name == CURRENT_QUOTE_TOOL_NAME:
-                    is_duplicate = normalized_ticker in market_results_by_ticker
-                    if is_duplicate:
-                        market_result = market_results_by_ticker[normalized_ticker]
-                    else:
-                        market_result = self._market_data.get_current_quote(normalized_ticker)
-                        if market_result.status in {
-                            MarketDataStatus.INVALID_SYMBOL,
-                            MarketDataStatus.INVALID_REQUEST,
-                        }:
-                            failure = InvestmentRequestFailure(
-                                InvestmentFailureCode.INVALID_TOOL_CALL,
-                                f"{CURRENT_QUOTE_TOOL_NAME} ticker 参数无效",
-                            )
-                            self._log_failure(failure, started_at)
-                            return failure
-                        market_results_by_ticker[normalized_ticker] = market_result
-                    tool_message, source = self._quote_tool_result(
-                        tool_call,
-                        market_result,
-                        snapshot,
-                    )
-                    tool_succeeded = market_result.status is MarketDataStatus.OK
-                    tool_status_value = market_result.status.value
-                elif tool_call.name == RECENT_PRICE_HISTORY_TOOL_NAME:
-                    is_duplicate = normalized_ticker in historical_results_by_ticker
-                    if is_duplicate:
-                        historical_result = historical_results_by_ticker[normalized_ticker]
-                    else:
-                        historical_result = self._market_data.get_historical_bars(
-                            self._recent_price_history_query(normalized_ticker)
-                        )
-                        if historical_result.status is MarketDataStatus.INVALID_SYMBOL:
-                            failure = InvestmentRequestFailure(
-                                InvestmentFailureCode.INVALID_TOOL_CALL,
-                                f"{RECENT_PRICE_HISTORY_TOOL_NAME} ticker 参数无效",
-                            )
-                            self._log_failure(failure, started_at)
-                            return failure
-                        historical_results_by_ticker[normalized_ticker] = historical_result
-                    tool_message, source = self._history_tool_result(
-                        tool_call,
-                        historical_result,
-                    )
-                    tool_succeeded = historical_result.status is MarketDataStatus.OK
-                    tool_status_value = historical_result.status.value
-                else:
-                    is_duplicate = normalized_ticker in news_results_by_ticker
-                    if is_duplicate:
-                        news_result = news_results_by_ticker[normalized_ticker]
-                    else:
-                        news_result = self._news.get_recent_news(
-                            self._recent_news_query(normalized_ticker)
-                        )
-                        if news_result.status is NewsStatus.INVALID_SYMBOL:
-                            failure = InvestmentRequestFailure(
-                                InvestmentFailureCode.INVALID_TOOL_CALL,
-                                f"{RECENT_NEWS_TOOL_NAME} ticker 参数无效",
-                            )
-                            self._log_failure(failure, started_at)
-                            return failure
-                        news_results_by_ticker[normalized_ticker] = news_result
-                    tool_message, source = self._news_tool_result(tool_call, news_result)
-                    tool_succeeded = news_result.status is NewsStatus.OK
-                    tool_status_value = news_result.status.value
+                news_result = cast(NewsResult[RecentNews], execution.result)
+                tool_message, source = self._news_tool_result(tool_call, news_result)
+                tool_succeeded = news_result.status is NewsStatus.OK
+                tool_status_value = news_result.status.value
             tool_messages.append(tool_message)
-            if is_duplicate:
+            if execution.is_duplicate:
                 LOGGER.info(
                     "investment_agent_tool_deduplicated",
                     extra={
@@ -645,12 +624,7 @@ class InvestmentAgent:
         self._log_success(
             answer,
             started_at,
-            tool_call_count=(
-                len(market_results_by_ticker)
-                + len(historical_results_by_ticker)
-                + len(news_results_by_ticker)
-                + int(market_context_result is not None)
-            ),
+            tool_call_count=tool_executor.unique_execution_count,
         )
         return answer
 
@@ -730,18 +704,7 @@ class InvestmentAgent:
     ]:
         """只解析外层 Contract，并验证模型声明的 Context 是否真实存在。"""
 
-        try:
-            structured_answer = parse_structured_answer(content)
-        except InvalidStructuredAnswer as error:
-            return None, error
-        available_references = tuple(
-            reference for source in sources if (reference := source.as_reference()) is not None
-        )
-        try:
-            validate_source_references(structured_answer, available_references)
-        except UnresolvedSourceReference as error:
-            return None, error
-        return structured_answer, None
+        return SourceValidator.evaluate(content, sources)
 
     @staticmethod
     def _structured_error_code(
@@ -780,19 +743,15 @@ class InvestmentAgent:
     ) -> tuple[ContextSource, ...]:
         """返回声明的成功 Context，并保留失败 Tool Attempt 的既有可观测性。"""
 
-        declared = set(answer.source_refs)
-        selected: list[ContextSource] = []
-        for source in sources:
-            reference = source.as_reference()
-            if reference is None or reference in declared:
-                selected.append(source)
-        return tuple(selected)
+        return SourceValidator.select_declared(answer, sources)
 
     @staticmethod
     def _initial_messages(
         snapshot: PortfolioSnapshot,
         question: str,
     ) -> tuple[LLMMessage, ...]:
+        """兼容既有测试的 Context Builder 委托入口。"""
+
         content = json.dumps(
             {
                 "question": question,
@@ -956,20 +915,6 @@ class InvestmentAgent:
             source,
         )
 
-    def _recent_price_history_query(self, ticker: str) -> HistoricalBarsQuery:
-        """由代码固定历史窗口，避免模型控制时间范围或数据量。"""
-
-        current_time = self._clock()
-        if current_time.tzinfo is None or current_time.utcoffset() is None:
-            raise RuntimeError("InvestmentAgent clock 必须返回含时区的 datetime")
-        end = current_time.astimezone(UTC) - PRICE_HISTORY_END_LAG
-        return HistoricalBarsQuery(
-            ticker=ticker,
-            start=end - timedelta(days=PRICE_HISTORY_LOOKBACK_DAYS),
-            end=end,
-            limit=PRICE_HISTORY_LIMIT,
-        )
-
     @staticmethod
     def _history_tool_result(
         tool_call: LLMToolCall,
@@ -1113,20 +1058,6 @@ class InvestmentAgent:
                 tool_call_id=tool_call.id,
             ),
             source,
-        )
-
-    def _recent_news_query(self, ticker: str) -> NewsQuery:
-        """固定 Recent News 窗口与条数，不允许模型扩大检索范围。"""
-
-        current_time = self._clock()
-        if current_time.tzinfo is None or current_time.utcoffset() is None:
-            raise RuntimeError("InvestmentAgent clock 必须返回含时区的 datetime")
-        end = current_time.astimezone(UTC) - NEWS_END_LAG
-        return NewsQuery(
-            ticker=ticker,
-            start=end - timedelta(days=NEWS_LOOKBACK_DAYS),
-            end=end,
-            limit=NEWS_LIMIT,
         )
 
     @staticmethod

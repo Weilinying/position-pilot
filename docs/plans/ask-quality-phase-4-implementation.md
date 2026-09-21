@@ -2,8 +2,8 @@
 
 ## 1. 状态、目标与批准依据
 
-**Status:** HUMAN ACCEPTED — P4-T0 COMPLETE / P4-T1 IN PROGRESS（2026-09-21）；Production
-Implementation 尚未修改。
+**Status:** HUMAN ACCEPTED — P4-T0 / P4-T1 COMPLETE，P4-T2 IN PROGRESS（2026-09-21）。
+P4-T1 已完成 Application Boundary Extraction；尚未切换 Production Runtime。
 
 **Strategy Review Revision（2026-09-21）：** Strategy Candidate 仅承载跨会话 Persistent User Intent；
 Current Recommendation 与 Ledger Derived Facts 不进入 Strategy。Pending 冲突域为

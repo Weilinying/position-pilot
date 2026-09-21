@@ -405,6 +405,7 @@ def make_agent(
     portfolio: PortfolioState | None = None,
     transactions: tuple[Transaction, ...] = (),
     clock: datetime = NOW,
+    enabled_tool_names: frozenset[str] | None = None,
 ) -> tuple[InvestmentAgent, FakePortfolioReader, FakeMarketData, ScriptedLLM]:
     """组装完全不依赖真实 Provider 的 Agent。"""
 
@@ -425,6 +426,7 @@ def make_agent(
             news=market_data,
             market_context=market_data,
             clock=lambda: clock,
+            enabled_tool_names=enabled_tool_names,
         ),
         portfolio_reader,
         market_data,
@@ -612,6 +614,34 @@ def test_quote_tool_description_distinguishes_portfolio_facts() -> None:
     )
     assert "Portfolio 中出现 Ticker 本身不是调用理由" in quote_tool.description
     assert "只有问题真正需要当前价格或基于当前价格的关系时才调用" in quote_tool.description
+
+
+def test_agent_exposes_only_enabled_catalog_tools() -> None:
+    """Production 调用路径只向 Runtime 暴露本轮启用的 Tool。"""
+
+    agent, _, _, llm = make_agent(
+        [final_message()],
+        enabled_tool_names=frozenset({"get_current_quote"}),
+    )
+
+    assert_answer(agent.answer(USER_ID, "我目前有多少可用现金？"))
+
+    assert [tool.name for tool in llm.completions[0].tools] == ["get_current_quote"]
+
+
+def test_agent_rejects_disabled_tool_before_provider_execution() -> None:
+    """模型即使请求未暴露 Tool，也必须在金融 Provider 前被拒绝。"""
+
+    agent, _, market_data, _ = make_agent(
+        [market_tool_message(("news-1", "get_recent_news", "GOOG"))],
+        enabled_tool_names=frozenset({"get_current_quote"}),
+    )
+
+    failure = assert_failure(agent.answer(USER_ID, "GOOG 最近有什么新闻？"))
+
+    assert failure.code is InvestmentFailureCode.INVALID_TOOL_CALL
+    assert failure.message == "UNAUTHORIZED_TOOL:get_recent_news"
+    assert market_data.news_queries == []
 
 
 def test_cash_event_adjusted_cash_reaches_agent_snapshot_without_cash_event_history() -> None:
