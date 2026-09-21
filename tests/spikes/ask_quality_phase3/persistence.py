@@ -57,6 +57,7 @@ class StateContext:
 
     conversation: tuple[LLMMessage, ...]
     confirmed_strategy: tuple[Mapping[str, object], ...]
+    retrieved_memories: tuple[Mapping[str, object], ...] = ()
 
 
 class StateStore(Protocol):
@@ -127,6 +128,7 @@ def inject_state(runtime_input: RuntimeInput, context: StateContext) -> RuntimeI
         runtime_input,
         conversation=context.conversation,
         confirmed_strategy=context.confirmed_strategy,
+        retrieved_memories=context.retrieved_memories,
     )
 
 

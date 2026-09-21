@@ -27,6 +27,13 @@ Fractional / Account Permission Gate 作为历史 Baseline 保留；当前规则
 [AQ06 Eval Revision](../evaluation/ask-quality-policy-revision-2026-09-20.md)。同时确认 Research 原型
 尚未提供真实端到端回答质量证据，离线 Fixture 不得被解释为 Runtime 质量、性能或稳定性优势。
 
+### 1.2 Framework Capability Spike 追加记录（2026-09-21）
+
+本报告其余章节保留原 Phase 3 历史结果和当时暂定判断。后续动态 Tool、只读 MCP、PydanticAI
+Prototype Gap、OpenAI Agents SDK Qwen Compatibility 及 State Injection 证据见
+[Framework Capability Report](ask-quality-phase-3-framework-capability-report.md)。追加 Spike 建议 Phase 4
+采用 PydanticAI，Current Runtime 保留为对照基线；该建议仍需 Human Review。
+
 ## 2. 实验合同与隔离
 
 固定实验模型为 `qwen3.7-max`，与当前 Production Default `deepseek-v4-pro-0813` 明确区分。Safety

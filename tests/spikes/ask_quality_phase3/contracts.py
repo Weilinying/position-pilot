@@ -71,6 +71,7 @@ class RuntimeInput:
     confirmed_strategy: tuple[Mapping[str, object], ...]
     tools: tuple[LLMToolDefinition, ...]
     budget: RuntimeBudget
+    retrieved_memories: tuple[Mapping[str, object], ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

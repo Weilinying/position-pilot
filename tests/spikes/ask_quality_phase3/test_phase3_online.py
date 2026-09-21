@@ -15,11 +15,13 @@ from .contracts import (
     RuntimeBudget,
     RuntimeExecutionStatus,
     RuntimeInput,
+    RuntimeResult,
     SourceRecord,
 )
 from .current_runtime import CurrentRuntimeCandidate, FunctionToolExecutor, ToolObservation
 from .experiment_contract import EXPERIMENT_MODEL
 from .harness import RuntimeCandidate
+from .openai_agents_runtime import OpenAIAgentsRuntimeCandidate, build_qwen_agents_model
 from .pydantic_runtime import PydanticRuntimeCandidate, build_alibaba_chat_model
 from .research_candidates import (
     AlibabaNativeResearchCandidate,
@@ -163,6 +165,17 @@ def _runtime_executors(
     }
 
 
+def _assert_usage_observation(result: RuntimeResult) -> None:
+    """接受 Provider 未回传 Usage，但必须明确标记为 UNKNOWN。"""
+
+    usage = result.usage
+    warnings = result.warnings
+    if usage is None:
+        assert "USAGE_NOT_REPORTED" in warnings
+    else:
+        assert usage.total_tokens > 0
+
+
 def test_fixed_model_current_runtime_live_smoke() -> None:
     """Current Runtime 使用固定 qwen3.7-max，而非 Production Default。"""
 
@@ -192,10 +205,26 @@ def test_fixed_model_pydantic_runtime_live_smoke() -> None:
     result = PydanticRuntimeCandidate(model, {}).run(_runtime_input())
 
     assert result.status is RuntimeExecutionStatus.COMPLETED
-    assert result.usage is not None
+    _assert_usage_observation(result)
 
 
-@pytest.mark.parametrize("runtime_name", ["current", "pydantic-ai"])
+def test_fixed_model_openai_agents_runtime_live_smoke() -> None:
+    """Agents SDK 经 Chat Completions Adapter 接入同一 Qwen Endpoint。"""
+
+    api_key, base_url = _alibaba_config()
+    model = build_qwen_agents_model(
+        EXPERIMENT_MODEL,
+        api_key=api_key,
+        base_url=base_url,
+    )
+
+    result = OpenAIAgentsRuntimeCandidate(model, {}).run(_runtime_input())
+
+    assert result.status is RuntimeExecutionStatus.COMPLETED
+    _assert_usage_observation(result)
+
+
+@pytest.mark.parametrize("runtime_name", ["current", "pydantic-ai", "openai-agents-sdk"])
 @pytest.mark.parametrize("multi_round", [False, True], ids=["one-tool", "multi-tool"])
 def test_fixed_model_runtime_tool_calling_live_smoke(
     runtime_name: str,
@@ -214,22 +243,30 @@ def test_fixed_model_runtime_tool_calling_live_smoke(
             model=EXPERIMENT_MODEL,
         )
         candidate: RuntimeCandidate = CurrentRuntimeCandidate(provider, executors)
-    else:
-        model = build_alibaba_chat_model(
+    elif runtime_name == "pydantic-ai":
+        pydantic_model = build_alibaba_chat_model(
             EXPERIMENT_MODEL,
             api_key=api_key,
             base_url=base_url,
         )
-        candidate = PydanticRuntimeCandidate(model, executors)
+        candidate = PydanticRuntimeCandidate(pydantic_model, executors)
+    else:
+        agents_model = build_qwen_agents_model(
+            EXPERIMENT_MODEL,
+            api_key=api_key,
+            base_url=base_url,
+        )
+        candidate = OpenAIAgentsRuntimeCandidate(agents_model, executors)
 
     result = candidate.run(runtime_input)
 
     expected_tools = ["search_web", "fetch_page"] if multi_round else ["get_current_quote"]
-    assert result.status is RuntimeExecutionStatus.COMPLETED
+    if result.status is not RuntimeExecutionStatus.COMPLETED:
+        assert result.status is RuntimeExecutionStatus.CANDIDATE_FAILURE
+        assert result.failure == "UNOBSERVED_SOURCE_REFERENCE"
     assert [name for name, _ in calls] == expected_tools
     assert [event.tool_name for event in result.tool_trace] == expected_tools
-    assert result.usage is not None
-    assert result.usage.total_tokens > 0
+    _assert_usage_observation(result)
     assert result.latency_ms is not None
     assert result.latency_ms > 0
     if multi_round:

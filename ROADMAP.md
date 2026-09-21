@@ -517,6 +517,20 @@ Alpaca Quote、History、Recent News 与 SPY Market Context 是 Existing Financi
 Native Research 或 Application-owned Research 构成互斥的第三套 Runtime；优先使用结构化金融数据，
 只有问题缺口需要开放来源时才进入 Research。Skills 仅作为未来扩展候选，不纳入 Phase 3。
 
+2026-09-21 Framework 预选修订：保留原 Phase 3 结果与 Current Runtime 暂定推荐的历史语境；
+PydanticAI 与 OpenAI Agents SDK 进入最后一轮最小 Capability Spike，Current Runtime 作为对照基线。
+本轮只验证动态 Tool、一个本地只读 MCP、已有 Adapter Gap、固定 Qwen Endpoint 兼容性，以及现有
+Conversation / Confirmed Strategy / Long-term Memory Retrieval 的注入边界。不得因此修改 Production
+Agent、引入完整 Memory / Skills 系统或把 Framework History 作为产品状态 Source of Truth。最终选型
+与 Phase 4 Implementation Plan 仍需实际 Live Evidence 和 Human Review。
+
+2026-09-21 Capability Spike 结论：两个候选均支持动态 Tool、本地只读 MCP 和 Application-owned
+Conversation / Strategy / Memory Retrieval 注入。OpenAI Agents SDK 的固定 Qwen No-tool、One-tool
+Live 完成；Multi-tool 完成 Search / Fetch 调用后被 Source Validation 安全拒绝，归类为固定模型
+Grounding Gap，不是 Framework Tool Calling Failure。综合当前 Qwen 接入、未来 OpenAI Provider 与维护
+成本，建议 Phase 4 选择 PydanticAI，Current Runtime 保留为迁移对照；该建议仍待 Human Review，
+不自动授权 Production Implementation。
+
 只有上述范围通过 Human Review，并由固定 Evaluation 或真实 Failure Mode 证明最小方案后，才新增对应正式 Milestone、实施 Plan、ADR 与 Release Mapping；Discovery 工作计划不等于实施或选型批准。Discovery 不预设 Vector Database、LangGraph、Multi-Agent 或不受控 General Browser。
 
 本次方向性批准不等于批准具体实现；已批准方向不重复提审。评审中的“V2 级别变化”指潜在架构影响，不改变下文 V2 Connected Product 的范围，也不形成 V2 发布承诺。

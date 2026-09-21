@@ -2,6 +2,7 @@
 
 from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
+from types import SimpleNamespace
 
 from pydantic_ai.messages import (
     ModelMessage,
@@ -23,6 +24,7 @@ from .contracts import RuntimeBudget, RuntimeExecutionStatus, RuntimeInput, Sour
 from .current_runtime import FunctionToolExecutor, ToolObservation
 from .harness import canonical_input_hash
 from .pydantic_runtime import PydanticRuntimeCandidate, build_alibaba_chat_model
+from .tool_catalog import CatalogTool, ToolCatalog
 
 
 @dataclass(slots=True)
@@ -246,6 +248,8 @@ def test_pydantic_runtime_rejects_unobserved_source_reference() -> None:
     assert result.status is RuntimeExecutionStatus.CANDIDATE_FAILURE
     assert result.failure == "UNOBSERVED_SOURCE_REFERENCE"
     assert result.answer is None
+    assert len(result.model_trace) == 1
+    assert result.usage is not None
 
 
 def test_pydantic_runtime_preserves_tool_failure_as_warning() -> None:
@@ -349,8 +353,8 @@ def test_pydantic_runtime_stops_at_native_request_limit() -> None:
     assert len(script.calls) == 1
 
 
-def test_unsupported_bridge_tool_is_prototype_failure_not_architecture_limit() -> None:
-    """未实现的薄 Bridge 能力必须记录为 Prototype Gap 证据。"""
+def test_dynamic_schema_tool_closes_the_previous_bridge_gap() -> None:
+    """通用 JSON Schema Adapter 可正常暴露此前未硬编码的 Tool。"""
 
     runtime_input = replace(
         _runtime_input(),
@@ -367,13 +371,85 @@ def test_unsupported_bridge_tool_is_prototype_failure_not_architecture_limit() -
         ),
     )
 
+    calls: list[Mapping[str, object]] = []
+
+    def calculate(arguments: Mapping[str, object]) -> ToolObservation:
+        """记录动态 Tool 参数。"""
+
+        calls.append(arguments)
+        return ToolObservation("OK", {"value": "42"})
+
+    executor = FunctionToolExecutor(calculate)
     result = PydanticRuntimeCandidate(
-        _model(ScriptedModel([_text_response("不会执行。")])),
-        {},
+        _model(
+            ScriptedModel(
+                [_tool_response("calculate_scenario", {}), _text_response("已计算。")]
+            )
+        ),
+        {"calculate_scenario": executor},
     ).run(runtime_input)
 
-    assert result.status is RuntimeExecutionStatus.CANDIDATE_FAILURE
-    assert result.failure == "HARNESS_INPUT_UNSUPPORTED:ValueError"
+    assert result.status is RuntimeExecutionStatus.COMPLETED
+    assert calls == [{}]
+
+
+def test_application_catalog_limits_pydantic_visible_tools() -> None:
+    """PydanticAI 只看到 Application 本轮启用并选择的 Tool。"""
+
+    calls: list[Mapping[str, object]] = []
+
+    def indicator(arguments: Mapping[str, object]) -> ToolObservation:
+        """记录动态指标 Tool 参数。"""
+
+        calls.append(arguments)
+        return ToolObservation("OK", {"value": "42.0"})
+
+    definition = LLMToolDefinition(
+        "get_indicator_snapshot",
+        "读取指标快照",
+        {
+            "type": "object",
+            "properties": {"ticker": {"type": "string"}},
+            "required": ["ticker"],
+            "additionalProperties": False,
+        },
+    )
+    disabled = LLMToolDefinition(
+        "disabled_plugin",
+        "禁用插件",
+        {"type": "object", "properties": {}, "additionalProperties": False},
+    )
+    executor = FunctionToolExecutor(indicator)
+    catalog = ToolCatalog(
+        (
+            CatalogTool(definition, executor),
+            CatalogTool(disabled, executor, enabled=False),
+        )
+    )
+    exposed = catalog.expose(("get_indicator_snapshot",))
+    script = ScriptedModel(
+        [
+            _tool_response("get_indicator_snapshot", {"ticker": "GOOG"}),
+            _text_response("指标已读取。"),
+        ]
+    )
+    runtime_input = replace(_runtime_input(), tools=exposed.definitions)
+
+    result = PydanticRuntimeCandidate(_model(script), exposed.executors).run(runtime_input)
+
+    assert result.status is RuntimeExecutionStatus.COMPLETED
+    assert calls == [{"ticker": "GOOG"}]
+    assert [tool.name for tool in script.infos[0].function_tools] == [
+        "get_indicator_snapshot"
+    ]
+
+
+def test_missing_provider_usage_stays_unknown() -> None:
+    """Provider 未报告 Token 时不把全零 Usage 当作真实测量。"""
+
+    usage = SimpleNamespace(requests=1, input_tokens=0, output_tokens=0)
+
+    assert PydanticRuntimeCandidate._map_usage(usage) is None
 
 
 def test_alibaba_provider_builder_uses_native_provider() -> None:

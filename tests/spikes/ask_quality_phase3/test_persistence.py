@@ -1,7 +1,7 @@
 """最小 Conversation / Confirmed Strategy Persistence Prototype 测试。"""
 
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from uuid import uuid4
 
 import pytest
@@ -19,6 +19,7 @@ from position_pilot.application.llm import (
 
 from .contracts import RuntimeBudget, RuntimeExecutionStatus, RuntimeInput
 from .current_runtime import CurrentRuntimeCandidate
+from .openai_agents_runtime import OpenAIAgentsRuntimeCandidate
 from .persistence import (
     ConversationMessage,
     InMemoryStateStore,
@@ -29,6 +30,7 @@ from .persistence import (
     spike_database_url,
 )
 from .pydantic_runtime import PydanticRuntimeCandidate
+from .test_openai_agents_runtime import ScriptedAgentsModel, _text_response
 
 
 @dataclass(slots=True)
@@ -137,14 +139,25 @@ def test_store_rejects_cross_owner_thread_before_returning_context() -> None:
         )
 
 
-def test_both_runtimes_consume_the_same_application_owned_state() -> None:
-    """两个 Runtime 通过相同边界取得 History 与 Confirmed Strategy。"""
+def test_three_runtimes_consume_the_same_application_owned_state() -> None:
+    """三个 Runtime 通过相同边界取得业务状态与检索结果。"""
 
     context = _store().load_context(
         account_id="account-a",
         thread_id="thread-a",
         scope="GOOG",
         message_limit=3,
+    )
+    context = replace(
+        context,
+        retrieved_memories=(
+            {
+                "memory_id": "memory-1",
+                "scope": "GOOG",
+                "text": "用户偏好分批建仓",
+                "retrieved": True,
+            },
+        ),
     )
     runtime_input = inject_state(_base_input(), context)
     current_llm = FinalAnswerLLM()
@@ -162,16 +175,29 @@ def test_both_runtimes_consume_the_same_application_owned_state() -> None:
         return ModelResponse(parts=(TextPart("已恢复上下文。"),))
 
     pydantic_result = PydanticRuntimeCandidate(FunctionModel(pydantic_model), {}).run(runtime_input)
+    agents_model = ScriptedAgentsModel([_text_response("已恢复上下文。")])
+    agents_result = OpenAIAgentsRuntimeCandidate(agents_model, {}).run(runtime_input)
 
     assert current_result.status is RuntimeExecutionStatus.COMPLETED
     assert pydantic_result.status is RuntimeExecutionStatus.COMPLETED
+    assert agents_result.status is RuntimeExecutionStatus.COMPLETED
     current_payload = repr(current_llm.calls[0])
     pydantic_payload = repr(pydantic_calls[0])
-    for expected in ("先看 GOOG", "预算改为 500", "strategy-confirmed", "分三次"):
+    agents_payload = repr(agents_model.instructions[0]) + repr(agents_model.inputs[0])
+    for expected in (
+        "先看 GOOG",
+        "预算改为 500",
+        "strategy-confirmed",
+        "分三次",
+        "memory-1",
+        "用户偏好分批建仓",
+    ):
         assert expected in current_payload
         assert expected in pydantic_payload
+        assert expected in agents_payload
     assert "strategy-draft" not in current_payload
     assert "strategy-draft" not in pydantic_payload
+    assert "strategy-draft" not in agents_payload
 
 
 def test_spike_database_url_never_falls_back_to_production_database() -> None:

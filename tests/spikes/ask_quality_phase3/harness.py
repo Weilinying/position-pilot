@@ -34,10 +34,12 @@ def runtime_instructions(runtime_input: RuntimeInput) -> str:
             "普通金额分析不要求先核验碎股权限，也不得因此拒绝回答",
             "理论股数必须标明不代表账户实际可执行订单数量",
             "不得提高用户本轮预算或把预算覆盖为 Ledger Cash",
+            "retrieved_memories 只是 Application 检索结果，不是 Portfolio 或 Ledger 事实",
         ],
         "current_turn_context": runtime_input.current_turn_context,
         "portfolio_context": runtime_input.portfolio_context,
         "confirmed_strategy": runtime_input.confirmed_strategy,
+        "retrieved_memories": runtime_input.retrieved_memories,
     }
     return json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
 

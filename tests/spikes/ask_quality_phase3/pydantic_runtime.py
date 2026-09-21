@@ -5,7 +5,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from time import monotonic
 
-from pydantic_ai import Agent, FunctionToolset, UsageLimitExceeded, UsageLimits
+from pydantic_ai import Agent, FunctionToolset, Tool, UsageLimitExceeded, UsageLimits
 from pydantic_ai.messages import (
     ModelMessage,
     ModelRequest,
@@ -223,25 +223,30 @@ class PydanticRuntimeCandidate:
                 tuple(bridge.warnings),
             )
         sources = tuple(bridge.sources.values())
+        usage = result.usage
+        neutral_usage = self._map_usage(usage)
+        warnings = list(bridge.warnings)
+        if neutral_usage is None:
+            warnings.append("USAGE_NOT_REPORTED")
+        model_trace = tuple(
+            TraceEvent("model", sequence, "OK") for sequence in range(1, usage.requests + 1)
+        )
         final_failure = answer_source_failure(result.output, sources) or unresolved_tool_failure(
             result.output,
             bridge.warnings,
         )
         if final_failure is not None:
-            return self._failure(
+            return RuntimeResult(
+                RuntimeExecutionStatus.CANDIDATE_FAILURE,
+                None,
                 final_failure,
-                started_at,
-                bridge=bridge,
+                sources,
+                model_trace,
+                tuple(bridge.trace),
+                neutral_usage,
+                self._latency_ms(started_at),
+                tuple(warnings),
             )
-        usage = result.usage
-        neutral_usage = LLMUsage(
-            usage.input_tokens,
-            usage.output_tokens,
-            usage.input_tokens + usage.output_tokens,
-        )
-        model_trace = tuple(
-            TraceEvent("model", sequence, "OK") for sequence in range(1, usage.requests + 1)
-        )
         return RuntimeResult(
             RuntimeExecutionStatus.COMPLETED,
             result.output,
@@ -251,7 +256,7 @@ class PydanticRuntimeCandidate:
             tuple(bridge.trace),
             neutral_usage,
             self._latency_ms(started_at),
-            tuple(bridge.warnings),
+            tuple(warnings),
         )
 
     @staticmethod
@@ -285,51 +290,41 @@ class PydanticRuntimeCandidate:
         definitions: tuple[LLMToolDefinition, ...],
         bridge: _ToolBridge,
     ) -> FunctionToolset[None] | None:
-        """用三个代表性 Tool 的公开函数签名建立薄 Bridge。"""
+        """按本轮 Contract 动态建立 Toolset，不维护框架专属 Tool 清单。"""
 
         if not definitions:
             return None
         toolset: FunctionToolset[None] = FunctionToolset(id="position-pilot-phase3")
         for definition in definitions:
-            if definition.name == "get_current_quote":
 
-                def get_current_quote(ticker: str) -> str:
-                    """读取当前报价。"""
+            def execute_dynamic(
+                _tool_name: str = definition.name,
+                **arguments: object,
+            ) -> str:
+                """把动态 JSON Schema 参数交给 Application-owned Executor。"""
 
-                    return bridge.execute("get_current_quote", {"ticker": ticker})
+                return bridge.execute(_tool_name, arguments)
 
-                toolset.add_function(
-                    get_current_quote,
+            toolset.add_tool(
+                Tool.from_schema(
+                    execute_dynamic,
                     name=definition.name,
                     description=definition.description,
+                    json_schema=dict(definition.parameters),
                 )
-            elif definition.name == SEARCH_TOOL_NAME:
-
-                def search_web(query: str) -> str:
-                    """搜索公开网页。"""
-
-                    return bridge.execute(SEARCH_TOOL_NAME, {"query": query})
-
-                toolset.add_function(
-                    search_web,
-                    name=definition.name,
-                    description=definition.description,
-                )
-            elif definition.name == FETCH_TOOL_NAME:
-
-                def fetch_page(url: str) -> str:
-                    """读取公开网页。"""
-
-                    return bridge.execute(FETCH_TOOL_NAME, {"url": url})
-
-                toolset.add_function(
-                    fetch_page,
-                    name=definition.name,
-                    description=definition.description,
-                )
-            else:
-                raise ValueError(f"Pydantic Bridge 暂不支持 Tool: {definition.name}")
+            )
         return toolset
+
+    @staticmethod
+    def _map_usage(usage: object) -> LLMUsage | None:
+        """缺少 Provider Usage 时保持 UNKNOWN，不把全零伪装成测量值。"""
+
+        requests = getattr(usage, "requests", 0)
+        input_tokens = getattr(usage, "input_tokens", 0)
+        output_tokens = getattr(usage, "output_tokens", 0)
+        if requests > 0 and input_tokens == 0 and output_tokens == 0:
+            return None
+        return LLMUsage(input_tokens, output_tokens, input_tokens + output_tokens)
 
     def _latency_ms(self, started_at: float) -> float:
         """记录框架候选总耗时。"""

@@ -2,7 +2,9 @@
 
 ## 1. 决策状态
 
-**Status:** PROPOSED — NO-GO PENDING LIVE EVIDENCE
+**Current Status (2026-09-21):** FRAMEWORK RECOMMENDATION READY — HUMAN REVIEW REQUIRED
+
+**Historical Status (2026-09-20):** PROPOSED — NO-GO PENDING LIVE EVIDENCE
 
 Phase 3 已证明两个 Runtime、两条 Research Contract 和最小 Persistence Boundary 在架构上可支持。
 但固定模型 Runtime 与两条 Research 路径均缺少受控 Live Evidence，因此本提案不请求立即开始
@@ -13,7 +15,32 @@ Broker / Fractional Execution Contract 不再是 Phase 4 前置工作。Research
 Native、B Application-owned 与 C Existing Financial Data，C 是优先使用的结构化事实层，不是第三个
 Runtime 候选。
 
+### 1.1 Framework 预选修订（2026-09-21）
+
+保留本提案下方的 Current Runtime 暂定推荐作为历史阶段判断。经后续框架预选，PydanticAI 与
+OpenAI Agents SDK 成为最后两个候选，Current Runtime 改为对照基线。新增离线 Capability Spike 已
+证明两个候选均可支持动态 Tool、只读本地 MCP、Application-owned Source Boundary，以及现有
+Conversation / Confirmed Strategy / Memory Retrieval 注入；详见
+[Framework Capability Report](ask-quality-phase-3-framework-capability-report.md)。OpenAI Agents SDK 在
+当前固定 Qwen Endpoint 的 No-tool / One-tool / Multi-tool Live Evidence 尚未取得，因此 Framework
+最终推荐与 Phase 4 Implementation Plan 仍等待该项证据和 Human Review。Research 选型与 Runtime
+选型继续相互独立，Brave 未验证不阻塞本次 Runtime 补证。
+
+### 1.2 Framework Capability Spike 结论（2026-09-21）
+
+OpenAI Agents SDK 的固定 Qwen Live Smoke 已执行：No-tool、One-tool 完成；Multi-tool 实际按
+`search_web → fetch_page` 完成调用和 URL 传递，但最终回答因引用未观察来源而被统一 Source Gate
+安全拒绝。该结果证明 Tool Calling 兼容，同时暴露固定模型 Grounding Gap，不构成 SDK
+`ARCHITECTURE_LIMIT`。PydanticAI 的既有 Multi-tool Live Evidence 具有相同分类。
+
+综合当前 Qwen 原生 Provider、动态 Tool / MCP、未来 OpenAI Provider、多轮状态注入，以及迁移和维护
+成本，当前正式建议 Phase 4 采用 **PydanticAI**；Current Runtime 保留为对照基线。OpenAI Agents SDK
+不进入 Phase 4 双轨实现，但保留为未来 OpenAI 专属能力出现真实需求时的重评候选。Brave 的在线验证
+仍不是 Runtime 选型或 Phase 4 Conversation / Strategy 计划的阻塞条件。
+
 ## 2. 暂定推荐
+
+> 以下 Current Runtime 推荐保留为 2026-09-20 的历史阶段判断；当前 Framework 推荐以 1.2 节为准。
 
 ### Runtime：Current Runtime
 
@@ -48,22 +75,20 @@ Phase 4 应沿用 Account-owned Conversation 与 Confirmed Strategy 的 Applicat
 History 只承载一次 Runtime 的 Message，不拥有持久状态或确认语义。最终 Thread / Message / Strategy
 Schema、Migration、API 和生命周期必须在 Phase 4 计划中设计并重新进入相应 Human Review Gate。
 
-## 3. 解除 No-go 的最小证据
+## 3. 证据状态与剩余 Gate
 
-不扩展 Phase 3 范围，只需在显式 Process Environment 下执行：
+Runtime 的最小 Live Evidence 已满足：Current Runtime、PydanticAI 与 OpenAI Agents SDK 均取得固定
+Qwen 的真实执行证据；Tool Selection、Arguments、Source Failure、Latency 与 Usage / UNKNOWN Mapping
+已能区分。Multi-tool Final Grounding 仍是 `PROTOTYPE_GAP`，应进入 Phase 4 固定 Eval，不再阻塞
+Framework 选择。
 
-1. 同一 `qwen3.7-max`、同一 Region / Endpoint 的 Current Runtime 与 PydanticAI No-tool / One-tool /
-   最小多轮 Tool Calling Live Smoke，记录 Tool Selection、Arguments、Failure、Latency 与 Token；
-2. Alibaba Responses `web_search` / `web_extractor` 的一个公开研究任务，确认实际 Search、Source
-   Citation、Usage 与 Failure；
-3. 一个 Brave Search + Controlled Fetch 的同任务运行，确认真实正文进入模型、最终引用来自实际
-   Source Registry，并记录读取状态、Latency 与可得费用；
-4. 更新 `decision-evidence.json` 和 Phase 3 Report，不新增模型或第二个 Search Provider。
+Research 继续独立处理。Alibaba Native Capability 已执行；Application-owned Brave 仍为
+`NOT_MEASURED` 备选。现有 Alpaca Financial Data 加 Alibaba Native Research 足以支持当前 Phase 4
+规划，不因缺少 Brave Key 阻塞 Conversation、Strategy、Tool Catalog 或 Runtime 实现。若未来具体问题
+证明需要 Application-owned Search / Fetch，再单独验证并进入 Provider Human Review Gate。
 
-如果固定模型或 Endpoint 不支持 Native Research，记录实际限制，不更换 Runtime 实验模型。只有另行
-标记的 Native Capability Test 才能使用其他模型，其结果不得参与同模型 Runtime / Research 比较。
-步骤 1 与 Native 能力测试只需要 `LLM_API_KEY` / `LLM_BASE_URL`，可以在没有 Brave Key 时先完成；
-`BRAVE_SEARCH_API_KEY` 只用于步骤 3，不得因此阻塞其他 Runtime 证据。
+进入 Phase 4 Implementation Plan 前剩余 Gate 只有：Human 明确批准 PydanticAI 选型、确认 Current
+Runtime 仅作为迁移回归基线，以及批准 Phase 4 的具体范围。该批准不等于自动开始 Production 实现。
 
 ## 4. Phase 4 后续工作
 
@@ -82,7 +107,9 @@ Schema、Migration、API 和生命周期必须在 Phase 4 计划中设计并重�
 
 请确认：
 
-1. 接受当前 `NO_GO_PENDING_LIVE_EVIDENCE`，暂不开始 Phase 4 Production Implementation；
-2. 接受 Current Runtime 为暂定推荐、PydanticAI 为可行备选；
-3. Research Provider 暂不选择，待上述最小 Live Evidence 后更新本提案；
-4. Persistence 继续由 PositionPilot 拥有，不把 Conversation / Strategy Truth 交给 Framework。
+1. 接受 PydanticAI 作为 Phase 4 Agent Framework，Current Runtime 只保留为迁移回归基线；
+2. 不为 OpenAI Agents SDK 建立 Production 双轨实现，出现 OpenAI 专属真实需求时再重评；
+3. Research 选型保持独立，Brave `NOT_MEASURED` 不阻塞 Phase 4；
+4. Conversation、Strategy、Memory Retrieval、Tool Authorization 与 Portfolio Truth 继续由
+   PositionPilot 拥有；
+5. 批准后先制定 Phase 4 Implementation Plan，不在本 Decision Proposal 中直接实施 Production 迁移。
