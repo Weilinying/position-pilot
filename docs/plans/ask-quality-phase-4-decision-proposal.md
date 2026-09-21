@@ -2,7 +2,7 @@
 
 ## 1. 决策状态
 
-**Current Status (2026-09-21):** HUMAN ACCEPTED — PHASE 4 PLAN REQUESTED
+**Current Status (2026-09-21):** HUMAN ACCEPTED — PHASE 4 IMPLEMENTATION AUTHORIZED THROUGH T5 CORE
 
 **Historical Status (2026-09-20):** PROPOSED — NO-GO PENDING LIVE EVIDENCE
 
@@ -13,14 +13,19 @@ Phase 4 Production Implementation。PostgreSQL 17 临时 Schema Prototype 已补
 2026-09-21 Human Acceptance：Phase 4 Production Agent Framework 采用 PydanticAI；Current Runtime
 仅保留为迁移回归基线，不建设长期双 Runtime；OpenAI Agents SDK 暂不进入 Production；Research
 Provider 继续独立选型，Brave `NOT_MEASURED` 不阻塞 Phase 4；业务状态与安全边界继续由
-PositionPilot 持有。该批准只授权制定 Phase 4 Implementation Plan，不授权开始 Production Migration。
+PositionPilot 持有。这是首次 Framework Acceptance 的历史授权边界，当时只授权制定 Phase 4
+Implementation Plan；下方后续 Plan Acceptance 已将实施授权扩展至 T5 Core。
+
+2026-09-21 后续 Human Acceptance：经 Strategy / Persistent User Intent 两轮修订后，Phase 4
+Implementation Plan 已批准。授权按 P4-T0 → T1 → T2 → T3 → T4A → T5 Core 实施；T5 Report 后必须
+暂停等待 Human Review，不得提前进入 T6～T8。T4R Research Decision 继续作为独立 Gate。
 
 2026-09-20 收口 Review：AQ06 已改为金额分析优先，旧 Execution Gate 只作为历史 Baseline；完整
 Broker / Fractional Execution Contract 不再是 Phase 4 前置工作。Research 结论同时区分 A Alibaba
 Native、B Application-owned 与 C Existing Financial Data，C 是优先使用的结构化事实层，不是第三个
 Runtime 候选。
 
-### 1.1 Framework 预选修订（2026-09-21）
+### 1.1 Framework 预选修订（2026-09-21，历史阶段）
 
 保留本提案下方的 Current Runtime 暂定推荐作为历史阶段判断。经后续框架预选，PydanticAI 与
 OpenAI Agents SDK 成为最后两个候选，Current Runtime 改为对照基线。新增离线 Capability Spike 已
@@ -30,6 +35,9 @@ Conversation / Confirmed Strategy / Memory Retrieval 注入；详见
 当前固定 Qwen Endpoint 的 No-tool / One-tool / Multi-tool Live Evidence 尚未取得，因此 Framework
 最终推荐与 Phase 4 Implementation Plan 仍等待该项证据和 Human Review。Research 选型与 Runtime
 选型继续相互独立，Brave 未验证不阻塞本次 Runtime 补证。
+
+以上“仍等待”是本轮 Capability Spike 完成前的历史状态；当前结论以 1.2 节及本文件 Current Status
+为准。
 
 ### 1.2 Framework Capability Spike 结论（2026-09-21）
 
@@ -92,9 +100,9 @@ Research 继续独立处理。Alibaba Native Capability 已执行；Application-
 规划，不因缺少 Brave Key 阻塞 Conversation、Strategy、Tool Catalog 或 Runtime 实现。若未来具体问题
 证明需要 Application-owned Search / Fetch，再单独验证并进入 Provider Human Review Gate。
 
-PydanticAI 选型、Current Runtime 迁移定位及 Phase 3 收口已经 Human Accepted。当前 Gate 是对
-[Phase 4 Implementation Plan](ask-quality-phase-4-implementation.md) 的范围、Schema、API、Research
-Adapter、生命周期与验收规则进行 Human Review；该 Review 通过前不开始 Production 实现。
+PydanticAI 选型、Current Runtime 迁移定位、Phase 3 收口及
+[Phase 4 Implementation Plan](ask-quality-phase-4-implementation.md) 已经 Human Accepted。Production
+Implementation 当前只授权到 T5 Core；T5 后的 Human Review Gate 保持不变。
 
 ## 4. Phase 4 后续工作
 

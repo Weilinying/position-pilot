@@ -2,7 +2,7 @@
 
 ## 1. 状态、目标与批准依据
 
-**Status:** HUMAN ACCEPTED — READY FOR IMPLEMENTATION（2026-09-21）；P4-T0 开始，Production
+**Status:** HUMAN ACCEPTED — P4-T0 COMPLETE / P4-T1 IN PROGRESS（2026-09-21）；Production
 Implementation 尚未修改。
 
 **Strategy Review Revision（2026-09-21）：** Strategy Candidate 仅承载跨会话 Persistent User Intent；

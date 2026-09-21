@@ -160,6 +160,13 @@ Ask Quality Dataset `0.1`、固定 Fixture、能力标签、Reporter 与真实�
 [2026-09-15 正式报告](reports/2026-09-15-ask-quality-baseline-qwen37max.md)。阶段一没有修改 Production
 Prompt、路由、工具或 State 能力。
 
+Phase 4 使用派生 Manifest `ask-quality-discovery / 0.2`，定义在
+`tests/evaluation/ask_quality_phase4_manifest.py`。它复用 `0.1` 的 21 个执行变体、固定 Fixture 与
+Rubric `0.1`，只冻结 4A Core、独立 Open Research Gate、AQ04 Earnings Regression 与 4B Strategy 的
+目标 Scope、Checkpoint 顺序与连续 Ask Script。Manifest 保存 `0.1` Fixture Digest 以检测历史漂移；
+`0.1` 的 Case 定义、Artifact、Hash 和历史结果保持不变。T4R 延后时 AQ01、AQ02、AQ19 继续记录为
+`DIAGNOSTIC / NOT_MEASURED`，不伪装成 Runtime Failure，也不阻塞 4A Core。
+
 Ask Quality 的 Research Capability 指 Runtime 真实向 Agent 提供并允许使用的外部事实获取机制，
 可以是自定义 Search Tool、Provider / Model Native Web Search、Page Fetch 或 Multi-round Research
 Loop；模型训练知识不算 Search。Research Sufficiency 只评价本次 Runtime 实际可用能力的使用情况，
