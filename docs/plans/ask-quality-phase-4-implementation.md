@@ -2,8 +2,8 @@
 
 ## 1. 状态、目标与批准依据
 
-**Status:** HUMAN ACCEPTED — P4-T0 / P4-T1 COMPLETE，P4-T2 IN PROGRESS（2026-09-21）。
-P4-T1 已完成 Application Boundary Extraction；尚未切换 Production Runtime。
+**Status:** HUMAN ACCEPTED — P4-T0 ～ P4-T2 COMPLETE，P4-T3 IN PROGRESS（2026-09-22）。
+P4-T2 已将 Production Bootstrap 切换为单一 PydanticAI Runtime；Current Runtime 只保留为回归基线。
 
 **Strategy Review Revision（2026-09-21）：** Strategy Candidate 仅承载跨会话 Persistent User Intent；
 Current Recommendation 与 Ledger Derived Facts 不进入 Strategy。Pending 冲突域为
@@ -22,10 +22,10 @@ Phase 4 的目标是交付第一个完整 Ask 闭环：4A 完成 PydanticAI、�
 Toolset、现有 Financial Data 与 Citation；Open Research 经过独立 Gate 后接入。通过固定 Eval 后，
 4B 再完成最小 Persistent User Intent 生命周期。它不是完整 Memory、插件平台或投资复盘 Milestone。
 
-本计划基于当前真实代码：Production `InvestmentAgent` 仍自行管理 LLM / Tool Loop，正式 API 只有
-无 Thread 的 `POST /v1/investment/questions`，前端历史只存在当前 Tab，Production Database 尚无
-Conversation 或 Strategy 表。Phase 3 `tests/spikes/` 只能作为 Contract 与测试证据，不得被 Production
-代码导入。
+截至 P4-T2，Production Agent 已经通过 Application-owned `AgentRuntime` Port 使用 PydanticAI 原生
+Tool Loop；正式 API 仍只有无 Thread 的 deprecated `POST /v1/investment/questions`，前端历史只存在
+当前 Tab，Production Database 尚无 Conversation 或 Strategy 表。Phase 3 `tests/spikes/` 只能作为
+Contract 与测试证据，不得被 Production 代码导入。
 
 ### 1.1 本次 Human Review 需要明确批准的产品选择
 
@@ -533,6 +533,12 @@ Dataset 0.2 的目标 Scope 固定如下；实际运行失败使用 `execution_s
 
 **验收：** No-tool / One-tool / Multi-tool、Usage UNKNOWN、Source Failure、AQ06、异常路径通过；
 Production 只装配一个 Runtime。
+
+**完成证据（2026-09-22）：** 离线 Adapter / Agent / 回归测试与独立 Automated Review 通过。用户在
+部署时实际解析的 `qwen3.7-max`、`ALIYUN_MODEL_STUDIO` 与当前 Endpoint 上运行 Production Smoke：
+No-tool、One-tool、Multi-tool 均通过，Tool Arguments 均为预期 `GOOG`；三次延迟约为 3.75s、3.59s、
+5.84s。Provider 未报告 Token Usage，按 Contract 明确记录为 `UNKNOWN / USAGE_NOT_REPORTED`，不伪造
+Token 或 Cost。结果关闭 P4-T2 Compatibility Gate，不形成模型质量或性能横向结论。
 
 ### P4-T3 — Conversation Persistence 与 API
 
