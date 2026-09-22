@@ -34,7 +34,7 @@ from position_pilot.application.investment_agent import (
     MAX_QUESTION_LENGTH,
     ContextSource,
     ContextSourceType,
-    InvestmentAgent,
+    InvestmentAgentPort,
     InvestmentAnswer,
     InvestmentFailureCode,
     InvestmentRequestFailure,
@@ -824,7 +824,7 @@ def get_health() -> HealthResponse:
     return HealthResponse(status="ok")
 
 
-def get_investment_agent_dependency() -> InvestmentAgent:
+def get_investment_agent_dependency() -> InvestmentAgentPort:
     """延迟装配外部依赖，允许测试安全替换。"""
 
     return get_investment_agent()
@@ -2021,6 +2021,7 @@ def list_current_cash_events(
 @app.post(
     "/v1/investment/questions",
     response_model=InvestmentQuestionResponse,
+    deprecated=True,
     responses={
         404: {"description": "Portfolio User 不存在"},
         502: {"description": "Agent / LLM Contract 无法形成回答"},
@@ -2030,7 +2031,7 @@ def list_current_cash_events(
 def answer_investment_question(
     request: InvestmentQuestionRequest,
     account: Annotated[Account, Depends(get_current_account_dependency)],
-    agent: Annotated[InvestmentAgent, Depends(get_investment_agent_dependency)],
+    agent: Annotated[InvestmentAgentPort, Depends(get_investment_agent_dependency)],
 ) -> InvestmentQuestionResponse:
     """读取 Structured State 并执行最小 Investment Agent Vertical Slice。"""
 

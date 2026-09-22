@@ -10,7 +10,7 @@ from time import monotonic
 from typing import Protocol, cast
 from uuid import UUID
 
-from position_pilot.application.agent_runtime import AgentRuntime
+from position_pilot.application.agent_runtime import ModelCompletionRuntime
 from position_pilot.application.investment_answer import (
     InvalidStructuredAnswer,
     StructuredInvestmentAnswer,
@@ -376,6 +376,12 @@ class InvestmentRequestFailure:
 type InvestmentAgentResult = InvestmentAnswer | InvestmentRequestFailure
 
 
+class InvestmentAgentPort(Protocol):
+    """Investment Question API 依赖的稳定 Application Facade。"""
+
+    def answer(self, user_id: UUID, question: str) -> InvestmentAgentResult: ...
+
+
 class InvestmentAgent:
     """协调 Portfolio Snapshot、Native Tool Call 与 Final Response。"""
 
@@ -383,7 +389,7 @@ class InvestmentAgent:
         self,
         portfolio_reader: PortfolioContextReader,
         market_data: MarketDataReader,
-        llm_provider: AgentRuntime,
+        llm_provider: ModelCompletionRuntime,
         *,
         news: RecentNewsReader,
         market_context: MarketContextReader,

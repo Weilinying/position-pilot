@@ -859,6 +859,7 @@ dependencies = [
     { name = "fastapi" },
     { name = "httpx2" },
     { name = "psycopg", extra = ["binary"] },
+    { name = "pydantic-ai-slim", extra = ["openai"] },
     { name = "pydantic-settings" },
     { name = "sqlalchemy" },
     { name = "uvicorn", extra = ["standard"] },
@@ -882,6 +883,7 @@ requires-dist = [
     { name = "fastapi", specifier = ">=0.116,<1" },
     { name = "httpx2", specifier = ">=2,<3" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.2,<4" },
+    { name = "pydantic-ai-slim", extras = ["openai"], specifier = "==1.107.6" },
     { name = "pydantic-settings", specifier = ">=2.10,<3" },
     { name = "sqlalchemy", specifier = ">=2.0,<3" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.35,<1" },
@@ -896,7 +898,7 @@ dev = [
 spike = [
     { name = "httpx", specifier = ">=0.28,<1" },
     { name = "openai-agents", specifier = "==0.22.3" },
-    { name = "pydantic-ai-slim", extras = ["mcp", "openai"], specifier = ">=1,<2" },
+    { name = "pydantic-ai-slim", extras = ["mcp", "openai"], specifier = "==1.107.6" },
 ]
 
 [[package]]

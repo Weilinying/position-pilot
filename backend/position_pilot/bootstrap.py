@@ -7,9 +7,10 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from position_pilot.application.asset_metadata_service import AssetMetadataService
 from position_pilot.application.auth_service import AuthService
-from position_pilot.application.investment_agent import InvestmentAgent
+from position_pilot.application.investment_agent import InvestmentAgentPort
 from position_pilot.application.market_context_service import MarketContextService
 from position_pilot.application.market_data_service import MarketDataService
+from position_pilot.application.native_investment_agent import NativeInvestmentAgent
 from position_pilot.application.news_service import NewsService
 from position_pilot.application.opening_import_service import OpeningImportService
 from position_pilot.application.portfolio_chart_service import PortfolioChartService
@@ -20,11 +21,11 @@ from position_pilot.application.recognition_service import RecognitionService
 from position_pilot.config import get_settings
 from position_pilot.database import create_database_engine, create_session_factory
 from position_pilot.infrastructure.unit_of_work import SqlAlchemyPortfolioUnitOfWorkFactory
-from position_pilot.integrations.aliyun_llm import create_llm_provider
 from position_pilot.integrations.aliyun_vision import AliyunVisionProvider
 from position_pilot.integrations.alpaca_market_data import create_alpaca_market_data_provider
 from position_pilot.integrations.alpaca_news import create_alpaca_news_provider
 from position_pilot.integrations.finnhub_asset_metadata import FinnhubAssetMetadataProvider
+from position_pilot.integrations.pydantic_ai_runtime import create_pydantic_ai_runtime
 
 
 @lru_cache
@@ -118,17 +119,17 @@ def get_opening_import_service() -> OpeningImportService:
 
 
 @lru_cache
-def get_investment_agent() -> InvestmentAgent:
-    """按已批准依赖方向装配进程内共享 InvestmentAgent。"""
+def get_investment_agent() -> InvestmentAgentPort:
+    """只装配 PydanticAI Production Runtime 的 Investment Agent。"""
 
     settings = get_settings()
     market_data_service = get_market_data_service()
     news_service = NewsService(create_alpaca_news_provider(settings))
-    llm_provider = create_llm_provider(settings)
-    return InvestmentAgent(
+    runtime = create_pydantic_ai_runtime(settings)
+    return NativeInvestmentAgent(
         get_portfolio_service(),
         market_data_service,
-        llm_provider,
+        runtime,
         news=news_service,
         market_context=MarketContextService(market_data_service),
     )

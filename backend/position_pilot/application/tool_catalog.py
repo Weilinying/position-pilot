@@ -61,6 +61,17 @@ class ToolDescriptor:
 
 
 @dataclass(frozen=True, slots=True)
+class ToolExecutionRecord:
+    """一个 Application Executor 内部产生的关联 Tool 调用记录。"""
+
+    name: str
+    arguments: Mapping[str, object]
+    status: str
+    error_code: str | None = None
+    sources: tuple[Mapping[str, object], ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
 class ToolExecutionResult:
     """Tool Executor 返回的最小结构化结果边界。"""
 
@@ -68,6 +79,7 @@ class ToolExecutionResult:
     data: Mapping[str, object] | None = None
     error_code: str | None = None
     sources: tuple[Mapping[str, object], ...] = ()
+    related_calls: tuple[ToolExecutionRecord, ...] = ()
 
     def __post_init__(self) -> None:
         if not self.status.strip():

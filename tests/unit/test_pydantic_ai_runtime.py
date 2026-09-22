@@ -1,0 +1,355 @@
+"""PydanticAI Production Adapter 的离线 Native Loop 测试。"""
+
+import asyncio
+from collections.abc import Mapping
+from dataclasses import dataclass, field
+
+import pytest
+from pydantic_ai.exceptions import ModelHTTPError
+from pydantic_ai.messages import ModelMessage, ModelResponse, TextPart, ToolCallPart
+from pydantic_ai.models.function import AgentInfo, FunctionModel
+from pydantic_ai.usage import RequestUsage
+
+from position_pilot.application.agent_runtime import (
+    AgentRunBudget,
+    AgentRunRequest,
+    AgentRunStatus,
+    AgentToolBinding,
+    AgentToolBudgetExceeded,
+)
+from position_pilot.application.llm import (
+    LLMMessage,
+    LLMRole,
+    LLMStatus,
+    LLMToolDefinition,
+)
+from position_pilot.application.tool_catalog import (
+    ToolExecutionRecord,
+    ToolExecutionResult,
+)
+from position_pilot.integrations.pydantic_ai_runtime import PydanticAIRuntime
+
+
+@dataclass(slots=True)
+class ScriptedModel:
+    """使用 PydanticAI 官方 FunctionModel 记录原生 Loop 消息。"""
+
+    responses: list[ModelResponse]
+    calls: list[list[ModelMessage]] = field(default_factory=list)
+
+    def __call__(self, messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
+        """返回下一条脚本响应。"""
+
+        del info
+        self.calls.append(list(messages))
+        return self.responses.pop(0)
+
+
+def _request(
+    *,
+    tools: tuple[AgentToolBinding, ...] = (),
+    response_format: str = "TEXT",
+    budget: AgentRunBudget | None = None,
+) -> AgentRunRequest:
+    """创建最小 Provider-neutral Run Request。"""
+
+    from position_pilot.application.llm import LLMResponseFormat
+
+    return AgentRunRequest(
+        (
+            LLMMessage(LLMRole.SYSTEM, "只根据可用事实作答。"),
+            LLMMessage(LLMRole.USER, "分析 GOOG。"),
+        ),
+        tools,
+        budget or AgentRunBudget(model_requests=4, tool_calls=4, wall_clock_seconds=30),
+        LLMResponseFormat(response_format),
+    )
+
+
+def _runtime(script: ScriptedModel) -> PydanticAIRuntime:
+    """创建 Fixture Runtime，不触碰外部配置或网络。"""
+
+    def scripted(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
+        """给 FunctionModel 提供具名函数。"""
+
+        return script(messages, info)
+
+    return PydanticAIRuntime(FunctionModel(scripted, model_name="qwen-fixture"))
+
+
+def _definition(name: str) -> LLMToolDefinition:
+    """创建单字符串参数的 Tool Definition。"""
+
+    return LLMToolDefinition(
+        name,
+        f"调用 {name}",
+        {
+            "type": "object",
+            "properties": {"ticker": {"type": "string"}},
+            "required": ["ticker"],
+            "additionalProperties": False,
+        },
+    )
+
+
+def _tool_response(name: str, arguments: Mapping[str, object], call_id: str) -> ModelResponse:
+    """创建原生 Tool Call Response。"""
+
+    return ModelResponse(
+        parts=(ToolCallPart(name, dict(arguments), call_id),),
+        usage=RequestUsage(input_tokens=3, output_tokens=2),
+    )
+
+
+def _text_response(text: str) -> ModelResponse:
+    """创建带真实 Usage 的最终文本 Response。"""
+
+    return ModelResponse(
+        parts=(TextPart(text),),
+        usage=RequestUsage(input_tokens=4, output_tokens=2),
+    )
+
+
+def test_no_tool_native_loop_returns_final_candidate_and_usage() -> None:
+    """No-tool Run 使用 Agent.run_sync，结果包含候选文本和 Usage。"""
+
+    script = ScriptedModel([_text_response("基于当前事实的分析。")])
+
+    result = _runtime(script).run(_request())
+
+    assert result.status is AgentRunStatus.COMPLETED
+    assert result.final_candidate == "基于当前事实的分析。"
+    assert result.tool_trace == ()
+    assert result.llm_status is LLMStatus.OK
+    assert result.usage is not None
+    assert result.usage.total_tokens > 0
+    assert len(script.calls) == 1
+
+
+def test_one_tool_binds_application_executor_and_returns_sources() -> None:
+    """One-tool Loop 将参数交给 Application，并保留 Tool Result 来源。"""
+
+    calls: list[Mapping[str, object]] = []
+
+    def execute(arguments: Mapping[str, object]) -> ToolExecutionResult:
+        calls.append(arguments)
+        return ToolExecutionResult(
+            "OK",
+            {"price": "210.25"},
+            sources=({"source_id": "quote-1", "kind": "QUOTE"},),
+        )
+
+    binding = AgentToolBinding(_definition("get_quote"), execute)
+    script = ScriptedModel(
+        [
+            _tool_response("get_quote", {"ticker": "GOOG"}, "call-1"),
+            _text_response("报价已核验。"),
+        ]
+    )
+
+    result = _runtime(script).run(_request(tools=(binding,)))
+
+    assert result.status is AgentRunStatus.COMPLETED
+    assert calls == [{"ticker": "GOOG"}]
+    assert result.tool_trace[0].name == "get_quote"
+    assert result.tool_trace[0].arguments == {"ticker": "GOOG"}
+    assert result.tool_trace[0].sources == ({"source_id": "quote-1", "kind": "QUOTE"},)
+    assert result.sources == ({"source_id": "quote-1", "kind": "QUOTE"},)
+    assert len(script.calls) == 2
+    assert "quote-1" in repr(script.calls[1])
+
+
+def test_multi_tool_loop_preserves_order_and_arguments() -> None:
+    """Multi-tool Loop 支持 Search → Fetch，并保持调用顺序。"""
+
+    calls: list[str] = []
+
+    def search(arguments: Mapping[str, object]) -> ToolExecutionResult:
+        calls.append(f"search:{arguments['ticker']}")
+        return ToolExecutionResult("OK", {"url": "https://example.test/source"})
+
+    def fetch(arguments: Mapping[str, object]) -> ToolExecutionResult:
+        calls.append(f"fetch:{arguments['ticker']}")
+        return ToolExecutionResult("OK", {"content": "source text"})
+
+    bindings = (
+        AgentToolBinding(_definition("search"), search),
+        AgentToolBinding(_definition("fetch"), fetch),
+    )
+    script = ScriptedModel(
+        [
+            _tool_response("search", {"ticker": "GOOG"}, "call-1"),
+            _tool_response("fetch", {"ticker": "GOOG"}, "call-2"),
+            _text_response("已完成两步读取。"),
+        ]
+    )
+
+    result = _runtime(script).run(_request(tools=bindings))
+
+    assert result.status is AgentRunStatus.COMPLETED
+    assert calls == ["search:GOOG", "fetch:GOOG"]
+    assert [trace.name for trace in result.tool_trace] == ["search", "fetch"]
+
+
+def test_related_application_call_has_separate_trace_source_and_budget_count() -> None:
+    """复合 Executor 的内部 Provider 调用必须单独进入 Trace 与预算。"""
+
+    def quote(arguments: Mapping[str, object]) -> ToolExecutionResult:
+        del arguments
+        return ToolExecutionResult(
+            "OK",
+            {"price": "210"},
+            sources=({"type": "CURRENT_QUOTE"},),
+            related_calls=(
+                ToolExecutionRecord(
+                    "get_market_context",
+                    {},
+                    "OK",
+                    sources=({"type": "MARKET_CONTEXT"},),
+                ),
+            ),
+        )
+
+    script = ScriptedModel(
+        [
+            _tool_response("get_quote", {"ticker": "GOOG"}, "call-1"),
+            _text_response("报价和市场环境已核验。"),
+        ]
+    )
+
+    result = _runtime(script).run(
+        _request(tools=(AgentToolBinding(_definition("get_quote"), quote),))
+    )
+
+    assert result.status is AgentRunStatus.COMPLETED
+    assert [trace.name for trace in result.tool_trace] == [
+        "get_quote",
+        "get_market_context",
+    ]
+    assert result.sources == (
+        {"type": "CURRENT_QUOTE"},
+        {"type": "MARKET_CONTEXT"},
+    )
+
+
+def test_application_tool_budget_exception_maps_to_stable_runtime_failure() -> None:
+    """Application 预留拒绝不得被降级成普通 Tool Failure。"""
+
+    def reject(arguments: Mapping[str, object]) -> ToolExecutionResult:
+        del arguments
+        raise AgentToolBudgetExceeded
+
+    script = ScriptedModel([_tool_response("get_quote", {"ticker": "GOOG"}, "call-1")])
+
+    result = _runtime(script).run(
+        _request(tools=(AgentToolBinding(_definition("get_quote"), reject),))
+    )
+
+    assert result.status is AgentRunStatus.BUDGET_EXHAUSTED
+    assert result.failure_code == "TOOL_CALL_BUDGET_EXCEEDED"
+
+
+@pytest.mark.parametrize(
+    ("status_code", "expected"),
+    (
+        (401, LLMStatus.AUTHENTICATION_FAILED),
+        (429, LLMStatus.RATE_LIMITED),
+        (500, LLMStatus.PROVIDER_UNAVAILABLE),
+    ),
+)
+def test_provider_http_failure_maps_to_stable_status(
+    status_code: int,
+    expected: LLMStatus,
+) -> None:
+    """Provider HTTP 异常只暴露稳定的 LLMStatus，不泄露异常正文。"""
+
+    def fail(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
+        del messages, info
+        raise ModelHTTPError(status_code, "fixture", {"secret": "must-not-leak"})
+
+    result = PydanticAIRuntime(FunctionModel(fail, model_name="qwen-fixture")).run(_request())
+
+    assert result.status is AgentRunStatus.FAILED
+    assert result.llm_status is expected
+    assert result.failure_code == "MODEL_HTTP_FAILURE"
+    assert "secret" not in repr(result)
+
+
+def test_usage_unknown_is_explicit_and_timeout_retry_boundaries_are_fixed() -> None:
+    """缺少 Usage 保持 UNKNOWN，Adapter 不隐式重试且拒绝非法 timeout。"""
+
+    result = PydanticAIRuntime(FunctionModel(lambda messages, info: _text_response("ok")))
+    unknown_usage = result._map_usage(RequestUsage())
+
+    assert unknown_usage is None
+    assert (
+        PydanticAIRuntime(
+            FunctionModel(lambda messages, info: _text_response("ok")),
+            timeout_seconds=7,
+            max_retries=0,
+        ).max_retries
+        == 0
+    )
+    with pytest.raises(ValueError):
+        PydanticAIRuntime(
+            FunctionModel(lambda messages, info: _text_response("ok")),
+            timeout_seconds=0,
+        )
+    with pytest.raises(ValueError):
+        PydanticAIRuntime(
+            FunctionModel(lambda messages, info: _text_response("ok")),
+            max_retries=-1,
+        )
+    with pytest.raises(ValueError):
+        PydanticAIRuntime(
+            FunctionModel(lambda messages, info: _text_response("ok")),
+            max_retries=1,
+        )
+
+
+def test_tool_failure_is_explicit_observation_not_runtime_exception() -> None:
+    """Application Tool Failure 进入 Tool Trace，Runtime 仍由模型生成最终候选。"""
+
+    def fail(arguments: Mapping[str, object]) -> ToolExecutionResult:
+        del arguments
+        raise RuntimeError("provider secret")
+
+    binding = AgentToolBinding(_definition("get_quote"), fail)
+    script = ScriptedModel(
+        [
+            _tool_response("get_quote", {"ticker": "GOOG"}, "call-1"),
+            _text_response("数据不可用，保持 UNKNOWN。"),
+        ]
+    )
+
+    result = _runtime(script).run(_request(tools=(binding,)))
+
+    assert result.status is AgentRunStatus.COMPLETED
+    assert result.tool_trace[0].status == "TOOL_FAILURE"
+    assert result.warnings == ("TOOL_FAILURE:get_quote",)
+
+
+def test_missing_credential_is_stable_authentication_failure() -> None:
+    """缺少 Credential 时不在装配阶段泄露 SDK 异常。"""
+
+    result = PydanticAIRuntime(None).run(_request())
+
+    assert result.status is AgentRunStatus.FAILED
+    assert result.failure_code == "MODEL_CREDENTIAL_MISSING"
+    assert result.llm_status is LLMStatus.AUTHENTICATION_FAILED
+
+
+def test_wall_clock_budget_interrupts_entire_native_loop() -> None:
+    """总 Wall-clock Ceiling 必须中断尚未完成的 Model Request。"""
+
+    async def slow(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
+        del messages, info
+        await asyncio.sleep(0.05)
+        return _text_response("不应完成")
+
+    result = PydanticAIRuntime(FunctionModel(slow, model_name="slow-fixture")).run(
+        _request(budget=AgentRunBudget(2, 0, 0.01))
+    )
+
+    assert result.status is AgentRunStatus.BUDGET_EXHAUSTED
+    assert result.failure_code == "WALL_CLOCK_BUDGET_EXCEEDED"
