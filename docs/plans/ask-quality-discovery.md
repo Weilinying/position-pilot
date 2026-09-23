@@ -4,7 +4,7 @@
 
 **Status:** DISCOVERY — Phase 1 HUMAN ACCEPTED（2026-09-15）；Phase 2 HUMAN ACCEPTED
 （2026-09-20）；Phase 3 HUMAN ACCEPTED（2026-09-21）；Phase 4 PLAN HUMAN ACCEPTED / P4-T0 ～
-P4-T2 COMPLETE / P4-T3 IN PROGRESS（2026-09-22），不绑定 Release。
+P4-T3 COMPLETE / P4-T4A IN PROGRESS（2026-09-23），不绑定 Release。
 
 **记录日期：** 2026-09-13。Human Review 已批准 M13 后的 Discovery 方向，并要求区分五类状态、
 收窄框架候选、独立评价四类选型及在阶段四设置 4A / 4B 检查点；本版落实这些意见。

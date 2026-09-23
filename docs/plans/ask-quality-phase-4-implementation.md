@@ -2,7 +2,7 @@
 
 ## 1. 状态、目标与批准依据
 
-**Status:** HUMAN ACCEPTED — P4-T0 ～ P4-T2 COMPLETE，P4-T3 IN PROGRESS（2026-09-22）。
+**Status:** HUMAN ACCEPTED — P4-T0 ～ P4-T3 COMPLETE，P4-T4A IN PROGRESS（2026-09-23）。
 P4-T2 已将 Production Bootstrap 切换为单一 PydanticAI Runtime；Current Runtime 只保留为回归基线。
 
 **Strategy Review Revision（2026-09-21）：** Strategy Candidate 仅承载跨会话 Persistent User Intent；
@@ -550,6 +550,12 @@ Token 或 Cost。结果关闭 P4-T2 Compatibility Gate，不形成模型质量�
 
 **验收：** A / B Account 隔离；并发追加只有合法请求成功；失败无假 Assistant；Migration upgrade /
 downgrade 在空测试库通过，已有 Ledger 数据不变。
+
+**完成记录（2026-09-23）：** Alembic 0010、独立 Conversation UoW / Service、Session-owned API 与有界
+History 已落地。此前已验证含 Ledger sentinel 的 upgrade / downgrade / upgrade 往返；修订后的 Schema
+再次 upgrade 成功。定向 Unit / API 36 passed，PostgreSQL Integration 2 passed；Ruff / mypy 通过。
+已完成 Automated Review，并补齐幂等重试的持久 warnings 与 `TURN_IN_PROGRESS` 原 `turn_id`。
+Source / Citation 的完整校验与前端恢复属于 P4-T4A。
 
 ### P4-T4A — Conversation Frontend + Financial Data / Citation
 
