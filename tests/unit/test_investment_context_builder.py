@@ -5,13 +5,15 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from uuid import UUID
 
+import pytest
+
 from position_pilot.application.investment_agent import SYSTEM_PROMPT, InvestmentAgent
 from position_pilot.application.investment_context import (
     InvestmentPortfolioContext,
     PortfolioSnapshot,
 )
 from position_pilot.application.investment_context_builder import InvestmentContextBuilder
-from position_pilot.application.llm import LLMRole
+from position_pilot.application.llm import LLMMessage, LLMRole
 from position_pilot.application.position_funding import PositionPlanIntent
 from position_pilot.domain.portfolio import PositionType, User, rebuild_portfolio
 
@@ -69,3 +71,39 @@ def test_confirmed_intent_and_memory_are_injected_with_explicit_authority() -> N
         "authority": "NON_AUTHORITATIVE_BACKGROUND",
         "items": ["用户偏好分批思考"],
     }
+
+
+def test_visible_history_is_placed_before_current_turn() -> None:
+    """Conversation History 保持角色顺序且不进入当前事实 Payload。"""
+
+    messages = InvestmentContextBuilder("system").build(
+        _context(),
+        "那现在呢？",
+        conversation_history=(
+            LLMMessage(LLMRole.USER, "分析 GOOG"),
+            LLMMessage(LLMRole.ASSISTANT, "先观察风险。"),
+        ),
+    )
+
+    assert [message.role for message in messages] == [
+        LLMRole.SYSTEM,
+        LLMRole.USER,
+        LLMRole.ASSISTANT,
+        LLMRole.USER,
+    ]
+    assert messages[1].content == "分析 GOOG"
+    assert messages[2].content == "先观察风险。"
+    assert json.loads(messages[3].content or "{}")["question"] == "那现在呢？"
+
+
+def test_tool_observation_is_rejected_as_conversation_history() -> None:
+    """持久 Conversation 不得重放 Tool Observation。"""
+
+    with pytest.raises(ValueError, match="纯文本"):
+        InvestmentContextBuilder("system").build(
+            _context(),
+            "继续",
+            conversation_history=(
+                LLMMessage(LLMRole.TOOL, "raw tool output", tool_call_id="call-1"),
+            ),
+        )

@@ -14,6 +14,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from position_pilot.api.routers import conversation_router
 from position_pilot.application.asset_metadata_service import AssetMetadataService
 from position_pilot.application.auth_service import (
     Account,
@@ -808,6 +809,7 @@ class RecognitionResponse(BaseModel):
 
 app = FastAPI(title="PositionPilot")
 app.mount("/static", StaticFiles(directory=FRONTEND_DIR), name="static")
+app.include_router(conversation_router)
 
 
 @app.get("/app/", include_in_schema=False)

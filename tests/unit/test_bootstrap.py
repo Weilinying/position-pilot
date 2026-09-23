@@ -7,6 +7,8 @@ from pydantic import AnyHttpUrl, PostgresDsn, SecretStr
 
 from position_pilot import bootstrap
 from position_pilot.application.asset_metadata_service import AssetMetadataService
+from position_pilot.application.conversation_agent import ConversationInvestmentAgent
+from position_pilot.application.conversation_service import ConversationService
 from position_pilot.application.native_investment_agent import NativeInvestmentAgent
 from position_pilot.application.recognition_service import RecognitionService
 from position_pilot.config import Settings
@@ -21,10 +23,12 @@ def clear_provider_service_caches() -> Iterator[None]:
     """每个测试隔离进程内 Provider Service Cache。"""
 
     bootstrap.get_asset_metadata_service.cache_clear()
+    bootstrap.get_conversation_service.cache_clear()
     bootstrap.get_investment_agent.cache_clear()
     bootstrap.get_recognition_service.cache_clear()
     yield
     bootstrap.get_asset_metadata_service.cache_clear()
+    bootstrap.get_conversation_service.cache_clear()
     bootstrap.get_investment_agent.cache_clear()
     bootstrap.get_recognition_service.cache_clear()
 
@@ -148,3 +152,20 @@ def test_investment_agent_bootstrap_uses_only_pydantic_ai_runtime(
     assert agent._runtime is runtime
     assert agent._portfolio_reader is portfolio_reader
     assert agent._market_data is market_data
+
+
+def test_conversation_service_reuses_production_agent_and_database_factory(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Conversation 装配复用同一 Agent，并保持独立 UoW。"""
+
+    investment_agent = object()
+    session_factory = object()
+    monkeypatch.setattr(bootstrap, "get_investment_agent", lambda: investment_agent)
+    monkeypatch.setattr(bootstrap, "get_session_factory", lambda: session_factory)
+
+    service = bootstrap.get_conversation_service()
+
+    assert isinstance(service, ConversationService)
+    assert isinstance(service._agent, ConversationInvestmentAgent)
+    assert service._agent._agent is investment_agent

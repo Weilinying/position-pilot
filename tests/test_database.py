@@ -2,6 +2,12 @@
 
 from position_pilot.database import Base, create_database_engine
 from position_pilot.infrastructure import models
+from position_pilot.infrastructure.conversation_models import (
+    ConversationMessageModel,
+    ConversationThreadModel,
+    ConversationTurnModel,
+    MessageSourceModel,
+)
 
 
 def test_create_database_engine_uses_psycopg_postgresql_dialect() -> None:
@@ -29,10 +35,18 @@ def test_metadata_contains_only_approved_source_of_truth_tables() -> None:
     assert models.BuyTransactionCorrectionModel.__tablename__ == "buy_transaction_corrections"
     assert models.AccountModel.__tablename__ == "accounts"
     assert models.AuthSessionModel.__tablename__ == "auth_sessions"
+    assert ConversationThreadModel.__tablename__ == "conversation_threads"
+    assert ConversationTurnModel.__tablename__ == "conversation_turns"
+    assert ConversationMessageModel.__tablename__ == "conversation_messages"
+    assert MessageSourceModel.__tablename__ == "message_sources"
     assert set(Base.metadata.tables) == {
         "users",
         "accounts",
         "auth_sessions",
+        "conversation_threads",
+        "conversation_turns",
+        "conversation_messages",
+        "message_sources",
         "opening_positions",
         "position_reconciliations",
         "lot_allocations",

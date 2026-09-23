@@ -124,6 +124,31 @@ class NativeInvestmentAgent:
     ) -> InvestmentAnswer | InvestmentRequestFailure:
         """执行一次 Native Tool Loop，并应用 PositionPilot 最终业务校验。"""
 
+        return self._answer(user_id, question, conversation_history=())
+
+    def answer_with_history(
+        self,
+        user_id: UUID,
+        question: str,
+        conversation_history: tuple[LLMMessage, ...],
+    ) -> InvestmentAnswer | InvestmentRequestFailure:
+        """使用 Application 筛选后的用户可见历史执行一次 Native Run。"""
+
+        return self._answer(
+            user_id,
+            question,
+            conversation_history=conversation_history,
+        )
+
+    def _answer(
+        self,
+        user_id: UUID,
+        question: str,
+        *,
+        conversation_history: tuple[LLMMessage, ...],
+    ) -> InvestmentAnswer | InvestmentRequestFailure:
+        """共享单问与 Thread Ask 流程，不让 Runtime 持有 Conversation 状态。"""
+
         normalized_question = question.strip() if isinstance(question, str) else ""
         if not normalized_question or len(normalized_question) > MAX_QUESTION_LENGTH:
             return InvestmentRequestFailure(
@@ -142,6 +167,7 @@ class NativeInvestmentAgent:
         messages = InvestmentContextBuilder(SYSTEM_PROMPT).build(
             portfolio_context,
             normalized_question,
+            conversation_history=conversation_history,
         )
         exposure = self._exposure(user_id)
         executor = FinancialToolExecutor(

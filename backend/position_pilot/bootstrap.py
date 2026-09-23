@@ -7,7 +7,8 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from position_pilot.application.asset_metadata_service import AssetMetadataService
 from position_pilot.application.auth_service import AuthService
-from position_pilot.application.investment_agent import InvestmentAgentPort
+from position_pilot.application.conversation_agent import ConversationInvestmentAgent
+from position_pilot.application.conversation_service import ConversationService
 from position_pilot.application.market_context_service import MarketContextService
 from position_pilot.application.market_data_service import MarketDataService
 from position_pilot.application.native_investment_agent import NativeInvestmentAgent
@@ -20,6 +21,9 @@ from position_pilot.application.portfolio_valuation_service import PortfolioValu
 from position_pilot.application.recognition_service import RecognitionService
 from position_pilot.config import get_settings
 from position_pilot.database import create_database_engine, create_session_factory
+from position_pilot.infrastructure.conversation_unit_of_work import (
+    SqlAlchemyConversationUnitOfWorkFactory,
+)
 from position_pilot.infrastructure.unit_of_work import SqlAlchemyPortfolioUnitOfWorkFactory
 from position_pilot.integrations.aliyun_vision import AliyunVisionProvider
 from position_pilot.integrations.alpaca_market_data import create_alpaca_market_data_provider
@@ -119,7 +123,7 @@ def get_opening_import_service() -> OpeningImportService:
 
 
 @lru_cache
-def get_investment_agent() -> InvestmentAgentPort:
+def get_investment_agent() -> NativeInvestmentAgent:
     """只装配 PydanticAI Production Runtime 的 Investment Agent。"""
 
     settings = get_settings()
@@ -132,6 +136,16 @@ def get_investment_agent() -> InvestmentAgentPort:
         runtime,
         news=news_service,
         market_context=MarketContextService(market_data_service),
+    )
+
+
+@lru_cache
+def get_conversation_service() -> ConversationService:
+    """装配 Account-owned Conversation Service 与同一 Production Agent。"""
+
+    return ConversationService(
+        SqlAlchemyConversationUnitOfWorkFactory(get_session_factory()),
+        agent=ConversationInvestmentAgent(get_investment_agent()),
     )
 
 

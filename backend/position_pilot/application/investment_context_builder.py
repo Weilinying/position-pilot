@@ -31,8 +31,18 @@ class InvestmentContextBuilder:
         *,
         position_plan_intents: tuple[PositionPlanIntent, ...] = (),
         memory_context: tuple[str, ...] = (),
+        conversation_history: tuple[LLMMessage, ...] = (),
     ) -> tuple[LLMMessage, ...]:
-        """构造初始消息；可选 Context 为空时保持历史 Payload 不变。"""
+        """构造初始消息；Conversation 只接受用户可见的 User / Assistant 历史。"""
+
+        if any(
+            message.role not in {LLMRole.USER, LLMRole.ASSISTANT}
+            or message.content is None
+            or message.tool_calls
+            or message.tool_call_id is not None
+            for message in conversation_history
+        ):
+            raise ValueError("Conversation History 只能包含纯文本 User / Assistant Message")
 
         snapshot = PortfolioSnapshot.from_context(portfolio_context)
         payload: dict[str, object] = {
@@ -59,6 +69,7 @@ class InvestmentContextBuilder:
             }
         return (
             LLMMessage(LLMRole.SYSTEM, self.system_prompt),
+            *conversation_history,
             LLMMessage(
                 LLMRole.USER,
                 json.dumps(payload, ensure_ascii=False, sort_keys=True),
