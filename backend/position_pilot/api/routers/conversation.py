@@ -9,6 +9,7 @@ from fastapi import APIRouter, Body, Cookie, Depends, HTTPException, Query, stat
 
 from position_pilot.api.schemas.conversation import (
     AnswerV2,
+    CitationV2,
     ConversationAskRequest,
     ConversationAskResponse,
     ConversationHistoryResponse,
@@ -21,6 +22,10 @@ from position_pilot.api.schemas.conversation import (
     ConversationTurnResponse,
 )
 from position_pilot.application.auth_service import Account, AuthService
+from position_pilot.application.conversation_citations import (
+    CitationValidationError,
+    validate_citations,
+)
 from position_pilot.application.conversation_service import (
     ConversationCompletion,
     ConversationError,
@@ -166,11 +171,21 @@ def get_messages(
         _raise_api_error(status.HTTP_404_NOT_FOUND, "THREAD_NOT_FOUND", str(error))
     except ConversationValidationError as error:
         _raise_api_error(status.HTTP_422_UNPROCESSABLE_CONTENT, "CONVERSATION_INVALID", str(error))
+    message_by_id = {message.id: message for message in page.messages}
     return ConversationHistoryResponse(
         thread=ConversationThreadResponse.from_domain(page.thread),
         messages=tuple(ConversationMessageResponse.from_domain(item) for item in page.messages),
         active_turn=ConversationTurnResponse.from_domain(page.active_turn),
         next_cursor=page.next_cursor,
+        answers={
+            item.message_id: _answer_v2(
+                message_by_id[item.message_id].content,
+                item.sources,
+                item.warnings,
+                allow_legacy=True,
+            )
+            for item in page.answers
+        },
     )
 
 
@@ -269,19 +284,8 @@ def _ask_response(completion: ConversationCompletion) -> ConversationAskResponse
     """把 Service Completion 映射为 T3 最小 Answer V2。"""
 
     assistant = completion.assistant_message
-    sources = tuple(
-        # Source 只能来自 Service 已经持久化的真实 Metadata。
-        _source_response(source)
-        for source in completion.sources
-    )
     answer = (
-        AnswerV2(
-            text=assistant.content if assistant is not None else None,
-            warnings=completion.warnings,
-            sources=sources,
-            citations=(),
-            candidate=None,
-        )
+        _answer_v2(assistant.content, completion.sources, completion.warnings, allow_legacy=True)
         if assistant is not None
         else None
     )
@@ -293,6 +297,32 @@ def _ask_response(completion: ConversationCompletion) -> ConversationAskResponse
             ConversationMessageResponse.from_domain(assistant) if assistant is not None else None
         ),
         answer=answer,
+    )
+
+
+def _answer_v2(
+    text: str,
+    sources: tuple[ConversationSource, ...],
+    warnings: tuple[str, ...],
+    *,
+    allow_legacy: bool = False,
+) -> AnswerV2:
+    """将已持久化来源映射为当前 Message 的 Answer V2。"""
+
+    try:
+        citation_ids = validate_citations(text, sources)
+    except CitationValidationError:
+        if not allow_legacy:
+            raise
+        # 已保存的早期消息没有 inline Citation，不可伪造引用或阻止历史恢复。
+        citation_ids = ()
+        warnings = (*warnings, "CITATION_NOT_VERIFIED")
+    return AnswerV2(
+        text=text,
+        warnings=warnings,
+        sources=tuple(_source_response(source) for source in sources),
+        citations=tuple(CitationV2(source_id=source_id) for source_id in citation_ids),
+        candidate=None,
     )
 
 

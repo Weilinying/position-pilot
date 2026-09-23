@@ -363,6 +363,7 @@ class InvestmentAnswer:
     status: InvestmentResponseStatus
     answer: str
     sources: tuple[ContextSource, ...]
+    warnings: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

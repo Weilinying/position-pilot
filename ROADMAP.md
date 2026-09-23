@@ -13,7 +13,7 @@
 **Current Milestone:** M13 — Position-Aware Market Chart
 **Status:** DONE — Human Accepted and merged to local `main`（2026-09-13）
 **Current Release State:** `v1.3.0` Release Candidate 已进入本地 `main`；Git Tag / GitHub Release 尚待发布
-**Next Planned Work:** Answer Quality Phase 4 P4-T4A（IN PROGRESS）；M10、M12 继续暂缓
+**Next Planned Work:** Answer Quality Phase 4 P4-T5 Core（IN PROGRESS）；M10、M12 继续暂缓
 
 Milestone 状态统一使用 `NOT STARTED`、`IN PROGRESS`、`DONE`，不维护百分比进度。
 

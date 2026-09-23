@@ -3,6 +3,7 @@
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
+from uuid import UUID
 
 from position_pilot.application.investment_answer import (
     InvalidStructuredAnswer,
@@ -36,6 +37,18 @@ class ContextSource:
     feed: str | None = None
     market_timestamp: datetime | None = None
     fetched_at: datetime | None = None
+    source_id: UUID | None = None
+    url: str | None = None
+    title: str | None = None
+    publisher: str | None = None
+    published_at: datetime | None = None
+    provider_reference: str | None = None
+
+    @property
+    def source_type(self) -> str:
+        """提供与持久化 Source 一致的 Citation 分类。"""
+
+        return self.type.value
 
     def as_reference(self) -> SourceReference | None:
         """只有状态为 OK 的已观察 Context 才能成为回答来源。"""

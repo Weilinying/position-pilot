@@ -200,6 +200,7 @@ class ConversationHistoryResponse(BaseModel):
     messages: tuple[ConversationMessageResponse, ...]
     active_turn: ConversationTurnResponse | None
     next_cursor: str | None
+    answers: dict[UUID, AnswerV2] = Field(default_factory=dict)
 
 
 class ConversationAskResponse(BaseModel):

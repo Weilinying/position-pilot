@@ -4,7 +4,7 @@ import json
 import logging
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from position_pilot.application.agent_runtime import (
     AgentRunBudget,
@@ -14,6 +14,10 @@ from position_pilot.application.agent_runtime import (
     AgentRuntime,
     AgentToolBinding,
     AgentToolBudgetExceeded,
+)
+from position_pilot.application.conversation_citations import (
+    CitationValidationError,
+    validate_citations,
 )
 from position_pilot.application.investment_agent import (
     CONTEXT_TOOLS,
@@ -138,6 +142,7 @@ class NativeInvestmentAgent:
             user_id,
             question,
             conversation_history=conversation_history,
+            citation_mode=True,
         )
 
     def _answer(
@@ -146,6 +151,7 @@ class NativeInvestmentAgent:
         question: str,
         *,
         conversation_history: tuple[LLMMessage, ...],
+        citation_mode: bool = False,
     ) -> InvestmentAnswer | InvestmentRequestFailure:
         """共享单问与 Thread Ask 流程，不让 Runtime 持有 Conversation 状态。"""
 
@@ -164,7 +170,14 @@ class NativeInvestmentAgent:
                 InvestmentResponseStatus.OK.value,
             )
         ]
-        messages = InvestmentContextBuilder(SYSTEM_PROMPT).build(
+        prompt = SYSTEM_PROMPT
+        if citation_mode:
+            prompt += (
+                "\nConversation 回答中，凡引用本轮成功 Tool 结果，请在相关陈述附近使用"
+                " [source:<source_id>]；source_id 只能复制 Tool Observation 的 sources 字段。"
+                "不要编造 URL；未成功的来源不得引用。source_refs 仍按原结构声明。"
+            )
+        messages = InvestmentContextBuilder(prompt).build(
             portfolio_context,
             normalized_question,
             conversation_history=conversation_history,
@@ -188,6 +201,7 @@ class NativeInvestmentAgent:
                     executor,
                     snapshot,
                     tool_session,
+                    citation_mode=citation_mode,
                 ),
             )
             for descriptor in exposure.descriptors
@@ -220,6 +234,7 @@ class NativeInvestmentAgent:
             remaining_wall_clock_seconds=(
                 self._wall_clock_budget_seconds - result.latency_ms / 1000
             ),
+            citation_mode=citation_mode,
         )
         if isinstance(structured, InvestmentRequestFailure):
             return structured
@@ -228,6 +243,7 @@ class NativeInvestmentAgent:
             InvestmentResponseStatus.DEGRADED if degraded else InvestmentResponseStatus.OK,
             structured.answer,
             SourceValidator.select_declared(structured, tuple(sources)),
+            result.warnings,
         )
 
     def _exposure(self, user_id: UUID) -> ToolExposure:
@@ -251,6 +267,8 @@ class NativeInvestmentAgent:
         executor: FinancialToolExecutor,
         snapshot: PortfolioSnapshot,
         tool_session: _AuthorizedToolSession,
+        *,
+        citation_mode: bool,
     ) -> Callable[[Mapping[str, object]], ToolExecutionResult]:
         def execute(arguments: Mapping[str, object]) -> ToolExecutionResult:
             tool_call = LLMToolCall("native-runtime-call", tool_name, arguments)
@@ -283,7 +301,8 @@ class NativeInvestmentAgent:
             assert message.content is not None
             payload = json.loads(message.content)
             status = str(payload.pop("status"))
-            source_mapping = self._source_mapping(source)
+            observed_sources = self._observed_sources(execution, source, citation_mode)
+            source_mappings = tuple(self._source_mapping(item) for item in observed_sources)
             related_calls: tuple[ToolExecutionRecord, ...] = ()
             if needs_market_context:
                 required_call = LLMToolCall(
@@ -313,11 +332,44 @@ class NativeInvestmentAgent:
             return ToolExecutionResult(
                 status,
                 payload,
-                sources=(source_mapping,),
+                sources=source_mappings,
                 related_calls=related_calls,
             )
 
         return execute
+
+    @staticmethod
+    def _observed_sources(
+        execution: FinancialToolExecution,
+        source: ContextSource,
+        citation_mode: bool,
+    ) -> tuple[ContextSource, ...]:
+        """Conversation News 按文章建立可打开的来源身份。"""
+
+        if not citation_mode or execution.tool_call.name != RECENT_NEWS_TOOL_NAME:
+            return (source,)
+        result = execution.result
+        if not isinstance(result, NewsResult) or result.status.value != "OK":
+            return (source,)
+        recent_news = result.data
+        assert recent_news is not None
+        return tuple(
+            ContextSource(
+                type=ContextSourceType.RECENT_NEWS,
+                status="OK",
+                ticker=recent_news.ticker,
+                provider=recent_news.provider,
+                feed=article.source,
+                market_timestamp=article.created_at,
+                fetched_at=recent_news.fetched_at,
+                url=article.url,
+                title=article.headline,
+                publisher=article.source,
+                published_at=article.created_at,
+                provider_reference=article.article_id,
+            )
+            for article in recent_news.articles
+        )
 
     @staticmethod
     def _format_tool_execution(
@@ -344,6 +396,12 @@ class NativeInvestmentAgent:
     @staticmethod
     def _source_mapping(source: ContextSource) -> Mapping[str, object]:
         return {
+            "source_id": str(source.source_id or uuid4()),
+            "url": source.url,
+            "title": source.title,
+            "publisher": source.publisher,
+            "published_at": source.published_at.isoformat() if source.published_at else None,
+            "provider_reference": source.provider_reference,
             "type": source.type.value,
             "status": source.status,
             "ticker": source.ticker,
@@ -372,6 +430,12 @@ class NativeInvestmentAgent:
             feed=_optional_string(value.get("feed")),
             market_timestamp=_optional_datetime(value.get("market_timestamp")),
             fetched_at=_optional_datetime(value.get("fetched_at")),
+            source_id=UUID(str(value["source_id"])) if value.get("source_id") else None,
+            url=_optional_string(value.get("url")),
+            title=_optional_string(value.get("title")),
+            publisher=_optional_string(value.get("publisher")),
+            published_at=_optional_datetime(value.get("published_at")),
+            provider_reference=_optional_string(value.get("provider_reference")),
         )
 
     @staticmethod
@@ -401,12 +465,27 @@ class NativeInvestmentAgent:
         candidate: str,
         sources: tuple[ContextSource, ...],
         remaining_wall_clock_seconds: float,
+        citation_mode: bool,
     ) -> StructuredInvestmentAnswer | InvestmentRequestFailure:
         answer, error = SourceValidator.evaluate(candidate, sources)
-        if error is None:
+        citation_error: CitationValidationError | None = None
+        if error is None and citation_mode:
+            assert answer is not None
+            try:
+                validate_citations(
+                    answer.answer,
+                    SourceValidator.select_declared(answer, sources),
+                )
+            except CitationValidationError as invalid:
+                citation_error = invalid
+        if error is None and citation_error is None:
             assert answer is not None
             return answer
-        repair_payload = InvestmentAgent._build_structured_repair_instruction(error)
+        repair_payload = (
+            InvestmentAgent._build_structured_repair_instruction(error)
+            if error is not None
+            else self._citation_repair_instruction(citation_error, sources)
+        )
         if remaining_wall_clock_seconds <= 0:
             return InvestmentRequestFailure(
                 InvestmentFailureCode.LLM_PROVIDER_UNAVAILABLE,
@@ -441,7 +520,41 @@ class NativeInvestmentAgent:
                 "LLM Final Response 在一次 Repair 后仍违反 Structured Source Contract",
             )
         assert repaired is not None
+        if citation_mode:
+            try:
+                validate_citations(
+                    repaired.answer,
+                    SourceValidator.select_declared(repaired, sources),
+                )
+            except CitationValidationError:
+                return InvestmentRequestFailure(
+                    InvestmentFailureCode.LLM_INVALID_PROVIDER_RESPONSE,
+                    "LLM Final Response 在一次 Repair 后仍违反 Citation Contract",
+                )
         return repaired
+
+    @staticmethod
+    def _citation_repair_instruction(
+        error: CitationValidationError | None,
+        sources: tuple[ContextSource, ...],
+    ) -> dict[str, object]:
+        """Repair 只提供本轮已观察的来源 ID，不重新获取外部数据。"""
+
+        return {
+            "task": "REPAIR_FINAL_RESPONSE_CITATIONS",
+            "validation_error": str(error),
+            "observed_successful_source_ids": [
+                str(source.source_id)
+                for source in sources
+                if source.status == "OK" and source.source_id is not None
+            ],
+            "instructions": [
+                "保留符合原 Contract 的 answer 与 source_refs JSON 结构。",
+                "只在实际引用的陈述附近使用 [source:<source_id>]。",
+                "仅使用列出的成功来源 ID，不编造 URL，不引用失败来源。",
+                "不得请求 Tool。",
+            ],
+        }
 
     @staticmethod
     def _runtime_failure(result: AgentRunResult) -> InvestmentRequestFailure | None:

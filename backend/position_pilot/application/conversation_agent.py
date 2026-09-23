@@ -3,6 +3,10 @@
 from typing import Protocol
 from uuid import UUID
 
+from position_pilot.application.conversation_citations import (
+    CitationValidationError,
+    validate_citations,
+)
 from position_pilot.application.conversation_service import (
     ConversationAgentResult,
     ConversationHistoryMessage,
@@ -53,9 +57,15 @@ class ConversationInvestmentAgent:
         )
         if isinstance(result, InvestmentRequestFailure):
             return ConversationAgentResult(failure_code=result.code.value)
+        sources = tuple(self._source(source) for source in result.sources)
+        try:
+            validate_citations(result.answer, sources)
+        except CitationValidationError:
+            return ConversationAgentResult(failure_code="SOURCE_VALIDATION_FAILED")
         return ConversationAgentResult(
             answer=result.answer,
-            sources=tuple(self._source(source) for source in result.sources),
+            sources=sources,
+            warnings=result.warnings,
         )
 
     @staticmethod
@@ -71,9 +81,14 @@ class ConversationInvestmentAgent:
         return ConversationSourceInput(
             source_type=source.type.value,
             provider=source.provider or "POSITIONPILOT",
-            provider_reference=source.ticker,
+            source_id=source.source_id,
+            url=source.url,
+            provider_reference=source.provider_reference or source.ticker,
             event_time=source.market_timestamp,
             fetched_at=source.fetched_at,
+            title=source.title,
+            publisher=source.publisher,
+            published_at=source.published_at,
             content_scope=content_scope,
             status=source.status,
         )

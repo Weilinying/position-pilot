@@ -12,7 +12,13 @@ from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from types import TracebackType
 from typing import Protocol, Self
+from urllib.parse import urlsplit
 from uuid import UUID, uuid4
+
+from position_pilot.application.conversation_citations import (
+    CitationValidationError,
+    validate_citations,
+)
 
 MAX_THREAD_TITLE_LENGTH = 200
 MAX_MESSAGE_LENGTH = 4_000
@@ -168,6 +174,7 @@ class ConversationSourceInput:
 
     source_type: str
     provider: str
+    source_id: UUID | None = None
     provider_reference: str | None = None
     url: str | None = None
     title: str | None = None
@@ -213,6 +220,16 @@ class ConversationHistoryPage:
     messages: tuple[ConversationMessage, ...]
     active_turn: ConversationTurn | None
     next_cursor: str | None
+    answers: tuple["ConversationHistoryAnswer", ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class ConversationHistoryAnswer:
+    """已持久化 Assistant Message 的来源与 Warning 快照。"""
+
+    message_id: UUID
+    sources: tuple[ConversationSource, ...]
+    warnings: tuple[str, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -397,6 +414,27 @@ def _validate_limit(limit: int, *, maximum: int = 100) -> int:
     return limit
 
 
+def _validate_source_url(source: ConversationSourceInput) -> None:
+    """持久化前拒绝不能安全作为公开来源链接的 URL。"""
+
+    if source.url is None:
+        return
+    if not isinstance(source.url, str) or any(character.isspace() for character in source.url):
+        raise ConversationValidationError("Source URL 无效")
+    try:
+        parsed = urlsplit(source.url)
+        hostname = parsed.hostname
+    except ValueError as error:
+        raise ConversationValidationError("Source URL 无效") from error
+    if (
+        parsed.scheme not in {"http", "https"}
+        or not hostname
+        or parsed.username is not None
+        or parsed.password is not None
+    ):
+        raise ConversationValidationError("Source URL 只能使用无 Credential 的 HTTP(S) 地址")
+
+
 class ConversationService:
     """协调 Thread / Turn / Message 生命周期与 Agent 外部调用。"""
 
@@ -569,6 +607,12 @@ class ConversationService:
 
         if not isinstance(answer, str) or not answer.strip():
             raise ConversationValidationError("assistant answer 不能为空")
+        for source in sources:
+            _validate_source_url(source)
+        try:
+            validate_citations(answer, sources)
+        except CitationValidationError as error:
+            raise ConversationValidationError("Answer Citation 与本轮来源不一致") from error
         now = _now(self._clock())
         with self._unit_of_work_factory() as unit_of_work:
             thread = self._get_active_thread(unit_of_work, account_id, thread_id, for_update=True)
@@ -598,7 +642,7 @@ class ConversationService:
             )
             persisted_sources = tuple(
                 ConversationSource(
-                    source_id=uuid4(),
+                    source_id=source.source_id or uuid4(),
                     assistant_message_id=assistant_message.id,
                     source_type=source.source_type,
                     provider=source.provider,
@@ -729,14 +773,22 @@ class ConversationService:
                 started.turn.id,
                 failure_code="AGENT_INVALID_RESPONSE",
             )
-        return self.complete_turn(
-            account_id,
-            thread_id,
-            started.turn.id,
-            answer=result.answer,
-            sources=result.sources,
-            warnings=result.warnings,
-        )
+        try:
+            return self.complete_turn(
+                account_id,
+                thread_id,
+                started.turn.id,
+                answer=result.answer,
+                sources=result.sources,
+                warnings=result.warnings,
+            )
+        except ConversationValidationError:
+            return self.fail_turn(
+                account_id,
+                thread_id,
+                started.turn.id,
+                failure_code="SOURCE_VALIDATION_FAILED",
+            )
 
     def delete_thread(self, account_id: UUID, thread_id: UUID) -> ConversationThread:
         """软删除 Thread；RUNNING Turn 存在时不删除。"""
@@ -810,11 +862,26 @@ class ConversationService:
                 before_sequence=before_sequence,
                 limit=limit,
             )
+            answers: list[ConversationHistoryAnswer] = []
+            for message in message_page.items:
+                if message.role is not ConversationMessageRole.ASSISTANT:
+                    continue
+                turn = unit_of_work.get_turn(account_id, thread_id, message.turn_id)
+                if turn is None:
+                    raise ConversationTurnNotFound(message.turn_id)
+                answers.append(
+                    ConversationHistoryAnswer(
+                        message.id,
+                        unit_of_work.list_sources_for_message(account_id, thread_id, message.id),
+                        turn.warnings,
+                    )
+                )
             return ConversationHistoryPage(
                 thread,
                 message_page.items,
                 running,
                 message_page.next_cursor,
+                tuple(answers),
             )
 
     def _get_active_thread(

@@ -98,6 +98,9 @@ def test_conversation_uow_recovers_account_owned_turn_and_source() -> None:
         history = recovered.history(account_id, thread.id)
         assert [message.content for message in history.messages] == ["分析 GOOG", "当前回答"]
         assert history.messages[1].role.value == "ASSISTANT"
+        assert history.answers[0].message_id == completed.assistant_message.id
+        assert history.answers[0].sources[0].provider_reference == "quote:GOOG"
+        assert history.answers[0].warnings == ("USAGE_NOT_REPORTED",)
         assert recovered.get_thread(account_id, thread.id).last_turn.warnings == (
             "USAGE_NOT_REPORTED",
         )

@@ -17,6 +17,7 @@ from position_pilot.api.routers.conversation import (
 from position_pilot.application.auth_service import Account
 from position_pilot.application.conversation_service import (
     ConversationCompletion,
+    ConversationHistoryAnswer,
     ConversationHistoryPage,
     ConversationMessage,
     ConversationMessageRole,
@@ -89,7 +90,9 @@ def make_completion() -> ConversationCompletion:
         turn_id=turn_id,
         sequence=2,
         role=ConversationMessageRole.ASSISTANT,
-        content="基于当前可用事实，建议重新评估风险。",
+        content=(
+            "基于当前可用事实，建议重新评估风险。 [source:80000000-0000-4000-8000-000000000001]"
+        ),
         created_at=NOW,
     )
     turn = ConversationTurn(
@@ -147,6 +150,7 @@ class FakeConversationService:
     thread: ConversationThread = field(default_factory=make_thread)
     error: Exception | None = None
     completion: ConversationCompletion | None = None
+    history_page: ConversationHistoryPage | None = None
     calls: list[tuple[str, UUID]] = field(default_factory=list)
 
     def start_thread(self, account_id: UUID, *, title: str | None = None) -> ConversationThread:
@@ -193,7 +197,7 @@ class FakeConversationService:
         self.calls.append(("history", account_id))
         if self.error is not None:
             raise self.error
-        return ConversationHistoryPage(self.thread, (), None, None)
+        return self.history_page or ConversationHistoryPage(self.thread, (), None, None)
 
     def ask(
         self,
@@ -297,6 +301,146 @@ def test_thread_lifecycle_uses_cookie_account_and_exposes_stable_shapes(
     assert all(account_id == ACCOUNT_ID for _, account_id in service.calls)
 
 
+def test_get_messages_recovers_persisted_answer_sources_and_citations(
+    api_client: tuple[TestClient, FakeAuthService, FakeConversationService],
+) -> None:
+    """刷新后仍能取得已持久化 Answer V2 的来源、引用与 Warning。"""
+
+    client, _, service = api_client
+    completed = make_completion()
+    assert completed.assistant_message is not None
+    service.history_page = ConversationHistoryPage(
+        completed.thread,
+        (completed.user_message, completed.assistant_message),
+        None,
+        None,
+        (
+            ConversationHistoryAnswer(
+                completed.assistant_message.id,
+                completed.sources,
+                completed.warnings,
+            ),
+        ),
+    )
+
+    response = client.get(
+        f"/v1/threads/{completed.thread.id}/messages",
+        headers=auth_headers(),
+    )
+
+    assert response.status_code == 200
+    answer = response.json()["answers"][str(completed.assistant_message.id)]
+    assert answer["sources"][0]["source_id"] == str(completed.sources[0].source_id)
+    assert answer["citations"][0]["source_id"] == str(completed.sources[0].source_id)
+    assert answer["warnings"] == ["USAGE_UNKNOWN"]
+
+
+def test_portfolio_only_answer_needs_no_inline_citation(
+    api_client: tuple[TestClient, FakeAuthService, FakeConversationService],
+) -> None:
+    """Portfolio Context 没有暴露给模型的 Source ID，不能强制模型引用。"""
+
+    client, _, service = api_client
+    completed = make_completion()
+    assert completed.assistant_message is not None
+    assistant = replace(completed.assistant_message, content="当前 Portfolio 没有 GOOG 持仓。")
+    portfolio_source = replace(
+        completed.sources[0],
+        assistant_message_id=assistant.id,
+        source_type="PORTFOLIO_SNAPSHOT",
+        provider="POSITIONPILOT",
+        provider_reference=None,
+    )
+    service.completion = replace(
+        completed,
+        assistant_message=assistant,
+        sources=(portfolio_source,),
+    )
+
+    posted = client.post(
+        f"/v1/threads/{completed.thread.id}/messages",
+        headers=auth_headers(),
+        json={
+            "content": "当前持仓？",
+            "client_request_id": str(uuid4()),
+            "expected_thread_revision": 0,
+        },
+    )
+    assert posted.status_code == 200
+    assert posted.json()["answer"]["citations"] == []
+    service.history_page = ConversationHistoryPage(
+        completed.thread,
+        (completed.user_message, assistant),
+        None,
+        None,
+        (ConversationHistoryAnswer(assistant.id, (portfolio_source,), completed.warnings),),
+    )
+    recovered = client.get(
+        f"/v1/threads/{completed.thread.id}/messages",
+        headers=auth_headers(),
+    )
+    assert recovered.status_code == 200
+    assert recovered.json()["answers"][str(assistant.id)]["citations"] == []
+
+
+def test_old_message_without_inline_citation_recovers_with_warning(
+    api_client: tuple[TestClient, FakeAuthService, FakeConversationService],
+) -> None:
+    """早期已保存的 Source Reference 不伪装成新 Citation，也不阻止历史恢复。"""
+
+    client, _, service = api_client
+    completed = make_completion()
+    assert completed.assistant_message is not None
+    assistant = replace(completed.assistant_message, content="旧版回答没有 inline Citation。")
+    service.history_page = ConversationHistoryPage(
+        completed.thread,
+        (completed.user_message, assistant),
+        None,
+        None,
+        (ConversationHistoryAnswer(assistant.id, completed.sources, ()),),
+    )
+
+    response = client.get(
+        f"/v1/threads/{completed.thread.id}/messages",
+        headers=auth_headers(),
+    )
+
+    assert response.status_code == 200
+    answer = response.json()["answers"][str(assistant.id)]
+    assert answer["citations"] == []
+    assert answer["warnings"] == ["CITATION_NOT_VERIFIED"]
+
+
+def test_legacy_completed_turn_replay_recovers_without_inline_citation(
+    api_client: tuple[TestClient, FakeAuthService, FakeConversationService],
+) -> None:
+    """T3 已持久化 Turn 的幂等重放应与历史读取一样可恢复。"""
+
+    client, _, service = api_client
+    completed = make_completion()
+    assert completed.assistant_message is not None
+    service.completion = replace(
+        completed,
+        assistant_message=replace(
+            completed.assistant_message, content="旧版回答没有 inline Citation。"
+        ),
+    )
+
+    response = client.post(
+        f"/v1/threads/{service.thread.id}/messages",
+        headers=auth_headers(),
+        json={
+            "content": "分析 GOOG",
+            "client_request_id": str(completed.turn.client_request_id),
+            "expected_thread_revision": 0,
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["answer"]["citations"] == []
+    assert "CITATION_NOT_VERIFIED" in response.json()["answer"]["warnings"]
+
+
 def test_post_message_maps_answer_v2_without_fabricated_citations_or_candidate(
     api_client: tuple[TestClient, FakeAuthService, FakeConversationService],
 ) -> None:
@@ -315,11 +459,15 @@ def test_post_message_maps_answer_v2_without_fabricated_citations_or_candidate(
     )
     assert response.status_code == 200
     payload = response.json()
-    assert payload["assistant_message"]["content"] == "基于当前可用事实，建议重新评估风险。"
+    assert payload["assistant_message"]["content"] == (
+        "基于当前可用事实，建议重新评估风险。 [source:80000000-0000-4000-8000-000000000001]"
+    )
     assert payload["answer"]["text"] == payload["assistant_message"]["content"]
     assert payload["answer"]["warnings"] == ["USAGE_UNKNOWN"]
     assert payload["answer"]["sources"][0]["provider"] == "ALPACA_MARKET_DATA"
-    assert payload["answer"]["citations"] == []
+    assert payload["answer"]["citations"] == [
+        {"source_id": "80000000-0000-4000-8000-000000000001", "locator": None}
+    ]
     assert payload["answer"]["candidate"] is None
     assert "account_id" not in payload
 

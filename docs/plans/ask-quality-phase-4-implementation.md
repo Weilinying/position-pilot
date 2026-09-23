@@ -2,7 +2,7 @@
 
 ## 1. 状态、目标与批准依据
 
-**Status:** HUMAN ACCEPTED — P4-T0 ～ P4-T3 COMPLETE，P4-T4A IN PROGRESS（2026-09-23）。
+**Status:** HUMAN ACCEPTED — P4-T0 ～ P4-T4A COMPLETE，P4-T5 CORE IN PROGRESS（2026-09-23）。
 P4-T2 已将 Production Bootstrap 切换为单一 PydanticAI Runtime；Current Runtime 只保留为回归基线。
 
 **Strategy Review Revision（2026-09-21）：** Strategy Candidate 仅承载跨会话 Persistent User Intent；
@@ -22,10 +22,9 @@ Phase 4 的目标是交付第一个完整 Ask 闭环：4A 完成 PydanticAI、�
 Toolset、现有 Financial Data 与 Citation；Open Research 经过独立 Gate 后接入。通过固定 Eval 后，
 4B 再完成最小 Persistent User Intent 生命周期。它不是完整 Memory、插件平台或投资复盘 Milestone。
 
-截至 P4-T2，Production Agent 已经通过 Application-owned `AgentRuntime` Port 使用 PydanticAI 原生
-Tool Loop；正式 API 仍只有无 Thread 的 deprecated `POST /v1/investment/questions`，前端历史只存在
-当前 Tab，Production Database 尚无 Conversation 或 Strategy 表。Phase 3 `tests/spikes/` 只能作为
-Contract 与测试证据，不得被 Production 代码导入。
+截至 P4-T4A，Production Agent 已通过 Application-owned `AgentRuntime` Port 使用 PydanticAI 原生
+Tool Loop；Conversation Thread / Turn / Message / Source 已由 PositionPilot 持有，前端使用 Thread API。
+Strategy 表仍待 4B。Phase 3 `tests/spikes/` 只能作为 Contract 与测试证据，不得被 Production 代码导入。
 
 ### 1.1 本次 Human Review 需要明确批准的产品选择
 
@@ -566,6 +565,15 @@ Source / Citation 的完整校验与前端恢复属于 P4-T4A。
 
 **验收：** Conversation 与现有 Financial Data 场景取得完整执行能力；未观察来源与外部指令被拒绝；
 不需要 Brave Key，Open Research Provider 尚未批准也不阻塞本 Task。
+
+**完成记录（2026-09-23）：** 前端已切换 Thread API，支持列表、分页恢复、切换、删除、冲突刷新与
+Account 切换隔离；现有 Financial Data Tool 保持经 Catalog 暴露。Conversation Answer 绑定本轮
+Tool Observation 的 Source ID，News 以实际文章 URL / Metadata 建立来源，inline Citation 在写入前
+验证，未观察或重复 Source ID、虚构 URL 拒绝；旧 T3 已存回答只作为 `CITATION_NOT_VERIFIED` 恢复。
+ResearchGateway 只实现 Provider-neutral Port 与 Fake Security / Failure 测试，未接真实开放搜索、网页
+读取或模型 Research Tool；T4R 仍为独立 `DEFERRED / NOT_MEASURED`。定向 Backend 147 passed、
+PostgreSQL Integration 2 passed，Frontend Conversation / Refresh / Chart 检查、Ruff / mypy 与
+Automated Review 通过；真实 Browser / 质量 Eval 属 T5。
 
 ### P4-T4R — 独立 Research Decision / Adapter（不阻塞 Runtime Migration）
 

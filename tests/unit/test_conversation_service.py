@@ -278,10 +278,14 @@ class RecordingAgent:
         *,
         answer: str = "已结合当前事实分析。",
         warnings: tuple[str, ...] = (),
+        source_url: str | None = None,
+        source_id: UUID | None = None,
     ) -> None:
         self.store = store
         self.answer_text = answer
         self.warnings = warnings
+        self.source_url = source_url
+        self.source_id = source_id
         self.calls: list[tuple[UUID, UUID, str, tuple[ConversationHistoryMessage, ...]]] = []
 
     def answer(
@@ -301,6 +305,8 @@ class RecordingAgent:
                     source_type="CURRENT_QUOTE",
                     provider="fixture",
                     provider_reference="GOOG:quote",
+                    url=self.source_url,
+                    source_id=self.source_id,
                 ),
             ),
             warnings=self.warnings,
@@ -370,6 +376,84 @@ def test_idempotent_retry_returns_same_turn_without_second_agent_call() -> None:
     assert replay.assistant_message == first.assistant_message
     assert replay.warnings == first.warnings == ("USAGE_NOT_REPORTED",)
     assert len(agent.calls) == 1
+
+
+@pytest.mark.parametrize(
+    ("source_url", "source_id"),
+    (
+        ("javascript:alert(1)", None),
+        (None, UUID("80000000-0000-4000-8000-000000000001")),
+    ),
+)
+def test_invalid_source_fails_turn_without_persisting_assistant(
+    source_url: str | None,
+    source_id: UUID | None,
+) -> None:
+    """URL 或 Citation Contract 失败不得留下 RUNNING Turn 或假 Assistant。"""
+
+    store = FakeConversationStore()
+    service = make_service(
+        store,
+        agent=RecordingAgent(store, source_url=source_url, source_id=source_id),
+    )
+    thread = service.start_thread(ACCOUNT_ID)
+
+    completed = service.ask(
+        ACCOUNT_ID,
+        thread.id,
+        portfolio_user_id=PORTFOLIO_USER_ID,
+        question="GOOG 有什么变化？",
+        client_request_id=uuid4(),
+        expected_thread_revision=0,
+    )
+
+    assert completed.turn.status is ConversationTurnStatus.FAILED
+    assert completed.turn.failure_code == "SOURCE_VALIDATION_FAILED"
+    assert completed.assistant_message is None
+    assert [message.role for message in store.messages.values()] == [ConversationMessageRole.USER]
+
+
+def test_duplicate_source_ids_fail_turn_without_persisting_assistant() -> None:
+    """重复 Source ID 应作为验证失败处理，而非数据库异常。"""
+
+    class DuplicateSourceAgent(RecordingAgent):
+        def answer(
+            self,
+            *,
+            account_id: UUID,
+            portfolio_user_id: UUID,
+            question: str,
+            history: tuple[ConversationHistoryMessage, ...],
+        ) -> ConversationAgentResult:
+            result = super().answer(
+                account_id=account_id,
+                portfolio_user_id=portfolio_user_id,
+                question=question,
+                history=history,
+            )
+            return ConversationAgentResult(
+                answer=f"已核对行情。[source:{self.source_id}]",
+                sources=(result.sources[0], result.sources[0]),
+            )
+
+    store = FakeConversationStore()
+    source_id = UUID("80000000-0000-4000-8000-000000000001")
+    service = make_service(store, agent=DuplicateSourceAgent(store, source_id=source_id))
+    thread = service.start_thread(ACCOUNT_ID)
+
+    completed = service.ask(
+        ACCOUNT_ID,
+        thread.id,
+        portfolio_user_id=PORTFOLIO_USER_ID,
+        question="GOOG 行情如何？",
+        client_request_id=uuid4(),
+        expected_thread_revision=0,
+    )
+
+    assert completed.turn.status is ConversationTurnStatus.FAILED
+    assert completed.turn.failure_code == "SOURCE_VALIDATION_FAILED"
+    assert completed.assistant_message is None
+    assert [message.role for message in store.messages.values()] == [ConversationMessageRole.USER]
 
 
 def test_revision_and_running_conflicts_are_account_owned() -> None:

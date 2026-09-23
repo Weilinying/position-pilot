@@ -34,7 +34,7 @@ from position_pilot.domain.market_data import (
     MarketDataStatus,
     MarketQuote,
 )
-from position_pilot.domain.news import NewsResult, NewsStatus, RecentNews
+from position_pilot.domain.news import NewsArticle, NewsResult, NewsStatus, RecentNews
 from position_pilot.domain.portfolio import CashBalance, PortfolioState
 
 USER_ID = UUID("00000000-0000-0000-0000-000000000001")
@@ -96,6 +96,24 @@ class FixedFinancialData:
     def get_current_market_context(self) -> MarketDataResult[MarketRegimeContext]:
         self.market_context_calls += 1
         return MarketDataResult.failure(MarketDataStatus.NO_DATA, "无市场状态")
+
+
+class NewsReadyData(FixedFinancialData):
+    """提供一篇带真实 URL 的 Fixture 报道。"""
+
+    def get_recent_news(self, query: NewsQuery) -> NewsResult[RecentNews]:
+        article = NewsArticle(
+            article_id="alpaca-article-1",
+            headline="GOOG 报道标题",
+            summary="报道摘要",
+            author=None,
+            url="https://example.com/goog-news",
+            source="Example News",
+            symbols=("GOOG",),
+            created_at=NOW,
+            updated_at=NOW,
+        )
+        return NewsResult.success(RecentNews(query.ticker, (article,), "ALPACA_NEWS", NOW))
 
 
 @dataclass(slots=True)
@@ -199,6 +217,94 @@ def test_quote_binding_executes_application_tool_and_registers_real_source() -> 
         "PORTFOLIO_SNAPSHOT",
         "CURRENT_QUOTE",
     ]
+
+
+def test_conversation_quote_exposes_observed_source_id_for_inline_citation() -> None:
+    def run(request: AgentRunRequest) -> AgentRunResult:
+        assert "[source:<source_id>]" in request.messages[0].content
+        binding = next(
+            item for item in request.tools if item.definition.name == "get_current_quote"
+        )
+        arguments = {"ticker": "GOOG", "request_purpose": "INFORMATION_RETRIEVAL"}
+        observation = binding.executor(arguments)
+        source_id = str(observation.sources[0]["source_id"])
+        candidate = json.dumps(
+            {
+                "answer": f"GOOG 报价已取得。[source:{source_id}]",
+                "source_refs": [{"type": "CURRENT_QUOTE", "ticker": "GOOG"}],
+            }
+        )
+        return _completed(candidate, sources=observation.sources)
+
+    result = _agent(ScriptedNativeRuntime(run), FixedFinancialData()).answer_with_history(
+        USER_ID, "GOOG 当前价格是多少？", ()
+    )
+
+    assert isinstance(result, InvestmentAnswer)
+    assert result.sources[0].source_id is not None
+    assert f"[source:{result.sources[0].source_id}]" in result.answer
+
+
+def test_conversation_missing_citation_uses_one_repair_without_new_tool() -> None:
+    observed_source_id: str | None = None
+
+    def run(request: AgentRunRequest) -> AgentRunResult:
+        nonlocal observed_source_id
+        if observed_source_id is None:
+            binding = next(
+                item for item in request.tools if item.definition.name == "get_current_quote"
+            )
+            observation = binding.executor(
+                {"ticker": "GOOG", "request_purpose": "INFORMATION_RETRIEVAL"}
+            )
+            observed_source_id = str(observation.sources[0]["source_id"])
+            candidate = _candidate({"type": "CURRENT_QUOTE", "ticker": "GOOG"})
+            return _completed(candidate, sources=observation.sources)
+        assert request.tools == ()
+        assert observed_source_id in request.messages[-1].content
+        return _completed(
+            json.dumps(
+                {
+                    "answer": f"修复后的报价说明。[source:{observed_source_id}]",
+                    "source_refs": [{"type": "CURRENT_QUOTE", "ticker": "GOOG"}],
+                }
+            )
+        )
+
+    runtime = ScriptedNativeRuntime(run)
+    result = _agent(runtime, FixedFinancialData()).answer_with_history(
+        USER_ID, "GOOG 当前价格是多少？", ()
+    )
+
+    assert isinstance(result, InvestmentAnswer)
+    assert len(runtime.requests) == 2
+    assert observed_source_id is not None
+    assert f"[source:{observed_source_id}]" in result.answer
+
+
+def test_conversation_news_source_is_bound_to_observed_article_url() -> None:
+    def run(request: AgentRunRequest) -> AgentRunResult:
+        binding = next(item for item in request.tools if item.definition.name == "get_recent_news")
+        observation = binding.executor({"ticker": "GOOG"})
+        source = observation.sources[0]
+        candidate = json.dumps(
+            {
+                "answer": f"来源报道声称有新进展。[source:{source['source_id']}]",
+                "source_refs": [{"type": "RECENT_NEWS", "ticker": "GOOG"}],
+            }
+        )
+        return _completed(candidate, sources=observation.sources)
+
+    data = NewsReadyData()
+    result = _agent(ScriptedNativeRuntime(run), data).answer_with_history(
+        USER_ID, "GOOG 近期有什么报道？", ()
+    )
+
+    assert isinstance(result, InvestmentAnswer)
+    assert len(result.sources) == 1
+    assert result.sources[0].url == "https://example.com/goog-news"
+    assert result.sources[0].title == "GOOG 报道标题"
+    assert result.sources[0].provider_reference == "alpaca-article-1"
 
 
 def test_discretionary_quote_automatically_adds_required_market_context() -> None:
