@@ -174,8 +174,20 @@ AQ07 的 Citation Prompt 澄清已通过一次真实请求回归，但回答质�
 已增加仅限 Eval 的 AQ07 30/60 秒诊断入口，逐次记录 Model 请求、Tool 执行、Final Output
 Tool 是否出现及耗时；它使用独立 Artifact，不能计入 4A Primary 成功率，也不会修改 Production
 30 秒 Ceiling。Quote 内自动获取的 Market Context 计入 Quote 的聚合执行耗时，单独的关联
-Tool 名称会记录，但不伪称有独立的内部耗时。在线诊断尚待用户本地执行；结果返回前不改变
-预算或 Output Contract。
+Tool 名称会记录，但不伪称有独立的内部耗时。
+
+用户已运行 `p4-4a-aq07-timeout-diagnostic/60s`：AQ07 `COMPLETED / OK`，无 Repair，
+Native Case 耗时 `29.01s`；首次模型请求 `6.17s` 后调用 Quote、History、News，
+Quote 自动携带 Market Context，三个外层 Tool 执行均少于 `1ms`；工具返回后的第二次模型
+请求耗时 `22.80s`，成功调用 Final Output Tool。说明这一轮主要耗时在第二次模型生成，
+不是 Fixture Tool、Source Validation 或 Repair。Usage / Cost 仍为 `UNKNOWN`。
+该 Run 配置的是 **Eval-only 60 秒**，虽在 30 秒内完成，但不能证明 Production 30 秒
+Ceiling 稳定足够；此前同模型同 Case 的 30 秒失败仍保留。诊断回答已给出支持与暂缓加仓的
+条件，并保持策略缺失为 UNKNOWN；但只讨论现有 LONG_TERM 追加，没有完成计划要求的
+假设性 SWING 分支，且“LONG_TERM 持仓逻辑尚未被破坏”缺少已确认 Thesis 依据。
+因此正式 AQ07 Human Rubric 与 4A Gate 继续 `PENDING`，不得把诊断成功计作 Primary PASS。
+需要使用同一诊断入口完成 30 秒配对观察，再决定是否提出预算 Decision Proposal；
+结果返回前不改变 Production 预算或 Output Contract。
 
 Output Tool 基本参数形状不合法时，Framework 没有可交给 Application Repair 的候选；
 该失败明确记录为 `INVALID_PROVIDER_RESPONSE`，不添加隐藏重试或 JSON 文本兜底。
