@@ -50,6 +50,12 @@ Run 在同一 Event Loop 内创建、使用并关闭 Provider Client；连续调
 Budget 仍需分别评估；先做最小定向在线复测，暂不进行 r2 / r3 或完整 Primary 重跑，也不把
 Adapter Bug 判为 PydanticAI 架构限制。
 
+修复后用户本地运行 `p4-4a-client-lifecycle / r1`，只选 AQ08、AQ20，Revision 为
+`baf590341af60d2daeb717bd25ba235a93a2b888-dirty`。两例均 `COMPLETED / OK`、无 Tool Call、
+无 Repair，请求成功率 `2 / 2`；Latency 分别为 `21224.5 ms`、`2592.55 ms`，Usage 仍为
+`UNKNOWN`。这证明同一 Runtime 的两次连续 No-tool 在线调用可完成，**尚未验证**此前失败的
+AQ07 / AQ10、Tool Loop、多轮历史或 r1 全量质量。两个回答仍保留 Human Rubric `PENDING`。
+
 ## 4. 尚未取得的 4A 证据
 
 | Gate / 指标 | 当前状态 | 收口要求 |
@@ -67,8 +73,8 @@ AQ06 按 [金额分析规则修订](../ask-quality-policy-revision-2026-09-20.md
 
 ## 5. 下一步与 Human Gate
 
-先由用户在本地做连续调用的最小定向在线复测，确认客户端生命周期修复；再对残留的
-30 秒 Wall-clock、Tool-call Budget 和其他失败做分层 RCA。之后完成必要的有效
+先由用户在本地对此前失败的 AQ07 / AQ10 做最小定向在线复测，覆盖 Tool Loop 与多轮历史；
+再对残留的 30 秒 Wall-clock、Tool-call Budget 和其他失败做分层 RCA。之后完成必要的有效
 `r1`、`r2`、`r3` 真实模型 Run；命令与 Artifact 结构见
 [Evaluation README](../README.md#phase-4-4a-core-eval)。收到 `manifest.json`、`cases.jsonl`、
 `summary.json` 后复核 Tool Selection / Arguments、Conversation 指代与预算更正、Source / Citation、
