@@ -187,6 +187,13 @@ class NativeInvestmentAgent:
             "DISCRETIONARY_CURRENT_RISK_ACTION，本次 Quote Observation 的 "
             "required_market_context 已包含必要的 Market Context；不要为同一问题重复调用 "
             "get_market_context。若 required_market_context 未成功，须按失败状态保持 UNKNOWN。"
+            "\n缺少已确认 Strategy、风险预算或交易计划时，仍须先基于已知 Portfolio、"
+            "当前市场事实与已成功 Tool 结果完成条件式分析：说明哪些已知条件支持继续评估加仓，"
+            "哪些风险或未知条件支持暂缓，并按已知 Position Type 区分分析。"
+            "若加仓目的未确认，可比较 LONG_TERM 追加与 SWING 新仓的条件，"
+            "但不得把假设分支说成用户已有仓位或已确认策略。"
+            "随后只澄清会改变判断的关键个人条件；不得因缺少策略把整个判断退回给用户，"
+            "也不得代用户创造目标仓位、价格触发条件或持久 Strategy。"
         )
         if citation_mode:
             prompt += (

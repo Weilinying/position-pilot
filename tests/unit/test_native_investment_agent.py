@@ -180,6 +180,27 @@ def test_no_tool_run_preserves_existing_answer_contract() -> None:
     assert data.quote_calls == []
 
 
+def test_missing_strategy_does_not_end_conditional_analysis_prompt() -> None:
+    """无持久策略时仍要求使用已知事实分析，而不代用户创建策略。"""
+
+    def run(request: AgentRunRequest) -> AgentRunResult:
+        prompt = request.messages[0].content
+        assert prompt is not None
+        assert "不得因缺少策略把整个判断退回给用户" in prompt
+        assert "按已知 Position Type 区分分析" in prompt
+        assert "不得把假设分支说成用户已有仓位或已确认策略" in prompt
+        assert "不得代用户创造目标仓位、价格触发条件或持久 Strategy" in prompt
+        return _completed(_candidate({"type": "PORTFOLIO_SNAPSHOT"}))
+
+    result = _agent(ScriptedNativeRuntime(run), FixedFinancialData()).answer_with_history(
+        USER_ID,
+        "我没有既定策略，现在应该继续分析吗？",
+        (),
+    )
+
+    assert isinstance(result, InvestmentAnswer)
+
+
 def test_quote_binding_executes_application_tool_and_registers_real_source() -> None:
     def run(request: AgentRunRequest) -> AgentRunResult:
         binding = next(

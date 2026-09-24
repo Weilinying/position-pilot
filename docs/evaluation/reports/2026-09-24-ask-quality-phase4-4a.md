@@ -1,6 +1,6 @@
 # Ask Quality Phase 4 — 4A Core Evidence Report
 
-**Status:** AQ07 CITATION RCA / PROMPT RETEST PENDING（2026-09-24）；
+**Status:** AQ07 REQUEST RECOVERED / ANSWER QUALITY RETEST PENDING（2026-09-24）；
 不是 4A Gate PASS，也尚未提交最终 Human Review。
 
 ## 1. 范围与历史边界
@@ -132,6 +132,17 @@ Usage / Cost 仍为 `UNKNOWN`，Human Rubric 与 Critical Gate 仍为 `NOT_EVALU
 该原始结果不改写。后续仅澄清现有 Prompt 与 Repair 指令：Portfolio 事实可在 `source_refs`
 声明，但不得使用伪造的 inline Source Token；Citation Validator 和 Safety Ceiling 不变。
 
+用户随后运行 `p4-4a-aq07-citation-fix / r1`（原始 Artifact：
+`build/evaluation-runs/p4-4a-aq07-citation-fix/r1/`）。AQ07 请求 `COMPLETED / OK`，
+Tool Trace 为 Quote、自动 Market Context、Price History、News 共 4 次，所有来源引用有效；
+没有 Repair，耗时 `25.63s`，Usage / Cost 仍为 `UNKNOWN`。这是完整 AQ07 技术链路的单次成功，
+不代表回答质量或 4A Gate 通过；其余 12 个 Core Case 在此定向 Run 均为 `NOT_RUN`。
+本轮回答正确区分了已知事实与 UNKNOWN，也未伪造 Strategy，但在列出事实后主要要求用户自行
+判断是否加仓，缺少已批准 AQ07 目标要求的 LONG_TERM / 假设性 SWING 条件分析。
+AU / EI / CP 的正式 Human Rubric 仍为 `PENDING`，不能将该质量缺口写成已通过。
+后续仅在 Production Native Agent Prompt 增加通用条件分析要求，不修改冻结的 Current Runtime
+Prompt、Confirmed Strategy 权威或交易建议持久化规则；原始在线结果保持不变。
+
 ## 4. 尚未取得的 4A 证据
 
 | Gate / 指标 | 当前状态 | 收口要求 |
@@ -149,10 +160,11 @@ AQ06 按 [金额分析规则修订](../ask-quality-policy-revision-2026-09-20.md
 
 ## 5. 下一步与 Human Gate
 
-本轮 AQ07 的 Output Tool 候选没有外层 JSON 语法错误，但失败转为伪造 Portfolio inline
-Citation；Prompt 澄清已有离线测试，真实 AQ07 复测仍待执行。下一步仅定向复测 AQ07；
-若仍失败，继续按 Model / Tool / Validation / Repair 阶段归因，必要时仅在 Eval 做 30/60 秒
-对照，不调整 Production 超时。
+AQ07 的 Citation Prompt 澄清已通过一次真实请求回归，但回答质量仍需复核。
+通用条件分析 Prompt 的离线 Contract 测试已通过；下一步只定向复测 AQ07，审查其是否在
+保留 UNKNOWN 与不创建 Strategy 的前提下完成 LONG_TERM / 假设性 SWING 的条件判断。
+若请求再次失败，继续按 Model / Tool / Validation / Repair 阶段归因；只有确有必要时才在 Eval
+做 30/60 秒对照，不调整 Production 超时。
 Output Tool 基本参数形状不合法时，Framework 没有可交给 Application Repair 的候选；
 该失败明确记录为 `INVALID_PROVIDER_RESPONSE`，不添加隐藏重试或 JSON 文本兜底。
 必要的 Safety Ceiling 或 Tool Contract 调整须遵守已批准计划的 Human Review 边界。
