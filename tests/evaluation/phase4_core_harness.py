@@ -56,7 +56,10 @@ from position_pilot.application.investment_agent import (
     InvestmentRequestFailure,
 )
 from position_pilot.application.llm import LLMMessage, LLMRole
-from position_pilot.application.native_investment_agent import NativeInvestmentAgent
+from position_pilot.application.native_investment_agent import (
+    DEFAULT_WALL_CLOCK_BUDGET_SECONDS,
+    NativeInvestmentAgent,
+)
 from position_pilot.config import Settings
 from position_pilot.domain.portfolio import CashBalance, PortfolioState
 from position_pilot.integrations.pydantic_ai_runtime import create_pydantic_ai_runtime
@@ -376,7 +379,12 @@ def _portfolio_state(case: AskQualityCase) -> PortfolioState:
     )
 
 
-def build_native_agent(case: AskQualityCase, runtime: AgentRuntime) -> NativeInvestmentAgent:
+def build_native_agent(
+    case: AskQualityCase,
+    runtime: AgentRuntime,
+    *,
+    wall_clock_budget_seconds: float = DEFAULT_WALL_CLOCK_BUDGET_SECONDS,
+) -> NativeInvestmentAgent:
     """用固定 Fixture 创建 PydanticAI-backed NativeInvestmentAgent。"""
 
     state = _portfolio_state(case)
@@ -390,6 +398,7 @@ def build_native_agent(case: AskQualityCase, runtime: AgentRuntime) -> NativeInv
         news=news,
         market_context=market_context,
         clock=lambda: NOW + timedelta(minutes=30),
+        wall_clock_budget_seconds=wall_clock_budget_seconds,
     )
 
 
@@ -477,11 +486,15 @@ def _aggregate_usage(values: Sequence[dict[str, object]]) -> dict[str, int | str
 def execute_native_case(
     case: AskQualityCase,
     runtime: RecordingAgentRuntime,
+    *,
+    wall_clock_budget_seconds: float = DEFAULT_WALL_CLOCK_BUDGET_SECONDS,
 ) -> dict[str, object]:
     """执行一条 Native Case，并把每一轮的既有 User / Assistant Answer 注入历史。"""
 
     target = _target(case.id)
-    agent = build_native_agent(case, runtime)
+    agent = build_native_agent(
+        case, runtime, wall_clock_budget_seconds=wall_clock_budget_seconds
+    )
     history: list[LLMMessage] = []
     turns: list[dict[str, object]] = []
     for turn_index, question in enumerate(case.executable_questions, start=1):

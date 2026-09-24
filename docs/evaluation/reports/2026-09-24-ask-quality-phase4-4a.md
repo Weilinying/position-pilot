@@ -165,6 +165,18 @@ AQ07 的 Citation Prompt 澄清已通过一次真实请求回归，但回答质�
 保留 UNKNOWN 与不创建 Strategy 的前提下完成 LONG_TERM / 假设性 SWING 的条件判断。
 若请求再次失败，继续按 Model / Tool / Validation / Repair 阶段归因；只有确有必要时才在 Eval
 做 30/60 秒对照，不调整 Production 超时。
+
+用户在 `p4-4a-aq07-conditional-analysis / r1` 定向复测后，AQ07 再次 `REQUEST_FAILED`：
+四次 Fixture Tool 均返回 `OK`，但完整 Native Run 在 `30.04s` 达到
+`WALL_CLOCK_BUDGET_EXCEEDED`，没有 Final Candidate，`repair_count=0`。
+因此该次没有可评价的回答，不能把失败归因为 Source/Citation 或输出格式，也不能以此前
+`25.63s` 的单次成功证明 30 秒预算稳定足够。原始 Artifact 保持不变。
+已增加仅限 Eval 的 AQ07 30/60 秒诊断入口，逐次记录 Model 请求、Tool 执行、Final Output
+Tool 是否出现及耗时；它使用独立 Artifact，不能计入 4A Primary 成功率，也不会修改 Production
+30 秒 Ceiling。Quote 内自动获取的 Market Context 计入 Quote 的聚合执行耗时，单独的关联
+Tool 名称会记录，但不伪称有独立的内部耗时。在线诊断尚待用户本地执行；结果返回前不改变
+预算或 Output Contract。
+
 Output Tool 基本参数形状不合法时，Framework 没有可交给 Application Repair 的候选；
 该失败明确记录为 `INVALID_PROVIDER_RESPONSE`，不添加隐藏重试或 JSON 文本兜底。
 必要的 Safety Ceiling 或 Tool Contract 调整须遵守已批准计划的 Human Review 边界。

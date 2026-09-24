@@ -6,12 +6,15 @@ from pathlib import Path
 from typing import Any, cast
 
 import pytest
+from ask_quality_cases import CASES_BY_ID
 from ask_quality_phase4_manifest import PHASE4_CORE_CASE_IDS, PHASE4_RESEARCH_CASE_IDS
+from behavioral_harness import USER_ID
 from phase4_core_harness import (
     CORE_REPEAT_CASE_IDS,
     PRIMARY_CASE_IDS,
     RUN_PHASE4_EVAL_ENV,
     RecordingAgentRuntime,
+    build_native_agent,
     run_phase4_evaluation,
     selected_phase4_case_ids,
 )
@@ -67,6 +70,23 @@ def test_offline_manifest_keeps_core_not_run_and_research_not_measured() -> None
         for case_id in PHASE4_RESEARCH_CASE_IDS
     )
     assert summary["research_gate"]["evidence_status"] == "NOT_MEASURED"
+
+
+def test_eval_only_agent_budget_override_does_not_change_default() -> None:
+    """60 秒只通过诊断构造参数生效，普通 4A Fixture 仍采用 30 秒。"""
+
+    default_runtime = ScriptedRuntime()
+    diagnostic_runtime = ScriptedRuntime()
+    case = CASES_BY_ID["AQ07"]
+    build_native_agent(case, default_runtime).answer_with_history(
+        USER_ID, case.executable_questions[0], ()
+    )
+    build_native_agent(
+        case, diagnostic_runtime, wall_clock_budget_seconds=60.0
+    ).answer_with_history(USER_ID, case.executable_questions[0], ())
+
+    assert default_runtime.requests[0].budget.wall_clock_seconds == 30.0
+    assert diagnostic_runtime.requests[0].budget.wall_clock_seconds == 60.0
 
 
 def test_fixture_runner_uses_native_agent_and_preserves_unknown_usage(tmp_path: Path) -> None:
