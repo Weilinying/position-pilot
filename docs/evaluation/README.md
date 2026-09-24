@@ -200,6 +200,48 @@ Critical Failure、Protected Set 与 Repeat Gate 必须根据 Artifact 人工复
 Artifact 的 Manifest 包含 0.1 完整 Case / Rubric Fixture、0.2 Target Manifest、固定模型与 Endpoint
 元数据；Run Record 另外保存实际 Conversation Citation-mode System Prompt 的 Hash。
 
+### Phase 4 Final Output Tool 独立能力实验
+
+`tests/evaluation/test_phase4_final_output_spike_online.py` 是测试专用的配对入口，不修改 Production
+Agent、当前 JSON 输出路径或 30 秒 Wall-clock Ceiling。它在同一固定 GOOG Quote Fixture、模型、
+Endpoint 与预算下，依次测试与当前机制同类的 JSON 文本输出协议和 PydanticAI `ToolOutput`；
+它不是完整 Production Agent 路径的 A/B Eval。两臂都必须先调用只读
+`get_fixture_quote`；PositionPilot 的 Source / inline Citation 校验保持独立。`ToolOutput` 会改变
+Provider Request 中的输出工具 Schema / Tool Choice，因此本实验仅比较可观察结果，不主张两条路径
+内部 Payload 完全相同。单次配对 Smoke 也不是可靠性或成本统计结论。
+输出工具仅使用最小 `answer / source_refs` Schema；它通过不证明完整生产 Schema 与 AQ07 Prompt 兼容。
+本实验显式设置 `ToolOutput.max_retries=0`，使两臂都只使用 Application 层一次 Repair；
+`framework_output_retry_count` 仅用于确认没有隐藏重试，不代表已评估框架原生 Retry 策略。
+
+在本地先按既有流程把 `.env` 中的 Credential 导入当前 Shell；Agent 不读取该文件。使用未存在的
+Artifact 目录执行：
+
+```bash
+RUN_PHASE4_FINAL_OUTPUT_SPIKE=1 \
+LLM_PROVIDER=ALIYUN_MODEL_STUDIO \
+LLM_MODEL=qwen3.7-max \
+FINAL_OUTPUT_ARTIFACT_DIR=build/evaluation-runs/p4-final-output-spike/r1 \
+PYTHONPATH=backend:tests/evaluation \
+.venv/bin/pytest tests/evaluation/test_phase4_final_output_spike_online.py -m online -s -v
+```
+
+进程环境还须已有 `LLM_API_KEY` 与当前 Region 的 `LLM_BASE_URL`。每臂上限 30 秒、最多一次
+Application Repair，输出 `report.json`；标准输出只显示摘要。Artifact 记录首次输出合法性与错误类别、
+Repair 是否触发及其耗时、Framework Output Retry 次数、模型请求次数及各次耗时、工具调用、Token Usage
+（未报告则 `UNKNOWN`）、总耗时、成本 `UNKNOWN` 和原始固定 Fixture 候选。请勿把原始 Artifact 当作
+公开脱敏日志。`pytest PASSED` 只表示实验执行和记录完成；人工先核对金融 Tool → Final Output
+Tool 顺序、Source / Citation 合法性、两臂首次输出与最终输出、Repair、Latency、Token / Cost 可测性和
+Provider 错误。独立成功不代表 AQ07 修复或 4A Gate PASS。
+只有两个路径均产生有效首个输出且观测到正确 Tool 顺序，才能说该固定场景兼容；
+若 Usage 为 `UNKNOWN`，成本也保持 `UNKNOWN`，不据耗时推断费用。可测 Token 仅作为相对成本线索，
+正式费用比较仍需确定相同计费口径与重复样本。
+
+若 `ToolOutput` 在此通过，先提交 Production 输出机制的独立 Decision Proposal 供 Human Review；
+获批并实现后，使用原 `PHASE4_CASE_IDS=AQ07` 入口作完整 AQ07 回归，核对真实 Tool Trace、首次
+候选、Repair、Source / Citation 与 30 秒预算。若独立实验仍失败，先定位是 Provider Schema / Tool
+Choice、模型提前结束、结构格式、Source 校验还是超时；只有确有必要时才做仅限 Eval 的 30/60 秒
+对照，并分别记录首个模型输出、工具调用与 Repair 耗时，不直接提高 Production 上限。
+
 Ask Quality 的 Research Capability 指 Runtime 真实向 Agent 提供并允许使用的外部事实获取机制，
 可以是自定义 Search Tool、Provider / Model Native Web Search、Page Fetch 或 Multi-round Research
 Loop；模型训练知识不算 Search。Research Sufficiency 只评价本次 Runtime 实际可用能力的使用情况，

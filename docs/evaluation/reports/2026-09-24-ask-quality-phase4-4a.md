@@ -123,6 +123,11 @@ AQ06 按 [金额分析规则修订](../ask-quality-policy-revision-2026-09-20.md
 
 已确认 AQ07 的首次候选为非法 JSON，且 Repair 耗尽剩余 Wall-clock；先评审现有
 PydanticAI Final Output 能力与 M5 Provider Compatibility 证据，不再进行盲目付费复测。
+已新增测试专用的 JSON 文本 / PydanticAI Final Output Tool 配对入口，离线 Contract 已验证；
+真实 Qwen Endpoint 的 Tool Choice、输出合法性、请求次数、Usage 与耗时仍待用户本地在线验证。
+该独立 Smoke 不作为 AQ07 修复证据。若候选方案需要进入 Production，必须另行提交 Human Review；
+获批实现后再完整重跑 AQ07。若独立 Smoke 仍失败，先做分阶段归因，必要时仅在 Eval 进行
+30/60 秒对照，不调整 Production 超时。
 必要的 Safety Ceiling 或 Tool Contract 调整须遵守已批准计划的 Human Review 边界。
 之后完成必要的有效
 `r1`、`r2`、`r3` 真实模型 Run；命令与 Artifact 结构见
