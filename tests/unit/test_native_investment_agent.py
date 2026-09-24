@@ -190,6 +190,9 @@ def test_missing_strategy_does_not_end_conditional_analysis_prompt() -> None:
         assert "按已知 Position Type 区分分析" in prompt
         assert "不得把假设分支说成用户已有仓位或已确认策略" in prompt
         assert "不得代用户创造目标仓位、价格触发条件或持久 Strategy" in prompt
+        assert "不把碎股权限或实际可执行股数列为建议前置或关键澄清问题" in prompt
+        assert "账户 Cash 是 Ledger 事实，不等于用户本轮 Budget" in prompt
+        assert "只有用户明确询问购买股数、实际可执行数量或账户权限时" in prompt
         return _completed(_candidate({"type": "PORTFOLIO_SNAPSHOT"}))
 
     result = _agent(ScriptedNativeRuntime(run), FixedFinancialData()).answer_with_history(

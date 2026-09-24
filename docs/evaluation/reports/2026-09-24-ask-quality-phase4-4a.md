@@ -1,6 +1,6 @@
 # Ask Quality Phase 4 — 4A Core Evidence Report
 
-**Status:** NATIVE 60s TIMEOUT IMPLEMENTED / AQ07 RETEST PENDING（2026-09-24）；
+**Status:** AQ07 NATIVE 60s REQUEST COMPLETED / POLICY RETEST PENDING（2026-09-25）；
 不是 4A Gate PASS，也尚未提交最终 Human Review。
 
 ## 1. 范围与历史边界
@@ -203,6 +203,18 @@ Proposal。AQ07 回答质量中的 SWING 分支及未证实 Thesis 问题仍是�
 与单次 Provider Request Timeout 调整为 60 秒；Model / Tool 次数及无隐式 Retry 不变，
 Current Runtime 仍为 30 秒回归基线。以上原始 30/60 诊断结果不改写；本报告仍非 4A PASS，
 需要在新上限下重新运行真实 AQ07 并单独解决回答质量缺口。
+
+用户已运行 `p4-4a-aq07-native60 / r1`：AQ07 `COMPLETED / OK`，`25.94s`、无 Repair，
+Quote、自动 Market Context、History、News 共 4 次 Tool Trace；Source / inline Citation
+通过，Usage / Cost 仍为 `UNKNOWN`。这仅是 13 个 Core Case 中选定的 1 个，其他 12 个
+`NOT_RUN`，Critical Gate 与 Human Rubric 仍未评估。回答已包含 LONG_TERM 追加与假设性
+SWING 新仓的条件比较，没有把 SWING 误记为现有仓位；但它把“账户是否支持碎股”列为普通
+加仓分析的关键待确认条件，并以实际可执行股数 UNKNOWN 支持暂缓，超出了已批准 AQ06
+金额分析规则的必要前置条件。它还把账户 Cash“充裕”作为加仓支持条件，但用户没有提供
+本轮 Budget，不能视为资金约束已满足。仅在 Production Native Prompt 澄清：未请求股数或
+账户权限时不把该权限作为建议前置；Cash 不代替本轮 Budget。Portfolio / Ledger 事实、
+交易写入校验和旧 Runtime Prompt 不变。该 Prompt Contract 的离线测试不能代替真实
+AQ07 复测，4A Gate 继续 `PENDING`。
 
 Output Tool 基本参数形状不合法时，Framework 没有可交给 Application Repair 的候选；
 该失败明确记录为 `INVALID_PROVIDER_RESPONSE`，不添加隐藏重试或 JSON 文本兜底。
