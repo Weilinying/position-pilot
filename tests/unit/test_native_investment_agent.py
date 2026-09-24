@@ -368,6 +368,44 @@ def test_discretionary_quote_automatically_adds_required_market_context() -> Non
     ]
 
 
+def test_discretionary_quote_reuses_already_observed_market_context() -> None:
+    """模型先请求 Market Context 时，Quote 不再记第二次自动 Tool Call。"""
+
+    def run(request: AgentRunRequest) -> AgentRunResult:
+        market_binding = next(
+            item for item in request.tools if item.definition.name == "get_market_context"
+        )
+        quote_binding = next(
+            item for item in request.tools if item.definition.name == "get_current_quote"
+        )
+        market = market_binding.executor({})
+        arguments = {
+            "ticker": "GOOG",
+            "request_purpose": "DISCRETIONARY_CURRENT_RISK_ACTION",
+        }
+        quote = quote_binding.executor(arguments)
+        assert quote.related_calls == ()
+        assert quote.data is not None
+        required_context = quote.data["required_market_context"]
+        assert isinstance(required_context, dict)
+        assert required_context["status"] == "NO_DATA"
+        return _completed(
+            _candidate({"type": "PORTFOLIO_SNAPSHOT"}),
+            trace=(
+                AgentToolTrace("get_market_context", {}, market.status, None, market.sources),
+                AgentToolTrace("get_current_quote", arguments, quote.status, None, quote.sources),
+            ),
+            sources=(*market.sources, *quote.sources),
+        )
+
+    data = FixedFinancialData()
+    result = _agent(ScriptedNativeRuntime(run), data).answer(USER_ID, "GOOG 现在值得加仓吗？")
+
+    assert isinstance(result, InvestmentAnswer)
+    assert data.quote_calls == ["GOOG"]
+    assert data.market_context_calls == 1
+
+
 def test_discretionary_quote_is_rejected_before_provider_when_context_disabled() -> None:
     """复合调用缺少必要授权时不得先访问 Quote Provider。"""
 

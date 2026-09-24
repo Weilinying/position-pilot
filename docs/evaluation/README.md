@@ -174,6 +174,8 @@ Fixtures，但实际 Ask 走 `NativeInvestmentAgent → PydanticAIRuntime`，多
 已完成的 Assistant 历史；不复用旧 `execute_case()` 的 Current Runtime 路径。每轮保存 Native Tool Trace、
 Source、Citation 文本、Repair 调用、Latency 和 Usage 或 `UNKNOWN`。Portfolio / Market / News 为固定
 Fixture，真实模型只用于 Agent 行为评估。它不验证真实金融 Provider 的时效与可用性。
+固定 Fixture 的 Runtime Final Candidate（包括 Repair 前未通过校验的候选）保存在 Artifact 中，
+用于区分 Source / Citation / Structured Output 问题；不要把 Artifact 当作可公开分享的脱敏日志。
 
 调用者先在自己的本地 Shell 导出 `LLM_API_KEY`、与当前 Region 对应的 `LLM_BASE_URL`，并设置固定
 `LLM_MODEL=qwen3.7-max`；`LLM_PROVIDER` 应为 `ALIYUN_MODEL_STUDIO`（未设置时使用该值），同一 Run

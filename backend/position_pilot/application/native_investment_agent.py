@@ -81,6 +81,18 @@ class _AuthorizedToolSession:
         self._allowed_names = allowed_names
         self._call_budget = call_budget
         self._used_calls = 0
+        self._explicit_market_context_observed = False
+
+    @property
+    def explicit_market_context_observed(self) -> bool:
+        """标识模型本轮是否已明确调用 Market Context。"""
+
+        return self._explicit_market_context_observed
+
+    def note_explicit_market_context(self) -> None:
+        """记录模型已为 Market Context 单独消耗一次 Tool Call。"""
+
+        self._explicit_market_context_observed = True
 
     def reserve(self, names: tuple[str, ...]) -> bool:
         """原子预留一组实际调用，避免复合 Tool 只计算外层调用。"""
@@ -287,8 +299,11 @@ class NativeInvestmentAgent:
                 tool_name == CURRENT_QUOTE_TOOL_NAME
                 and arguments.get("request_purpose") == "DISCRETIONARY_CURRENT_RISK_ACTION"
             )
+            auto_fetch_market_context = (
+                needs_market_context and not tool_session.explicit_market_context_observed
+            )
             required_names = (
-                (tool_name, MARKET_CONTEXT_TOOL_NAME) if needs_market_context else (tool_name,)
+                (tool_name, MARKET_CONTEXT_TOOL_NAME) if auto_fetch_market_context else (tool_name,)
             )
             if not tool_session.reserve(required_names):
                 return ToolExecutionResult(
@@ -302,6 +317,8 @@ class NativeInvestmentAgent:
                     "INVALID_ARGUMENTS",
                     error_code=InvestmentFailureCode.INVALID_TOOL_CALL.value,
                 )
+            if tool_name == MARKET_CONTEXT_TOOL_NAME:
+                tool_session.note_explicit_market_context()
             message, source = self._format_tool_execution(execution, snapshot)
             assert message.content is not None
             payload = json.loads(message.content)
@@ -324,14 +341,15 @@ class NativeInvestmentAgent:
                 required_payload = json.loads(required_message.content)
                 payload["required_market_context"] = required_payload
                 required_source_mapping = self._source_mapping(required_source)
-                related_calls = (
-                    ToolExecutionRecord(
-                        MARKET_CONTEXT_TOOL_NAME,
-                        {},
-                        str(required_payload["status"]),
-                        sources=(required_source_mapping,),
-                    ),
-                )
+                if auto_fetch_market_context:
+                    related_calls = (
+                        ToolExecutionRecord(
+                            MARKET_CONTEXT_TOOL_NAME,
+                            {},
+                            str(required_payload["status"]),
+                            sources=(required_source_mapping,),
+                        ),
+                    )
                 if required_payload["status"] != "OK":
                     status = "DEGRADED"
             return ToolExecutionResult(

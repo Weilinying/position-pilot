@@ -76,6 +76,19 @@ AQ10 第二轮 Quote 为 `NO_DATA`，不能将其当作当前价格。两种失�
 仍保持 `UNKNOWN`。离线测试验证了该提示与自动补取结果同时存在，**尚未通过真实模型确认**它能减少
 Tool Call 或使 AQ07 / AQ10 达标。该改动不回写任何历史 Artifact，也未调整已批准 Safety Ceiling。
 
+用户随后仅重跑 AQ07（`p4-4a-native-context / aq07`，Revision
+`cddab3473d31108408d38550a5507194ee4f0c0f-dirty`）：首次 Native Run 于 `21.24s`
+形成候选，但候选未通过最终结构/引用校验而触发一次无 Tool Repair；Repair 在剩余约 `8.77s`
+内耗尽总 30 秒，Case 仍为 `REQUEST_FAILED`。Trace 为显式 Market Context、Quote、随 Quote 自动
+补取的 Market Context，说明 Prompt 澄清未阻止“先 Market Context、后 Quote”的重复记账。
+当前 Artifact 未保存首次候选，尚不能确定 Repair 是 Source Ref、Citation 还是其他结构错误。
+
+已在同一已批准预算内修正更窄的去重情形：**只有模型先显式调用 Market Context** 时，后续
+discretionary Quote 复用该结果并将其包含在 Observation，不再额外记录自动 Tool Call；
+模型未显式调用时，每次 Quote 仍按原 Contract 为 Quote + 必要 Market Context 预留两次调用。
+原有预算回归与新增“显式先调用”回归均保留。Eval 记录器后续会保存固定 Fixture Run 的首次
+Final Candidate，便于在不推测的情况下离线判定 Repair 原因；这不改变历史 Artifact。
+
 ## 4. 尚未取得的 4A 证据
 
 | Gate / 指标 | 当前状态 | 收口要求 |
@@ -93,8 +106,8 @@ AQ06 按 [金额分析规则修订](../ask-quality-policy-revision-2026-09-20.md
 
 ## 5. 下一步与 Human Gate
 
-已对 AQ07 / AQ10 的预算交互完成离线 RCA 与最小 Native Prompt 澄清；下一步只对 AQ07 做
-一次定向在线复测，验证模型是否减少重复 Market Context Call，再决定是否运行 AQ10。必要的
+已对 AQ07 的显式先调用路径完成去重及离线验证；下一步只对 AQ07 做一次定向在线复测，
+确认 Tool Trace 与首次候选的校验失败类型，再决定是否运行 AQ10。必要的
 Safety Ceiling 或 Tool Contract 调整须遵守已批准计划的 Human Review 边界。之后完成必要的有效
 `r1`、`r2`、`r3` 真实模型 Run；命令与 Artifact 结构见
 [Evaluation README](../README.md#phase-4-4a-core-eval)。收到 `manifest.json`、`cases.jsonl`、

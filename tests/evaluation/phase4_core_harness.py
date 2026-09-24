@@ -147,6 +147,7 @@ class RecordingAgentRuntime:
             {
                 "status": result.status.value,
                 "failure_code": result.failure_code,
+                "final_candidate": result.final_candidate,
                 "latency_ms": result.latency_ms,
                 "wall_latency_ms": round((monotonic() - started_at) * 1000, 2),
                 "usage": _usage_payload(result.usage),

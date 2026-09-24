@@ -120,6 +120,7 @@ def test_multiturn_fixture_injects_prior_visible_answer() -> None:
     assert len(runtime.requests) >= 2
     assert record["turns"][0]["history_message_count"] == 0
     assert record["turns"][1]["history_message_count"] == 2
+    assert record["turns"][0]["runtime_calls"][0]["final_candidate"] is not None
 
 
 def test_failed_turn_still_contributes_user_message_to_next_turn() -> None:
