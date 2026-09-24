@@ -1,6 +1,7 @@
 # Ask Quality Phase 4 — 4A Core Evidence Report
 
-**Status:** R1 ROOT CAUSE ANALYSIS IN PROGRESS（2026-09-24）；不是 4A Gate PASS，也尚未提交最终 Human Review。
+**Status:** OUTPUT TOOL ADAPTER OFFLINE VERIFIED / AQ07 LIVE PENDING（2026-09-24）；
+不是 4A Gate PASS，也尚未提交最终 Human Review。
 
 ## 1. 范围与历史边界
 
@@ -138,11 +139,14 @@ AQ06 按 [金额分析规则修订](../ask-quality-policy-revision-2026-09-20.md
 ## 5. 下一步与 Human Gate
 
 已确认 AQ07 的首次候选为非法 JSON，且 Repair 耗尽剩余 Wall-clock。独立 Final Output Tool
-在线实验在最小 Fixture 上通过，但不作为 AQ07 修复证据。建议将 Production 输出方式作为独立
-Decision Proposal 提交 Human Review；如获批，仅在 PydanticAI Adapter 的 JSON Final Candidate
-路径引入 ToolOutput，继续交由 Application 验证 Source / Citation，保持现有预算与 Public API。
-实现并通过离线回归后，先定向重跑完整 AQ07；若仍失败，按 Model / Tool / Repair 阶段归因，
+在线实验在最小 Fixture 上通过，但不作为 AQ07 修复证据。用户已批准受限 Production 输出调整：
+只在 PydanticAI Adapter 的 JSON Final Candidate 路径使用 ToolOutput；Application 继续验证
+Source / Citation，现有预算、Public API 和 30 秒 Ceiling 不变。Adapter 与相关离线回归已通过，
+真实 Qwen Endpoint 上的完整 AQ07 仍未重跑。下一步先定向在线验证 AQ07；若仍失败，
+按 Model / Tool / Repair 阶段归因，
 必要时仅在 Eval 进行 30/60 秒对照，不调整 Production 超时。
+Output Tool 基本参数形状不合法时，Framework 没有可交给 Application Repair 的候选；
+该失败明确记录为 `INVALID_PROVIDER_RESPONSE`，不添加隐藏重试或 JSON 文本兜底。
 必要的 Safety Ceiling 或 Tool Contract 调整须遵守已批准计划的 Human Review 边界。
 之后完成必要的有效
 `r1`、`r2`、`r3` 真实模型 Run；命令与 Artifact 结构见

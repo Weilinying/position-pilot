@@ -14,6 +14,7 @@ from position_pilot.application.agent_runtime import (
     AgentRunStatus,
     AgentToolBinding,
 )
+from position_pilot.application.investment_answer import parse_structured_answer
 from position_pilot.application.llm import (
     LLMMessage,
     LLMResponseFormat,
@@ -69,7 +70,8 @@ def _request(
         (
             LLMMessage(
                 LLMRole.SYSTEM,
-                "严格按用户要求调用指定工具；完成后只返回简短 JSON object。",
+                "严格按用户要求调用指定金融工具；最终通过结构化输出工具返回 answer 与 "
+                "source_refs。本测试只验证工具兼容性，source_refs 使用空数组。",
             ),
             LLMMessage(LLMRole.USER, question),
         ),
@@ -126,18 +128,18 @@ def test_current_production_model_native_tool_compatibility(scenario: str) -> No
         _fixture_executor("market-context"),
     )
     if scenario == "no_tool":
-        request = _request('直接返回 {"answer":"NO_TOOL_OK"}，不得调用工具。')
+        request = _request("不调用金融工具，回答 NO_TOOL_OK。")
         expected_tools: set[str] = set()
     elif scenario == "one_tool":
         request = _request(
-            "调用 get_fixture_quote，ticker 必须为 GOOG，然后返回 JSON。",
+            "调用 get_fixture_quote，ticker 必须为 GOOG，然后完成结构化回答。",
             (quote,),
         )
         expected_tools = {"get_fixture_quote"}
     else:
         request = _request(
             "依次调用 get_fixture_quote 和 get_fixture_market_context，"
-            "两次 ticker 都必须为 GOOG，然后返回 JSON。",
+            "两次 ticker 都必须为 GOOG，然后完成结构化回答。",
             (quote, context),
         )
         expected_tools = {"get_fixture_quote", "get_fixture_market_context"}
@@ -146,5 +148,7 @@ def test_current_production_model_native_tool_compatibility(scenario: str) -> No
     _print_evidence(scenario, result, settings)
 
     assert result.status is AgentRunStatus.COMPLETED
+    assert result.final_candidate is not None
+    assert parse_structured_answer(result.final_candidate).answer
     assert {trace.name for trace in result.tool_trace} == expected_tools
     assert all(trace.arguments == {"ticker": "GOOG"} for trace in result.tool_trace)

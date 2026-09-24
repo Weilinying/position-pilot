@@ -236,11 +236,12 @@ Provider 错误。独立成功不代表 AQ07 修复或 4A Gate PASS。
 若 Usage 为 `UNKNOWN`，成本也保持 `UNKNOWN`，不据耗时推断费用。可测 Token 仅作为相对成本线索，
 正式费用比较仍需确定相同计费口径与重复样本。
 
-若 `ToolOutput` 在此通过，先提交 Production 输出机制的独立 Decision Proposal 供 Human Review；
-获批并实现后，使用原 `PHASE4_CASE_IDS=AQ07` 入口作完整 AQ07 回归，核对真实 Tool Trace、首次
-候选、Repair、Source / Citation 与 30 秒预算。若独立实验仍失败，先定位是 Provider Schema / Tool
-Choice、模型提前结束、结构格式、Source 校验还是超时；只有确有必要时才做仅限 Eval 的 30/60 秒
-对照，并分别记录首个模型输出、工具调用与 Repair 耗时，不直接提高 Production 上限。
+2026-09-24 的独立 r1 中，`ToolOutput` 首次输出通过，JSON 文本及其一次 Repair 均未通过；
+这不是完整 AQ07。受限 Production Adapter 调整已获 Human Approval 且离线验证通过。
+下一步使用原 `PHASE4_CASE_IDS=AQ07` 入口作完整 AQ07 回归，核对真实 Tool Trace、首次候选、
+Repair、Source / Citation 与 30 秒预算。若 AQ07 仍失败，先定位 Provider Schema / Tool Choice、
+模型提前结束、结构格式、Source 校验或超时；只有确有必要时才做仅限 Eval 的 30/60 秒对照，
+分别记录首个模型输出、工具调用与 Repair 耗时，不直接提高 Production 上限。
 
 Ask Quality 的 Research Capability 指 Runtime 真实向 Agent 提供并允许使用的外部事实获取机制，
 可以是自定义 Search Tool、Provider / Model Native Web Search、Page Fetch 或 Multi-round Research

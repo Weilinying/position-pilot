@@ -32,6 +32,22 @@ Portfolio、Conversation、Persistent User Intent、Memory、Tool Authorization 
 具体执行边界、4A / 4B Checkpoint 与 State Authority 以获批的
 [Phase 4 Implementation Plan](../plans/ask-quality-phase-4-implementation.md) 为准。
 
+### 2026-09-24 Final Output 补充决定
+
+AQ07 在线证据显示 Prompt-only JSON 候选格式错误后，一次 Repair 会耗尽剩余 30 秒预算。
+独立固定 Quote Spike 中，当前 Qwen Endpoint 能先调用金融工具，再通过 PydanticAI
+`ToolOutput` 返回合法候选。Human Review 因此批准仅将 PydanticAI Adapter 的 `JSON_OBJECT`
+最终输出改为 Final Output Tool；`TEXT` 请求不变。不对含工具的请求强制 Provider-native
+`response_format=json_object`。
+
+Output Tool 只约束候选基本形状；对已返回的候选，PositionPilot 的 Structured Answer、Source
+Identity、Citation 与一次无 Tool Repair 仍是 Application-owned Gate。Framework 隐式 Output Retry 保持关闭，
+Model / Tool Budget、30 秒总上限及 Public API 均不变。独立 Spike 不是完整 AQ07 验收，
+Production Adapter 仍须通过真实 AQ07 回归与 4A Human Review。
+若模型连 Output Tool 的基本参数形状都未提供，Framework 不会产出候选，Adapter 将其标为
+`INVALID_PROVIDER_RESPONSE`；这种失败无法进入 Application 的候选 Repair。暂不增加隐藏 Framework
+Retry 或兜底文本路径，先由完整 AQ07 在线回归判断其实际发生情况。
+
 ## Alternatives / Trade-off
 
 - 继续长期维护 Current Runtime 可以避免新增依赖，但需要持续自建 Toolset、MCP、History、Usage 和

@@ -8,17 +8,24 @@ from dataclasses import dataclass, field
 from time import monotonic
 
 from openai import AsyncOpenAI
+from pydantic import BaseModel, ConfigDict
 from pydantic_ai import (
     Agent,
     FunctionToolset,
     Tool,
+    ToolOutput,
     UsageLimitExceeded,
     UsageLimits,
 )
 from pydantic_ai import (
     AgentRunResult as PydanticAgentRunResult,
 )
-from pydantic_ai.exceptions import ModelAPIError, ModelHTTPError, UserError
+from pydantic_ai.exceptions import (
+    ModelAPIError,
+    ModelHTTPError,
+    UnexpectedModelBehavior,
+    UserError,
+)
 from pydantic_ai.messages import (
     ModelMessage,
     ModelRequest,
@@ -44,7 +51,13 @@ from position_pilot.application.agent_runtime import (
     AgentToolBudgetExceeded,
     AgentToolTrace,
 )
-from position_pilot.application.llm import LLMMessage, LLMRole, LLMStatus, LLMUsage
+from position_pilot.application.llm import (
+    LLMMessage,
+    LLMResponseFormat,
+    LLMRole,
+    LLMStatus,
+    LLMUsage,
+)
 from position_pilot.application.tool_catalog import ToolExecutionResult
 from position_pilot.config import Settings
 
@@ -141,6 +154,15 @@ class _ToolBridge:
                 {"status": "TOOL_FAILURE", "error_code": "UNSERIALIZABLE_TOOL_RESULT"},
                 ensure_ascii=False,
             )
+
+
+class _StructuredFinalCandidate(BaseModel):
+    """只约束 Final Tool 的基本形状，来源身份仍由 Application 校验。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    answer: str
+    source_refs: list[dict[str, str]]
 
 
 class PydanticAIRuntime(AgentRuntime):
@@ -254,6 +276,14 @@ class PydanticAIRuntime(AgentRuntime):
                 bridge,
                 llm_status=LLMStatus.PROVIDER_UNAVAILABLE,
             )
+        except UnexpectedModelBehavior:
+            return self._failure(
+                AgentRunStatus.FAILED,
+                "INVALID_PROVIDER_RESPONSE",
+                started_at,
+                bridge,
+                llm_status=LLMStatus.INVALID_PROVIDER_RESPONSE,
+            )
         except (UserError, ValueError, TypeError):
             return self._failure(
                 AgentRunStatus.FAILED,
@@ -286,7 +316,13 @@ class PydanticAIRuntime(AgentRuntime):
                 started_at,
                 bridge,
             )
-        if not isinstance(result.output, str) or not result.output.strip():
+        if isinstance(result.output, _StructuredFinalCandidate):
+            final_candidate = result.output.model_dump_json()
+        elif isinstance(result.output, str):
+            final_candidate = result.output
+        else:
+            final_candidate = ""
+        if not final_candidate.strip():
             return self._failure(
                 AgentRunStatus.FAILED,
                 "INVALID_PROVIDER_RESPONSE",
@@ -300,7 +336,7 @@ class PydanticAIRuntime(AgentRuntime):
             warnings = (*bridge.warnings, *warnings)
         return AgentRunResult(
             AgentRunStatus.COMPLETED,
-            result.output,
+            final_candidate,
             None,
             () if bridge is None else tuple(bridge.tool_trace),
             () if bridge is None else tuple(bridge.sources),
@@ -370,7 +406,7 @@ class PydanticAIRuntime(AgentRuntime):
         request: AgentRunRequest,
         instructions: tuple[str, ...],
         toolset: FunctionToolset[None] | None,
-    ) -> PydanticAgentRunResult[str]:
+    ) -> PydanticAgentRunResult[object]:
         """确保 Provider Client 的创建、使用和关闭发生在同一个 Event Loop。"""
 
         if self._model_context_factory is not None:
@@ -391,12 +427,21 @@ class PydanticAIRuntime(AgentRuntime):
         request: AgentRunRequest,
         instructions: tuple[str, ...],
         toolset: FunctionToolset[None] | None,
-    ) -> PydanticAgentRunResult[str]:
+    ) -> PydanticAgentRunResult[object]:
         """对完整 Model / Tool Loop 应用可中断的总 Wall-clock Ceiling。"""
 
+        output_type = (
+            ToolOutput(
+                _StructuredFinalCandidate,
+                name="final_investment_answer",
+                max_retries=0,
+            )
+            if request.response_format is LLMResponseFormat.JSON_OBJECT
+            else str
+        )
         agent = Agent(
             model,
-            output_type=str,
+            output_type=output_type,
             instructions=self._instructions(instructions, request),
             toolsets=(() if toolset is None else (toolset,)),
             retries=0,
@@ -428,8 +473,11 @@ class PydanticAIRuntime(AgentRuntime):
         """把 System Prompt 与输出格式约束保留在 Application 边界。"""
 
         values = list(instructions)
-        if request.response_format.value == "JSON_OBJECT":
-            values.append("最终候选必须是可由 Application 解析的 JSON object 文本。")
+        if request.response_format is LLMResponseFormat.JSON_OBJECT:
+            values.append(
+                "最终请调用 final_investment_answer 输出 answer 和 source_refs；"
+                "不要以普通文本或 Markdown 代码围栏返回 JSON。"
+            )
         return "\n\n".join(values)
 
     @staticmethod

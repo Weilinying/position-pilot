@@ -19,12 +19,15 @@ from position_pilot.application.agent_runtime import (
     AgentToolBinding,
     AgentToolBudgetExceeded,
 )
+from position_pilot.application.investment_answer import parse_structured_answer
 from position_pilot.application.llm import (
     LLMMessage,
+    LLMResponseFormat,
     LLMRole,
     LLMStatus,
     LLMToolDefinition,
 )
+from position_pilot.application.source_registry import SourceValidator
 from position_pilot.application.tool_catalog import (
     ToolExecutionRecord,
     ToolExecutionResult,
@@ -115,6 +118,116 @@ def _text_response(text: str) -> ModelResponse:
         parts=(TextPart(text),),
         usage=RequestUsage(input_tokens=4, output_tokens=2),
     )
+
+
+def _final_output_response(
+    answer: str,
+    source_refs: list[dict[str, str]],
+) -> ModelResponse:
+    """创建由 PydanticAI Final Output Tool 承载的脚本响应。"""
+
+    return ModelResponse(
+        parts=(
+            ToolCallPart(
+                "final_investment_answer",
+                {"answer": answer, "source_refs": source_refs},
+                "final-1",
+            ),
+        ),
+        usage=RequestUsage(input_tokens=6, output_tokens=4),
+    )
+
+
+def test_json_final_output_tool_returns_provider_neutral_candidate_without_tool_budget() -> None:
+    """无金融工具时，Final Output Tool 仍能在零普通 Tool Budget 下完成。"""
+
+    script = ScriptedModel([_final_output_response("没有可用新数据。", [])])
+
+    result = _runtime(script).run(
+        _request(response_format="JSON_OBJECT", budget=AgentRunBudget(1, 0, 30))
+    )
+
+    assert result.status is AgentRunStatus.COMPLETED
+    assert result.final_candidate is not None
+    assert parse_structured_answer(result.final_candidate).answer == "没有可用新数据。"
+    assert result.tool_trace == ()
+    assert result.usage is not None and result.usage.total_tokens == 10
+    assert len(script.calls) == 1
+
+
+def test_json_tool_loop_keeps_application_source_validation_authority() -> None:
+    """Output Tool 不占普通 Tool Trace，候选仍交给 Application 校验来源。"""
+
+    binding = AgentToolBinding(
+        _definition("get_quote"),
+        lambda arguments: ToolExecutionResult(
+            "OK",
+            {"price": "210.25"},
+            sources=({"source_id": "quote-1", "kind": "QUOTE"},),
+        ),
+    )
+    script = ScriptedModel(
+        [
+            _tool_response("get_quote", {"ticker": "GOOG"}, "call-1"),
+            _final_output_response(
+                "报价已核验。",
+                [{"type": "CURRENT_QUOTE", "ticker": "GOOG"}],
+            ),
+        ]
+    )
+
+    result = _runtime(script).run(
+        _request(
+            tools=(binding,),
+            response_format="JSON_OBJECT",
+            budget=AgentRunBudget(2, 1, 30),
+        )
+    )
+
+    assert result.status is AgentRunStatus.COMPLETED
+    assert [trace.name for trace in result.tool_trace] == ["get_quote"]
+    assert result.final_candidate is not None
+    assert parse_structured_answer(result.final_candidate).source_refs[0].ticker == "GOOG"
+    assert SourceValidator.evaluate(result.final_candidate, ())[1] is not None
+    assert len(script.calls) == 2
+
+
+def test_invalid_json_output_tool_arguments_are_provider_response_failure() -> None:
+    """不启用框架隐式重试；非法输出不冒充 Provider 不可用。"""
+
+    script = ScriptedModel(
+        [ModelResponse(parts=(ToolCallPart("final_investment_answer", {"answer": "缺字段"}),))]
+    )
+
+    result = _runtime(script).run(_request(response_format="JSON_OBJECT"))
+
+    assert result.status is AgentRunStatus.FAILED
+    assert result.failure_code == "INVALID_PROVIDER_RESPONSE"
+    assert result.llm_status is LLMStatus.INVALID_PROVIDER_RESPONSE
+    assert len(script.calls) == 1
+
+
+def test_json_repair_call_accepts_prior_text_candidate_and_zero_tool_budget() -> None:
+    """Application 一次无 Tool Repair 仍通过结构化输出工具返回候选。"""
+
+    script = ScriptedModel([_final_output_response("已修正。", [])])
+    request = AgentRunRequest(
+        (
+            LLMMessage(LLMRole.SYSTEM, "只根据可用事实作答。"),
+            LLMMessage(LLMRole.USER, "分析 GOOG。"),
+            LLMMessage(LLMRole.ASSISTANT, '{"answer": bad json}'),
+            LLMMessage(LLMRole.USER, "修正输出格式。"),
+        ),
+        (),
+        AgentRunBudget(1, 0, 30),
+        LLMResponseFormat.JSON_OBJECT,
+    )
+
+    result = _runtime(script).run(request)
+
+    assert result.status is AgentRunStatus.COMPLETED
+    assert result.final_candidate is not None
+    assert parse_structured_answer(result.final_candidate).answer == "已修正。"
 
 
 def test_no_tool_native_loop_returns_final_candidate_and_usage() -> None:
