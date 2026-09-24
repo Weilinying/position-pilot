@@ -221,6 +221,7 @@ def test_quote_binding_executes_application_tool_and_registers_real_source() -> 
 
 def test_conversation_quote_exposes_observed_source_id_for_inline_citation() -> None:
     def run(request: AgentRunRequest) -> AgentRunResult:
+        assert request.messages[0].content is not None
         assert "[source:<source_id>]" in request.messages[0].content
         binding = next(
             item for item in request.tools if item.definition.name == "get_current_quote"
@@ -261,6 +262,7 @@ def test_conversation_missing_citation_uses_one_repair_without_new_tool() -> Non
             candidate = _candidate({"type": "CURRENT_QUOTE", "ticker": "GOOG"})
             return _completed(candidate, sources=observation.sources)
         assert request.tools == ()
+        assert request.messages[-1].content is not None
         assert observed_source_id in request.messages[-1].content
         return _completed(
             json.dumps(
@@ -280,6 +282,45 @@ def test_conversation_missing_citation_uses_one_repair_without_new_tool() -> Non
     assert len(runtime.requests) == 2
     assert observed_source_id is not None
     assert f"[source:{observed_source_id}]" in result.answer
+
+
+def test_conversation_portfolio_snapshot_is_not_an_inline_citation() -> None:
+    """Portfolio 可在 source_refs 声明，但不能伪装成带 UUID 的 inline 来源。"""
+
+    def run(request: AgentRunRequest) -> AgentRunResult:
+        if request.tools:
+            assert request.messages[0].content is not None
+            assert "不要给 Portfolio 事实添加 [source:PORTFOLIO_SNAPSHOT]" in (
+                request.messages[0].content
+            )
+            return _completed(
+                json.dumps(
+                    {
+                        "answer": "账户现金为 $300。[source:PORTFOLIO_SNAPSHOT]",
+                        "source_refs": [{"type": "PORTFOLIO_SNAPSHOT"}],
+                    }
+                )
+            )
+        assert request.messages[-1].content is not None
+        assert "不要写 [source:PORTFOLIO_SNAPSHOT]" in request.messages[-1].content
+        return _completed(
+            json.dumps(
+                {
+                    "answer": "账户现金为 $300。",
+                    "source_refs": [{"type": "PORTFOLIO_SNAPSHOT"}],
+                }
+            )
+        )
+
+    runtime = ScriptedNativeRuntime(run)
+    result = _agent(runtime, FixedFinancialData()).answer_with_history(
+        USER_ID, "我还有多少现金？", ()
+    )
+
+    assert isinstance(result, InvestmentAnswer)
+    assert len(runtime.requests) == 2
+    assert "[source:PORTFOLIO_SNAPSHOT]" not in result.answer
+    assert result.sources[0].type.value == "PORTFOLIO_SNAPSHOT"
 
 
 def test_conversation_news_source_is_bound_to_observed_article_url() -> None:

@@ -192,6 +192,9 @@ class NativeInvestmentAgent:
             prompt += (
                 "\nConversation 回答中，凡引用本轮成功 Tool 结果，请在相关陈述附近使用"
                 " [source:<source_id>]；source_id 只能复制 Tool Observation 的 sources 字段。"
+                "PORTFOLIO_SNAPSHOT 没有 source_id：可以在 source_refs 声明它，"
+                "但不要给 Portfolio 事实添加 [source:PORTFOLIO_SNAPSHOT]"
+                " 或其他伪造的 inline Citation。"
                 "不要编造 URL；未成功的来源不得引用。source_refs 仍按原结构声明。"
             )
         messages = InvestmentContextBuilder(prompt).build(
@@ -574,6 +577,8 @@ class NativeInvestmentAgent:
             "instructions": [
                 "保留符合原 Contract 的 answer 与 source_refs JSON 结构。",
                 "只在实际引用的陈述附近使用 [source:<source_id>]。",
+                "PORTFOLIO_SNAPSHOT 没有 source_id；只在 source_refs 中声明，"
+                "不要写 [source:PORTFOLIO_SNAPSHOT]。",
                 "仅使用列出的成功来源 ID，不编造 URL，不引用失败来源。",
                 "不得请求 Tool。",
             ],

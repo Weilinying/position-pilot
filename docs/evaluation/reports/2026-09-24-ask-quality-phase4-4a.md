@@ -1,6 +1,6 @@
 # Ask Quality Phase 4 — 4A Core Evidence Report
 
-**Status:** OUTPUT TOOL ADAPTER OFFLINE VERIFIED / AQ07 LIVE PENDING（2026-09-24）；
+**Status:** AQ07 CITATION RCA / PROMPT RETEST PENDING（2026-09-24）；
 不是 4A Gate PASS，也尚未提交最终 Human Review。
 
 ## 1. 范围与历史边界
@@ -121,6 +121,17 @@ Context 或 Production Agent 路径。两臂均实际调用 `get_fixture_quote(G
 两臂逐模型请求及 Repair 耗时均保留在原始 Artifact。当前 30 秒 Production Ceiling 不变；
 只有 Production 输出方式另行通过 Human Review 并实现后，才能以完整 AQ07 回归检验该候选。
 
+Output Tool Adapter 提交 `3d43d23` 后，用户运行 `p4-4a-aq07-output-tool / r1`（原始 Artifact：
+`build/evaluation-runs/p4-4a-aq07-output-tool/r1/`）。AQ07 仍为 `REQUEST_FAILED`；
+首个 Runtime 在 `24.02s` 完成，Tool Trace 为 Quote、自动 Market Context、Price History、News，
+均成功且没有重复计账。Final Candidate 的 JSON 语法与 `source_refs` 对本轮 Source 的绑定均通过，
+但 `answer` 把 Portfolio Snapshot 写成两处 `[source:PORTFOLIO_SNAPSHOT]`。Portfolio Snapshot
+没有 inline Citation UUID，因此 `validate_citations` 明确报 `Source ID 格式无效`；这不是
+Output Tool Schema 或 Provider 拒绝。一次无 Tool Repair 在剩余约 `5.99s` 内耗尽总 30 秒。
+Usage / Cost 仍为 `UNKNOWN`，Human Rubric 与 Critical Gate 仍为 `NOT_EVALUATED`。
+该原始结果不改写。后续仅澄清现有 Prompt 与 Repair 指令：Portfolio 事实可在 `source_refs`
+声明，但不得使用伪造的 inline Source Token；Citation Validator 和 Safety Ceiling 不变。
+
 ## 4. 尚未取得的 4A 证据
 
 | Gate / 指标 | 当前状态 | 收口要求 |
@@ -138,13 +149,10 @@ AQ06 按 [金额分析规则修订](../ask-quality-policy-revision-2026-09-20.md
 
 ## 5. 下一步与 Human Gate
 
-已确认 AQ07 的首次候选为非法 JSON，且 Repair 耗尽剩余 Wall-clock。独立 Final Output Tool
-在线实验在最小 Fixture 上通过，但不作为 AQ07 修复证据。用户已批准受限 Production 输出调整：
-只在 PydanticAI Adapter 的 JSON Final Candidate 路径使用 ToolOutput；Application 继续验证
-Source / Citation，现有预算、Public API 和 30 秒 Ceiling 不变。Adapter 与相关离线回归已通过，
-真实 Qwen Endpoint 上的完整 AQ07 仍未重跑。下一步先定向在线验证 AQ07；若仍失败，
-按 Model / Tool / Repair 阶段归因，
-必要时仅在 Eval 进行 30/60 秒对照，不调整 Production 超时。
+本轮 AQ07 的 Output Tool 候选没有外层 JSON 语法错误，但失败转为伪造 Portfolio inline
+Citation；Prompt 澄清已有离线测试，真实 AQ07 复测仍待执行。下一步仅定向复测 AQ07；
+若仍失败，继续按 Model / Tool / Validation / Repair 阶段归因，必要时仅在 Eval 做 30/60 秒
+对照，不调整 Production 超时。
 Output Tool 基本参数形状不合法时，Framework 没有可交给 Application Repair 的候选；
 该失败明确记录为 `INVALID_PROVIDER_RESPONSE`，不添加隐藏重试或 JSON 文本兜底。
 必要的 Safety Ceiling 或 Tool Contract 调整须遵守已批准计划的 Human Review 边界。
