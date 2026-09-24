@@ -42,10 +42,13 @@ Critical Gate 人工审阅，不能据此认定回答质量通过。全部 19 �
 `TOOL_CALL_LIMIT_EXCEEDED`；底层 Runtime Call 记录有 10 次
 `PYDANTIC_AI_RUNTIME_FAILURE`、3 次 `WALL_CLOCK_BUDGET_EXCEEDED`、1 次
 `TOOL_CALL_BUDGET_EXCEEDED`。部分 `PYDANTIC_AI_RUNTIME_FAILURE` 在约 5～8 ms 内发生，
-不符合普通在线模型延迟。当前 Adapter 将底层未分类异常收敛为错误码，Artifact 无法区分连接/事件循环、
-请求构造或框架内部错误；同一 Runtime / Async Client 跨多个 Case 连续使用的路径也未被现有在线 Smoke
-覆盖。此处只列出排查假设，不据此定因，更不把 Prototype Bug 直接判为架构限制。先用离线重现与
-脱敏错误分类确定原因，修复后再做最小定向在线复测；暂不进行 r2 / r3 或完整 Primary 重跑。
+不符合普通在线模型延迟。当前 Adapter 将底层未分类异常收敛为错误码，Artifact 不能对这 10 次失败
+逐一精确归因。本地无模型调用的 HTTP 实验复现了同一 Async Client 跨 `asyncio.run` 复用时的
+`Event loop is closed`，与毫秒级失败且随后可能恢复的模式吻合。Production Adapter 已改为每次
+Run 在同一 Event Loop 内创建、使用并关闭 Provider Client；连续调用离线回归通过。这是已验证的
+客户端生命周期修复，不等于 r1 所有失败均已定因或在线问题已解决。30 秒 Wall-clock 和 Tool-call
+Budget 仍需分别评估；先做最小定向在线复测，暂不进行 r2 / r3 或完整 Primary 重跑，也不把
+Adapter Bug 判为 PydanticAI 架构限制。
 
 ## 4. 尚未取得的 4A 证据
 
@@ -64,9 +67,9 @@ AQ06 按 [金额分析规则修订](../ask-quality-policy-revision-2026-09-20.md
 
 ## 5. 下一步与 Human Gate
 
-先对 r1 的毫秒级 Runtime Failure、30 秒 Wall-clock、Tool-call Budget 三类问题做 RCA，
-验证并修复已批准 Adapter 范围内的实现缺口。之后由用户在本地完成必要的定向在线复测及
-有效 `r1`、`r2`、`r3` 真实模型 Run；命令与 Artifact 结构见
+先由用户在本地做连续调用的最小定向在线复测，确认客户端生命周期修复；再对残留的
+30 秒 Wall-clock、Tool-call Budget 和其他失败做分层 RCA。之后完成必要的有效
+`r1`、`r2`、`r3` 真实模型 Run；命令与 Artifact 结构见
 [Evaluation README](../README.md#phase-4-4a-core-eval)。收到 `manifest.json`、`cases.jsonl`、
 `summary.json` 后复核 Tool Selection / Arguments、Conversation 指代与预算更正、Source / Citation、
 Provider Failure、Repair、逐 Case Rubric 和 Critical Gate，并填写质量分布、成功率、Latency 与

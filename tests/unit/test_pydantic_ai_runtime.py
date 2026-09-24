@@ -1,10 +1,12 @@
 """PydanticAI Production Adapter 的离线 Native Loop 测试。"""
 
 import asyncio
-from collections.abc import Mapping
+from collections.abc import AsyncIterator, Mapping
+from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 
 import pytest
+from pydantic import AnyHttpUrl, PostgresDsn, SecretStr
 from pydantic_ai.exceptions import ModelHTTPError
 from pydantic_ai.messages import ModelMessage, ModelResponse, TextPart, ToolCallPart
 from pydantic_ai.models.function import AgentInfo, FunctionModel
@@ -27,7 +29,12 @@ from position_pilot.application.tool_catalog import (
     ToolExecutionRecord,
     ToolExecutionResult,
 )
-from position_pilot.integrations.pydantic_ai_runtime import PydanticAIRuntime
+from position_pilot.config import Settings
+from position_pilot.integrations import pydantic_ai_runtime
+from position_pilot.integrations.pydantic_ai_runtime import (
+    PydanticAIRuntime,
+    create_pydantic_ai_runtime,
+)
 
 
 @dataclass(slots=True)
@@ -353,3 +360,80 @@ def test_wall_clock_budget_interrupts_entire_native_loop() -> None:
 
     assert result.status is AgentRunStatus.BUDGET_EXHAUSTED
     assert result.failure_code == "WALL_CLOCK_BUDGET_EXCEEDED"
+
+
+def test_model_context_is_new_and_closed_for_each_sequential_run() -> None:
+    """连续同步 Run 不得跨已关闭的 Event Loop 复用异步 Model Client。"""
+
+    opened: list[asyncio.AbstractEventLoop] = []
+    closed: list[asyncio.AbstractEventLoop] = []
+
+    @asynccontextmanager
+    async def model_context() -> AsyncIterator[FunctionModel]:
+        loop = asyncio.get_running_loop()
+        opened.append(loop)
+
+        async def respond(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
+            del messages, info
+            assert asyncio.get_running_loop() is loop
+            return _text_response("ok")
+
+        try:
+            yield FunctionModel(respond, model_name="loop-fixture")
+        finally:
+            closed.append(asyncio.get_running_loop())
+
+    runtime = PydanticAIRuntime(None, model_context_factory=model_context)
+
+    assert runtime.run(_request()).status is AgentRunStatus.COMPLETED
+    assert runtime.run(_request()).status is AgentRunStatus.COMPLETED
+    assert len(opened) == len(closed) == 2
+    assert opened == closed
+    assert opened[0] is not opened[1]
+
+
+def test_configured_runtime_creates_and_closes_provider_client_per_run(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Production Factory 每次调用都关闭本次 Event Loop 中使用的 Client。"""
+
+    opened: list[asyncio.AbstractEventLoop] = []
+    closed: list[asyncio.AbstractEventLoop] = []
+
+    class FakeClient:
+        def __init__(self, **kwargs: object) -> None:
+            del kwargs
+            opened.append(asyncio.get_running_loop())
+
+        async def close(self) -> None:
+            closed.append(asyncio.get_running_loop())
+
+    monkeypatch.setattr(pydantic_ai_runtime, "AsyncOpenAI", FakeClient)
+    monkeypatch.setattr(
+        pydantic_ai_runtime,
+        "AlibabaProvider",
+        lambda *, openai_client: openai_client,
+    )
+    monkeypatch.setattr(
+        pydantic_ai_runtime,
+        "OpenAIChatModel",
+        lambda model_name, *, provider: FunctionModel(
+            lambda messages, info: _text_response("ok"),
+            model_name=model_name,
+        ),
+    )
+    settings = Settings(
+        _env_file=None,  # type: ignore[call-arg]
+        database_url=PostgresDsn("postgresql+psycopg://fixture.invalid/fixture"),
+        llm_provider="ALIYUN_MODEL_STUDIO",
+        llm_base_url=AnyHttpUrl("https://fixture.invalid/v1"),
+        llm_api_key=SecretStr("fixture-key"),
+        llm_model="fixture-model",
+    )
+    runtime = create_pydantic_ai_runtime(settings)
+
+    assert runtime.run(_request()).status is AgentRunStatus.COMPLETED
+    assert runtime.run(_request()).status is AgentRunStatus.COMPLETED
+    assert len(opened) == len(closed) == 2
+    assert opened == closed
+    assert opened[0] is not opened[1]

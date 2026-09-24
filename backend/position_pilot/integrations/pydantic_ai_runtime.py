@@ -2,7 +2,8 @@
 
 import asyncio
 import json
-from collections.abc import Callable, Mapping
+from collections.abc import AsyncIterator, Callable, Mapping
+from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from dataclasses import dataclass, field
 from time import monotonic
 
@@ -143,7 +144,7 @@ class _ToolBridge:
 
 
 class PydanticAIRuntime(AgentRuntime):
-    """使用 PydanticAI 原生 Agent.run_sync 与 Tool Loop 的 Production Adapter。"""
+    """使用 PydanticAI 原生 Agent.run 与 Tool Loop 的 Production Adapter。"""
 
     def __init__(
         self,
@@ -154,12 +155,14 @@ class PydanticAIRuntime(AgentRuntime):
         timeout_seconds: float = 30.0,
         max_retries: int = 0,
         clock: Callable[[], float] = monotonic,
+        model_context_factory: Callable[[], AbstractAsyncContextManager[Model]] | None = None,
     ) -> None:
         if timeout_seconds <= 0:
             raise ValueError("timeout_seconds 必须是正数")
         if max_retries != 0:
             raise ValueError("Production Adapter 当前不启用隐式重试，max_retries 必须为 0")
         self._model = model
+        self._model_context_factory = model_context_factory
         self._provider_name = provider_name
         self._model_name = model_name
         self._timeout_seconds = timeout_seconds
@@ -194,7 +197,7 @@ class PydanticAIRuntime(AgentRuntime):
         """使用框架原生 Loop 执行请求，并返回 Application-owned 结果。"""
 
         started_at = self._clock()
-        if self._model is None:
+        if self._model is None and self._model_context_factory is None:
             return self._failure(
                 AgentRunStatus.FAILED,
                 "MODEL_CREDENTIAL_MISSING",
@@ -212,20 +215,13 @@ class PydanticAIRuntime(AgentRuntime):
                 started_at,
             )
             toolset = self._toolset(request.tools, bridge)
-            agent = Agent(
-                self._model,
-                output_type=str,
-                instructions=self._instructions(instructions, request),
-                toolsets=(() if toolset is None else (toolset,)),
-                retries=0,
-                end_strategy="exhaustive",
-            )
             result = asyncio.run(
-                self._run_with_wall_clock_limit(
-                    agent,
+                self._run_with_model_context(
                     user_prompt,
                     history,
                     request,
+                    instructions,
+                    toolset,
                 )
             )
         except TimeoutError:
@@ -367,15 +363,45 @@ class PydanticAIRuntime(AgentRuntime):
                 raise ValueError("不支持的 LLM Message Role")
         return history, current.content, tuple(instructions)
 
-    async def _run_with_wall_clock_limit(
+    async def _run_with_model_context(
         self,
-        agent: Agent[None, str],
         user_prompt: str,
         history: list[ModelMessage],
         request: AgentRunRequest,
+        instructions: tuple[str, ...],
+        toolset: FunctionToolset[None] | None,
+    ) -> PydanticAgentRunResult[str]:
+        """确保 Provider Client 的创建、使用和关闭发生在同一个 Event Loop。"""
+
+        if self._model_context_factory is not None:
+            async with self._model_context_factory() as model:
+                return await self._run_with_wall_clock_limit(
+                    model, user_prompt, history, request, instructions, toolset
+                )
+        assert self._model is not None
+        return await self._run_with_wall_clock_limit(
+            self._model, user_prompt, history, request, instructions, toolset
+        )
+
+    async def _run_with_wall_clock_limit(
+        self,
+        model: Model,
+        user_prompt: str,
+        history: list[ModelMessage],
+        request: AgentRunRequest,
+        instructions: tuple[str, ...],
+        toolset: FunctionToolset[None] | None,
     ) -> PydanticAgentRunResult[str]:
         """对完整 Model / Tool Loop 应用可中断的总 Wall-clock Ceiling。"""
 
+        agent = Agent(
+            model,
+            output_type=str,
+            instructions=self._instructions(instructions, request),
+            toolsets=(() if toolset is None else (toolset,)),
+            retries=0,
+            end_strategy="exhaustive",
+        )
         return await asyncio.wait_for(
             agent.run(
                 user_prompt,
@@ -506,24 +532,34 @@ def create_pydantic_ai_runtime(settings: Settings) -> PydanticAIRuntime:
             timeout_seconds=settings.llm_request_timeout_seconds,
             max_retries=0,
         )
-    client = AsyncOpenAI(
-        api_key=api_key,
-        base_url=str(settings.llm_base_url),
-        timeout=settings.llm_request_timeout_seconds,
-        max_retries=0,
-    )
-    provider: Provider[AsyncOpenAI]
-    if settings.llm_provider == "ALIYUN_MODEL_STUDIO":
-        provider = AlibabaProvider(openai_client=client)
-    else:
-        provider = OpenAIProvider(openai_client=client)
-    model = OpenAIChatModel(settings.llm_model, provider=provider)
+
+    @asynccontextmanager
+    async def model_context() -> AsyncIterator[Model]:
+        """每次同步 Run 创建独立异步客户端，避免跨已关闭的 Event Loop 复用连接。"""
+
+        client = AsyncOpenAI(
+            api_key=api_key,
+            base_url=str(settings.llm_base_url),
+            timeout=settings.llm_request_timeout_seconds,
+            max_retries=0,
+        )
+        try:
+            provider: Provider[AsyncOpenAI]
+            if settings.llm_provider == "ALIYUN_MODEL_STUDIO":
+                provider = AlibabaProvider(openai_client=client)
+            else:
+                provider = OpenAIProvider(openai_client=client)
+            yield OpenAIChatModel(settings.llm_model, provider=provider)
+        finally:
+            await client.close()
+
     return PydanticAIRuntime(
-        model,
+        None,
         provider_name=settings.llm_provider,
         model_name=settings.llm_model,
         timeout_seconds=settings.llm_request_timeout_seconds,
         max_retries=0,
+        model_context_factory=model_context,
     )
 
 
