@@ -176,6 +176,11 @@ Source、Citation 文本、Repair 调用、Latency 和 Usage 或 `UNKNOWN`。Por
 Fixture，真实模型只用于 Agent 行为评估。它不验证真实金融 Provider 的时效与可用性。
 固定 Fixture 的 Runtime Final Candidate（包括 Repair 前未通过校验的候选）保存在 Artifact 中，
 用于区分 Source / Citation / Structured Output 问题；不要把 Artifact 当作可公开分享的脱敏日志。
+2026-09-24 Human Review 后，Production Native 和此 4A 入口的总 Wall-clock、单次模型请求上限
+均为 60 秒；Production 的 `NATIVE_LLM_REQUEST_TIMEOUT_SECONDS` 默认 60 秒且可在
+`0～60` 秒内配置，4A 固定为 60 秒以保持各次 Run 可比较。
+旧 `LLM_REQUEST_TIMEOUT_SECONDS` 仍用于 Current Runtime 回归路径，默认 30 秒。
+此前的 30/60 秒诊断与 Final Output 独立 Spike 保持历史原貌，不回写 Artifact。
 
 调用者先在自己的本地 Shell 导出 `LLM_API_KEY`、与当前 Region 对应的 `LLM_BASE_URL`，并设置固定
 `LLM_MODEL=qwen3.7-max`；`LLM_PROVIDER` 应为 `ALIYUN_MODEL_STUDIO`（未设置时使用该值），同一 Run

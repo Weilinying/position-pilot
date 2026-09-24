@@ -1,6 +1,6 @@
 # Ask Quality Phase 4 — 4A Core Evidence Report
 
-**Status:** AQ07 REQUEST RECOVERED / ANSWER QUALITY RETEST PENDING（2026-09-24）；
+**Status:** NATIVE 60s TIMEOUT IMPLEMENTED / AQ07 RETEST PENDING（2026-09-24）；
 不是 4A Gate PASS，也尚未提交最终 Human Review。
 
 ## 1. 范围与历史边界
@@ -198,6 +198,11 @@ Final Output 结构错误；第二次请求尚未返回，无法评价其候选�
 现有 30 秒 Ceiling 对 AQ07 的真实模型路径已出现重复超时；60 秒臂只有一次成功，
 不足以证明提高上限后的可靠性。此处停止 Production 预算修改，先提交 Human Decision
 Proposal。AQ07 回答质量中的 SWING 分支及未证实 Thesis 问题仍是独立待办，不能靠延长预算解决。
+
+**2026-09-24 Human Decision：** 用户批准把 PydanticAI Production Native 总 Wall-clock
+与单次 Provider Request Timeout 调整为 60 秒；Model / Tool 次数及无隐式 Retry 不变，
+Current Runtime 仍为 30 秒回归基线。以上原始 30/60 诊断结果不改写；本报告仍非 4A PASS，
+需要在新上限下重新运行真实 AQ07 并单独解决回答质量缺口。
 
 Output Tool 基本参数形状不合法时，Framework 没有可交给 Application Repair 的候选；
 该失败明确记录为 `INVALID_PROVIDER_RESPONSE`，不添加隐藏重试或 JSON 文本兜底。

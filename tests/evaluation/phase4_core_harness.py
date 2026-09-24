@@ -100,6 +100,8 @@ class Phase4RunMetadata:
     provider: str
     model: str
     llm_base_url: str
+    native_request_timeout_seconds: float
+    wall_clock_budget_seconds: float
     run_id: str
     repetition_index: int
     run_kind: str
@@ -125,6 +127,8 @@ class Phase4RunMetadata:
             "provider": self.provider,
             "model": self.model,
             "llm_base_url": self.llm_base_url,
+            "native_request_timeout_seconds": self.native_request_timeout_seconds,
+            "wall_clock_budget_seconds": self.wall_clock_budget_seconds,
             "run_id": self.run_id,
             "repetition_index": self.repetition_index,
             "run_kind": self.run_kind,
@@ -333,6 +337,8 @@ def create_run_metadata(
         provider=values.get("LLM_PROVIDER", DEFAULT_PROVIDER).strip().upper() or DEFAULT_PROVIDER,
         model=values.get("LLM_MODEL", DEFAULT_MODEL).strip() or DEFAULT_MODEL,
         llm_base_url=_safe_base_url(values.get("LLM_BASE_URL", DEFAULT_BASE_URL)),
+        native_request_timeout_seconds=DEFAULT_WALL_CLOCK_BUDGET_SECONDS,
+        wall_clock_budget_seconds=DEFAULT_WALL_CLOCK_BUDGET_SECONDS,
         run_id=run_id,
         repetition_index=repetition_index,
         run_kind="PRIMARY" if repetition_index == 1 else "REPEAT",
@@ -364,6 +370,7 @@ def _build_eval_runtime(environment: Mapping[str, str]) -> AgentRuntime | None:
         llm_request_timeout_seconds=float(
             environment.get("LLM_REQUEST_TIMEOUT_SECONDS", str(DEFAULT_TIMEOUT_SECONDS))
         ),
+        native_llm_request_timeout_seconds=DEFAULT_WALL_CLOCK_BUDGET_SECONDS,
     )
     return create_pydantic_ai_runtime(settings)
 

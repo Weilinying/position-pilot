@@ -577,7 +577,7 @@ def create_pydantic_ai_runtime(settings: Settings) -> PydanticAIRuntime:
             None,
             provider_name=settings.llm_provider,
             model_name=settings.llm_model,
-            timeout_seconds=settings.llm_request_timeout_seconds,
+            timeout_seconds=settings.native_llm_request_timeout_seconds,
             max_retries=0,
         )
 
@@ -588,7 +588,7 @@ def create_pydantic_ai_runtime(settings: Settings) -> PydanticAIRuntime:
         client = AsyncOpenAI(
             api_key=api_key,
             base_url=str(settings.llm_base_url),
-            timeout=settings.llm_request_timeout_seconds,
+            timeout=settings.native_llm_request_timeout_seconds,
             max_retries=0,
         )
         try:
@@ -605,7 +605,7 @@ def create_pydantic_ai_runtime(settings: Settings) -> PydanticAIRuntime:
         None,
         provider_name=settings.llm_provider,
         model_name=settings.llm_model,
-        timeout_seconds=settings.llm_request_timeout_seconds,
+        timeout_seconds=settings.native_llm_request_timeout_seconds,
         max_retries=0,
         model_context_factory=model_context,
     )

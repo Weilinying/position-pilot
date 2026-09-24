@@ -71,7 +71,7 @@ from position_pilot.domain.news import NewsResult
 LOGGER = logging.getLogger(__name__)
 DEFAULT_MODEL_REQUEST_BUDGET = 3
 DEFAULT_TOOL_CALL_BUDGET = 4
-DEFAULT_WALL_CLOCK_BUDGET_SECONDS = 30.0
+DEFAULT_WALL_CLOCK_BUDGET_SECONDS = 60.0
 
 
 class _AuthorizedToolSession:

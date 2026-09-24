@@ -571,8 +571,9 @@ def test_invalid_source_uses_one_no_tool_repair_run() -> None:
     assert isinstance(result, InvestmentAnswer)
     assert len(runtime.requests) == 2
     assert runtime.requests[0].budget.model_requests == 3
+    assert runtime.requests[0].budget.wall_clock_seconds == 60
     assert runtime.requests[1].budget.model_requests == 1
-    assert runtime.requests[1].budget.wall_clock_seconds < 30
+    assert 0 < runtime.requests[1].budget.wall_clock_seconds < 60
 
 
 def test_runtime_failure_maps_to_existing_public_failure_contract() -> None:

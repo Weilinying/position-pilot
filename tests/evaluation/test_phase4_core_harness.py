@@ -72,8 +72,8 @@ def test_offline_manifest_keeps_core_not_run_and_research_not_measured() -> None
     assert summary["research_gate"]["evidence_status"] == "NOT_MEASURED"
 
 
-def test_eval_only_agent_budget_override_does_not_change_default() -> None:
-    """60 秒只通过诊断构造参数生效，普通 4A Fixture 仍采用 30 秒。"""
+def test_eval_only_agent_budget_can_compare_prior_30_second_ceiling() -> None:
+    """普通 4A Fixture 使用获批 60 秒，诊断仍可单独观察旧 30 秒。"""
 
     default_runtime = ScriptedRuntime()
     diagnostic_runtime = ScriptedRuntime()
@@ -82,11 +82,11 @@ def test_eval_only_agent_budget_override_does_not_change_default() -> None:
         USER_ID, case.executable_questions[0], ()
     )
     build_native_agent(
-        case, diagnostic_runtime, wall_clock_budget_seconds=60.0
+        case, diagnostic_runtime, wall_clock_budget_seconds=30.0
     ).answer_with_history(USER_ID, case.executable_questions[0], ())
 
-    assert default_runtime.requests[0].budget.wall_clock_seconds == 30.0
-    assert diagnostic_runtime.requests[0].budget.wall_clock_seconds == 60.0
+    assert default_runtime.requests[0].budget.wall_clock_seconds == 60.0
+    assert diagnostic_runtime.requests[0].budget.wall_clock_seconds == 30.0
 
 
 def test_fixture_runner_uses_native_agent_and_preserves_unknown_usage(tmp_path: Path) -> None:
@@ -113,6 +113,8 @@ def test_fixture_runner_uses_native_agent_and_preserves_unknown_usage(tmp_path: 
     assert record["execution_status"] == "COMPLETED"
     assert record["usage"]["total_tokens"] == "UNKNOWN"
     assert result["summary"]["core_full"]["completed_case_count"] == 1
+    assert result["metadata"]["native_request_timeout_seconds"] == 60.0
+    assert result["metadata"]["wall_clock_budget_seconds"] == 60.0
     assert result["summary"]["latency"]["median_ms"] is not None
     assert (artifact_dir / "manifest.json").is_file()
     assert (artifact_dir / "cases.jsonl").is_file()

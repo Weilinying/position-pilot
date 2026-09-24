@@ -45,7 +45,9 @@ def _runtime_settings() -> Settings:
         llm_api_key=SecretStr(api_key),
         llm_base_url=AnyHttpUrl(base_url),
         llm_model=model,
-        llm_request_timeout_seconds=float(os.getenv("LLM_REQUEST_TIMEOUT_SECONDS", "30")),
+        native_llm_request_timeout_seconds=float(
+            os.getenv("NATIVE_LLM_REQUEST_TIMEOUT_SECONDS", "60")
+        ),
     )
 
 

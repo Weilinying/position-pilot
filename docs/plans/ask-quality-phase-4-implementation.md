@@ -9,6 +9,12 @@ P4-T2 已将 Production Bootstrap 切换为单一 PydanticAI Runtime；Current R
 Current Recommendation 与 Ledger Derived Facts 不进入 Strategy。Pending 冲突域为
 `account + scope + kind`，Position Plan 表达当前资本配置目标。历史 Phase 2 / Phase 3 证据不改写。
 
+**Native Timeout Revision（2026-09-24，Human Approved）：** AQ07 同模型在线诊断中，
+30 秒总预算重复在第二次模型请求期间耗尽；60 秒诊断完成一次，但不代表稳定性已验收。
+PydanticAI Production Native 路径的 Wall-clock Ceiling 与单次 Provider Request Timeout
+均调整为 60 秒；Model / Tool / Research 次数和无隐式 Retry 规则不变。旧 Current Runtime
+的 30 秒请求配置及既有 Phase 3 / 4A Artifact 均不回写。4A Gate 仍需完整回归和 Human Review。
+
 Phase 3 已通过 Human Acceptance，批准的架构边界为：
 
 - Production Agent Runtime 采用 PydanticAI；
@@ -39,8 +45,9 @@ Strategy 表仍待 4B。Phase 3 `tests/spikes/` 只能作为 Contract 与测试�
   Recommendation；
 - 4B 只实现 `POSITION_PLAN_V1`、`INVESTMENT_THESIS_V1`、`HOLDING_HORIZON_V1`；
 - Answer V2 使用 `[source:<source_id>]` near-claim token，由前端映射为经验证的 Source；
-- 初始 Run Safety Ceiling 为 4 次 Model Request、4 次 Tool Call、2 次 Research、30 秒 wall-clock，
-  它是安全上限而非 Production SLO；
+- 初始 Run Safety Ceiling 为 4 次 Model Request、4 次 Tool Call、2 次 Research、30 秒 wall-clock；
+  Native Timeout Revision 后仅 PydanticAI Production Native wall-clock 改为 60 秒，仍是安全上限而非
+  Production SLO；
 - 旧 `/v1/investment/questions` 在 Phase 4 保持 deprecated compatibility，不创建 Thread、不生成
   Strategy Candidate，也不启用 Open Research。
 
@@ -440,8 +447,9 @@ Strategy、Conversation 全文、Account / Session ID。Provider Answer / Excerp
 Provider Failure、Budget Exhausted 与 Partial Result 必须分开。
 
 初始 Safety Ceiling 延续 Phase 3：每 Run 最多 4 次 Model Request、4 次 Tool Call、2 次 Research、
-30 秒 wall-clock；这不是 Production SLO。4A 报告真实 Usage / UNKNOWN、Latency 与费用后再决定是否
-收窄，不为达到速度跳过必要来源。
+30 秒 wall-clock。2026-09-24 Human Review 将 PydanticAI Production Native 的总时限和单次模型
+请求时限调整为 60 秒，次数上限不变；这不是 Production SLO。4A 报告真实 Usage / UNKNOWN、
+Latency 与费用后再决定是否收窄，不为达到速度跳过必要来源。
 
 ### 8.2 Source Registry 与 Citation
 

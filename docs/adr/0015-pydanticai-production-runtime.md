@@ -48,6 +48,16 @@ Production Adapter 仍须通过真实 AQ07 回归与 4A Human Review。
 `INVALID_PROVIDER_RESPONSE`；这种失败无法进入 Application 的候选 Repair。暂不增加隐藏 Framework
 Retry 或兜底文本路径，先由完整 AQ07 在线回归判断其实际发生情况。
 
+### 2026-09-24 Native Timeout 补充决定
+
+完整 AQ07 的 30 秒在线运行重复在工具返回后的第二次模型请求期间耗尽预算。配对诊断中
+首次模型请求分别为 `6.17s` / `17.53s`，Fixture Tool 均在毫秒内返回；60 秒臂在
+`29.01s` 完成，30 秒臂未返回 Final Candidate。Human Review 批准仅把 PydanticAI
+Production Native 的总 Wall-clock 与单次 Provider Request Timeout 调整至 60 秒。
+Current Runtime 的 `LLM_REQUEST_TIMEOUT_SECONDS=30` 回归基线保持不变；新增独立的
+`NATIVE_LLM_REQUEST_TIMEOUT_SECONDS=60`。Model / Tool 次数、无隐式 Retry、Source / Citation
+校验与公共 API 均不变。一次 60 秒成功不证明稳定性，AQ07 回答质量和完整 4A Gate 仍需另行验证。
+
 ## Alternatives / Trade-off
 
 - 继续长期维护 Current Runtime 可以避免新增依赖，但需要持续自建 Toolset、MCP、History、Usage 和

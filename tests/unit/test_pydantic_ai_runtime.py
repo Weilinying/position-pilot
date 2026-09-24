@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 
 import pytest
-from pydantic import AnyHttpUrl, PostgresDsn, SecretStr
+from pydantic import AnyHttpUrl, PostgresDsn, SecretStr, ValidationError
 from pydantic_ai.exceptions import ModelHTTPError
 from pydantic_ai.messages import ModelMessage, ModelResponse, TextPart, ToolCallPart
 from pydantic_ai.models.function import AgentInfo, FunctionModel
@@ -512,11 +512,14 @@ def test_configured_runtime_creates_and_closes_provider_client_per_run(
 
     opened: list[asyncio.AbstractEventLoop] = []
     closed: list[asyncio.AbstractEventLoop] = []
+    client_timeouts: list[object] = []
+    retry_limits: list[object] = []
 
     class FakeClient:
         def __init__(self, **kwargs: object) -> None:
-            del kwargs
             opened.append(asyncio.get_running_loop())
+            client_timeouts.append(kwargs["timeout"])
+            retry_limits.append(kwargs["max_retries"])
 
         async def close(self) -> None:
             closed.append(asyncio.get_running_loop())
@@ -542,11 +545,28 @@ def test_configured_runtime_creates_and_closes_provider_client_per_run(
         llm_base_url=AnyHttpUrl("https://fixture.invalid/v1"),
         llm_api_key=SecretStr("fixture-key"),
         llm_model="fixture-model",
+        llm_request_timeout_seconds=7,
+        native_llm_request_timeout_seconds=60,
     )
     runtime = create_pydantic_ai_runtime(settings)
 
+    assert runtime.timeout_seconds == 60
     assert runtime.run(_request()).status is AgentRunStatus.COMPLETED
     assert runtime.run(_request()).status is AgentRunStatus.COMPLETED
     assert len(opened) == len(closed) == 2
     assert opened == closed
     assert opened[0] is not opened[1]
+    assert client_timeouts == [60, 60]
+    assert retry_limits == [0, 0]
+
+
+@pytest.mark.parametrize("timeout", [0, 61, float("inf")])
+def test_native_request_timeout_cannot_exceed_approved_ceiling(timeout: float) -> None:
+    """Native Provider 请求上限独立于旧 Runtime，并拒绝超过获批值。"""
+
+    with pytest.raises(ValidationError, match="NATIVE_LLM_REQUEST_TIMEOUT_SECONDS"):
+        Settings(
+            _env_file=None,  # type: ignore[call-arg]
+            database_url=PostgresDsn("postgresql+psycopg://fixture.invalid/fixture"),
+            native_llm_request_timeout_seconds=timeout,
+        )
