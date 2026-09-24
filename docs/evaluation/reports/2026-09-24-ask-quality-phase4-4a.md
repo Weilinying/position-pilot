@@ -101,8 +101,24 @@ Artifact，不回写以前的 Run。
 
 历史 M5 证据显示 Model Studio 上 `tools + response_format=json_object` 可能导致 Routing 不兼容，
 因此不能简单对整个 Tool Loop 强制 JSON mode。当前结论是：自动补取重复记账已修复；
-结构化 Final Candidate 的生成方式及 30 秒内 Repair 能否完成仍是独立未决项。不凭这一例直接修改
+完整 AQ07 中结构化 Final Candidate 的生成方式及 30 秒内 Repair 能否完成仍是独立未决项。不凭这一例直接修改
 Provider 请求模式、延长已批准 Safety Ceiling 或判定 Framework 不可行。
+
+用户随后在本地运行独立的 `p4-final-output-spike / r1`（Artifact：
+`build/evaluation-runs/p4-final-output-spike/r1/report.json`）。该配对实验只使用固定 GOOG Quote
+Fixture、一个只读 Tool 和最小 `answer / source_refs` Schema；不是 AQ07 的完整 Prompt、Portfolio / Market
+Context 或 Production Agent 路径。两臂均实际调用 `get_fixture_quote(GOOG)`，模型均未报告 Token Usage，
+因此 Cost 仍为 `UNKNOWN`。
+
+| 输出方式 | 首次候选 | Repair | 最终校验 | 模型请求 | 总耗时 |
+|---|---|---|---|---:|---:|
+| JSON 文本 | `InvalidStructuredAnswer`：外层有 Markdown JSON 围栏 | 触发一次；Repair 又在 `source_refs` 增加 Contract 不允许的 `uuid` | FAIL | 3 | 17.81s |
+| PydanticAI Final Output Tool | 金融 Tool → Output Tool；Source / inline Citation 均通过 | 未触发 | PASS | 2 | 5.84s |
+
+这证明固定 Qwen Endpoint 在此最小场景中接受 Output Tool Schema，且能先调用金融 Tool，再返回合法
+结构化结果；不证明完整 AQ07 已修复，也不足以据单次样本断言长期可靠性、性能或成本优势。
+两臂逐模型请求及 Repair 耗时均保留在原始 Artifact。当前 30 秒 Production Ceiling 不变；
+只有 Production 输出方式另行通过 Human Review 并实现后，才能以完整 AQ07 回归检验该候选。
 
 ## 4. 尚未取得的 4A 证据
 
@@ -121,13 +137,12 @@ AQ06 按 [金额分析规则修订](../ask-quality-policy-revision-2026-09-20.md
 
 ## 5. 下一步与 Human Gate
 
-已确认 AQ07 的首次候选为非法 JSON，且 Repair 耗尽剩余 Wall-clock；先评审现有
-PydanticAI Final Output 能力与 M5 Provider Compatibility 证据，不再进行盲目付费复测。
-已新增测试专用的 JSON 文本 / PydanticAI Final Output Tool 配对入口，离线 Contract 已验证；
-真实 Qwen Endpoint 的 Tool Choice、输出合法性、请求次数、Usage 与耗时仍待用户本地在线验证。
-该独立 Smoke 不作为 AQ07 修复证据。若候选方案需要进入 Production，必须另行提交 Human Review；
-获批实现后再完整重跑 AQ07。若独立 Smoke 仍失败，先做分阶段归因，必要时仅在 Eval 进行
-30/60 秒对照，不调整 Production 超时。
+已确认 AQ07 的首次候选为非法 JSON，且 Repair 耗尽剩余 Wall-clock。独立 Final Output Tool
+在线实验在最小 Fixture 上通过，但不作为 AQ07 修复证据。建议将 Production 输出方式作为独立
+Decision Proposal 提交 Human Review；如获批，仅在 PydanticAI Adapter 的 JSON Final Candidate
+路径引入 ToolOutput，继续交由 Application 验证 Source / Citation，保持现有预算与 Public API。
+实现并通过离线回归后，先定向重跑完整 AQ07；若仍失败，按 Model / Tool / Repair 阶段归因，
+必要时仅在 Eval 进行 30/60 秒对照，不调整 Production 超时。
 必要的 Safety Ceiling 或 Tool Contract 调整须遵守已批准计划的 Human Review 边界。
 之后完成必要的有效
 `r1`、`r2`、`r3` 真实模型 Run；命令与 Artifact 结构见
