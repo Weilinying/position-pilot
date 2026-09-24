@@ -89,6 +89,21 @@ discretionary Quote 复用该结果并将其包含在 Observation，不再额外
 原有预算回归与新增“显式先调用”回归均保留。Eval 记录器后续会保存固定 Fixture Run 的首次
 Final Candidate，便于在不推测的情况下离线判定 Repair 原因；这不改变历史 Artifact。
 
+用户在 `fee8331` 后运行 `p4-4a-aq07-rca / r1`，AQ07 仍为 `REQUEST_FAILED`。此次 Trace 恰为
+Quote、自动 Market Context、News、Price History 四次调用，**没有**重复 Market Context 记账；
+首次 Runtime 于 `23.88s` 返回 Final Candidate。Candidate 的 `source_refs` 对应本轮已取得来源，
+inline Source ID 也与 Tool Trace 一致，但 `answer` 字符串中出现未转义的双引号，外层不是合法 JSON。
+Application 因此正确触发一次无 Tool Repair；剩余 `6.13s` 耗尽 30 秒总预算，最终错误为
+`WALL_CLOCK_BUDGET_EXCEEDED`（API 层映射为 `LLM_PROVIDER_UNAVAILABLE`）。这次直接触发
+Repair 的是 JSON 语法错误，并非已观察到的 Source Identity 错误；也不能因 `pytest PASSED`
+认定 AQ07 通过。固定 Fixture Raw Candidate 仅保存在新的
+Artifact，不回写以前的 Run。
+
+历史 M5 证据显示 Model Studio 上 `tools + response_format=json_object` 可能导致 Routing 不兼容，
+因此不能简单对整个 Tool Loop 强制 JSON mode。当前结论是：自动补取重复记账已修复；
+结构化 Final Candidate 的生成方式及 30 秒内 Repair 能否完成仍是独立未决项。不凭这一例直接修改
+Provider 请求模式、延长已批准 Safety Ceiling 或判定 Framework 不可行。
+
 ## 4. 尚未取得的 4A 证据
 
 | Gate / 指标 | 当前状态 | 收口要求 |
@@ -106,9 +121,10 @@ AQ06 按 [金额分析规则修订](../ask-quality-policy-revision-2026-09-20.md
 
 ## 5. 下一步与 Human Gate
 
-已对 AQ07 的显式先调用路径完成去重及离线验证；下一步只对 AQ07 做一次定向在线复测，
-确认 Tool Trace 与首次候选的校验失败类型，再决定是否运行 AQ10。必要的
-Safety Ceiling 或 Tool Contract 调整须遵守已批准计划的 Human Review 边界。之后完成必要的有效
+已确认 AQ07 的首次候选为非法 JSON，且 Repair 耗尽剩余 Wall-clock；先评审现有
+PydanticAI Final Output 能力与 M5 Provider Compatibility 证据，不再进行盲目付费复测。
+必要的 Safety Ceiling 或 Tool Contract 调整须遵守已批准计划的 Human Review 边界。
+之后完成必要的有效
 `r1`、`r2`、`r3` 真实模型 Run；命令与 Artifact 结构见
 [Evaluation README](../README.md#phase-4-4a-core-eval)。收到 `manifest.json`、`cases.jsonl`、
 `summary.json` 后复核 Tool Selection / Arguments、Conversation 指代与预算更正、Source / Citation、
