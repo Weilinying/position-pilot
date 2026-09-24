@@ -56,6 +56,26 @@ Adapter Bug 判为 PydanticAI 架构限制。
 `UNKNOWN`。这证明同一 Runtime 的两次连续 No-tool 在线调用可完成，**尚未验证**此前失败的
 AQ07 / AQ10、Tool Loop、多轮历史或 r1 全量质量。两个回答仍保留 Human Rubric `PENDING`。
 
+随后用户本地运行 `p4-4a-tool-history-smoke / r1`，选 AQ07、AQ10，Revision 为
+`eddb467ebc0d615835ef982754ece711b210fca9-dirty`。AQ07 的 Turn 以
+`TOOL_CALL_BUDGET_EXCEEDED` 结束（约 `5.67s`）；AQ10 首轮 `COMPLETED / OK`，第二轮以
+`WALL_CLOCK_BUDGET_EXCEEDED` 结束（约 `30.01s`）。三个 Turn 中完成 1 个，两个 Case 均
+`REQUEST_FAILED`；没有再观察到毫秒级 `PYDANTIC_AI_RUNTIME_FAILURE`。AQ07 / AQ10 第二轮的
+Trace 均包含 Quote 后的两条 Market Context 记录：Application 在 discretionary Quote 时自动补取
+Minimum Market Context，而模型另行请求了一次同名 Tool。FinancialToolExecutor 会复用同轮结果，
+但额外的 Tool Invocation 仍占用 4 次 Tool Call Safety Ceiling。AQ07 还调用了 Price History；
+AQ10 第二轮 Quote 为 `NO_DATA`，不能将其当作当前价格。两种失败分别属于预算上限与完成时限，
+不是本轮已修复的异步客户端生命周期错误，也不能据此判定 PydanticAI 架构限制。
+
+现有 4 Tool Call / 30 秒为已批准 Safety Ceiling，不在此报告中为了让 Eval 通过而提高；
+需要先审查 Tool Loop 对自动补取 Context 的处理及模型最终回答路径。当前 4A Core Gate 仍未通过，
+不启动完整 Primary / Repeat 付费重跑，也不进入 P4-T6～T8。
+
+对上述系统性重复调用，Native Agent Prompt 现已补充最小契约说明：discretionary Quote Observation
+中的 `required_market_context` 已包含本轮必要的 Market Context；同一问题不应再重复请求，失败时
+仍保持 `UNKNOWN`。离线测试验证了该提示与自动补取结果同时存在，**尚未通过真实模型确认**它能减少
+Tool Call 或使 AQ07 / AQ10 达标。该改动不回写任何历史 Artifact，也未调整已批准 Safety Ceiling。
+
 ## 4. 尚未取得的 4A 证据
 
 | Gate / 指标 | 当前状态 | 收口要求 |
@@ -73,8 +93,9 @@ AQ06 按 [金额分析规则修订](../ask-quality-policy-revision-2026-09-20.md
 
 ## 5. 下一步与 Human Gate
 
-先由用户在本地对此前失败的 AQ07 / AQ10 做最小定向在线复测，覆盖 Tool Loop 与多轮历史；
-再对残留的 30 秒 Wall-clock、Tool-call Budget 和其他失败做分层 RCA。之后完成必要的有效
+已对 AQ07 / AQ10 的预算交互完成离线 RCA 与最小 Native Prompt 澄清；下一步只对 AQ07 做
+一次定向在线复测，验证模型是否减少重复 Market Context Call，再决定是否运行 AQ10。必要的
+Safety Ceiling 或 Tool Contract 调整须遵守已批准计划的 Human Review 边界。之后完成必要的有效
 `r1`、`r2`、`r3` 真实模型 Run；命令与 Artifact 结构见
 [Evaluation README](../README.md#phase-4-4a-core-eval)。收到 `manifest.json`、`cases.jsonl`、
 `summary.json` 后复核 Tool Selection / Arguments、Conversation 指代与预算更正、Source / Citation、

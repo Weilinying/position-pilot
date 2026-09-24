@@ -170,7 +170,12 @@ class NativeInvestmentAgent:
                 InvestmentResponseStatus.OK.value,
             )
         ]
-        prompt = SYSTEM_PROMPT
+        prompt = SYSTEM_PROMPT + (
+            "\n在 Native Tool Loop 中，若 get_current_quote 使用 "
+            "DISCRETIONARY_CURRENT_RISK_ACTION，本次 Quote Observation 的 "
+            "required_market_context 已包含必要的 Market Context；不要为同一问题重复调用 "
+            "get_market_context。若 required_market_context 未成功，须按失败状态保持 UNKNOWN。"
+        )
         if citation_mode:
             prompt += (
                 "\nConversation 回答中，凡引用本轮成功 Tool 结果，请在相关陈述附近使用"

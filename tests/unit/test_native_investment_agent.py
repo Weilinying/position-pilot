@@ -349,12 +349,17 @@ def test_discretionary_quote_automatically_adds_required_market_context() -> Non
         )
 
     data = FixedFinancialData()
-    result = _agent(ScriptedNativeRuntime(run), data).answer(
+    runtime = ScriptedNativeRuntime(run)
+    result = _agent(runtime, data).answer(
         USER_ID,
         "今天应该加仓 GOOG 吗？",
     )
 
     assert isinstance(result, InvestmentAnswer)
+    assert runtime.requests[0].messages[0].content is not None
+    assert "required_market_context 已包含必要的 Market Context" in (
+        runtime.requests[0].messages[0].content
+    )
     assert data.quote_calls == ["GOOG"]
     assert data.market_context_calls == 1
     assert trace_names == [
