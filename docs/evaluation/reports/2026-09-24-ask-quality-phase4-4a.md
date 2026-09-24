@@ -1,6 +1,6 @@
 # Ask Quality Phase 4 — 4A Core Evidence Report
 
-**Status:** EVIDENCE COLLECTION IN PROGRESS（2026-09-24）；不是 4A Gate PASS，也尚未提交最终 Human Review。
+**Status:** R1 ROOT CAUSE ANALYSIS IN PROGRESS（2026-09-24）；不是 4A Gate PASS，也尚未提交最终 Human Review。
 
 ## 1. 范围与历史边界
 
@@ -25,24 +25,48 @@ PydanticAI Runtime 失败。4B Strategy AQ13～AQ16 未进入本阶段。
   TestClient 检查；浏览器删除确认弹窗中断了 UI 自动化，不能声称 UI 删除已通过。工程替身不模拟
   PostgreSQL 并发、真实模型或 Research 质量。
 
-## 3. 尚未取得的 4A 证据
+## 3. R1 真实模型证据与待排查失败
+
+用户在本地执行 `p4-4a-local / r1`，固定 `qwen3.7-max`、Alibaba Model Studio 北京 Endpoint，
+Artifact 位于 `build/evaluation-runs/p4-4a-local/r1/`。Run Revision 为
+`0b904615a76c91cb3ae2e410fef182f67a2a3046-dirty`；原始 `manifest.json`、`cases.jsonl`、
+`summary.json` 保持不变。`pytest PASSED` 仅表示采集器完成并写入 Artifact，不是质量 Gate PASS。
+
+13 个 Core Primary Case 中，4 个 `COMPLETED`、9 个 `REQUEST_FAILED`；Core 请求成功率为
+`4 / 13 = 30.77%`，Turn 成功率为 `5 / 18 = 27.78%`。AQ04 Earnings Diagnostic 亦为
+`REQUEST_FAILED`。已完成的 Core 为 AQ06、AQ08、AQ17b、AQ20；它们仍需逐 Case Rubric 与
+Critical Gate 人工审阅，不能据此认定回答质量通过。全部 19 个已执行 Turn 的 Latency 中位数
+`8146.5 ms`、最大值 `30013.05 ms`；Usage / Cost 为 `UNKNOWN`，Repair 总数为 4。
+
+失败不能笼统归因为框架：逐 Turn 有 13 次 `LLM_PROVIDER_UNAVAILABLE`、1 次
+`TOOL_CALL_LIMIT_EXCEEDED`；底层 Runtime Call 记录有 10 次
+`PYDANTIC_AI_RUNTIME_FAILURE`、3 次 `WALL_CLOCK_BUDGET_EXCEEDED`、1 次
+`TOOL_CALL_BUDGET_EXCEEDED`。部分 `PYDANTIC_AI_RUNTIME_FAILURE` 在约 5～8 ms 内发生，
+不符合普通在线模型延迟。当前 Adapter 将底层未分类异常收敛为错误码，Artifact 无法区分连接/事件循环、
+请求构造或框架内部错误；同一 Runtime / Async Client 跨多个 Case 连续使用的路径也未被现有在线 Smoke
+覆盖。此处只列出排查假设，不据此定因，更不把 Prototype Bug 直接判为架构限制。先用离线重现与
+脱敏错误分类确定原因，修复后再做最小定向在线复测；暂不进行 r2 / r3 或完整 Primary 重跑。
+
+## 4. 尚未取得的 4A 证据
 
 | Gate / 指标 | 当前状态 | 收口要求 |
 |---|---|---|
-| 13 个 Core Primary Case 请求、逐 Case Rubric | `NOT_RUN / NOT_EVALUATED` | 用户本地真实模型 Run 后按批准最低分人工审阅 |
+| 13 个 Core Primary Case 请求、逐 Case Rubric | r1 已运行；`4 COMPLETED / 9 REQUEST_FAILED`，Rubric `NOT_EVALUATED` | 先完成失败 RCA 与有效 Primary，再按批准最低分人工审阅 |
 | AQ03、AQ05、AQ06、AQ07、AQ17a / b 的 r2 / r3 | `NOT_RUN` | 每次独立过线，不取最佳结果 |
 | AQ12、AQ18 Protected；AQ04 Diagnostic | `NOT_EVALUATED` | 保留未解冲突及 Earnings 能力边界 |
 | Critical Failure | `NOT_EVALUATED`，不是 0 | 完成逐 Case Human Gate，任何 FAIL 阻止 4B |
-| Latency median / max、Usage、Cost | 4A Core `NOT_MEASURED` | 从真实运行 Artifact 汇总；Usage 缺失保持 UNKNOWN |
+| Latency median / max、Usage、Cost | r1 已测 Latency `8146.5 / 30013.05 ms`（全部 19 Turn）；Usage / Cost `UNKNOWN` | 失败 RCA 后复核可比性；Usage 缺失保持 UNKNOWN |
 | Open Research AQ01 / AQ02 / AQ19 | `NOT_MEASURED` | T4R 独立决策；不阻塞 Core，不需要 Brave Key |
 
 AQ06 按 [金额分析规则修订](../ask-quality-policy-revision-2026-09-20.md) 审阅：普通金额建议不以
 碎股权限验证为前提；Cash 与本轮 Budget 分开，不提高 Budget，不把理论股数声称为账户实际可执行
 订单，也不修改 Ledger。历史 Phase 2 / Phase 3 评分不因此回写。
 
-## 4. 下一步与 Human Gate
+## 5. 下一步与 Human Gate
 
-用户在本地完成 `r1`、`r2`、`r3` 真实模型 Run；命令与 Artifact 结构见
+先对 r1 的毫秒级 Runtime Failure、30 秒 Wall-clock、Tool-call Budget 三类问题做 RCA，
+验证并修复已批准 Adapter 范围内的实现缺口。之后由用户在本地完成必要的定向在线复测及
+有效 `r1`、`r2`、`r3` 真实模型 Run；命令与 Artifact 结构见
 [Evaluation README](../README.md#phase-4-4a-core-eval)。收到 `manifest.json`、`cases.jsonl`、
 `summary.json` 后复核 Tool Selection / Arguments、Conversation 指代与预算更正、Source / Citation、
 Provider Failure、Repair、逐 Case Rubric 和 Critical Gate，并填写质量分布、成功率、Latency 与
