@@ -186,8 +186,18 @@ Ceiling 稳定足够；此前同模型同 Case 的 30 秒失败仍保留。诊�
 条件，并保持策略缺失为 UNKNOWN；但只讨论现有 LONG_TERM 追加，没有完成计划要求的
 假设性 SWING 分支，且“LONG_TERM 持仓逻辑尚未被破坏”缺少已确认 Thesis 依据。
 因此正式 AQ07 Human Rubric 与 4A Gate 继续 `PENDING`，不得把诊断成功计作 Primary PASS。
-需要使用同一诊断入口完成 30 秒配对观察，再决定是否提出预算 Decision Proposal；
-结果返回前不改变 Production 预算或 Output Contract。
+同一诊断入口的 30 秒配对观察随后完成；Production 预算和 Output Contract 暂不改变。
+
+同一诊断入口的 `p4-4a-aq07-timeout-diagnostic/30s` 已完成：AQ07
+`REQUEST_FAILED / WALL_CLOCK_BUDGET_EXCEEDED`，Native Case 耗时 `30.04s`，
+无 Final Candidate、无 Repair。首次模型请求耗时 `17.53s` 并选择 Quote、History、News；
+三个外层 Fixture Tool 均少于 `1ms`，Quote 包含自动 Market Context；第二次模型请求在
+剩余约 `12.47s` 时被总预算取消。与 60 秒臂的首次 `6.17s`、第二次 `22.80s`
+对照，当前两次请求耗时存在明显波动。该失败不应归因于 Tool、Citation Validator 或
+Final Output 结构错误；第二次请求尚未返回，无法评价其候选输出。
+现有 30 秒 Ceiling 对 AQ07 的真实模型路径已出现重复超时；60 秒臂只有一次成功，
+不足以证明提高上限后的可靠性。此处停止 Production 预算修改，先提交 Human Decision
+Proposal。AQ07 回答质量中的 SWING 分支及未证实 Thesis 问题仍是独立待办，不能靠延长预算解决。
 
 Output Tool 基本参数形状不合法时，Framework 没有可交给 Application Repair 的候选；
 该失败明确记录为 `INVALID_PROVIDER_RESPONSE`，不添加隐藏重试或 JSON 文本兜底。
