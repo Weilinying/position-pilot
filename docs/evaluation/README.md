@@ -167,6 +167,37 @@ Rubric `0.1`，只冻结 4A Core、独立 Open Research Gate、AQ04 Earnings Reg
 `0.1` 的 Case 定义、Artifact、Hash 和历史结果保持不变。T4R 延后时 AQ01、AQ02、AQ19 继续记录为
 `DIAGNOSTIC / NOT_MEASURED`，不伪装成 Runtime Failure，也不阻塞 4A Core。
 
+### Phase 4 4A Core Eval
+
+`tests/evaluation/test_phase4_core_online.py` 是新的 pytest opt-in 入口。它复用 `0.1` 固定 Financial
+Fixtures，但实际 Ask 走 `NativeInvestmentAgent → PydanticAIRuntime`，多轮 Case 注入已发生的 User 与
+已完成的 Assistant 历史；不复用旧 `execute_case()` 的 Current Runtime 路径。每轮保存 Native Tool Trace、
+Source、Citation 文本、Repair 调用、Latency 和 Usage 或 `UNKNOWN`。Portfolio / Market / News 为固定
+Fixture，真实模型只用于 Agent 行为评估。它不验证真实金融 Provider 的时效与可用性。
+
+调用者先在自己的本地 Shell 导出 `LLM_API_KEY`、与当前 Region 对应的 `LLM_BASE_URL`，并设置固定
+`LLM_MODEL=qwen3.7-max`；`LLM_PROVIDER` 应为 `ALIYUN_MODEL_STUDIO`（未设置时使用该值），同一 Run
+的 r1 / r2 / r3 必须使用同一 Endpoint。Agent 不读取 `.env`。Primary 执行 13 个 Core FULL Case 与
+AQ04 Diagnostic：
+
+```bash
+RUN_PHASE4_EVAL=1 \
+EVAL_RUN_ID=<same-run-id> \
+EVAL_REPETITION_INDEX=1 \
+PHASE4_ARTIFACT_DIR=build/evaluation-runs/<same-run-id>/r1 \
+PYTHONPATH=backend:tests/evaluation \
+.venv/bin/pytest tests/evaluation/test_phase4_core_online.py -m online -s -q
+```
+
+重复运行只需分别改为 `EVAL_REPETITION_INDEX=2/3`、Artifact 目录 `r2/r3`，保持相同的 `EVAL_RUN_ID`；
+默认 Repeat 集为 AQ03、AQ05、AQ06、AQ07、AQ17a、AQ17b。每个目录生成 `manifest.json`、
+`cases.jsonl`、`summary.json`，已有 Artifact 文件不会被覆盖。`PHASE4_CASE_IDS` 仅用于显式选取
+Core / AQ04 子集；正式 Primary 不设置它。AQ01、AQ02、AQ19 在 T4R 未批准时始终作为独立 Research Gate
+的 `NOT_MEASURED` 记录，不要求 Brave Key。pytest 的执行成功只证明请求与记录完成；逐 Case Rubric、
+Critical Failure、Protected Set 与 Repeat Gate 必须根据 Artifact 人工复核，不得把 `PENDING` 写成 PASS。
+Artifact 的 Manifest 包含 0.1 完整 Case / Rubric Fixture、0.2 Target Manifest、固定模型与 Endpoint
+元数据；Run Record 另外保存实际 Conversation Citation-mode System Prompt 的 Hash。
+
 Ask Quality 的 Research Capability 指 Runtime 真实向 Agent 提供并允许使用的外部事实获取机制，
 可以是自定义 Search Tool、Provider / Model Native Web Search、Page Fetch 或 Multi-round Research
 Loop；模型训练知识不算 Search。Research Sufficiency 只评价本次 Runtime 实际可用能力的使用情况，
