@@ -10,11 +10,15 @@
 用户本地运行 `p4-4a-jun08-compat-1/r1`，仅选择 AQ20。该快照在当前
 Region / Endpoint 的请求 `COMPLETED`，耗时 `3196.45ms`，无 Tool Call、无 Repair；
 回答为账户可用现金 `$4,875.77`，与固定 Fixture 一致，未受无关历史背景干扰。
-因此它已验证 **No-tool + 当前 Final Output 路径**，没有验证 One-tool、Multi-tool、
-复杂 Citation 或完整 4A 回答质量。Token Usage / Cost 仍为 `UNKNOWN`，Critical Gate 与
-Human Review 仍为 `NOT_EVALUATED / PENDING`。下一步只需该快照的 One-tool / Multi-tool
-Production Compatibility Smoke，再决定是否运行较长的 4A Core；不得与旧别名的
-结果混作同模型重复试验，不修改 Production 默认模型。此前建议的 05-20 快照尚未实测。
+随后用户在同一模型和 Endpoint 上执行 Production Compatibility Smoke：One-tool
+`get_fixture_quote(GOOG)` 在 `5865.31ms` 内 `COMPLETED`；Multi-tool 依次调用
+`get_fixture_quote(GOOG)`、`get_fixture_market_context(GOOG)`，在 `8787.37ms` 内
+`COMPLETED`。两项断言均通过，工具名与参数正确。因此当前已验证 No-tool、One-tool、
+Multi-tool 及 Final Output 的最小真实模型兼容性。两项 Usage 均未由 Provider 报告，
+Token Usage / Cost 仍为 `UNKNOWN`。这不验证复杂 Citation 或完整 4A 回答质量；
+Critical Gate 与 Human Review 仍为 `NOT_EVALUATED / PENDING`。下一步可以用该快照
+独立运行完整 4A Core Primary，不能与旧别名结果混作同模型重复试验，也不修改
+Production 默认模型。此前建议的 05-20 快照尚未实测。
 
 ### 2026-09-26 备选模型入口诊断
 
