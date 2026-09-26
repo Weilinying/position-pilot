@@ -261,12 +261,16 @@ class PydanticAIRuntime(AgentRuntime):
                 bridge,
             )
         except ModelHTTPError as error:
+            provider_error_code, provider_error_message = self._provider_http_error(error)
             return self._failure(
                 AgentRunStatus.FAILED,
                 "MODEL_HTTP_FAILURE",
                 started_at,
                 bridge,
                 llm_status=self._http_status(error.status_code),
+                provider_http_status=error.status_code,
+                provider_error_code=provider_error_code,
+                provider_error_message=provider_error_message,
             )
         except ModelAPIError:
             return self._failure(
@@ -531,6 +535,23 @@ class PydanticAIRuntime(AgentRuntime):
         return LLMStatus.INVALID_REQUEST
 
     @staticmethod
+    def _provider_http_error(error: ModelHTTPError) -> tuple[str | None, str | None]:
+        """仅提取 Provider 的错误码与说明，不携带整个响应正文。"""
+
+        body = error.body
+        if not isinstance(body, Mapping):
+            return None, None
+        detail = body.get("error", body)
+        if not isinstance(detail, Mapping):
+            return None, None
+        code = detail.get("code", detail.get("error_code"))
+        message = detail.get("message", detail.get("error_message"))
+        return (
+            code if isinstance(code, str) else None,
+            message if isinstance(message, str) else None,
+        )
+
+    @staticmethod
     def _budget_failure_code(error: UsageLimitExceeded) -> str:
         text = str(error)
         if "wall-clock" in text:
@@ -549,8 +570,11 @@ class PydanticAIRuntime(AgentRuntime):
         bridge: _ToolBridge | None,
         *,
         llm_status: LLMStatus | None = None,
+        provider_http_status: int | None = None,
+        provider_error_code: str | None = None,
+        provider_error_message: str | None = None,
     ) -> AgentRunResult:
-        """创建不携带异常正文或伪造答案的稳定失败结果。"""
+        """创建稳定失败结果；Provider 诊断仅留在内部结果，不生成伪造答案。"""
 
         return AgentRunResult(
             status,
@@ -562,6 +586,9 @@ class PydanticAIRuntime(AgentRuntime):
             self._latency_ms(started_at),
             llm_status=llm_status,
             warnings=() if bridge is None else tuple(bridge.warnings),
+            provider_http_status=provider_http_status,
+            provider_error_code=provider_error_code,
+            provider_error_message=provider_error_message,
         )
 
     def _latency_ms(self, started_at: float) -> float:

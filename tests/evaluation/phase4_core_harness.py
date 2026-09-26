@@ -154,6 +154,15 @@ class RecordingAgentRuntime:
             {
                 "status": result.status.value,
                 "failure_code": result.failure_code,
+                "provider_error": (
+                    {
+                        "http_status": result.provider_http_status,
+                        "error_code": result.provider_error_code,
+                        "error_message": result.provider_error_message,
+                    }
+                    if result.provider_http_status is not None
+                    else None
+                ),
                 "final_candidate": result.final_candidate,
                 "latency_ms": result.latency_ms,
                 "wall_latency_ms": round((monotonic() - started_at) * 1000, 2),

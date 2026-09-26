@@ -169,6 +169,9 @@ def test_failed_earnings_diagnostic_is_reported_as_attempted() -> None:
                 (),
                 None,
                 1.0,
+                provider_http_status=400,
+                provider_error_code="InvalidParameter",
+                provider_error_message="tool_choice is unsupported in thinking mode",
             )
 
     runtime = FailedRuntime()
@@ -184,6 +187,12 @@ def test_failed_earnings_diagnostic_is_reported_as_attempted() -> None:
 
     assert len(runtime.requests) == 1
     assert record["execution_status"] == "REQUEST_FAILED"
+    provider_error = record["turns"][0]["runtime_calls"][0]["provider_error"]
+    assert provider_error == {
+        "http_status": 400,
+        "error_code": "InvalidParameter",
+        "error_message": "tool_choice is unsupported in thinking mode",
+    }
     assert diagnostic["completed_case_count"] == 0
     assert diagnostic["request_failed_case_count"] == 1
     assert diagnostic["not_run_case_count"] == 0

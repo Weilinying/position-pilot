@@ -1,7 +1,7 @@
 """Production Agent Framework 的 Application-owned Port。"""
 
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import StrEnum
 from math import isfinite
 from typing import Protocol
@@ -106,6 +106,9 @@ class AgentRunResult:
     latency_ms: float
     llm_status: LLMStatus | None = None
     warnings: tuple[str, ...] = ()
+    provider_http_status: int | None = None
+    provider_error_code: str | None = None
+    provider_error_message: str | None = field(default=None, repr=False)
 
     def __post_init__(self) -> None:
         if (

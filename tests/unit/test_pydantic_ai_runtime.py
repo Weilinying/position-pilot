@@ -392,7 +392,38 @@ def test_provider_http_failure_maps_to_stable_status(
     assert result.status is AgentRunStatus.FAILED
     assert result.llm_status is expected
     assert result.failure_code == "MODEL_HTTP_FAILURE"
+    assert result.provider_http_status == status_code
+    assert result.provider_error_code is None
+    assert result.provider_error_message is None
     assert "secret" not in repr(result)
+
+
+def test_provider_invalid_parameter_details_remain_internal() -> None:
+    """保留可诊断的错误码与说明，不把完整 Provider 正文传给业务失败响应。"""
+
+    message = (
+        "The tool_choice parameter does not support being set to required "
+        "or object in thinking mode"
+    )
+
+    def fail(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
+        del messages, info
+        raise ModelHTTPError(
+            400,
+            "fixture",
+            {"error": {"code": "InvalidParameter", "message": message}, "secret": "must-not-leak"},
+        )
+
+    result = PydanticAIRuntime(FunctionModel(fail, model_name="qwen-fixture")).run(_request())
+
+    assert result.status is AgentRunStatus.FAILED
+    assert result.llm_status is LLMStatus.INVALID_REQUEST
+    assert result.failure_code == "MODEL_HTTP_FAILURE"
+    assert result.provider_http_status == 400
+    assert result.provider_error_code == "InvalidParameter"
+    assert result.provider_error_message == message
+    assert message not in repr(result)
+    assert "must-not-leak" not in repr(result)
 
 
 def test_usage_unknown_is_explicit_and_timeout_retry_boundaries_are_fixed() -> None:

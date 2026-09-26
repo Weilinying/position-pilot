@@ -7,13 +7,28 @@
 
 ### 2026-09-26 备选模型入口诊断
 
+**Provider 原始错误确认后的修订（2026-09-26）：** 用户确认该次请求返回 HTTP 400、
+`error_code=InvalidParameter`，错误说明为
+`The tool_choice parameter does not support being set to required or object in thinking mode`。
+因此 `qwen3.7-max-2026-05-17` 与当前 Phase 4 PydanticAI Runtime 的 Tool Choice / Final Output
+请求配置**不兼容**；这不是模型名无效、额度、权限或 PydanticAI 通用兼容性结论。
+不为该快照修改 Production Tool / Final Output 语义。下一候选为同系列的
+`qwen3.7-max-2026-05-20`，仅在当前 Region / Endpoint 实测通过 Tool Choice 与 Structured Output
+路径后才可用于后续 4A Eval；当前状态为 `NOT_MEASURED`，也不假定它拥有独立额度。
+此候选依据是[阿里云模型说明](https://help.aliyun.com/en/model-studio/qwen3-7-max)将当前别名标为
+与 05-20 快照功能等价；[Function Calling 说明](https://help.aliyun.com/en/model-studio/qwen-function-calling)
+明确思考模式不支持该 Tool Choice 组合。文档能力声明不能代替当前账户、Region / Endpoint 的实测。
+下一步先以 AQ20 作最小兼容性 Smoke；不同模型的结果分别记录，不合并为同模型重复评测。
+Adapter 已增加内部 Provider HTTP 状态、错误码及说明字段，供后续 Eval Trace 诊断；
+对外失败码、Production Tool / Final Output 语义和历史 Artifact 均不变。
+
 `p4-4a-alt-model-smoke-1/r1` 显式选择 `qwen3.7-max-2026-05-17`，只运行 AQ20。
 Core Eval 已接受该模型名并将其记录在 Run Metadata；AQ20 在 `0.65s` 后
 `REQUEST_FAILED / LLM_INVALID_REQUEST`，Runtime Trace 为
 `FAILED / MODEL_HTTP_FAILURE`，未执行 Tool、未产生回答或 Token Usage。
 因此该结果只证明当前 Model / Endpoint / Request 组合未成功，不能为 AQ20 打质量分，
 也不能把失败归因于 Portfolio 或 Conversation 行为。现有 Artifact 未保存精确 HTTP 状态及
-Provider 错误码；`LLM_INVALID_REQUEST` 对应适配器中的非认证类 4xx 映射，尚不能判定
+Provider 错误码；在当时，`LLM_INVALID_REQUEST` 对应适配器中的非认证类 4xx 映射，尚不能判定
 是模型权限、具体请求字段还是快照兼容性。该模型是仅支持思考模式的早期快照；
 与 `qwen3.7-max` 历史运行分别归因，不合并成功率。继续完整 Core 前须先确认实际
 Provider 错误码及该快照在当前 Region / Endpoint 下的请求兼容性。

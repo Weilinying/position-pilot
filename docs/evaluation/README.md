@@ -174,6 +174,8 @@ pytest item。60 秒预算按每轮回答计算，整套串行测试可能运行
 `progress.jsonl` 从 Run 开始创建，每轮结束立即追加完整固定 Fixture 证据；Ctrl+C 会在当前轮
 记录 `INTERRUPTED` 并保留已完成轮次。没有 `RUN_FINISHED` 的日志不是完整验收结果；正式
 manifest / cases / summary 仍在全部完成后写入。进度文件包含回答，不应公开分享。
+Provider HTTP Failure 的本地 Runtime Trace 还保留 HTTP Status、Provider Error Code 与 Error Message，
+仅用于诊断；对外 API 仍返回稳定失败码。诊断信息可能包含敏感请求细节，不要公开分享 Artifact。
 已有部分进度的目录也禁止重复使用，避免意外重新付费；当前不提供自动续跑。
 
 `tests/evaluation/test_phase4_core_online.py` 是新的 pytest opt-in 入口。它复用 `0.1` 固定 Financial
