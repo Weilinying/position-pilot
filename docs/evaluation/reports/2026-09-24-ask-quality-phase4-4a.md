@@ -1,9 +1,40 @@
 # Ask Quality Phase 4 — 4A Core Evidence Report
 
-**Status:** AQ07 REQUEST COMPLETED / ANSWER QUALITY OPEN（2026-09-26）；
+**Status:** 06-08 模型 4A Core Primary `11 / 13 COMPLETED`，Gate OPEN（2026-09-26）；
 不是 4A Gate PASS，也尚未提交最终 Human Review。
 
 ## 1. 范围与历史边界
+
+### 2026-09-26 `qwen3.7-max-2026-06-08` 完整 Core Primary Review
+
+用户在同一模型 / Endpoint 下运行 `p4-4a-jun08-core-1/r1`；13 个 Core Case 中
+11 个 `COMPLETED`、2 个 `REQUEST_FAILED`（AQ05、AQ17a），请求成功率 `84.62%`，
+18 个 Turn 中 16 个完成。AQ04 Earnings Diagnostic 完成；AQ01、AQ02、AQ19
+继续 `NOT_MEASURED`。19 个已尝试 Turn / Diagnostic 的延迟中位数 `25.55s`、最大
+`51.14s`，Repair 共 4 次；Token Usage / Cost 仍为 `UNKNOWN`。pytest `PASSED`
+只说明整套采集结束；逐 Case Rubric 与 Critical Failure 尚未评估。
+
+两个失败均为首轮模型已调用 Tool 并生成 Candidate，随后违反 Application Source / Citation
+Contract，且一次 Repair Runtime 返回 `INVALID_PROVIDER_RESPONSE`，没有最终回答：
+
+- AQ05：Quote、Market Context、History、News 均成功，Cash `$4,875.77` 与本轮 Budget
+  `$500` 在 Candidate 中区分正确；但 Portfolio 事实被写成
+  `[source:PORTFOLIO_SNAPSHOT]`，这是没有 UUID 的非法 inline Citation。Application 拒绝正确。
+- AQ17a：News 返回 `NO_NEWS_FOUND`；Candidate 正确说明“窗口无结果不等于不存在新闻”，
+  却在 `source_refs` 中把未成功的 `RECENT_NEWS` 当作成功来源。Application 拒绝正确。
+  冻结 Gate 还要求 AQ17a **首次 Final** 符合 Source Contract、`Repair=0`，不能仅以
+  Repair 偶然成功替代这一要求。
+
+同一快照的 AQ04、AQ12 曾完成 Repair，故上述失败目前归为首轮 Contract 违规加
+Repair 输出可靠性问题，**不是** PydanticAI 架构不支持或 Tool Choice 不兼容的证据。
+当前 Artifact 未保存 Repair 的底层异常细节，不能再把它归因于具体 Provider 输出形状。
+已完成 Case 的回答仍需按冻结 Rubric 逐条审查；例如 AQ06 主动讨论碎股及理论股数，
+且称 `$200` 投入“不会显著增加绝对敞口”；AQ12 首轮 Tool Trace 有成功 Market Context，
+最终回答却称 Market Context `UNKNOWN`；AQ17b 仅说明 News Provider Failure，
+是否满足可用 Portfolio 信息下的安全降级亦待评分。以上均不直接改写为 Critical PASS / FAIL。
+Fixed Fixture 的成功来源与新闻测试 URL 只证明来源绑定，不证明真实金融数据或 Research 质量。
+当前不重跑完整 Core、不进入 T6～T8；先定位这两个 Repair 失败的具体输出行为，
+再做最小修复与定向复测，之后重新收集完整 Primary / Repeat 并提交 Human Review。
 
 ### 2026-09-26 `qwen3.7-max-2026-06-08` 最小兼容性证据
 
