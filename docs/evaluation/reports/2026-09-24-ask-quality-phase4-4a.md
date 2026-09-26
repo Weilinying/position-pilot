@@ -1,9 +1,28 @@
 # Ask Quality Phase 4 — 4A Core Evidence Report
 
-**Status:** 06-08 模型 4A Core Primary `11 / 13 COMPLETED`，Gate OPEN（2026-09-26）；
-不是 4A Gate PASS，也尚未提交最终 Human Review。
+**Status:** 06-08 模型 4A Core Primary `11 / 13 COMPLETED`；AQ17a 后续单次定向验证
+`COMPLETED`，Gate 仍 OPEN（2026-09-26）。不是 4A Gate PASS，也尚未提交最终 Human Review。
 
 ## 1. 范围与历史边界
+
+### 2026-09-26 AQ17a Source Clarification 定向在线验证
+
+用户以 `qwen3.7-max-2026-06-08` 在同一 Endpoint 运行
+`p4-4a-jun08-aq17a-source-clarity/r1`，仅选择 AQ17a。该次真实模型请求在
+`10.24s` 内 `COMPLETED`，首次 Final 合法，`Repair=0`。`get_recent_news(GOOG)`
+返回 `NO_NEWS_FOUND`；回答准确限定为当前 Provider 在最近五个日历日的窗口内
+未返回报道，并将 GOOG 是否存在其他重要新闻保持为 `UNKNOWN`。Candidate 的
+`source_refs=[]`，没有将 `source_id=null` 的空结果审计项冒充可引用来源。
+
+这验证了 Prompt 澄清后**这一次** AQ17a 的空结果及 Source Contract 路径；
+不改写先前 Primary / 定向失败，也不证明跨次稳定性、其他 Case 质量或完整 4A Gate。
+本次仅选择 1 / 13 个 Core Case，Critical Failure Gate 仍为 `NOT_EVALUATED`，
+Human Review 仍为 `PENDING`；Token Usage / Cost 仍为 `UNKNOWN`。
+旧完整 Primary 中的 AQ06 没有已证实的修订后 Critical Failure，但主动讨论碎股与
+“不会显著增加绝对敞口”的判断仍待人工质量评分。AQ12 的旧运行在 Repair 后将已成功
+取得的 Quote / Market Context 误述为 `UNKNOWN`，属于明确的证据使用缺口；该 Artifact
+早于当前 Prompt 澄清，不能推定当前版本仍失败。下一步先以新目录单独复测 AQ12，
+审查首轮 Citation、Repair 与最终 Context 使用，再决定是否重跑完整 Core。
 
 ### 2026-09-26 AQ05 / AQ17a 定向 Repair 诊断
 
@@ -21,8 +40,9 @@ Primary 失败，也不代替三次 Repeat 与质量评分。AQ17a 仍在 `13.18
 `sources` 中每个 `status != OK` 的项只是失败审计，即使回答提及该状态也不得声明为
 `source_refs`；整体 Tool 状态为 `DEGRADED` 时，单独 `OK` 且带 `source_id` 的来源
 仍可引用。Validator、Final Output Tool、Repair 次数与 60 秒上限均不变。
-这是尚未在线验证的最小通用澄清，不将离线 Prompt 断言视为 AQ17a 通过；冻结 Gate
-仍要求 AQ17a 首次 Final 合规且 `Repair=0`。下一步只对 AQ17a 做一次新目录定向验证。
+在该次诊断时，这仍是尚未在线验证的最小通用澄清；其后续定向在线结果记录于上节。
+冻结 Gate 仍要求 AQ17a 首次 Final 合规且 `Repair=0`，且不能用单次定向结果代替完整
+Primary / Repeat。
 
 ### 2026-09-26 `qwen3.7-max-2026-06-08` 完整 Core Primary Review
 
