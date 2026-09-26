@@ -232,7 +232,9 @@ def test_quote_binding_executes_application_tool_and_registers_real_source(quest
         assert contract["fractional_permission_required_for_amount_analysis"] is False
         facts = payload["deterministic_derived_facts"]
         assert isinstance(facts, dict)
-        assert facts["executable_purchase_quantity"]["status"] == "UNKNOWN"
+        assert "executable_purchase_quantity" not in facts
+        assert "cash_vs_one_share_price" in facts
+        assert "price_vs_average_cost_by_position" in facts
         trace = AgentToolTrace(
             "get_current_quote",
             arguments,
@@ -409,6 +411,9 @@ def test_discretionary_quote_automatically_adds_required_market_context() -> Non
         assert "required_purchase_execution_status" not in contract
         assert contract["unknown_execution_status_blocks_analysis"] is False
         assert "required_market_context" in observation.data
+        facts = observation.data["deterministic_derived_facts"]
+        assert isinstance(facts, dict)
+        assert "executable_purchase_quantity" not in facts
         traces = [
             AgentToolTrace(
                 "get_current_quote",

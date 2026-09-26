@@ -344,6 +344,9 @@ class NativeInvestmentAgent:
             payload = json.loads(message.content)
             status = str(payload.pop("status"))
             if tool_name == CURRENT_QUOTE_TOOL_NAME and status == "OK":
+                # Quote 不提供账户执行能力；不把固定 UNKNOWN 伪装成行情派生事实。
+                # 用户询问执行权限时仍由 Prompt 要求无证据保持未知，不从 Quote 推断。
+                del payload["deterministic_derived_facts"]["executable_purchase_quantity"]
                 # 旧 Runtime 保留冻结基线；Native 不要求普通分析报告无关的执行状态。
                 contract = payload["response_contract"]
                 del contract["required_purchase_execution_status"]

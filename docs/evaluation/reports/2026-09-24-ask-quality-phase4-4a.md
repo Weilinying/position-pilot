@@ -7,6 +7,16 @@
 
 ### 2026-09-26 Native Context 修复（待在线验证）
 
+**后续证据与第二次修复：** `p4-4a-aq07-context-fix/r1` 在 `32.78s` 内完成，无 Repair。
+实际回答已纠正浮盈 / Thesis 与 100% 成本占比推论，也包含 LONG_TERM / 假设 SWING 条件分析；
+但仍把固定执行数量 UNKNOWN 列为暂缓因素，故不能认定 AQ07 质量通过。
+Native Quote 现在不再输出 `executable_purchase_quantity`：行情本身不能提供账户执行事实，
+无需新建意图分类器或按关键词裁剪。用户明确问执行权限时，仍遵守无可靠依据则 UNKNOWN、
+不得从 Quote 声称可执行的 Prompt / Contract。Cash / 成本关系与旧 Runtime 保持不变。
+普通行情、权限提问及加仓自动 Market Context 路径的实际 Observation 已有离线断言；
+Native / 旧 Runtime 定向测试共 97 项通过，Ruff / Format / mypy 通过。
+新的在线验证目录为 `p4-4a-aq07-quote-scope/r1`；此前 Artifact 不覆盖。
+
 集中审查发现 Native 复用的 Quote Observation 仍含
 `required_purchase_execution_status: UNKNOWN`，与普通金额分析不要求执行权限的产品规则
 存在指令冲突。Native 在构造 Observation 时移除该强制报告要求，改为仅在用户询问执行能力或
