@@ -1,6 +1,6 @@
 # Phase 4 AQ17 Source Observation Decision Proposal
 
-**Status:** APPROVED — IMPLEMENTED OFFLINE；AQ17a / b ONLINE VERIFICATION PENDING（2026-09-26）
+**Status:** APPROVED — AQ17a / b TARGETED ONLINE PASS；FULL CORE PENDING（2026-09-27）
 
 **Human Review 决定：**批准最小 Source Projection 调整，并明确模型可见的 `sources`
 只能表示可进入 `source_refs` 的可引用来源。失败 / 空结果的 `status`、`error_code`
@@ -57,5 +57,5 @@ Fallback 或把 Repair 成功伪装成首轮合规。仅继续加重 Prompt 是�
 3. 定向结果达标后再采集完整 Core Primary、冻结 Repeat 与 Rubric / Critical Gate，
    交付 4A Human Review；在此之前不进入 P4-T6～T8。Research Gate 继续独立。
 
-实施后的离线验证及在线验收结果分别记录于 4A Report；离线通过不代表 AQ17
-或 4A Gate 已通过。
+实施后的离线验证及在线定向结果记录于 4A Report。AQ17a / b 定向首轮通过只满足
+进入完整 Core 的前置条件，不代表 4A Gate 已通过。

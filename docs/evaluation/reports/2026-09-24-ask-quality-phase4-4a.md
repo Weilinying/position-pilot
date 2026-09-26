@@ -1,8 +1,25 @@
 # Ask Quality Phase 4 — 4A Core Evidence Report
 
-**Status:** 06-08 模型最新 4A Core Primary 仍为 `11 / 13 COMPLETED`；AQ17a / b
-首轮 Source Contract 违规，Gate OPEN（2026-09-26）。
+**Status:** AQ17a / b Source Projection 定向首轮通过；最新完整 4A Core Primary
+仍为 `11 / 13 COMPLETED`，Gate OPEN（2026-09-27）。
 不是 4A Gate PASS，也尚未提交最终 Human Review。
+
+### 2026-09-27 AQ17 Source Projection 定向在线证据
+
+用户在 `p4-4a-aq17-source-projection-1/r1` 使用同一 Qwen 06-08 模型 / Endpoint
+运行 AQ17a / b。两例均在首轮 `COMPLETED`，分别耗时 `7.50s`、`5.49s`，
+各调用一次 `get_recent_news(GOOG)`，总 `Repair=0`。AQ17a Tool 状态为
+`NO_NEWS_FOUND`，回答只说明指定窗口内当前数据源未返回报道，没有推断不存在
+新闻或价格驱动因素；AQ17b 为 `PROVIDER_UNAVAILABLE`，回答说明新闻状态
+`UNKNOWN`，没有编造报道。两个首轮 Final Candidate 的 `source_refs=[]`，
+没有将失败 News Attempt 声明为可引用来源。Application Artifact 中的
+`sources` / `tool_trace` 仍完整保留非 OK 审计项；它们不是模型可见的
+`sources` Projection，也不是成功 Citation。
+
+本次满足批准方案“先定向验证 AQ17a / b 首轮 Final 与 `Repair=0`”的条件，
+允许下一步以新 Artifact 运行完整 Core Primary。仅选择 2 / 13 个 Core Case；
+不能据此把完整 4A、三次 Repeat、Rubric / Critical Gate 或 Human Review 判为通过。
+Token Usage / Cost 仍为 `UNKNOWN`，Research Gate 独立且 `NOT_MEASURED`。
 
 ### 2026-09-26 AQ17 Source Projection：已批准、离线完成、在线待验证
 
