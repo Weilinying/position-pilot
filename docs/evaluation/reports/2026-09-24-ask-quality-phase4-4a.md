@@ -1,10 +1,36 @@
 # Ask Quality Phase 4 — 4A Core Evidence Report
 
-**Status:** 06-08 模型 4A Core Primary `11 / 13 COMPLETED`；AQ17a 与 AQ12 后续
-单次定向验证均 `COMPLETED`，Gate 仍 OPEN（2026-09-26）。
+**Status:** 06-08 模型最新 4A Core Primary 仍为 `11 / 13 COMPLETED`；AQ17a / b
+首轮 Source Contract 违规，Gate OPEN（2026-09-26）。
 不是 4A Gate PASS，也尚未提交最终 Human Review。
 
 ## 1. 范围与历史边界
+
+### 2026-09-26 完整 Core Recheck 与 AQ17 Decision Boundary
+
+用户在 `p4-4a-jun08-core-recheck-1/r1` 以相同模型 / Endpoint 完整运行 13 个 Core
+Case，结果仍为 `11 COMPLETED / 2 REQUEST_FAILED`，18 个 Core Turn 中 16 个
+完成，请求成功率 `84.62%`。AQ04 Diagnostic 完成；Research Gate 继续
+`NOT_MEASURED`。19 个已尝试 Turn / Diagnostic 的延迟中位数 `24.71s`、最大
+`56.32s`，Repair 合计 4 次，Token Usage / Cost 为 `UNKNOWN`。`pytest PASSED`
+只表示采集完成；Critical Gate 仍 `NOT_EVALUATED`、Human Review 仍 `PENDING`。
+
+与上次完整 Primary 不同，本次 AQ05 `COMPLETED`、`Repair=0`；AQ12 三轮均完成，
+第三轮重新调用 GOOG Quote 并绑定本轮 Source。AQ17a / b 则同时失败：前者 News
+Tool 返回 `NO_NEWS_FOUND`，后者返回 `PROVIDER_UNAVAILABLE`，二者的失败
+Source 均为 `source_id=null`。两个首轮 Candidate 的自然语言均正确保留 UNKNOWN，
+却都将 `RECENT_NEWS(GOOG)` 写入 `source_refs`。Application 的 SourceValidator
+正确拒绝；各一次 No-Tool Repair 均以 `OUTPUT_RETRY_EXHAUSTED / ToolRetryError`
+结束，最终 `REQUEST_FAILED / LLM_INVALID_PROVIDER_RESPONSE`。没有 Provider HTTP
+错误或 Wall-clock 超时证据，也没有 Repair 原始输出可供推断更具体的非法参数。
+
+AQ17a 曾单次定向首轮成功，但本次完整运行再次失败，不能视为稳定修复。
+冻结 Gate 要求 AQ17a / b 首个 Final 合法且 `Repair=0`；当前明确未达标。
+严格 SourceValidator、一次 Repair 与现有 Gate 均不放宽。模型可见的 Tool
+Observation 仍包含非 OK 的 `sources` 审计项，给出 `type/ticker` 但无可引用 ID；
+这与模型重复复制失败 Source 的行为相吻合，但不是框架本身无法支持 Source Contract
+的证明。若要调整已冻结的 Tool Observation Contract，先走独立 Human Review；
+在批准前不再为同一配置重跑完整 Core。
 
 ### 2026-09-26 AQ12 Fresh Evidence 定向在线复测
 
