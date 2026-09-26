@@ -28,13 +28,17 @@ Contract，且一次 Repair Runtime 返回 `INVALID_PROVIDER_RESPONSE`，没有�
 同一快照的 AQ04、AQ12 曾完成 Repair，故上述失败目前归为首轮 Contract 违规加
 Repair 输出可靠性问题，**不是** PydanticAI 架构不支持或 Tool Choice 不兼容的证据。
 当前 Artifact 未保存 Repair 的底层异常细节，不能再把它归因于具体 Provider 输出形状。
+后续 Runtime / Eval Trace 增加安全的 Framework Failure Kind 与 Cause 类名；这些新增诊断字段
+不保存异常正文、模型原始响应或用户内容，既有 Eval Answer / Question 记录仍按原 Contract 保留。
+旧 Artifact 保持原样。该分类仍不等于输出内容或最终原因的完整证据。
 已完成 Case 的回答仍需按冻结 Rubric 逐条审查；例如 AQ06 主动讨论碎股及理论股数，
 且称 `$200` 投入“不会显著增加绝对敞口”；AQ12 首轮 Tool Trace 有成功 Market Context，
 最终回答却称 Market Context `UNKNOWN`；AQ17b 仅说明 News Provider Failure，
 是否满足可用 Portfolio 信息下的安全降级亦待评分。以上均不直接改写为 Critical PASS / FAIL。
 Fixed Fixture 的成功来源与新闻测试 URL 只证明来源绑定，不证明真实金融数据或 Research 质量。
-当前不重跑完整 Core、不进入 T6～T8；先定位这两个 Repair 失败的具体输出行为，
-再做最小修复与定向复测，之后重新收集完整 Primary / Repeat 并提交 Human Review。
+当前不重跑完整 Core、不进入 T6～T8；先使用新的诊断字段仅对 AQ05 / AQ17a
+做定向复测，区分模型再次违反首轮 Contract 与 Repair 阶段的失败类别。之后再决定最小修复，
+重新收集完整 Primary / Repeat 并提交 Human Review。
 
 ### 2026-09-26 `qwen3.7-max-2026-06-08` 最小兼容性证据
 

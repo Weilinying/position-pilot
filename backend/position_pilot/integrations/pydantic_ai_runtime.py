@@ -280,13 +280,17 @@ class PydanticAIRuntime(AgentRuntime):
                 bridge,
                 llm_status=LLMStatus.PROVIDER_UNAVAILABLE,
             )
-        except UnexpectedModelBehavior:
+        except UnexpectedModelBehavior as error:
             return self._failure(
                 AgentRunStatus.FAILED,
                 "INVALID_PROVIDER_RESPONSE",
                 started_at,
                 bridge,
                 llm_status=LLMStatus.INVALID_PROVIDER_RESPONSE,
+                framework_error_kind=self._framework_error_kind(error),
+                framework_error_cause=(
+                    type(error.__cause__).__name__ if error.__cause__ is not None else None
+                ),
             )
         except (UserError, ValueError, TypeError):
             return self._failure(
@@ -552,6 +556,18 @@ class PydanticAIRuntime(AgentRuntime):
         )
 
     @staticmethod
+    def _framework_error_kind(error: UnexpectedModelBehavior) -> str:
+        """仅记录安全的框架失败类别，不保存可能包含请求内容的异常正文。"""
+
+        if error.message.startswith("Exceeded maximum output retries"):
+            return "OUTPUT_RETRY_EXHAUSTED"
+        if error.message.startswith("Invalid response, unable to"):
+            return "OUTPUT_RESPONSE_INVALID"
+        if error.message.startswith("Invalid response from"):
+            return "PROVIDER_RESPONSE_SHAPE_INVALID"
+        return "UNEXPECTED_MODEL_BEHAVIOR"
+
+    @staticmethod
     def _budget_failure_code(error: UsageLimitExceeded) -> str:
         text = str(error)
         if "wall-clock" in text:
@@ -573,6 +589,8 @@ class PydanticAIRuntime(AgentRuntime):
         provider_http_status: int | None = None,
         provider_error_code: str | None = None,
         provider_error_message: str | None = None,
+        framework_error_kind: str | None = None,
+        framework_error_cause: str | None = None,
     ) -> AgentRunResult:
         """创建稳定失败结果；Provider 诊断仅留在内部结果，不生成伪造答案。"""
 
@@ -589,6 +607,8 @@ class PydanticAIRuntime(AgentRuntime):
             provider_http_status=provider_http_status,
             provider_error_code=provider_error_code,
             provider_error_message=provider_error_message,
+            framework_error_kind=framework_error_kind,
+            framework_error_cause=framework_error_cause,
         )
 
     def _latency_ms(self, started_at: float) -> float:

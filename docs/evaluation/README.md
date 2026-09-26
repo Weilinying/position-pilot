@@ -176,6 +176,8 @@ pytest item。60 秒预算按每轮回答计算，整套串行测试可能运行
 manifest / cases / summary 仍在全部完成后写入。进度文件包含回答，不应公开分享。
 Provider HTTP Failure 的本地 Runtime Trace 还保留 HTTP Status、Provider Error Code 与 Error Message，
 仅用于诊断；对外 API 仍返回稳定失败码。诊断信息可能包含敏感请求细节，不要公开分享 Artifact。
+PydanticAI 的 `UnexpectedModelBehavior` 只记录安全的 Framework Failure Kind 和底层异常类名，
+不记录原始异常正文或 Provider 响应；这能辅助区分输出重试耗尽与响应形状异常，不能还原模型原文。
 已有部分进度的目录也禁止重复使用，避免意外重新付费；当前不提供自动续跑。
 
 `tests/evaluation/test_phase4_core_online.py` 是新的 pytest opt-in 入口。它复用 `0.1` 固定 Financial

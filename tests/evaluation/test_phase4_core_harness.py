@@ -199,6 +199,35 @@ def test_failed_earnings_diagnostic_is_reported_as_attempted() -> None:
     assert diagnostic["evidence_status"] == "MEASURED"
 
 
+def test_framework_failure_trace_keeps_only_safe_classification() -> None:
+    """Eval 记录框架失败分类，不持久化可能包含请求内容的异常正文。"""
+
+    class FailedRuntime(ScriptedRuntime):
+        def run(self, request: AgentRunRequest) -> AgentRunResult:
+            self.requests.append(request)
+            return AgentRunResult(
+                AgentRunStatus.FAILED,
+                None,
+                "INVALID_PROVIDER_RESPONSE",
+                (),
+                (),
+                None,
+                1.0,
+                framework_error_kind="OUTPUT_RETRY_EXHAUSTED",
+                framework_error_cause="ValidationError",
+            )
+
+    runtime = RecordingAgentRuntime(FailedRuntime())
+    case = CASES_BY_ID["AQ20"]
+    build_native_agent(case, runtime).answer_with_history(USER_ID, case.executable_questions[0], ())
+
+    assert runtime.calls[0]["framework_error"] == {
+        "kind": "OUTPUT_RETRY_EXHAUSTED",
+        "cause": "ValidationError",
+    }
+    assert runtime.calls[0]["provider_error"] is None
+
+
 def test_multiturn_fixture_injects_prior_visible_answer() -> None:
     """连续 Case 第二轮收到前一轮 User / Assistant 历史。"""
 

@@ -109,6 +109,8 @@ class AgentRunResult:
     provider_http_status: int | None = None
     provider_error_code: str | None = None
     provider_error_message: str | None = field(default=None, repr=False)
+    framework_error_kind: str | None = None
+    framework_error_cause: str | None = None
 
     def __post_init__(self) -> None:
         if (

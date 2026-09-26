@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 
 import pytest
 from pydantic import AnyHttpUrl, PostgresDsn, SecretStr, ValidationError
-from pydantic_ai.exceptions import ModelHTTPError
+from pydantic_ai.exceptions import ModelHTTPError, UnexpectedModelBehavior
 from pydantic_ai.messages import ModelMessage, ModelResponse, TextPart, ToolCallPart
 from pydantic_ai.models.function import AgentInfo, FunctionModel
 from pydantic_ai.usage import RequestUsage
@@ -204,7 +204,32 @@ def test_invalid_json_output_tool_arguments_are_provider_response_failure() -> N
     assert result.status is AgentRunStatus.FAILED
     assert result.failure_code == "INVALID_PROVIDER_RESPONSE"
     assert result.llm_status is LLMStatus.INVALID_PROVIDER_RESPONSE
+    assert result.framework_error_kind == "OUTPUT_RETRY_EXHAUSTED"
     assert len(script.calls) == 1
+
+
+@pytest.mark.parametrize(
+    ("message", "expected_kind"),
+    (
+        ("Invalid response, unable to find output", "OUTPUT_RESPONSE_INVALID"),
+        ("Invalid response from fixture endpoint", "PROVIDER_RESPONSE_SHAPE_INVALID"),
+    ),
+)
+def test_framework_diagnostic_excludes_exception_body(message: str, expected_kind: str) -> None:
+    """只记录已知失败类别与 Cause 类型，不保留异常正文。"""
+
+    def fail(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
+        del messages, info
+        try:
+            raise ValueError("private cause")
+        except ValueError as cause:
+            raise UnexpectedModelBehavior(message, '{"secret":"private body"}') from cause
+
+    result = PydanticAIRuntime(FunctionModel(fail, model_name="qwen-fixture")).run(_request())
+
+    assert result.framework_error_kind == expected_kind
+    assert result.framework_error_cause == "ValueError"
+    assert "private" not in repr(result)
 
 
 def test_json_repair_call_accepts_prior_text_candidate_and_zero_tool_budget() -> None:

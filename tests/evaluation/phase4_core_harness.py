@@ -163,6 +163,14 @@ class RecordingAgentRuntime:
                     if result.provider_http_status is not None
                     else None
                 ),
+                "framework_error": (
+                    {
+                        "kind": result.framework_error_kind,
+                        "cause": result.framework_error_cause,
+                    }
+                    if result.framework_error_kind is not None
+                    else None
+                ),
                 "final_candidate": result.final_candidate,
                 "latency_ms": result.latency_ms,
                 "wall_latency_ms": round((monotonic() - started_at) * 1000, 2),
