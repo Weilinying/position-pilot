@@ -22,7 +22,7 @@ from position_pilot.application.investment_agent import (
     InvestmentRequestFailure,
 )
 from position_pilot.application.investment_context import InvestmentPortfolioContext
-from position_pilot.application.llm import LLMStatus
+from position_pilot.application.llm import LLMMessage, LLMRole, LLMStatus
 from position_pilot.application.market_data_service import HistoricalBarsQuery
 from position_pilot.application.native_investment_agent import NativeInvestmentAgent
 from position_pilot.application.news_service import NewsQuery
@@ -202,6 +202,32 @@ def test_missing_strategy_does_not_end_conditional_analysis_prompt() -> None:
         USER_ID,
         "我没有既定策略，现在应该继续分析吗？",
         (),
+    )
+
+    assert isinstance(result, InvestmentAnswer)
+
+
+def test_conversation_revision_prompt_requires_fresh_relevant_evidence() -> None:
+    """检查跨轮时效 Prompt Contract；真实 Tool 选择另由在线 Eval 验证。"""
+
+    def run(request: AgentRunRequest) -> AgentRunResult:
+        prompt = request.messages[0].content
+        assert prompt is not None
+        assert "历史 Assistant Answer 只用于理解指代与当时判断" in prompt
+        assert "不能替代本轮 Portfolio Snapshot、当前 confirmed Strategy 或市场事实" in prompt
+        assert "用户历史预算和意图更正只按未被后续消息覆盖的适用上下文使用" in prompt
+        assert "必须重新调用支撑该结论所需的" in prompt
+        assert "不得仅凭历史报价或旧回答断言结论未变" in prompt
+        assert request.messages[1] == LLMMessage(LLMRole.USER, "先分析 GOOG。")
+        assert request.messages[2] == LLMMessage(LLMRole.ASSISTANT, "此前依据报价给出过分析。")
+        return _completed(_candidate({"type": "PORTFOLIO_SNAPSHOT"}))
+
+    history = (
+        LLMMessage(LLMRole.USER, "先分析 GOOG。"),
+        LLMMessage(LLMRole.ASSISTANT, "此前依据报价给出过分析。"),
+    )
+    result = _agent(ScriptedNativeRuntime(run), FixedFinancialData()).answer_with_history(
+        USER_ID, "之前的 GOOG 结论现在还成立吗？", history
     )
 
     assert isinstance(result, InvestmentAnswer)

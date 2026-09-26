@@ -207,6 +207,14 @@ class NativeInvestmentAgent:
         )
         if citation_mode:
             prompt += (
+                "\nConversation 历史 Assistant Answer 只用于理解指代与当时判断，"
+                "不能替代本轮 Portfolio Snapshot、当前 confirmed Strategy 或市场事实；"
+                "用户历史预算和意图更正只按未被后续消息覆盖的适用上下文使用。"
+                "历史 Quote、News、Market Context 只代表当时证据。用户询问过去的"
+                "投资结论现在是否仍成立或需要修改时，必须重新调用支撑该结论所需的"
+                "当前 Quote、News 或 Market Context Tool，取得本轮证据后再比较；"
+                "不得仅凭历史报价或旧回答断言结论未变。若所需 Tool 失败或不可用，"
+                "明确说明尚未核实当前变化，仅基于本轮已知事实给条件式分析。"
                 "\nConversation 回答中，凡引用本轮成功 Tool 结果，请在相关陈述附近使用"
                 " [source:<source_id>]；source_id 只能复制 Tool Observation 的 sources 字段。"
                 "PORTFOLIO_SNAPSHOT 没有 source_id：可以在 source_refs 声明它，"

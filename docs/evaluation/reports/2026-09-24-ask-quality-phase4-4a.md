@@ -1,9 +1,31 @@
 # Ask Quality Phase 4 — 4A Core Evidence Report
 
 **Status:** 06-08 模型 4A Core Primary `11 / 13 COMPLETED`；AQ17a 后续单次定向验证
-`COMPLETED`，Gate 仍 OPEN（2026-09-26）。不是 4A Gate PASS，也尚未提交最终 Human Review。
+`COMPLETED`，AQ12 定向运行暴露跨轮旧行情复用，Gate 仍 OPEN（2026-09-26）。
+不是 4A Gate PASS，也尚未提交最终 Human Review。
 
 ## 1. 范围与历史边界
+
+### 2026-09-26 AQ12 跨轮当前事实定向验证
+
+用户在 `p4-4a-jun08-aq12-check/r1` 使用同一模型 / Endpoint 只运行 AQ12；
+GOOG → MSFT → GOOG 三轮均 `COMPLETED`，耗时分别为 `25.89s`、`13.81s`、
+`18.24s`，`Repair=0`。前两轮分别取得对应 Ticker 的成功 Quote，没有串用
+MSFT 的 Portfolio 或来源；首轮 Price History 为 `NO_DATA`、News 为
+`NO_NEWS_FOUND`，回答没有把它们声明为成功来源。
+
+第三轮询问先前 GOOG 结论是否需要修改。Runtime 的 `tool_trace=[]`，本轮仅有
+`PORTFOLIO_SNAPSHOT` Source；回答仍沿用之前的 `$210.25` 报价与浮盈判断，
+断言核心结论不需要修改。虽明确说报价是“之前获取”，没有伪造新 Citation，
+但已批准的 Conversation Contract 要求历史 Answer 仅用于指代与比较、当前 Quote /
+News / Market Context 按时效重新查询。因此这是**已确认的 AQ12 当前事实未重查缺口**，
+不是 MSFT 串用；不因 `3 / 3 COMPLETED` 或 `pytest PASSED` 判为 Gate 通过。
+Critical Failure 仍待独立评分，不能从该记录直接宣称 PASS 或 FAIL。
+
+Native Conversation Prompt 已按通用跨轮时效规则澄清：旧行情与旧判断只代表当时证据；
+询问旧投资结论是否仍成立时，按当前问题需要重新取得相关 Tool 结果，再比较。
+没有针对 AQ12 的固定措辞或 Ticker 设特例。离线 Prompt Contract 测试通过；
+该澄清尚未取得新的 AQ12 在线结果，不把修订本身视为行为已修复。
 
 ### 2026-09-26 AQ17a Source Clarification 定向在线验证
 
