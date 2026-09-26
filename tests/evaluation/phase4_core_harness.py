@@ -672,9 +672,7 @@ def write_artifacts(
     """写入 manifest / cases / summary 三类不含 Secret 的 Artifact。"""
 
     artifact_dir.mkdir(parents=True, exist_ok=True)
-    artifact_files = ("manifest.json", "cases.jsonl", "summary.json")
-    if any((artifact_dir / name).exists() for name in artifact_files):
-        raise FileExistsError("Phase 4 Eval Artifact 已存在；请使用新的 Run 目录")
+    _require_unused_artifact_dir(artifact_dir)
     manifest = {
         "run_metadata": metadata.as_dict(),
         "base_manifest": base_manifest_payload(),
@@ -688,6 +686,16 @@ def write_artifacts(
     (artifact_dir / "summary.json").write_text(_stable_json(summary) + "\n", encoding="utf-8")
 
 
+def _require_unused_artifact_dir(artifact_dir: Path) -> None:
+    """在线模型调用前拒绝已有结果，写入前再次防止意外覆盖。"""
+
+    if any(
+        (artifact_dir / name).exists()
+        for name in ("manifest.json", "cases.jsonl", "summary.json")
+    ):
+        raise FileExistsError("Phase 4 Eval Artifact 已存在；请使用新的 Run 目录")
+
+
 def run_phase4_evaluation(
     *,
     environment: Mapping[str, str] | None = None,
@@ -697,6 +705,9 @@ def run_phase4_evaluation(
     """运行 4A Core Eval；未显式 Opt-in 时只生成 NOT_RUN / NOT_MEASURED 记录。"""
 
     values = os.environ if environment is None else environment
+    artifact_raw = values.get(PHASE4_ARTIFACT_DIR_ENV, "").strip()
+    if artifact_raw:
+        _require_unused_artifact_dir(Path(artifact_raw))
     metadata = create_run_metadata(environment=values, clock=clock)
     selected = set(metadata.selected_case_ids)
     records: list[dict[str, object]] = []
@@ -726,7 +737,6 @@ def run_phase4_evaluation(
         key=lambda item: (PRIMARY_CASE_IDS + PHASE4_RESEARCH_CASE_IDS).index(str(item["case_id"]))
     )
     summary = _summary(metadata, records)
-    artifact_raw = values.get(PHASE4_ARTIFACT_DIR_ENV, "").strip()
     if artifact_raw:
         write_artifacts(Path(artifact_raw), metadata, records, summary)
     return {"metadata": metadata.as_dict(), "records": records, "summary": summary}

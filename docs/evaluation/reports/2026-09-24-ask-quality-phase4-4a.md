@@ -1,6 +1,6 @@
 # Ask Quality Phase 4 — 4A Core Evidence Report
 
-**Status:** AQ07 NATIVE 60s REQUEST COMPLETED / POLICY RETEST PENDING（2026-09-25）；
+**Status:** AQ07 REQUEST COMPLETED / ANSWER QUALITY OPEN（2026-09-26）；
 不是 4A Gate PASS，也尚未提交最终 Human Review。
 
 ## 1. 范围与历史边界
@@ -215,6 +215,20 @@ SWING 新仓的条件比较，没有把 SWING 误记为现有仓位；但它把�
 账户权限时不把该权限作为建议前置；Cash 不代替本轮 Budget。Portfolio / Ledger 事实、
 交易写入校验和旧 Runtime Prompt 不变。该 Prompt Contract 的离线测试不能代替真实
 AQ07 复测，4A Gate 继续 `PENDING`。
+
+`p4-4a-aq07-policy / r1` 唯一落盘 Artifact 显示 AQ07 再次 `COMPLETED / OK`，
+耗时 `28.05s`、4 次 Tool Trace、无 Repair，Source / Citation 通过，Usage / Cost
+仍为 `UNKNOWN`；其余 12 个 Core Case 未执行。回答已将 Cash 与本轮 Budget 明确区分，
+不再要求用户确认碎股权限，但仍把与提问无关的“实际可执行数量 UNKNOWN”列为暂缓条件。
+它还将短期浮盈说成用户长期判断“得到价格验证”，虽没有已确认 Investment Thesis；
+LONG_TERM / 假设性 SWING 仅作为待用户选择的问题出现，未完成两分支的实质条件分析。
+这些是基于原始回答的待评分质量缺口，不回写历史结果，也不据 `pytest PASSED` 宣称
+AQ07 或 4A Gate 通过。Tool Observation 中仍固定提供执行数量 UNKNOWN；是否按用户意图
+裁剪该事实涉及 Tool / Context Contract，须先单独审查，不能仅为当前 Case 随意改写。
+
+用户提到可能重复运行同一命令。当前只找到该目录的一份 Artifact，不能据此断定第二次
+模型请求是否发生；旧 Harness 的目录占用检查位于模型调用之后，可能造成重复付费但不会覆盖
+旧文件。已将目录冲突预检提前到模型调用前，并用离线测试确认重复执行不再调用 Runtime。
 
 Output Tool 基本参数形状不合法时，Framework 没有可交给 Application Repair 的候选；
 该失败明确记录为 `INVALID_PROVIDER_RESPONSE`，不添加隐藏重试或 JSON 文本兜底。

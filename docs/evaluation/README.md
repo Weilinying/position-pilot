@@ -198,7 +198,8 @@ PYTHONPATH=backend:tests/evaluation \
 
 重复运行只需分别改为 `EVAL_REPETITION_INDEX=2/3`、Artifact 目录 `r2/r3`，保持相同的 `EVAL_RUN_ID`；
 默认 Repeat 集为 AQ03、AQ05、AQ06、AQ07、AQ17a、AQ17b。每个目录生成 `manifest.json`、
-`cases.jsonl`、`summary.json`，已有 Artifact 文件不会被覆盖。`PHASE4_CASE_IDS` 仅用于显式选取
+`cases.jsonl`、`summary.json`；若目标目录已有 Artifact，会在模型调用前拒绝，不覆盖旧结果，
+也不会为了发现目录冲突再次付费调用。`PHASE4_CASE_IDS` 仅用于显式选取
 Core / AQ04 子集；正式 Primary 不设置它。AQ01、AQ02、AQ19 在 T4R 未批准时始终作为独立 Research Gate
 的 `NOT_MEASURED` 记录，不要求 Brave Key。pytest 的执行成功只证明请求与记录完成；逐 Case Rubric、
 Critical Failure、Protected Set 与 Repeat Gate 必须根据 Artifact 人工复核，不得把 `PENDING` 写成 PASS。

@@ -179,12 +179,19 @@ def test_failed_turn_still_contributes_user_message_to_next_turn() -> None:
 
 
 def test_existing_artifact_is_not_overwritten(tmp_path: Path) -> None:
-    """同一 Run 目录不可静默覆盖已经产生的证据。"""
+    """同一 Run 目录须在模型调用前拒绝，避免重复付费且保留证据。"""
 
+    runtime = ScriptedRuntime()
     environment = {
         "PHASE4_ARTIFACT_DIR": str(tmp_path / "run"),
         "EVAL_RUN_ID": "same-run",
+        RUN_PHASE4_EVAL_ENV: "1",
+        "PHASE4_CASE_IDS": "AQ20",
     }
-    run_phase4_evaluation(environment=environment)
+    run_phase4_evaluation(environment=environment, runtime_factory=lambda _: runtime)
+    original_artifact = (tmp_path / "run" / "summary.json").read_text(encoding="utf-8")
+    assert len(runtime.requests) == 1
     with pytest.raises(FileExistsError, match="Artifact 已存在"):
-        run_phase4_evaluation(environment=environment)
+        run_phase4_evaluation(environment=environment, runtime_factory=lambda _: runtime)
+    assert len(runtime.requests) == 1
+    assert (tmp_path / "run" / "summary.json").read_text(encoding="utf-8") == original_artifact
