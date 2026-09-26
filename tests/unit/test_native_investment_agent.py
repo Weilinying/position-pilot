@@ -268,6 +268,9 @@ def test_unsuccessful_tool_source_has_no_citable_id() -> None:
     """失败和空结果保留状态供审计，但不能向模型提供可引用的 Source ID。"""
 
     def run(request: AgentRunRequest) -> AgentRunResult:
+        assert request.messages[0].content is not None
+        assert "status 不是 OK 的项" in request.messages[0].content
+        assert "不得在 source_refs 声明" in request.messages[0].content
         binding = next(item for item in request.tools if item.definition.name == "get_recent_news")
         observation = binding.executor({"ticker": "GOOG"})
         assert observation.status == "NO_NEWS_FOUND"
@@ -276,8 +279,8 @@ def test_unsuccessful_tool_source_has_no_citable_id() -> None:
         assert observation.sources[0]["source_id"] is None
         return _completed(_candidate({"type": "PORTFOLIO_SNAPSHOT"}))
 
-    result = _agent(ScriptedNativeRuntime(run), FixedFinancialData()).answer(
-        USER_ID, "GOOG 有近期新闻吗？"
+    result = _agent(ScriptedNativeRuntime(run), FixedFinancialData()).answer_with_history(
+        USER_ID, "GOOG 有近期新闻吗？", ()
     )
     assert isinstance(result, InvestmentAnswer)
 
@@ -485,6 +488,8 @@ def test_discretionary_quote_reuses_already_observed_market_context() -> None:
     """模型先请求 Market Context 时，Quote 不再记第二次自动 Tool Call。"""
 
     def run(request: AgentRunRequest) -> AgentRunResult:
+        assert request.messages[0].content is not None
+        assert "整体 status 为 DEGRADED" in request.messages[0].content
         market_binding = next(
             item for item in request.tools if item.definition.name == "get_market_context"
         )
@@ -498,12 +503,22 @@ def test_discretionary_quote_reuses_already_observed_market_context() -> None:
         }
         quote = quote_binding.executor(arguments)
         assert quote.related_calls == ()
+        assert quote.status == "DEGRADED"
+        assert quote.sources[0]["status"] == "OK"
+        assert market.sources[0]["status"] == "NO_DATA"
         assert quote.data is not None
         required_context = quote.data["required_market_context"]
         assert isinstance(required_context, dict)
         assert required_context["status"] == "NO_DATA"
+        source_id = quote.sources[0]["source_id"]
+        candidate = json.dumps(
+            {
+                "answer": f"GOOG 当前报价已取得。[source:{source_id}]",
+                "source_refs": [{"type": "CURRENT_QUOTE", "ticker": "GOOG"}],
+            }
+        )
         return _completed(
-            _candidate({"type": "PORTFOLIO_SNAPSHOT"}),
+            candidate,
             trace=(
                 AgentToolTrace("get_market_context", {}, market.status, None, market.sources),
                 AgentToolTrace("get_current_quote", arguments, quote.status, None, quote.sources),
@@ -512,7 +527,9 @@ def test_discretionary_quote_reuses_already_observed_market_context() -> None:
         )
 
     data = FixedFinancialData()
-    result = _agent(ScriptedNativeRuntime(run), data).answer(USER_ID, "GOOG 现在值得加仓吗？")
+    result = _agent(ScriptedNativeRuntime(run), data).answer_with_history(
+        USER_ID, "GOOG 现在值得加仓吗？", ()
+    )
 
     assert isinstance(result, InvestmentAnswer)
     assert data.quote_calls == ["GOOG"]

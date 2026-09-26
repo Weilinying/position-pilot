@@ -5,6 +5,25 @@
 
 ## 1. 范围与历史边界
 
+### 2026-09-26 AQ05 / AQ17a 定向 Repair 诊断
+
+用户在 `p4-4a-jun08-repair-diag-1/r1` 仅复测这两个 Case。AQ05 首轮即
+`COMPLETED`，耗时 `29.14s`、无 Repair，Cash `$4,875.77` 与 Budget `$500`
+分开，Portfolio 未再出现非法 inline Citation；这只是一次定向成功，不覆盖此前
+Primary 失败，也不代替三次 Repeat 与质量评分。AQ17a 仍在 `13.18s` 内
+`REQUEST_FAILED`：首轮 Candidate 正确说明 `NO_NEWS_FOUND` 只代表窗口无结果，
+却再次在 `source_refs` 声明未成功的 `RECENT_NEWS`；Application 正确拒绝。
+一次 Repair 返回 `INVALID_PROVIDER_RESPONSE`，新增安全诊断为
+`OUTPUT_RETRY_EXHAUSTED / ToolRetryError`，指向框架输出工具校验 / 重试路径，
+而非 HTTP 400 或 Wall-clock 超时。Artifact 不含 Repair 原始输出，不能推断具体非法参数。
+
+针对重复出现的首轮错误，Conversation Prompt 现明确说明 Tool Observation 的
+`sources` 中每个 `status != OK` 的项只是失败审计，即使回答提及该状态也不得声明为
+`source_refs`；整体 Tool 状态为 `DEGRADED` 时，单独 `OK` 且带 `source_id` 的来源
+仍可引用。Validator、Final Output Tool、Repair 次数与 60 秒上限均不变。
+这是尚未在线验证的最小通用澄清，不将离线 Prompt 断言视为 AQ17a 通过；冻结 Gate
+仍要求 AQ17a 首次 Final 合规且 `Repair=0`。下一步只对 AQ17a 做一次新目录定向验证。
+
 ### 2026-09-26 `qwen3.7-max-2026-06-08` 完整 Core Primary Review
 
 用户在同一模型 / Endpoint 下运行 `p4-4a-jun08-core-1/r1`；13 个 Core Case 中
