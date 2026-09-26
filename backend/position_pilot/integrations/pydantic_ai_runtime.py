@@ -127,14 +127,14 @@ class _ToolBridge:
             if related.status != "OK":
                 self.warnings.append(f"{related.status}:{related.name}")
         self._check_wall_clock()
-        return self._serialize(result)
+        return self._serialize(name, result)
 
     def _check_wall_clock(self) -> None:
         if self.clock() - self.started_at >= self.budget.wall_clock_seconds:
             raise UsageLimitExceeded("wall-clock budget exhausted")
 
-    def _serialize(self, result: ToolExecutionResult) -> str:
-        """把不可信 Tool 数据作为模型观察传回，不把它提升为事实。"""
+    def _serialize(self, name: str, result: ToolExecutionResult) -> str:
+        """仅向模型暴露可引用 Source，失败尝试仍独立可见。"""
 
         payload: dict[str, object] = {"status": result.status}
         if result.data is not None:
@@ -144,14 +144,43 @@ class _ToolBridge:
         sources = [*result.sources]
         for related in result.related_calls:
             sources.extend(related.sources)
-        if sources:
-            payload["sources"] = [dict(source) for source in sources]
+        payload["sources"] = [
+            dict(source)
+            for source in sources
+            if source.get("status") == "OK"
+            and isinstance(source_id := source.get("source_id"), str)
+            and bool(source_id.strip())
+            and isinstance(source_type := source.get("type"), str)
+            and bool(source_type.strip())
+        ]
+        payload["attempt_observations"] = [
+            {"tool_name": name, "status": result.status, "error_code": result.error_code},
+            *(
+                {
+                    "tool_name": related.name,
+                    "status": related.status,
+                    "error_code": related.error_code,
+                }
+                for related in result.related_calls
+            ),
+        ]
         try:
             return json.dumps(payload, ensure_ascii=False, sort_keys=True)
         except (TypeError, ValueError):
             self.warnings.append(f"UNSERIALIZABLE_TOOL_RESULT:{result.status}")
             return json.dumps(
-                {"status": "TOOL_FAILURE", "error_code": "UNSERIALIZABLE_TOOL_RESULT"},
+                {
+                    "status": "TOOL_FAILURE",
+                    "error_code": "UNSERIALIZABLE_TOOL_RESULT",
+                    "sources": [],
+                    "attempt_observations": [
+                        {
+                            "tool_name": name,
+                            "status": "TOOL_FAILURE",
+                            "error_code": "UNSERIALIZABLE_TOOL_RESULT",
+                        }
+                    ],
+                },
                 ensure_ascii=False,
             )
 

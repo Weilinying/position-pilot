@@ -90,7 +90,15 @@ def _fixture_executor(
         return ToolExecutionResult(
             "OK",
             {"label": label, "ticker": arguments.get("ticker")},
-            sources=({"source_id": f"fixture-{label}", "provider": "LOCAL_FIXTURE"},),
+            sources=(
+                {
+                    "source_id": f"fixture-{label}",
+                    "type": "CURRENT_QUOTE" if label == "quote" else "MARKET_CONTEXT",
+                    "status": "OK",
+                    "ticker": arguments.get("ticker"),
+                    "provider": "LOCAL_FIXTURE",
+                },
+            ),
         )
 
     return execute

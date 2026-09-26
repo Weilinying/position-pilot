@@ -2,6 +2,8 @@
 
 import json
 
+import pytest
+
 from position_pilot.application.investment_answer import UnresolvedSourceReference
 from position_pilot.application.source_registry import (
     ContextSource,
@@ -26,8 +28,9 @@ def test_successful_observed_source_can_be_declared() -> None:
     assert answer is not None
 
 
-def test_failed_source_cannot_support_a_reference() -> None:
-    source = ContextSource(ContextSourceType.RECENT_NEWS, "NO_NEWS_FOUND", ticker="GOOG")
+@pytest.mark.parametrize("status", ("NO_NEWS_FOUND", "PROVIDER_UNAVAILABLE"))
+def test_failed_source_cannot_support_a_reference(status: str) -> None:
+    source = ContextSource(ContextSourceType.RECENT_NEWS, status, ticker="GOOG")
 
     answer, error = SourceValidator.evaluate(
         _answer([{"type": "RECENT_NEWS", "ticker": "GOOG"}]),

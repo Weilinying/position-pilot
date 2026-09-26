@@ -4,6 +4,21 @@
 首轮 Source Contract 违规，Gate OPEN（2026-09-26）。
 不是 4A Gate PASS，也尚未提交最终 Human Review。
 
+### 2026-09-26 AQ17 Source Projection：已批准、离线完成、在线待验证
+
+Human Review 已批准将模型可见 Tool Observation 的 `sources` 限定为本轮成功且
+带 `source_id` 的可引用来源；失败或空结果的调用状态与 `error_code` 改由独立的
+`attempt_observations` 呈现。无成功来源时明确给出 `sources: []`。Application
+内部 Tool Trace / Source Registry 仍保存完整成功与失败尝试，SourceValidator
+继续确定性拒绝未成功的 Source Reference。混合 `DEGRADED` 结果保留成功来源及
+相关失败观察，未改 Final Output、Repair 或 60 秒预算。
+
+离线已验证空结果、Provider Failure、混合成功 / 失败的模型可见投影与内部 Trace
+分离，且 Validator 继续拒绝失败来源；相关单测 `49 passed`，Ruff Check /
+Format 与修改模块的 Mypy 通过。此结果不能证明真实模型会在首个 Final 正确
+处理 AQ17a / b；下一步只在新 Artifact 中定向在线验证这两个 Case，要求首轮
+Final 合法、`Repair=0`。定向通过后才运行完整 Core，历史运行不改写。
+
 ## 1. 范围与历史边界
 
 ### 2026-09-26 完整 Core Recheck 与 AQ17 Decision Boundary

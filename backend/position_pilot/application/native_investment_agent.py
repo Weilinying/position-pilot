@@ -220,11 +220,12 @@ class NativeInvestmentAgent:
                 "PORTFOLIO_SNAPSHOT 没有 source_id：可以在 source_refs 声明它，"
                 "但不要给 Portfolio 事实添加 [source:PORTFOLIO_SNAPSHOT]"
                 " 或其他伪造的 inline Citation。"
-                "不要编造 URL；Tool Observation 的 sources 中 status 不是 OK 的项"
-                "只用于说明失败或空结果，即使回答提及该状态，也不得在 source_refs 声明"
-                "对应的外部 Source。只有 status 为 OK 的外部 Source 才能声明；"
-                "即使 Tool Observation 整体 status 为 DEGRADED，其中单独 status 为 OK 且"
-                "有 source_id 的来源仍可声明和引用；只排除来源条目自身非 OK 的项。"
+                "不要编造 URL；Tool Observation 的 sources 只列本轮成功且可引用的"
+                "外部来源。attempt_observations 记录调用状态和失败或空结果，"
+                "不是 Source，不能写入 source_refs，也不能生成 inline Citation。"
+                "只说明失败或空结果且未使用 Portfolio Facts 时，source_refs 必须是空数组 []。"
+                "即使 Tool Observation 整体 status 为 DEGRADED，其中 sources 列出的"
+                "成功来源仍可按需声明和引用。"
                 "source_refs 仍按原结构声明。"
             )
         messages = InvestmentContextBuilder(prompt).build(

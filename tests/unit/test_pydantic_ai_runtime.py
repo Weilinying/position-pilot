@@ -1,6 +1,7 @@
 """PydanticAI Production Adapter 的离线 Native Loop 测试。"""
 
 import asyncio
+import json
 from collections.abc import AsyncIterator, Mapping
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
@@ -8,7 +9,7 @@ from dataclasses import dataclass, field
 import pytest
 from pydantic import AnyHttpUrl, PostgresDsn, SecretStr, ValidationError
 from pydantic_ai.exceptions import ModelHTTPError, UnexpectedModelBehavior
-from pydantic_ai.messages import ModelMessage, ModelResponse, TextPart, ToolCallPart
+from pydantic_ai.messages import ModelMessage, ModelResponse, TextPart, ToolCallPart, ToolReturnPart
 from pydantic_ai.models.function import AgentInfo, FunctionModel
 from pydantic_ai.usage import RequestUsage
 
@@ -163,7 +164,14 @@ def test_json_tool_loop_keeps_application_source_validation_authority() -> None:
         lambda arguments: ToolExecutionResult(
             "OK",
             {"price": "210.25"},
-            sources=({"source_id": "quote-1", "kind": "QUOTE"},),
+            sources=(
+                {
+                    "source_id": "quote-1",
+                    "type": "CURRENT_QUOTE",
+                    "ticker": "GOOG",
+                    "status": "OK",
+                },
+            ),
         ),
     )
     script = ScriptedModel(
@@ -281,7 +289,7 @@ def test_one_tool_binds_application_executor_and_returns_sources() -> None:
         return ToolExecutionResult(
             "OK",
             {"price": "210.25"},
-            sources=({"source_id": "quote-1", "kind": "QUOTE"},),
+            sources=({"source_id": "quote-1", "type": "CURRENT_QUOTE", "status": "OK"},),
         )
 
     binding = AgentToolBinding(_definition("get_quote"), execute)
@@ -298,10 +306,135 @@ def test_one_tool_binds_application_executor_and_returns_sources() -> None:
     assert calls == [{"ticker": "GOOG"}]
     assert result.tool_trace[0].name == "get_quote"
     assert result.tool_trace[0].arguments == {"ticker": "GOOG"}
-    assert result.tool_trace[0].sources == ({"source_id": "quote-1", "kind": "QUOTE"},)
-    assert result.sources == ({"source_id": "quote-1", "kind": "QUOTE"},)
+    assert result.tool_trace[0].sources == (
+        {"source_id": "quote-1", "type": "CURRENT_QUOTE", "status": "OK"},
+    )
+    assert result.sources == ({"source_id": "quote-1", "type": "CURRENT_QUOTE", "status": "OK"},)
     assert len(script.calls) == 2
-    assert "quote-1" in repr(script.calls[1])
+    tool_return = next(
+        part
+        for message in script.calls[1]
+        for part in message.parts
+        if isinstance(part, ToolReturnPart)
+    )
+    observation = json.loads(tool_return.content)
+    assert observation["sources"] == [
+        {"source_id": "quote-1", "type": "CURRENT_QUOTE", "status": "OK"}
+    ]
+    assert observation["attempt_observations"] == [
+        {"tool_name": "get_quote", "status": "OK", "error_code": None}
+    ]
+
+
+@pytest.mark.parametrize(
+    ("status", "error_code"),
+    (("NO_NEWS_FOUND", None), ("PROVIDER_UNAVAILABLE", "NEWS_PROVIDER_UNAVAILABLE")),
+)
+def test_failed_source_is_not_model_citable_but_remains_in_trace(
+    status: str,
+    error_code: str | None,
+) -> None:
+    """空结果与 Provider Failure 使用独立 Attempt Observation，不伪装为 Source。"""
+
+    source = {
+        "type": "RECENT_NEWS",
+        "status": status,
+        "ticker": "GOOG",
+        "source_id": None,
+    }
+    binding = AgentToolBinding(
+        _definition("get_recent_news"),
+        lambda arguments: ToolExecutionResult(
+            status,
+            error_code=error_code,
+            sources=(source,),
+        ),
+    )
+    bridge = pydantic_ai_runtime._ToolBridge(
+        {"get_recent_news": binding}, AgentRunBudget(2, 1, 30), lambda: 0.0, 0.0
+    )
+
+    observation = json.loads(bridge.execute("get_recent_news", {"ticker": "GOOG"}))
+
+    assert observation["sources"] == []
+    assert observation["attempt_observations"] == [
+        {"tool_name": "get_recent_news", "status": status, "error_code": error_code}
+    ]
+    assert observation["status"] == status
+    assert bridge.sources == [source]
+    assert bridge.tool_trace[0].sources == (source,)
+
+
+def test_degraded_observation_exposes_only_successful_sources_and_all_attempts() -> None:
+    """混合结果保留成功来源与失败状态，内部 Trace 仍保存完整尝试。"""
+
+    quote = {
+        "type": "CURRENT_QUOTE",
+        "status": "OK",
+        "ticker": "GOOG",
+        "source_id": "quote-1",
+    }
+    failed_market = {
+        "type": "MARKET_CONTEXT",
+        "status": "NO_DATA",
+        "ticker": "SPY",
+        "source_id": None,
+    }
+    binding = AgentToolBinding(
+        _definition("get_quote"),
+        lambda arguments: ToolExecutionResult(
+            "DEGRADED",
+            {"required_market_context": {"status": "NO_DATA"}},
+            sources=(quote,),
+            related_calls=(
+                ToolExecutionRecord(
+                    "get_market_context",
+                    {},
+                    "NO_DATA",
+                    "MARKET_DATA_NO_DATA",
+                    (failed_market,),
+                ),
+            ),
+        ),
+    )
+    bridge = pydantic_ai_runtime._ToolBridge(
+        {"get_quote": binding}, AgentRunBudget(2, 2, 30), lambda: 0.0, 0.0
+    )
+
+    observation = json.loads(bridge.execute("get_quote", {"ticker": "GOOG"}))
+
+    assert observation["status"] == "DEGRADED"
+    assert observation["sources"] == [quote]
+    assert observation["attempt_observations"] == [
+        {"tool_name": "get_quote", "status": "DEGRADED", "error_code": None},
+        {
+            "tool_name": "get_market_context",
+            "status": "NO_DATA",
+            "error_code": "MARKET_DATA_NO_DATA",
+        },
+    ]
+    assert bridge.sources == [quote, failed_market]
+    assert [trace.sources for trace in bridge.tool_trace] == [(quote,), (failed_market,)]
+
+
+def test_model_visible_sources_exclude_malformed_reference_identity() -> None:
+    """不把缺少可引用身份的 OK 审计项展示为可声明 Source。"""
+
+    missing_type = {"status": "OK", "source_id": "quote-1"}
+    invalid_id = {"type": "CURRENT_QUOTE", "status": "OK", "source_id": 42}
+    binding = AgentToolBinding(
+        _definition("get_quote"),
+        lambda arguments: ToolExecutionResult("OK", sources=(missing_type, invalid_id)),
+    )
+    bridge = pydantic_ai_runtime._ToolBridge(
+        {"get_quote": binding}, AgentRunBudget(2, 1, 30), lambda: 0.0, 0.0
+    )
+
+    observation = json.loads(bridge.execute("get_quote", {"ticker": "GOOG"}))
+
+    assert observation["sources"] == []
+    assert bridge.sources == [missing_type, invalid_id]
+    assert bridge.tool_trace[0].sources == (missing_type, invalid_id)
 
 
 def test_multi_tool_loop_preserves_order_and_arguments() -> None:

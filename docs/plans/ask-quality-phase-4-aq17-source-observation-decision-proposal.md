@@ -1,6 +1,11 @@
 # Phase 4 AQ17 Source Observation Decision Proposal
 
-**Status:** PROPOSED — HUMAN REVIEW REQUIRED（2026-09-26）
+**Status:** APPROVED — IMPLEMENTED OFFLINE；AQ17a / b ONLINE VERIFICATION PENDING（2026-09-26）
+
+**Human Review 决定：**批准最小 Source Projection 调整，并明确模型可见的 `sources`
+只能表示可进入 `source_refs` 的可引用来源。失败 / 空结果的 `status`、`error_code`
+等信息由独立的 `attempt_observations` 表达，不再以 Source 形状提供。内部 Trace /
+Source Registry 保持完整，SourceValidator 继续作为最终确定性安全边界。
 
 ## 1. Problem / Evidence
 
@@ -27,7 +32,7 @@ Source；PositionPilot 正确拒绝。各一次 No-Tool Repair 均发生
 - 混合结果只暴露成功项为可引用来源，不能因整体 `DEGRADED` 隐藏其中成功来源；
   整体状态及各失败关联调用的状态 / `error_code` 仍须模型可见。
 
-这是已冻结 Tool Observation Contract 的修改，需 Human Review 后才能实施。
+这是已冻结 Tool Observation Contract 的修改，已获 Human Review 批准。
 它减少模型把审计项误当 Source 的歧义，**不保证**模型永不生成非法引用；
 SourceValidator 仍是最终安全边界。
 
@@ -42,7 +47,7 @@ Fallback 或把 Repair 成功伪装成首轮合规。仅继续加重 Prompt 是�
 但两次完整 Primary 均出现 AQ17a 首轮违规，其中后一次已经包含 Prompt 澄清；
 目前不能据此认定 Prompt-only 路线足以可靠验收。
 
-## 4. If Approved: Minimum Verification
+## 4. Approved Minimum Verification
 
 1. 离线验证模型可见 `sources` 与内部 Trace 分离：空结果 / Provider Failure
    显式为 `sources: []`，混合成功 / 失败仍保留整体及关联失败状态 / `error_code`；
@@ -52,4 +57,5 @@ Fallback 或把 Repair 成功伪装成首轮合规。仅继续加重 Prompt 是�
 3. 定向结果达标后再采集完整 Core Primary、冻结 Repeat 与 Rubric / Critical Gate，
    交付 4A Human Review；在此之前不进入 P4-T6～T8。Research Gate 继续独立。
 
-**Approval requested:** 是否批准上述模型可见 Tool Observation 的最小 Source 投影调整？
+实施后的离线验证及在线验收结果分别记录于 4A Report；离线通过不代表 AQ17
+或 4A Gate 已通过。

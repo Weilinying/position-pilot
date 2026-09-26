@@ -295,8 +295,9 @@ def test_unsuccessful_tool_source_has_no_citable_id() -> None:
 
     def run(request: AgentRunRequest) -> AgentRunResult:
         assert request.messages[0].content is not None
-        assert "status 不是 OK 的项" in request.messages[0].content
-        assert "不得在 source_refs 声明" in request.messages[0].content
+        assert "sources 只列本轮成功且可引用的" in request.messages[0].content
+        assert "attempt_observations 记录调用状态和失败或空结果" in request.messages[0].content
+        assert "source_refs 必须是空数组 []" in request.messages[0].content
         binding = next(item for item in request.tools if item.definition.name == "get_recent_news")
         observation = binding.executor({"ticker": "GOOG"})
         assert observation.status == "NO_NEWS_FOUND"
