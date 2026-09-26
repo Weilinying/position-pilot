@@ -193,6 +193,9 @@ def test_missing_strategy_does_not_end_conditional_analysis_prompt() -> None:
         assert "不把碎股权限或实际可执行股数列为建议前置或关键澄清问题" in prompt
         assert "账户 Cash 是 Ledger 事实，不等于用户本轮 Budget" in prompt
         assert "只有用户明确询问购买股数、实际可执行数量或账户权限时" in prompt
+        assert "不证明用户的长期投资判断或 Thesis 正确" in prompt
+        assert "分母不含 Cash，不等于全部资产或市值占比" in prompt
+        assert "继续买入不能使该口径占比进一步提高" in prompt
         return _completed(_candidate({"type": "PORTFOLIO_SNAPSHOT"}))
 
     result = _agent(ScriptedNativeRuntime(run), FixedFinancialData()).answer_with_history(
@@ -204,7 +207,8 @@ def test_missing_strategy_does_not_end_conditional_analysis_prompt() -> None:
     assert isinstance(result, InvestmentAnswer)
 
 
-def test_quote_binding_executes_application_tool_and_registers_real_source() -> None:
+@pytest.mark.parametrize("question", ["GOOG 当前价格是多少？", "我的账户能买 GOOG 碎股吗？"])
+def test_quote_binding_executes_application_tool_and_registers_real_source(question: str) -> None:
     def run(request: AgentRunRequest) -> AgentRunResult:
         binding = next(
             item for item in request.tools if item.definition.name == "get_current_quote"
@@ -214,6 +218,21 @@ def test_quote_binding_executes_application_tool_and_registers_real_source() -> 
             "request_purpose": "INFORMATION_RETRIEVAL",
         }
         observation = binding.executor(arguments)
+        payload = observation.data
+        assert payload is not None
+        contract = payload["response_contract"]
+        assert isinstance(contract, dict)
+        assert "required_purchase_execution_status" not in contract
+        assert contract["unknown_execution_status_blocks_analysis"] is False
+        assert contract["purchase_execution_status_reporting"] == (
+            "ONLY_WHEN_USER_ASKS_EXECUTABILITY_OR_ACCOUNT_PERMISSIONS"
+        )
+        assert contract["price_above_cost_proves_investment_thesis"] is False
+        assert contract["purchase_execution_conclusion"] == "PROHIBITED"
+        assert contract["fractional_permission_required_for_amount_analysis"] is False
+        facts = payload["deterministic_derived_facts"]
+        assert isinstance(facts, dict)
+        assert facts["executable_purchase_quantity"]["status"] == "UNKNOWN"
         trace = AgentToolTrace(
             "get_current_quote",
             arguments,
@@ -233,7 +252,7 @@ def test_quote_binding_executes_application_tool_and_registers_real_source() -> 
     runtime = ScriptedNativeRuntime(run)
     data = FixedFinancialData()
 
-    result = _agent(runtime, data).answer(USER_ID, "GOOG 当前价格是多少？")
+    result = _agent(runtime, data).answer(USER_ID, question)
 
     assert isinstance(result, InvestmentAnswer)
     assert data.quote_calls == ["GOOG"]
@@ -384,6 +403,12 @@ def test_discretionary_quote_automatically_adds_required_market_context() -> Non
             item for item in request.tools if item.definition.name == "get_current_quote"
         )
         observation = binding.executor(arguments)
+        assert observation.data is not None
+        contract = observation.data["response_contract"]
+        assert isinstance(contract, dict)
+        assert "required_purchase_execution_status" not in contract
+        assert contract["unknown_execution_status_blocks_analysis"] is False
+        assert "required_market_context" in observation.data
         traces = [
             AgentToolTrace(
                 "get_current_quote",

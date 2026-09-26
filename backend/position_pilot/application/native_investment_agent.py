@@ -200,6 +200,10 @@ class NativeInvestmentAgent:
             "不把碎股权限或实际可执行股数列为建议前置或关键澄清问题；"
             "只有用户明确询问购买股数、实际可执行数量或账户权限时，才按已有理论股数"
             "与可靠账户证据回答；理论股数不代表实际订单数量，缺乏执行证据时保持 UNKNOWN。"
+            "\n现价高于平均成本仅说明当前浮盈，不证明用户的长期投资判断或 Thesis 正确。"
+            "持仓成本占比的分母不含 Cash，不等于全部资产或市值占比；"
+            "单一标的成本占比已为 100% 时，继续买入不能使该口径占比进一步提高，"
+            "只能在有依据时讨论绝对资金敞口增加，不臆造个人集中度上限。"
         )
         if citation_mode:
             prompt += (
@@ -339,6 +343,15 @@ class NativeInvestmentAgent:
             assert message.content is not None
             payload = json.loads(message.content)
             status = str(payload.pop("status"))
+            if tool_name == CURRENT_QUOTE_TOOL_NAME and status == "OK":
+                # 旧 Runtime 保留冻结基线；Native 不要求普通分析报告无关的执行状态。
+                contract = payload["response_contract"]
+                del contract["required_purchase_execution_status"]
+                contract["purchase_execution_status_reporting"] = (
+                    "ONLY_WHEN_USER_ASKS_EXECUTABILITY_OR_ACCOUNT_PERMISSIONS"
+                )
+                contract["unknown_execution_status_blocks_analysis"] = False
+                contract["price_above_cost_proves_investment_thesis"] = False
             observed_sources = self._observed_sources(execution, source, citation_mode)
             source_mappings = tuple(self._source_mapping(item) for item in observed_sources)
             related_calls: tuple[ToolExecutionRecord, ...] = ()

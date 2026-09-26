@@ -5,6 +5,24 @@
 
 ## 1. 范围与历史边界
 
+### 2026-09-26 Native Context 修复（待在线验证）
+
+集中审查发现 Native 复用的 Quote Observation 仍含
+`required_purchase_execution_status: UNKNOWN`，与普通金额分析不要求执行权限的产品规则
+存在指令冲突。Native 在构造 Observation 时移除该强制报告要求，改为仅在用户询问执行能力或
+账户权限时报告；执行能力 UNKNOWN、禁止无依据订单执行结论、Cash / Budget 与来源边界均保留。
+Current Runtime 的序列化与 Prompt 不变。不增加意图分类器、重试或超时。
+
+同时明确浮盈不证明用户长期 Thesis 正确，以及排除 Cash 的持仓成本占比不等于全部资产占比；
+成本占比已为 100% 时，不得把绝对敞口增加说成该口径比例继续提高。离线测试检查实际 Native
+Quote Observation，而非只检查 Prompt 文本；真实模型是否遵守这些语义仍须单独验证。
+本次不修改历史 Artifact、Rubric 或 Critical Gate，也不将来源身份校验等同于推论质量通过。
+
+下一次定向 Run 使用新目录 `p4-4a-aq07-context-fix/r1`，选择 AQ07，保持既有固定模型及 60 秒
+预算。验收同时检查请求完成、Repair、耗时、来源和实际回答：无无关执行权限前置、无虚构 Thesis、
+无占比口径混淆，并有实质条件分析而非只把判断退回用户。定向结果通过后再补完整 Core / Repeat；
+本修复不代表 AQ07 或 4A Human Gate 已通过。
+
 本报告使用 `ask-quality-discovery / 0.2` 目标 Manifest、既有 `0.1` 固定 Fixture 和 Rubric `0.1`；
 Phase 1～3 的 Baseline、评分与原始 Artifact 不改写。4A Core 为 AQ03、AQ05～AQ12、AQ17a / b、
 AQ18、AQ20，共 13 个执行变体。AQ04 保持 Earnings `DIAGNOSTIC`。独立 Open Research Gate 的
