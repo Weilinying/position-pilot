@@ -1,10 +1,36 @@
 # Ask Quality Phase 4 — 4A Core Evidence Report
 
-**Status:** 06-08 模型 4A Core Primary `11 / 13 COMPLETED`；AQ17a 后续单次定向验证
-`COMPLETED`，AQ12 定向运行暴露跨轮旧行情复用，Gate 仍 OPEN（2026-09-26）。
+**Status:** 06-08 模型 4A Core Primary `11 / 13 COMPLETED`；AQ17a 与 AQ12 后续
+单次定向验证均 `COMPLETED`，Gate 仍 OPEN（2026-09-26）。
 不是 4A Gate PASS，也尚未提交最终 Human Review。
 
 ## 1. 范围与历史边界
+
+### 2026-09-26 AQ12 Fresh Evidence 定向在线复测
+
+用户使用当前修订在 `p4-4a-jun08-aq12-fresh-evidence/r1` 仅运行 AQ12，三轮均
+`COMPLETED`、`Repair=0`，耗时分别为 `26.42s`、`28.95s`、`17.74s`。
+第三轮恢复 GOOG 后实际调用 `get_current_quote(GOOG)`，取得本轮新的
+`CURRENT_QUOTE` Source ID，与第一轮 GOOG、第二轮 MSFT 的 ID 均不同；最终回答
+使用该本轮 Quote 和当前 `PORTFOLIO_SNAPSHOT` 比较成本与浮盈，inline Citation
+绑定本轮 Quote，没有串用 MSFT 来源。旧运行中确认的“无 Tool 调用却沿用旧报价”
+问题在**这一次**定向复测中未再出现。
+
+第三轮未重新查询 Price History 或 News；回答将这两项保持 `UNKNOWN`，不能把
+“结论不需要修改”理解为新闻或价格路径已重新核验。该结果证明当前报价与持仓
+比较路径的单次行为，不证明整体 4A、跨次稳定性或真实金融数据质量。
+Critical Failure Gate 仍 `NOT_EVALUATED`，Human Review 仍 `PENDING`；
+Usage / Cost 仍为 `UNKNOWN`。为避免重复付费采集尚未可验收的结果，
+已先审查既有已完成 Case 的质量与边界。
+
+随后对旧完整 Primary 的已完成 Case 做只读初审：AQ03、AQ07～AQ11、AQ18、AQ20
+未见可直接确认的 Critical Failure；AQ06 正确守住修订后的 Cash / Budget / 执行权限
+边界，但主动讨论理论碎股与“敞口增加不显著”仍需人工质量评分；AQ17b 正确区分
+Provider Failure 与空结果，但安全降级的完整性待评分。AQ09 / AQ10 / AQ11 存在
+约 `38～48s` 的长尾耗时。旧 Primary 的 AQ05 与 AQ17a 是明确的请求失败，
+后续各有一次定向成功，不能覆盖历史失败。该初审不填写冻结 Rubric 或 Critical Gate。
+目前未发现要求在完整 Primary 前继续修复的确定性新缺口；下一步可用当前代码、
+同一模型和新 Artifact 目录重新采集完整 Core Primary，然后逐 Case 评分及安排 Repeat。
 
 ### 2026-09-26 AQ12 跨轮当前事实定向验证
 
@@ -25,7 +51,7 @@ Critical Failure 仍待独立评分，不能从该记录直接宣称 PASS 或 FA
 Native Conversation Prompt 已按通用跨轮时效规则澄清：旧行情与旧判断只代表当时证据；
 询问旧投资结论是否仍成立时，按当前问题需要重新取得相关 Tool 结果，再比较。
 没有针对 AQ12 的固定措辞或 Ticker 设特例。离线 Prompt Contract 测试通过；
-该澄清尚未取得新的 AQ12 在线结果，不把修订本身视为行为已修复。
+在该次运行时，澄清尚无在线结果；其后的单次复测记录于上节，不改写本次失败。
 
 ### 2026-09-26 AQ17a Source Clarification 定向在线验证
 
