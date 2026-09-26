@@ -1,8 +1,47 @@
 # Ask Quality Phase 4 — 4A Core Evidence Report
 
-**Status:** AQ17a / b Source Projection 定向首轮通过；最新完整 4A Core Primary
-仍为 `11 / 13 COMPLETED`，Gate OPEN（2026-09-27）。
+**Status:** Source Projection 后最新完整 Core 为 `12 / 13 COMPLETED`；AQ17a / b
+首轮通过，AQ09 第一轮工具预算耗尽，AQ06 金额分析行为仍有缺口，Gate OPEN（2026-09-27）。
 不是 4A Gate PASS，也尚未提交最终 Human Review。
+
+### 2026-09-27 Source Projection 完整 Core Review
+
+`p4-4a-source-projection-core-1/r1` 完成 12 / 13 个 Core Case、17 / 18 个 Core Turn；
+AQ04 Diagnostic 完成。全部 19 个已尝试 Turn / Diagnostic 的 Repair 合计为 0，
+延迟中位数 `23.74s`、最大 `52.63s`。Usage / Cost 仍为 `UNKNOWN`；Research
+`NOT_MEASURED`，与 Core Gate 独立。原始 Artifact 保留。
+
+AQ17a / b 在完整 Primary 中再次首轮完成，耗时 `9.75s` / `4.92s`，两个 Final
+的 `source_refs=[]`，正确区分 `NO_NEWS_FOUND` 与 `PROVIDER_UNAVAILABLE`。
+这支持 Source Projection 调整有效，但尚未代替同一配置的冻结 Repeat。
+
+唯一请求失败为 AQ09 第一轮，`4.39s` 返回 `TOOL_CALL_LIMIT_EXCEEDED`；Runtime
+记录 `BUDGET_EXHAUSTED / TOOL_CALL_BUDGET_EXCEEDED`，没有 Final Candidate 或
+Repair，也没有 HTTP 错误与超时证据。Trace 顺序为 Quote → 自动 Market Context
+→ 显式 Market Context → Price History。`FinancialToolExecutor` 已缓存同轮 Market
+结果，但 Native Session 与 Runtime Bridge 仍对显式调用再次计数，4 次额度已耗尽。
+现有去重仅覆盖相反顺序（先显式 Market、后 Quote），未覆盖本次顺序。Artifact
+未保存被预算拒绝的下一次工具请求，不能断言该请求具体名称。AQ09 第二轮完成
+不能覆盖第一轮失败，也不足以证明完整两轮 Conversation 场景通过。
+
+逐回答初审还发现 AQ06 的产品行为缺口：用户只问 `$200` 加仓分析，回答主动转向
+理论股数，并将“账户是否支持碎股交易”列为影响最终建议的关键待确认条件。
+这不符合已批准的金额分析规则。回答没有提高预算、没有把理论股数当作实际订单，
+因此不据此套用旧版 Execution Critical Failure；须按现行产品规则修复及重新评估。
+AQ05 / AQ10 也有无关的执行权限讨论，应在同一规则修订中检查。
+
+本次仅形成 Artifact / 代码归因与质量初审，Rubric / Critical Gate 尚未正式评分，
+Human Review 仍 `PENDING`。当前无需重跑完整 Core 或批量 Repeat；先处理 AQ09
+同轮自动 / 显式调用的预算语义以及已批准金额分析规则的实现缺口，再做定向验证。
+AQ09 的具体计数调整见 [Decision Proposal](../../plans/ask-quality-phase-4-aq09-tool-accounting-decision-proposal.md)，
+尚未实施。`repeat.completed_case_count=6` 只是本次 Primary 完成了六个 Repeat
+目标 Case，不代表已取得 r2 / r3。
+
+独立只读复核未在其余已完成回答中确认自动 Critical Failure：AQ12 第三轮确实
+重新查询 GOOG，AQ18 保留报道归因和冲突，AQ04 未伪造财报证据。AQ03 开头
+“并没有跌到 180”强于可用的当前 Quote 证据，虽后文说明无法核实是否曾触及
+180，仍属 Evidence / Inference 质量问题；AQ07 条件分析是否达到冻结的满分
+要求也仍待评分。不能用请求完成率替代逐 Case 最低分与 Critical Gate。
 
 ### 2026-09-27 AQ17 Source Projection 定向在线证据
 
