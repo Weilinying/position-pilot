@@ -169,6 +169,13 @@ Rubric `0.1`，只冻结 4A Core、独立 Open Research Gate、AQ04 Earnings Reg
 
 ### Phase 4 4A Core Eval
 
+入口实时打印每轮 `STARTED` / `TURN_FINISHED`（Case、轮次、状态、耗时），不是每个 Case 一个
+pytest item。60 秒预算按每轮回答计算，整套串行测试可能运行十几分钟；两条进度之间仍需等待模型。
+`progress.jsonl` 从 Run 开始创建，每轮结束立即追加完整固定 Fixture 证据；Ctrl+C 会在当前轮
+记录 `INTERRUPTED` 并保留已完成轮次。没有 `RUN_FINISHED` 的日志不是完整验收结果；正式
+manifest / cases / summary 仍在全部完成后写入。进度文件包含回答，不应公开分享。
+已有部分进度的目录也禁止重复使用，避免意外重新付费；当前不提供自动续跑。
+
 `tests/evaluation/test_phase4_core_online.py` 是新的 pytest opt-in 入口。它复用 `0.1` 固定 Financial
 Fixtures，但实际 Ask 走 `NativeInvestmentAgent → PydanticAIRuntime`，多轮 Case 注入已发生的 User 与
 已完成的 Assistant 历史；不复用旧 `execute_case()` 的 Current Runtime 路径。每轮保存 Native Tool Trace、

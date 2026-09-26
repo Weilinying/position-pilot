@@ -119,6 +119,11 @@ def test_fixture_runner_uses_native_agent_and_preserves_unknown_usage(tmp_path: 
     assert (artifact_dir / "manifest.json").is_file()
     assert (artifact_dir / "cases.jsonl").is_file()
     assert (artifact_dir / "summary.json").is_file()
+    progress = [
+        json.loads(line) for line in (artifact_dir / "progress.jsonl").read_text().splitlines()
+    ]
+    assert progress[-1] == {"status": "RUN_FINISHED", "complete": True}
+    assert progress[2]["status"] == "TURN_FINISHED"
     artifacts = "".join(path.read_text(encoding="utf-8") for path in artifact_dir.iterdir())
     assert "fixture-only-never-transmitted" not in artifacts
     assert "prompt_sha256" in artifacts
@@ -143,6 +148,42 @@ def test_multiturn_fixture_injects_prior_visible_answer() -> None:
     assert record["turns"][0]["history_message_count"] == 0
     assert record["turns"][1]["history_message_count"] == 2
     assert record["turns"][0]["runtime_calls"][0]["final_candidate"] is not None
+
+
+def test_interrupt_preserves_finished_turn_and_blocks_paid_restart(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """第二轮中断不丢失第一轮证据，已有部分结果也拒绝重跑。"""
+
+    class InterruptedRuntime(ScriptedRuntime):
+        def run(self, request: AgentRunRequest) -> AgentRunResult:
+            if self.requests:
+                raise KeyboardInterrupt
+            return super().run(request)
+
+    runtime = InterruptedRuntime()
+    environment = {
+        RUN_PHASE4_EVAL_ENV: "1",
+        "PHASE4_CASE_IDS": "AQ10",
+        "PHASE4_ARTIFACT_DIR": str(tmp_path),
+    }
+    with pytest.raises(KeyboardInterrupt):
+        run_phase4_evaluation(environment=environment, runtime_factory=lambda _: runtime)
+    events = [json.loads(line) for line in (tmp_path / "progress.jsonl").read_text().splitlines()]
+    assert [event["status"] for event in events] == [
+        "RUN_STARTED",
+        "STARTED",
+        "TURN_FINISHED",
+        "STARTED",
+        "INTERRUPTED",
+    ]
+    assert events[2]["turn"]["answer"] == "固定测试回答。"
+    assert not (tmp_path / "summary.json").exists()
+    output = capsys.readouterr().out
+    assert "TURN_FINISHED" in output
+    assert "固定测试回答" not in output
+    with pytest.raises(FileExistsError):
+        run_phase4_evaluation(environment=environment, runtime_factory=lambda _: pytest.fail())
 
 
 def test_failed_turn_still_contributes_user_message_to_next_turn() -> None:

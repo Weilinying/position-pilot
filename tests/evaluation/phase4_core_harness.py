@@ -495,23 +495,38 @@ def execute_native_case(
     runtime: RecordingAgentRuntime,
     *,
     wall_clock_budget_seconds: float = DEFAULT_WALL_CLOCK_BUDGET_SECONDS,
+    progress: Callable[[dict[str, object]], None] | None = None,
 ) -> dict[str, object]:
     """执行一条 Native Case，并把每一轮的既有 User / Assistant Answer 注入历史。"""
 
     target = _target(case.id)
-    agent = build_native_agent(
-        case, runtime, wall_clock_budget_seconds=wall_clock_budget_seconds
-    )
+    agent = build_native_agent(case, runtime, wall_clock_budget_seconds=wall_clock_budget_seconds)
     history: list[LLMMessage] = []
     turns: list[dict[str, object]] = []
     for turn_index, question in enumerate(case.executable_questions, start=1):
+        event = {"case_id": case.id, "turn_index": turn_index}
+        if progress:
+            progress({**event, "status": "STARTED"})
         before = len(runtime.calls)
         started_at = monotonic()
-        result = agent.answer_with_history(USER_ID, question, tuple(history))
+        try:
+            result = agent.answer_with_history(USER_ID, question, tuple(history))
+        except (KeyboardInterrupt, Exception) as exc:
+            if progress:
+                progress(
+                    {
+                        **event,
+                        "status": "INTERRUPTED" if isinstance(exc, KeyboardInterrupt) else "ERROR",
+                        "elapsed_seconds": round(monotonic() - started_at, 2),
+                    }
+                )
+            raise
         latency_ms = (monotonic() - started_at) * 1000
         calls = runtime.calls[before:]
         turn = _turn_record(case, question, turn_index, tuple(history), result, calls, latency_ms)
         turns.append(turn)
+        if progress:
+            progress({**event, "status": "TURN_FINISHED", "turn": turn})
         history.append(LLMMessage(LLMRole.USER, question))
         if isinstance(result, InvestmentAnswer):
             history.append(LLMMessage(LLMRole.ASSISTANT, result.answer))
@@ -672,7 +687,7 @@ def write_artifacts(
     """写入 manifest / cases / summary 三类不含 Secret 的 Artifact。"""
 
     artifact_dir.mkdir(parents=True, exist_ok=True)
-    _require_unused_artifact_dir(artifact_dir)
+    _require_unused_artifact_dir(artifact_dir, include_progress=False)
     manifest = {
         "run_metadata": metadata.as_dict(),
         "base_manifest": base_manifest_payload(),
@@ -686,12 +701,16 @@ def write_artifacts(
     (artifact_dir / "summary.json").write_text(_stable_json(summary) + "\n", encoding="utf-8")
 
 
-def _require_unused_artifact_dir(artifact_dir: Path) -> None:
+def _require_unused_artifact_dir(artifact_dir: Path, *, include_progress: bool = True) -> None:
     """在线模型调用前拒绝已有结果，写入前再次防止意外覆盖。"""
 
     if any(
         (artifact_dir / name).exists()
-        for name in ("manifest.json", "cases.jsonl", "summary.json")
+        for name in (
+            ("manifest.json", "cases.jsonl", "summary.json", "progress.jsonl")
+            if include_progress
+            else ("manifest.json", "cases.jsonl", "summary.json")
+        )
     ):
         raise FileExistsError("Phase 4 Eval Artifact 已存在；请使用新的 Run 目录")
 
@@ -709,6 +728,21 @@ def run_phase4_evaluation(
     if artifact_raw:
         _require_unused_artifact_dir(Path(artifact_raw))
     metadata = create_run_metadata(environment=values, clock=clock)
+
+    def progress(event: dict[str, object]) -> None:
+        # 日志只打印状态；完整固定 Fixture 证据仅写入本地 Artifact。
+        turn = cast(dict[str, object], event.get("turn", {}))
+        visible = {key: value for key, value in event.items() if key not in {"turn", "metadata"}}
+        if turn:
+            visible.update(execution_status=turn["execution_status"], latency_ms=turn["latency_ms"])
+        print(_stable_json(visible), flush=True)
+        if artifact_raw:
+            directory = Path(artifact_raw)
+            directory.mkdir(parents=True, exist_ok=True)
+            with (directory / "progress.jsonl").open("a", encoding="utf-8") as stream:
+                stream.write(_stable_json(event) + "\n")
+
+    progress({"status": "RUN_STARTED", "complete": False, "metadata": metadata.as_dict()})
     selected = set(metadata.selected_case_ids)
     records: list[dict[str, object]] = []
     for case_id in PHASE4_RESEARCH_CASE_IDS:
@@ -730,7 +764,7 @@ def run_phase4_evaluation(
             if isinstance(runtime, RecordingAgentRuntime)
             else RecordingAgentRuntime(runtime)
         )
-        case_record = execute_native_case(CASES_BY_ID[case_id], recording)
+        case_record = execute_native_case(CASES_BY_ID[case_id], recording, progress=progress)
         records.append(case_record)
         runtime = recording
     records.sort(
@@ -739,6 +773,7 @@ def run_phase4_evaluation(
     summary = _summary(metadata, records)
     if artifact_raw:
         write_artifacts(Path(artifact_raw), metadata, records, summary)
+    progress({"status": "RUN_FINISHED", "complete": True})
     return {"metadata": metadata.as_dict(), "records": records, "summary": summary}
 
 
