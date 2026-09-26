@@ -264,6 +264,24 @@ def test_quote_binding_executes_application_tool_and_registers_real_source(quest
     ]
 
 
+def test_unsuccessful_tool_source_has_no_citable_id() -> None:
+    """失败和空结果保留状态供审计，但不能向模型提供可引用的 Source ID。"""
+
+    def run(request: AgentRunRequest) -> AgentRunResult:
+        binding = next(item for item in request.tools if item.definition.name == "get_recent_news")
+        observation = binding.executor({"ticker": "GOOG"})
+        assert observation.status == "NO_NEWS_FOUND"
+        assert len(observation.sources) == 1
+        assert observation.sources[0]["status"] == "NO_NEWS_FOUND"
+        assert observation.sources[0]["source_id"] is None
+        return _completed(_candidate({"type": "PORTFOLIO_SNAPSHOT"}))
+
+    result = _agent(ScriptedNativeRuntime(run), FixedFinancialData()).answer(
+        USER_ID, "GOOG 有近期新闻吗？"
+    )
+    assert isinstance(result, InvestmentAnswer)
+
+
 def test_conversation_quote_exposes_observed_source_id_for_inline_citation() -> None:
     def run(request: AgentRunRequest) -> AgentRunResult:
         assert request.messages[0].content is not None

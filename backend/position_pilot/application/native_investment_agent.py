@@ -451,7 +451,7 @@ class NativeInvestmentAgent:
     @staticmethod
     def _source_mapping(source: ContextSource) -> Mapping[str, object]:
         return {
-            "source_id": str(source.source_id or uuid4()),
+            "source_id": str(source.source_id or uuid4()) if source.status == "OK" else None,
             "url": source.url,
             "title": source.title,
             "publisher": source.publisher,

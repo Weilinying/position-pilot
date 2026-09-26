@@ -23,6 +23,15 @@ Provider 错误码及该快照在当前 Region / Endpoint 下的请求兼容性�
 现已修复后续汇总：Earnings Diagnostic 分别记录完成、请求失败和未运行数量；
 已尝试而失败时 `evidence_status=MEASURED`。旧 Artifact 原样保留，不回填历史结果。
 
+AQ09 的两个 Turn 均未完成，但阶段不同：首轮 Quote / History 为 `NO_DATA`，News 为
+`NO_NEWS_FOUND`，模型仍把这些无结果来源放入 `source_refs`；Application 正确触发一次
+无 Tool Repair，Repair 由 Runtime 返回 `INVALID_PROVIDER_RESPONSE`，没有可复核的候选输出。
+第二轮初始模型请求耗时约 `44.18s`，候选缺少已成功 Market Context 的 inline Citation；
+Repair 在剩余约 `15.82s` 内超时。无法从现有 Artifact 推定首轮 Repair 的 Provider 原始
+响应形状。针对可确定的 Source 干扰，Native 失败 / 空结果 Observation 不再生成可引用
+`source_id`，但保留失败状态与内部审计记录；一次 Repair 和拒绝失败来源的规则不放宽。
+该修复只有离线验证，不能据此声称 AQ09 在线通过。
+
 ### 2026-09-26 Native Context 修复（待在线验证）
 
 **后续证据与第二次修复：** `p4-4a-aq07-context-fix/r1` 在 `32.78s` 内完成，无 Repair。
