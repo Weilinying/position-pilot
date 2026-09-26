@@ -609,6 +609,8 @@ def _summary(
     core_turns = [turn for item in core for turn in cast(list[dict[str, object]], item["turns"])]
     completed_turns = sum(turn["execution_status"] == "COMPLETED" for turn in core_turns)
     diagnostic_completed = sum(item["execution_status"] == "COMPLETED" for item in diagnostic)
+    diagnostic_failed = sum(item["execution_status"] == "REQUEST_FAILED" for item in diagnostic)
+    diagnostic_attempted = diagnostic_completed + diagnostic_failed
     latencies = [
         cast(float, turn["latency_ms"])
         for record in records
@@ -639,7 +641,9 @@ def _summary(
         "earnings_diagnostic": {
             "target_case_ids": list(PHASE4_EARNINGS_CASE_IDS),
             "completed_case_count": diagnostic_completed,
-            "evidence_status": "MEASURED" if diagnostic_completed else "NOT_RUN",
+            "request_failed_case_count": diagnostic_failed,
+            "not_run_case_count": len(diagnostic) - diagnostic_attempted,
+            "evidence_status": "MEASURED" if diagnostic_attempted else "NOT_RUN",
         },
         "research_gate": {
             "case_ids": list(PHASE4_RESEARCH_CASE_IDS),

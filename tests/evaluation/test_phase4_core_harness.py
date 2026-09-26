@@ -155,6 +155,41 @@ def test_eval_records_selected_model_without_changing_fixture_scope(tmp_path: Pa
     assert result["summary"]["core_full"]["selected_case_count"] == 1
 
 
+def test_failed_earnings_diagnostic_is_reported_as_attempted() -> None:
+    """AQ04 请求失败仍属于已执行证据，不能在汇总中误写为未运行。"""
+
+    class FailedRuntime(ScriptedRuntime):
+        def run(self, request: AgentRunRequest) -> AgentRunResult:
+            self.requests.append(request)
+            return AgentRunResult(
+                AgentRunStatus.FAILED,
+                None,
+                "MODEL_HTTP_FAILURE",
+                (),
+                (),
+                None,
+                1.0,
+            )
+
+    runtime = FailedRuntime()
+    result = cast(
+        dict[str, Any],
+        run_phase4_evaluation(
+            environment={RUN_PHASE4_EVAL_ENV: "1", "PHASE4_CASE_IDS": "AQ04"},
+            runtime_factory=lambda _: runtime,
+        ),
+    )
+    diagnostic = result["summary"]["earnings_diagnostic"]
+    record = next(item for item in result["records"] if item["case_id"] == "AQ04")
+
+    assert len(runtime.requests) == 1
+    assert record["execution_status"] == "REQUEST_FAILED"
+    assert diagnostic["completed_case_count"] == 0
+    assert diagnostic["request_failed_case_count"] == 1
+    assert diagnostic["not_run_case_count"] == 0
+    assert diagnostic["evidence_status"] == "MEASURED"
+
+
 def test_multiturn_fixture_injects_prior_visible_answer() -> None:
     """连续 Case 第二轮收到前一轮 User / Assistant 历史。"""
 

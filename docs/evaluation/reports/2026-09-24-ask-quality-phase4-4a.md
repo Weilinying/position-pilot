@@ -5,6 +5,24 @@
 
 ## 1. 范围与历史边界
 
+### 2026-09-26 备选模型入口诊断
+
+`p4-4a-alt-model-smoke-1/r1` 显式选择 `qwen3.7-max-2026-05-17`，只运行 AQ20。
+Core Eval 已接受该模型名并将其记录在 Run Metadata；AQ20 在 `0.65s` 后
+`REQUEST_FAILED / LLM_INVALID_REQUEST`，Runtime Trace 为
+`FAILED / MODEL_HTTP_FAILURE`，未执行 Tool、未产生回答或 Token Usage。
+因此该结果只证明当前 Model / Endpoint / Request 组合未成功，不能为 AQ20 打质量分，
+也不能把失败归因于 Portfolio 或 Conversation 行为。现有 Artifact 未保存精确 HTTP 状态及
+Provider 错误码；`LLM_INVALID_REQUEST` 对应适配器中的非认证类 4xx 映射，尚不能判定
+是模型权限、具体请求字段还是快照兼容性。该模型是仅支持思考模式的早期快照；
+与 `qwen3.7-max` 历史运行分别归因，不合并成功率。继续完整 Core 前须先确认实际
+Provider 错误码及该快照在当前 Region / Endpoint 下的请求兼容性。
+
+同一轮 Review 发现 `p4-4a-core-progress/r1` 的 AQ04 Record 已正确写成
+`REQUEST_FAILED / MEASURED`，但旧 Summary 仅按完成数量判断，误标 `NOT_RUN`。
+现已修复后续汇总：Earnings Diagnostic 分别记录完成、请求失败和未运行数量；
+已尝试而失败时 `evidence_status=MEASURED`。旧 Artifact 原样保留，不回填历史结果。
+
 ### 2026-09-26 Native Context 修复（待在线验证）
 
 **后续证据与第二次修复：** `p4-4a-aq07-context-fix/r1` 在 `32.78s` 内完成，无 Repair。
