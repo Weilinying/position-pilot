@@ -189,10 +189,12 @@ Fixture，真实模型只用于 Agent 行为评估。它不验证真实金融 Pr
 旧 `LLM_REQUEST_TIMEOUT_SECONDS` 仍用于 Current Runtime 回归路径，默认 30 秒。
 此前的 30/60 秒诊断与 Final Output 独立 Spike 保持历史原貌，不回写 Artifact。
 
-调用者先在自己的本地 Shell 导出 `LLM_API_KEY`、与当前 Region 对应的 `LLM_BASE_URL`，并设置固定
-`LLM_MODEL=qwen3.7-max`；`LLM_PROVIDER` 应为 `ALIYUN_MODEL_STUDIO`（未设置时使用该值），同一 Run
-的 r1 / r2 / r3 必须使用同一 Endpoint。Agent 不读取 `.env`。Primary 执行 13 个 Core FULL Case 与
-AQ04 Diagnostic：
+调用者先在自己的本地 Shell 导出 `LLM_API_KEY`、与当前 Region 对应的 `LLM_BASE_URL`，并显式设置
+`LLM_MODEL` 为本次实际可用的模型；`LLM_PROVIDER` 应为 `ALIYUN_MODEL_STUDIO`（未设置时使用该值）。
+一次完整 Run 的 r1 / r2 / r3 必须使用同一模型及 Endpoint，切换模型须使用新的 `EVAL_RUN_ID`
+和 Artifact 目录，并在报告中分开列出结果。既有 `qwen3.7-max` Artifact 保留为历史证据；
+其他模型的运行不自动替代其质量基线，也不改变 Production Model。Agent 不读取 `.env`。
+Primary 执行 13 个 Core FULL Case 与 AQ04 Diagnostic：
 
 ```bash
 RUN_PHASE4_EVAL=1 \

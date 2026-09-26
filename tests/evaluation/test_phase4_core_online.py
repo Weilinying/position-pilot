@@ -6,7 +6,6 @@ from typing import cast
 
 import pytest
 from phase4_core_harness import (
-    DEFAULT_MODEL,
     DEFAULT_PROVIDER,
     RUN_PHASE4_EVAL_ENV,
     run_phase4_evaluation,
@@ -35,8 +34,6 @@ def test_phase4_core_live_fixture_run() -> None:
     ]
     if missing:
         pytest.fail(f"Phase 4 在线 Eval 缺少进程环境变量: {', '.join(missing)}")
-    if os.getenv("LLM_MODEL") != DEFAULT_MODEL:
-        pytest.fail(f"Phase 4 固定 Eval 模型必须为 {DEFAULT_MODEL}")
     if os.getenv("LLM_PROVIDER", DEFAULT_PROVIDER).strip().upper() != DEFAULT_PROVIDER:
         pytest.fail(f"Phase 4 固定 Eval Provider 必须为 {DEFAULT_PROVIDER}")
     result = run_phase4_evaluation()

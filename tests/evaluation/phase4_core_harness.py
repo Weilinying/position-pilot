@@ -358,8 +358,6 @@ def _build_eval_runtime(environment: Mapping[str, str]) -> AgentRuntime | None:
         return None
     if environment.get("LLM_PROVIDER", DEFAULT_PROVIDER).strip().upper() != DEFAULT_PROVIDER:
         raise ValueError(f"Phase 4 固定 Eval Provider 必须为 {DEFAULT_PROVIDER}")
-    if model != DEFAULT_MODEL:
-        raise ValueError(f"Phase 4 固定 Eval 模型必须为 {DEFAULT_MODEL}")
     settings = Settings(
         _env_file=None,  # type: ignore[call-arg]
         database_url=PostgresDsn("postgresql+psycopg://phase4-eval.invalid/phase4_eval"),

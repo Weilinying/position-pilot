@@ -131,6 +131,30 @@ def test_fixture_runner_uses_native_agent_and_preserves_unknown_usage(tmp_path: 
     assert "fixture_manifest_sha256" in artifacts
 
 
+def test_eval_records_selected_model_without_changing_fixture_scope(tmp_path: Path) -> None:
+    """可用模型由本轮显式指定，元数据保留模型身份与固定 Case 范围。"""
+
+    selected_model = "qwen3.7-max-other-version"
+    result = cast(
+        dict[str, Any],
+        run_phase4_evaluation(
+            environment={
+                RUN_PHASE4_EVAL_ENV: "1",
+                "LLM_MODEL": selected_model,
+                "PHASE4_CASE_IDS": "AQ20",
+                "PHASE4_ARTIFACT_DIR": str(tmp_path),
+                "EVAL_RUN_ID": "other-model-diagnostic",
+            },
+            runtime_factory=lambda _: ScriptedRuntime(),
+        ),
+    )
+
+    assert result["metadata"]["model"] == selected_model
+    manifest = json.loads((tmp_path / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest["run_metadata"]["model"] == selected_model
+    assert result["summary"]["core_full"]["selected_case_count"] == 1
+
+
 def test_multiturn_fixture_injects_prior_visible_answer() -> None:
     """连续 Case 第二轮收到前一轮 User / Assistant 历史。"""
 
