@@ -5,6 +5,17 @@
 
 ## 1. 范围与历史边界
 
+### 2026-09-26 `qwen3.7-max-2026-06-08` 最小兼容性证据
+
+用户本地运行 `p4-4a-jun08-compat-1/r1`，仅选择 AQ20。该快照在当前
+Region / Endpoint 的请求 `COMPLETED`，耗时 `3196.45ms`，无 Tool Call、无 Repair；
+回答为账户可用现金 `$4,875.77`，与固定 Fixture 一致，未受无关历史背景干扰。
+因此它已验证 **No-tool + 当前 Final Output 路径**，没有验证 One-tool、Multi-tool、
+复杂 Citation 或完整 4A 回答质量。Token Usage / Cost 仍为 `UNKNOWN`，Critical Gate 与
+Human Review 仍为 `NOT_EVALUATED / PENDING`。下一步只需该快照的 One-tool / Multi-tool
+Production Compatibility Smoke，再决定是否运行较长的 4A Core；不得与旧别名的
+结果混作同模型重复试验，不修改 Production 默认模型。此前建议的 05-20 快照尚未实测。
+
 ### 2026-09-26 备选模型入口诊断
 
 **Provider 原始错误确认后的修订（2026-09-26）：** 用户确认该次请求返回 HTTP 400、
