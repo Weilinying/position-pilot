@@ -3,7 +3,7 @@
 import json
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from uuid import UUID
 
@@ -26,7 +26,7 @@ from position_pilot.application.llm import LLMMessage, LLMRole, LLMStatus
 from position_pilot.application.market_data_service import HistoricalBarsQuery
 from position_pilot.application.native_investment_agent import NativeInvestmentAgent
 from position_pilot.application.news_service import NewsQuery
-from position_pilot.domain.market_context import MarketRegimeContext
+from position_pilot.domain.market_context import MarketRegime, MarketRegimeContext
 from position_pilot.domain.market_data import (
     HistoricalBars,
     MarketDataCoverage,
@@ -114,6 +114,31 @@ class NewsReadyData(FixedFinancialData):
             updated_at=NOW,
         )
         return NewsResult.success(RecentNews(query.ticker, (article,), "ALPACA_NEWS", NOW))
+
+
+class MarketReadyData(FixedFinancialData):
+    """提供可引用的固定 Market Context，核对同轮 Source 身份。"""
+
+    def get_current_market_context(self) -> MarketDataResult[MarketRegimeContext]:
+        self.market_context_calls += 1
+        return MarketDataResult.success(
+            MarketRegimeContext(
+                regime=MarketRegime.NORMAL,
+                five_session_return_pct=Decimal("0"),
+                twenty_session_drawdown_pct=Decimal("0"),
+                twenty_session_annualized_volatility_pct=Decimal("0"),
+                triggered_rule_ids=(),
+                period_start=NOW - timedelta(days=21),
+                period_end=NOW,
+                observation_count=21,
+                source="ALPACA",
+                feed="SIP",
+                coverage=MarketDataCoverage.CONSOLIDATED,
+                currency="USD",
+                adjustment="ALL",
+                fetched_at=NOW,
+            )
+        )
 
 
 @dataclass(slots=True)
@@ -557,6 +582,177 @@ def test_discretionary_quote_reuses_already_observed_market_context() -> None:
     result = _agent(ScriptedNativeRuntime(run), data).answer_with_history(
         USER_ID, "GOOG 现在值得加仓吗？", ()
     )
+
+    assert isinstance(result, InvestmentAnswer)
+    assert data.quote_calls == ["GOOG"]
+    assert data.market_context_calls == 1
+
+
+@pytest.mark.parametrize("market_available", (True, False))
+@pytest.mark.parametrize("quote_first", (True, False))
+def test_market_context_reuse_keeps_fetch_budget_and_source_identity(
+    market_available: bool,
+    quote_first: bool,
+) -> None:
+    """自动与显式调用只复用首次 Market 获取，额外显式调用仍占预算。"""
+
+    def run(request: AgentRunRequest) -> AgentRunResult:
+        bindings = {item.definition.name: item.executor for item in request.tools}
+        quote_arguments = {
+            "ticker": "GOOG",
+            "request_purpose": "DISCRETIONARY_CURRENT_RISK_ACTION",
+        }
+        if quote_first:
+            quote = bindings["get_current_quote"](quote_arguments)
+            market = bindings["get_market_context"]({})
+            assert quote.related_calls[0].provider_fetch_count == 1
+            assert market.provider_fetch_count == 0
+            assert quote.related_calls[0].sources == market.sources
+        else:
+            market = bindings["get_market_context"]({})
+            quote = bindings["get_current_quote"](quote_arguments)
+            assert market.provider_fetch_count == 1
+            assert quote.related_calls == ()
+            assert quote.data is not None
+            assert quote.data["required_market_context"] is not None
+        assert market.status == ("OK" if market_available else "NO_DATA")
+        if market_available:
+            assert market.sources[0]["source_id"] is not None
+        else:
+            assert market.sources[0]["source_id"] is None
+        assert bindings["get_recent_price_history"]({"ticker": "GOOG"}).provider_fetch_count == 1
+        assert bindings["get_recent_news"]({"ticker": "GOOG"}).provider_fetch_count == 1
+        with pytest.raises(AgentToolBudgetExceeded):
+            bindings["get_market_context"]({})
+        with pytest.raises(AgentToolBudgetExceeded):
+            bindings["get_current_quote"](
+                {"ticker": "AAPL", "request_purpose": "INFORMATION_RETRIEVAL"}
+            )
+        return _completed(_candidate({"type": "PORTFOLIO_SNAPSHOT"}))
+
+    data = MarketReadyData() if market_available else FixedFinancialData()
+    result = _agent(ScriptedNativeRuntime(run), data).answer(USER_ID, "分析 GOOG 当前风险。")
+
+    assert isinstance(result, InvestmentAnswer)
+    assert data.quote_calls == ["GOOG"]
+    assert data.market_context_calls == 1
+
+
+def test_invalid_symbol_still_counts_one_real_provider_fetch() -> None:
+    """Provider 返回无效标的后，失败 Trace 仍能审计实际请求。"""
+
+    class InvalidQuoteData(FixedFinancialData):
+        def get_current_quote(self, ticker: str) -> MarketDataResult[MarketQuote]:
+            self.quote_calls.append(ticker)
+            return MarketDataResult.failure(MarketDataStatus.INVALID_SYMBOL, "无效标的")
+
+    def run(request: AgentRunRequest) -> AgentRunResult:
+        binding = next(
+            item for item in request.tools if item.definition.name == "get_current_quote"
+        )
+        observation = binding.executor(
+            {"ticker": "MSFT", "request_purpose": "INFORMATION_RETRIEVAL"}
+        )
+        assert observation.status == "INVALID_ARGUMENTS"
+        assert observation.provider_fetch_count == 1
+        return _completed(_candidate({"type": "PORTFOLIO_SNAPSHOT"}))
+
+    data = InvalidQuoteData()
+    result = _agent(ScriptedNativeRuntime(run), data).answer(USER_ID, "查询 MSFT 报价。")
+
+    assert isinstance(result, InvestmentAnswer)
+    assert data.quote_calls == ["MSFT"]
+
+
+def test_first_explicit_market_reuse_works_after_four_fetch_slots_are_reserved() -> None:
+    """自动取得的 Market Context 即使在第四个获取后显式请求，也不被误拒绝。"""
+
+    def run(request: AgentRunRequest) -> AgentRunResult:
+        bindings = {item.definition.name: item.executor for item in request.tools}
+        quote = bindings["get_current_quote"](
+            {"ticker": "GOOG", "request_purpose": "DISCRETIONARY_CURRENT_RISK_ACTION"}
+        )
+        bindings["get_recent_price_history"]({"ticker": "GOOG"})
+        bindings["get_recent_news"]({"ticker": "GOOG"})
+        market = bindings["get_market_context"]({})
+        assert market.status == "NO_DATA"
+        assert market.provider_fetch_count == 0
+        assert market.sources == quote.related_calls[0].sources
+        with pytest.raises(AgentToolBudgetExceeded):
+            bindings["get_market_context"]({})
+        return _completed(_candidate({"type": "PORTFOLIO_SNAPSHOT"}))
+
+    data = FixedFinancialData()
+    result = _agent(ScriptedNativeRuntime(run), data).answer(USER_ID, "分析 GOOG。")
+
+    assert isinstance(result, InvestmentAnswer)
+    assert data.market_context_calls == 1
+
+
+def test_provider_exception_keeps_real_fetch_count_and_failure_status() -> None:
+    """Provider 抛异常时，模型观察仍标识失败并记录已发出的请求。"""
+
+    class FailingQuoteData(FixedFinancialData):
+        def get_current_quote(self, ticker: str) -> MarketDataResult[MarketQuote]:
+            self.quote_calls.append(ticker)
+            raise RuntimeError("provider failed")
+
+    def run(request: AgentRunRequest) -> AgentRunResult:
+        binding = next(
+            item for item in request.tools if item.definition.name == "get_current_quote"
+        )
+        observation = binding.executor(
+            {"ticker": "GOOG", "request_purpose": "INFORMATION_RETRIEVAL"}
+        )
+        assert observation.status == "TOOL_FAILURE"
+        assert observation.error_code == "TOOL_FAILURE"
+        assert observation.provider_fetch_count == 1
+        assert observation.sources == ()
+        return _completed(_candidate({"type": "PORTFOLIO_SNAPSHOT"}))
+
+    data = FailingQuoteData()
+    result = _agent(ScriptedNativeRuntime(run), data).answer(USER_ID, "查询 GOOG 报价。")
+
+    assert isinstance(result, InvestmentAnswer)
+    assert data.quote_calls == ["GOOG"]
+
+
+def test_automatic_market_exception_keeps_quote_and_failed_fetch_trace() -> None:
+    """复合调用中 Market 抛异常时，Quote 与失败的真实获取分别可审计。"""
+
+    class FailingMarketData(FixedFinancialData):
+        def get_current_market_context(self) -> MarketDataResult[MarketRegimeContext]:
+            self.market_context_calls += 1
+            raise RuntimeError("provider failed")
+
+    def run(request: AgentRunRequest) -> AgentRunResult:
+        bindings = {item.definition.name: item.executor for item in request.tools}
+        observation = bindings["get_current_quote"](
+            {"ticker": "GOOG", "request_purpose": "DISCRETIONARY_CURRENT_RISK_ACTION"}
+        )
+        assert observation.status == "DEGRADED"
+        assert observation.provider_fetch_count == 1
+        assert observation.sources[0]["status"] == "OK"
+        assert len(observation.related_calls) == 1
+        failed_market = observation.related_calls[0]
+        assert failed_market.status == "TOOL_FAILURE"
+        assert failed_market.error_code == "TOOL_FAILURE"
+        assert failed_market.provider_fetch_count == 1
+        assert failed_market.sources[0]["status"] == "TOOL_FAILURE"
+        assert failed_market.sources[0]["source_id"] is None
+        explicit_market = bindings["get_market_context"]({})
+        assert explicit_market.status == "TOOL_FAILURE"
+        assert explicit_market.error_code == "TOOL_FAILURE"
+        assert explicit_market.provider_fetch_count == 0
+        assert explicit_market.sources == failed_market.sources
+        assert bindings["get_recent_price_history"]({"ticker": "GOOG"}).provider_fetch_count == 1
+        assert bindings["get_recent_news"]({"ticker": "GOOG"}).provider_fetch_count == 1
+        with pytest.raises(AgentToolBudgetExceeded):
+            bindings["get_market_context"]({})
+        return _completed(_candidate({"type": "PORTFOLIO_SNAPSHOT"}))
+
+    data = FailingMarketData()
+    result = _agent(ScriptedNativeRuntime(run), data).answer(USER_ID, "GOOG 可以加仓吗？")
 
     assert isinstance(result, InvestmentAnswer)
     assert data.quote_calls == ["GOOG"]

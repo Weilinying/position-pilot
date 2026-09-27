@@ -179,6 +179,10 @@ class RecordingAgentRuntime:
                 "system_prompt_sha256": _sha256(request.messages[0].content),
                 "exposed_tools": [binding.definition.name for binding in request.tools],
                 "tool_trace": [_tool_trace_payload(item) for item in result.tool_trace],
+                "tool_invocation_count": sum(item.invoked_by_model for item in result.tool_trace),
+                "provider_fetch_count": sum(
+                    item.provider_fetch_count for item in result.tool_trace
+                ),
                 "source_count": len(result.sources),
             }
         )
@@ -226,6 +230,8 @@ def _tool_trace_payload(trace: object) -> dict[str, object]:
         "arguments": _json_safe(getattr(trace, "arguments", {})),
         "status": getattr(trace, "status", UNKNOWN),
         "error_code": getattr(trace, "error_code", None),
+        "invoked_by_model": getattr(trace, "invoked_by_model", True),
+        "provider_fetch_count": getattr(trace, "provider_fetch_count", 1),
         "sources": _json_safe(getattr(trace, "sources", ())),
     }
 

@@ -98,6 +98,14 @@ class FinancialToolExecutor:
         self._history: dict[str, MarketDataResult[HistoricalBars]] = {}
         self._news_results: dict[str, NewsResult[RecentNews]] = {}
         self._market_context_result: MarketDataResult[MarketRegimeContext] | None = None
+        self._market_context_failed = False
+        self._provider_fetch_count = 0
+
+    @property
+    def provider_fetch_count(self) -> int:
+        """记录本轮真实 Provider 请求，包含返回无效标的的请求。"""
+
+        return self._provider_fetch_count
 
     @property
     def unique_execution_count(self) -> int:
@@ -114,9 +122,16 @@ class FinancialToolExecutor:
         """按 Tool Contract 执行调用，并复用同一轮已取得的相同结果。"""
 
         if tool_call.name == MARKET_CONTEXT_TOOL_NAME:
+            if self._market_context_failed:
+                raise RuntimeError("MARKET_CONTEXT_PROVIDER_FAILURE")
             duplicate = self._market_context_result is not None
             if self._market_context_result is None:
-                self._market_context_result = self._market_context.get_current_market_context()
+                self._provider_fetch_count += 1
+                try:
+                    self._market_context_result = self._market_context.get_current_market_context()
+                except Exception:  # noqa: BLE001 - 同轮复用明确失败，不重复请求 Provider。
+                    self._market_context_failed = True
+                    raise
             return FinancialToolExecution(
                 tool_call,
                 self._market_context_result,
@@ -131,6 +146,7 @@ class FinancialToolExecutor:
             duplicate = normalized in self._quotes
             quote_result = self._quotes.get(normalized)
             if quote_result is None:
+                self._provider_fetch_count += 1
                 quote_result = self._market_data.get_current_quote(normalized)
                 if quote_result.status in {
                     MarketDataStatus.INVALID_SYMBOL,
@@ -143,6 +159,7 @@ class FinancialToolExecutor:
             duplicate = normalized in self._history
             history_result = self._history.get(normalized)
             if history_result is None:
+                self._provider_fetch_count += 1
                 history_result = self._market_data.get_historical_bars(
                     self._recent_price_history_query(normalized)
                 )
@@ -156,6 +173,7 @@ class FinancialToolExecutor:
             duplicate = normalized in self._news_results
             news_result = self._news_results.get(normalized)
             if news_result is None:
+                self._provider_fetch_count += 1
                 news_result = self._news.get_recent_news(self._recent_news_query(normalized))
                 if news_result.status is NewsStatus.INVALID_SYMBOL:
                     raise InvalidFinancialToolResult(f"{RECENT_NEWS_TOOL_NAME} ticker 参数无效")

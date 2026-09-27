@@ -19,7 +19,12 @@ from phase4_core_harness import (
     selected_phase4_case_ids,
 )
 
-from position_pilot.application.agent_runtime import AgentRunRequest, AgentRunResult, AgentRunStatus
+from position_pilot.application.agent_runtime import (
+    AgentRunRequest,
+    AgentRunResult,
+    AgentRunStatus,
+    AgentToolTrace,
+)
 
 
 @dataclass(slots=True)
@@ -226,6 +231,46 @@ def test_framework_failure_trace_keeps_only_safe_classification() -> None:
         "cause": "ValidationError",
     }
     assert runtime.calls[0]["provider_error"] is None
+
+
+def test_recording_keeps_model_invocations_separate_from_provider_fetches() -> None:
+    """Quote 自动补取 Market 时，Eval 分别记录模型调用与真实获取。"""
+
+    class AutomaticMarketRuntime(ScriptedRuntime):
+        def run(self, request: AgentRunRequest) -> AgentRunResult:
+            self.requests.append(request)
+            return AgentRunResult(
+                AgentRunStatus.COMPLETED,
+                json.dumps(
+                    {"answer": "固定测试回答。", "source_refs": [{"type": "PORTFOLIO_SNAPSHOT"}]}
+                ),
+                None,
+                (
+                    AgentToolTrace("get_current_quote", {"ticker": "GOOG"}, "OK"),
+                    AgentToolTrace(
+                        "get_market_context",
+                        {},
+                        "OK",
+                        invoked_by_model=False,
+                        provider_fetch_count=1,
+                    ),
+                ),
+                (),
+                None,
+                1.0,
+            )
+
+    runtime = RecordingAgentRuntime(AutomaticMarketRuntime())
+    case = CASES_BY_ID["AQ20"]
+    build_native_agent(case, runtime).answer_with_history(USER_ID, case.executable_questions[0], ())
+
+    call = runtime.calls[0]
+    assert call["tool_invocation_count"] == 1
+    assert call["provider_fetch_count"] == 2
+    traces = call["tool_trace"]
+    assert isinstance(traces, list)
+    assert [trace["invoked_by_model"] for trace in traces] == [True, False]
+    assert [trace["provider_fetch_count"] for trace in traces] == [1, 1]
 
 
 def test_multiturn_fixture_injects_prior_visible_answer() -> None:

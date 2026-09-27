@@ -68,6 +68,8 @@ class AgentToolTrace:
     status: str
     error_code: str | None = None
     sources: tuple[Mapping[str, object], ...] = ()
+    invoked_by_model: bool = True
+    provider_fetch_count: int = 1
 
 
 class AgentRunStatus(StrEnum):

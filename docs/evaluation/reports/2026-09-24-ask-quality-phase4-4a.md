@@ -4,6 +4,23 @@
 首轮通过，AQ09 第一轮工具预算耗尽，AQ06 金额分析行为仍有缺口，Gate OPEN（2026-09-27）。
 不是 4A Gate PASS，也尚未提交最终 Human Review。
 
+### 2026-09-27 AQ09 已批准计数澄清：离线实现
+
+Human Review 已批准同轮 Quote 自动取得的 Market Context 在第一次显式复用时
+不重复消耗 Application 获取预算。Native Session 只为这一顺序保留一次复用
+额度；随后重复显式调用仍按普通调用检查预算。PydanticAI 对模型显式 Tool
+Invocation 的 4 次上限不变，自动 Market 获取单独保留在 Trace。真实 Provider
+请求次数使用本轮 Executor 的独立计数，包含返回无效标的的请求；Eval Artifact
+分别记录 `tool_invocation_count`、`provider_fetch_count`，单条 Trace 标识调用
+来源与是否真实获取。Market Context 成功或失败结果均在本轮复用原 Source 身份。
+若 Provider 直接抛错，Native Tool Observation 仍保留 `TOOL_FAILURE`、实际获取
+次数及已产生的 Quote / 关联 Market Trace；随后首次显式复用保持同一失败
+状态与 Source 身份，不再次请求 Provider，也不把异常请求记成零次获取。
+
+当前仅有离线验证；AQ09 两轮真实模型路径、AQ06 金额分析行为及完整 4A Gate
+均未重新在线验证。旧 Artifact 与失败判定不改写。
+相关离线测试 `74 passed`；Ruff Check / Format 及修改模块的 Mypy 通过。
+
 ### 2026-09-27 Source Projection 完整 Core Review
 
 `p4-4a-source-projection-core-1/r1` 完成 12 / 13 个 Core Case、17 / 18 个 Core Turn；

@@ -470,7 +470,7 @@ def test_multi_tool_loop_preserves_order_and_arguments() -> None:
 
 
 def test_related_application_call_has_separate_trace_source_and_budget_count() -> None:
-    """复合 Executor 的内部 Provider 调用必须单独进入 Trace 与预算。"""
+    """复合 Executor 的自动获取进入 Trace，但不是模型显式调用。"""
 
     def quote(arguments: Mapping[str, object]) -> ToolExecutionResult:
         del arguments
@@ -508,6 +508,59 @@ def test_related_application_call_has_separate_trace_source_and_budget_count() -
         {"type": "CURRENT_QUOTE"},
         {"type": "MARKET_CONTEXT"},
     )
+    assert [item.invoked_by_model for item in result.tool_trace] == [True, False]
+    assert [item.provider_fetch_count for item in result.tool_trace] == [1, 1]
+
+
+def test_auto_market_then_explicit_reuse_keeps_four_model_invocations() -> None:
+    """自动 Market 获取不占模型 Invocation，首次显式复用不重复获取。"""
+
+    quote = AgentToolBinding(
+        _definition("get_quote"),
+        lambda arguments: ToolExecutionResult(
+            "OK",
+            related_calls=(
+                ToolExecutionRecord("get_market_context", {}, "NO_DATA", provider_fetch_count=1),
+            ),
+        ),
+    )
+    market = AgentToolBinding(
+        _definition("get_market_context"),
+        lambda arguments: ToolExecutionResult("NO_DATA", provider_fetch_count=0),
+    )
+    history = AgentToolBinding(
+        _definition("get_history"),
+        lambda arguments: ToolExecutionResult("NO_DATA"),
+    )
+    news = AgentToolBinding(
+        _definition("get_news"),
+        lambda arguments: ToolExecutionResult("NO_NEWS_FOUND"),
+    )
+    script = ScriptedModel(
+        [
+            _tool_response("get_quote", {"ticker": "GOOG"}, "call-1"),
+            _tool_response("get_market_context", {"ticker": "GOOG"}, "call-2"),
+            _tool_response("get_history", {"ticker": "GOOG"}, "call-3"),
+            _tool_response("get_news", {"ticker": "GOOG"}, "call-4"),
+            _text_response("已保留失败状态并完成分析。"),
+        ]
+    )
+
+    result = _runtime(script).run(
+        _request(tools=(quote, market, history, news), budget=AgentRunBudget(5, 4, 30))
+    )
+
+    assert result.status is AgentRunStatus.COMPLETED
+    assert [item.name for item in result.tool_trace] == [
+        "get_quote",
+        "get_market_context",
+        "get_market_context",
+        "get_history",
+        "get_news",
+    ]
+    assert sum(item.invoked_by_model for item in result.tool_trace) == 4
+    assert sum(item.provider_fetch_count for item in result.tool_trace) == 4
+    assert result.tool_trace[2].provider_fetch_count == 0
 
 
 def test_application_tool_budget_exception_maps_to_stable_runtime_failure() -> None:

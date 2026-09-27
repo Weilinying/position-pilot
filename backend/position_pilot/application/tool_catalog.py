@@ -69,6 +69,11 @@ class ToolExecutionRecord:
     status: str
     error_code: str | None = None
     sources: tuple[Mapping[str, object], ...] = ()
+    provider_fetch_count: int = 1
+
+    def __post_init__(self) -> None:
+        if isinstance(self.provider_fetch_count, bool) or self.provider_fetch_count not in (0, 1):
+            raise ValueError("Tool Record provider_fetch_count 必须为 0 或 1")
 
 
 @dataclass(frozen=True, slots=True)
@@ -80,12 +85,15 @@ class ToolExecutionResult:
     error_code: str | None = None
     sources: tuple[Mapping[str, object], ...] = ()
     related_calls: tuple[ToolExecutionRecord, ...] = ()
+    provider_fetch_count: int = 1
 
     def __post_init__(self) -> None:
         if not self.status.strip():
             raise ValueError("Tool Result status 不能为空")
         if self.error_code is not None and not self.error_code.strip():
             raise ValueError("Tool Result error_code 必须是非空字符串或 None")
+        if isinstance(self.provider_fetch_count, bool) or self.provider_fetch_count not in (0, 1):
+            raise ValueError("Tool Result provider_fetch_count 必须为 0 或 1")
 
 
 ToolExecutor = Callable[[Mapping[str, object]], ToolExecutionResult]

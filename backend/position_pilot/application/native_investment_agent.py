@@ -65,6 +65,7 @@ from position_pilot.application.tool_catalog import (
     ToolExposurePlanner,
     current_financial_tool_descriptors,
 )
+from position_pilot.domain.market_context import MARKET_PROXY_TICKER
 from position_pilot.domain.market_data import MarketDataResult
 from position_pilot.domain.news import NewsResult
 
@@ -82,6 +83,8 @@ class _AuthorizedToolSession:
         self._call_budget = call_budget
         self._used_calls = 0
         self._explicit_market_context_observed = False
+        self._automatic_market_context_credit = False
+        self._market_context_source: Mapping[str, object] | None = None
 
     @property
     def explicit_market_context_observed(self) -> bool:
@@ -94,14 +97,34 @@ class _AuthorizedToolSession:
 
         self._explicit_market_context_observed = True
 
-    def reserve(self, names: tuple[str, ...]) -> bool:
+    def note_automatic_market_context(self) -> None:
+        """标记自动获取已占预算，可供随后首次显式调用复用。"""
+
+        self._automatic_market_context_credit = True
+
+    def market_context_source(self, source: ContextSource) -> Mapping[str, object]:
+        """同轮复用 Market Context 的 Source 身份，包括失败状态。"""
+
+        if self._market_context_source is None:
+            self._market_context_source = NativeInvestmentAgent._source_mapping(source)
+        return self._market_context_source
+
+    def reserve(self, names: tuple[str, ...], *, reuse_automatic_market: bool = False) -> bool:
         """原子预留一组实际调用，避免复合 Tool 只计算外层调用。"""
 
         if any(name not in self._allowed_names for name in names):
             return False
-        if self._used_calls + len(names) > self._call_budget:
+        reuse = (
+            reuse_automatic_market
+            and names == (MARKET_CONTEXT_TOOL_NAME,)
+            and self._automatic_market_context_credit
+        )
+        charge = len(names) - int(reuse)
+        if self._used_calls + charge > self._call_budget:
             raise AgentToolBudgetExceeded
-        self._used_calls += len(names)
+        self._used_calls += charge
+        if reuse:
+            self._automatic_market_context_credit = False
         return True
 
 
@@ -328,6 +351,7 @@ class NativeInvestmentAgent:
                 return ToolExecutionResult(
                     "INVALID_ARGUMENTS",
                     error_code=validation_failure.code.value,
+                    provider_fetch_count=0,
                 )
             needs_market_context = (
                 tool_name == CURRENT_QUOTE_TOOL_NAME
@@ -339,18 +363,44 @@ class NativeInvestmentAgent:
             required_names = (
                 (tool_name, MARKET_CONTEXT_TOOL_NAME) if auto_fetch_market_context else (tool_name,)
             )
-            if not tool_session.reserve(required_names):
+            if not tool_session.reserve(
+                required_names,
+                reuse_automatic_market=(tool_name == MARKET_CONTEXT_TOOL_NAME),
+            ):
                 return ToolExecutionResult(
                     "REQUIRED_CONTEXT_UNAUTHORIZED",
                     error_code="REQUIRED_CONTEXT_UNAUTHORIZED",
+                    provider_fetch_count=0,
                 )
+            fetch_count_before = executor.provider_fetch_count
             try:
                 execution = executor.execute(tool_call)
             except InvalidFinancialToolResult:
                 return ToolExecutionResult(
                     "INVALID_ARGUMENTS",
                     error_code=InvestmentFailureCode.INVALID_TOOL_CALL.value,
+                    provider_fetch_count=executor.provider_fetch_count - fetch_count_before,
                 )
+            except Exception:  # noqa: BLE001 - 保留已发生的 Provider 请求与明确失败状态。
+                failed_sources: tuple[Mapping[str, object], ...] = ()
+                if tool_name == MARKET_CONTEXT_TOOL_NAME:
+                    tool_session.note_explicit_market_context()
+                    failed_sources = (
+                        tool_session.market_context_source(
+                            ContextSource(
+                                ContextSourceType.MARKET_CONTEXT,
+                                "TOOL_FAILURE",
+                                ticker=MARKET_PROXY_TICKER,
+                            )
+                        ),
+                    )
+                return ToolExecutionResult(
+                    "TOOL_FAILURE",
+                    error_code="TOOL_FAILURE",
+                    sources=failed_sources,
+                    provider_fetch_count=executor.provider_fetch_count - fetch_count_before,
+                )
+            provider_fetch_count = executor.provider_fetch_count - fetch_count_before
             if tool_name == MARKET_CONTEXT_TOOL_NAME:
                 tool_session.note_explicit_market_context()
             message, source = self._format_tool_execution(execution, snapshot)
@@ -370,7 +420,12 @@ class NativeInvestmentAgent:
                 contract["unknown_execution_status_blocks_analysis"] = False
                 contract["price_above_cost_proves_investment_thesis"] = False
             observed_sources = self._observed_sources(execution, source, citation_mode)
-            source_mappings = tuple(self._source_mapping(item) for item in observed_sources)
+            source_mappings = tuple(
+                tool_session.market_context_source(item)
+                if item.type is ContextSourceType.MARKET_CONTEXT
+                else self._source_mapping(item)
+                for item in observed_sources
+            )
             related_calls: tuple[ToolExecutionRecord, ...] = ()
             if needs_market_context:
                 required_call = LLMToolCall(
@@ -378,7 +433,43 @@ class NativeInvestmentAgent:
                     MARKET_CONTEXT_TOOL_NAME,
                     {},
                 )
-                required_execution = executor.execute(required_call)
+                required_fetch_count_before = executor.provider_fetch_count
+                try:
+                    required_execution = executor.execute(required_call)
+                except Exception:  # noqa: BLE001 - 复合 Tool 保留 Quote 与 Market 失败审计。
+                    failed_market = tool_session.market_context_source(
+                        ContextSource(
+                            ContextSourceType.MARKET_CONTEXT,
+                            "TOOL_FAILURE",
+                            ticker=MARKET_PROXY_TICKER,
+                        )
+                    )
+                    payload["required_market_context"] = {
+                        "status": "TOOL_FAILURE",
+                        "error_code": "TOOL_FAILURE",
+                    }
+                    if auto_fetch_market_context:
+                        tool_session.note_automatic_market_context()
+                        related_calls = (
+                            ToolExecutionRecord(
+                                MARKET_CONTEXT_TOOL_NAME,
+                                {},
+                                "TOOL_FAILURE",
+                                "TOOL_FAILURE",
+                                (failed_market,),
+                                executor.provider_fetch_count - required_fetch_count_before,
+                            ),
+                        )
+                    return ToolExecutionResult(
+                        "DEGRADED",
+                        payload,
+                        sources=source_mappings,
+                        related_calls=related_calls,
+                        provider_fetch_count=provider_fetch_count,
+                    )
+                required_provider_fetch_count = (
+                    executor.provider_fetch_count - required_fetch_count_before
+                )
                 required_message, required_source = self._format_tool_execution(
                     required_execution,
                     snapshot,
@@ -386,14 +477,16 @@ class NativeInvestmentAgent:
                 assert required_message.content is not None
                 required_payload = json.loads(required_message.content)
                 payload["required_market_context"] = required_payload
-                required_source_mapping = self._source_mapping(required_source)
+                required_source_mapping = tool_session.market_context_source(required_source)
                 if auto_fetch_market_context:
+                    tool_session.note_automatic_market_context()
                     related_calls = (
                         ToolExecutionRecord(
                             MARKET_CONTEXT_TOOL_NAME,
                             {},
                             str(required_payload["status"]),
                             sources=(required_source_mapping,),
+                            provider_fetch_count=required_provider_fetch_count,
                         ),
                     )
                 if required_payload["status"] != "OK":
@@ -403,6 +496,7 @@ class NativeInvestmentAgent:
                 payload,
                 sources=source_mappings,
                 related_calls=related_calls,
+                provider_fetch_count=provider_fetch_count,
             )
 
         return execute

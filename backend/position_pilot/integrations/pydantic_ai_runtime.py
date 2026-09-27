@@ -73,19 +73,22 @@ class _ToolBridge:
     tool_trace: list[AgentToolTrace] = field(default_factory=list)
     sources: list[Mapping[str, object]] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
-    calls: int = 0
+    invocation_count: int = 0
+    provider_fetch_count: int = 0
 
     def execute(self, name: str, arguments: Mapping[str, object]) -> str:
         """执行一次 Application Tool，并把失败转换为显式模型观察。"""
 
         self._check_wall_clock()
-        if self.calls >= self.budget.tool_calls:
+        if self.invocation_count >= self.budget.tool_calls:
             raise UsageLimitExceeded("tool call budget exhausted")
-        self.calls += 1
+        self.invocation_count += 1
         binding = self.bindings.get(name)
         normalized_arguments = dict(arguments)
         if binding is None:
-            result = ToolExecutionResult("UNKNOWN_TOOL", error_code="UNKNOWN_TOOL")
+            result = ToolExecutionResult(
+                "UNKNOWN_TOOL", error_code="UNKNOWN_TOOL", provider_fetch_count=0
+            )
         else:
             try:
                 result = binding.executor(normalized_arguments)
@@ -97,9 +100,12 @@ class _ToolBridge:
                 result = ToolExecutionResult(
                     "INVALID_ARGUMENTS",
                     error_code="INVALID_ARGUMENTS",
+                    provider_fetch_count=0,
                 )
             except Exception:  # noqa: BLE001 - Provider / Tool Failure 必须成为显式观察。
-                result = ToolExecutionResult("TOOL_FAILURE", error_code="TOOL_FAILURE")
+                result = ToolExecutionResult(
+                    "TOOL_FAILURE", error_code="TOOL_FAILURE", provider_fetch_count=0
+                )
 
         trace = AgentToolTrace(
             name=name,
@@ -107,13 +113,14 @@ class _ToolBridge:
             status=result.status,
             error_code=result.error_code,
             sources=result.sources,
+            provider_fetch_count=result.provider_fetch_count,
         )
         self.tool_trace.append(trace)
+        self.provider_fetch_count += result.provider_fetch_count
         self.sources.extend(result.sources)
         if result.status != "OK":
             self.warnings.append(f"{result.status}:{name}")
         for related in result.related_calls:
-            self.calls += 1
             self.tool_trace.append(
                 AgentToolTrace(
                     name=related.name,
@@ -121,8 +128,11 @@ class _ToolBridge:
                     status=related.status,
                     error_code=related.error_code,
                     sources=related.sources,
+                    invoked_by_model=False,
+                    provider_fetch_count=related.provider_fetch_count,
                 )
             )
+            self.provider_fetch_count += related.provider_fetch_count
             self.sources.extend(related.sources)
             if related.status != "OK":
                 self.warnings.append(f"{related.status}:{related.name}")
