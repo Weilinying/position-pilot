@@ -1,6 +1,6 @@
 # Phase 4 AQ09 Tool Accounting Decision Proposal
 
-**Status:** APPROVED — IMPLEMENTED OFFLINE；TARGETED ONLINE VERIFICATION PENDING（2026-09-27）
+**Status:** APPROVED — IMPLEMENTED；AQ09 TARGETED ONLINE COMPLETED，4A GATE OPEN（2026-09-28）
 
 **Human Review 决定：**只合并同轮自动取得的 Market Context 与随后第一次显式
 复用的 Application 获取记账。显式调用继续占 PydanticAI Tool Invocation Limit，
@@ -48,4 +48,6 @@ Market Context，本次仍发生失败。直接提高工具次数会掩盖顺序
    通用修复后，用户本地定向运行 AQ09 两轮与 AQ06，检查首次回答、Budget、
    失败降级及 Source；定向达标后才重新采集完整 Core 与冻结 Repeat。
 
-离线与在线结果分别记录于 4A Report；离线通过不代表 AQ09 或 4A Gate 已通过。
+离线与在线结果分别记录于 4A Report。AQ09 定向在线两轮已完成，但本次模型未显式
+复用自动取得的 Market Context；该分支仍由离线测试证明。定向完成不代表完整
+4A Gate 已通过。

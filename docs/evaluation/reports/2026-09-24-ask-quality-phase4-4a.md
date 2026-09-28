@@ -1,8 +1,32 @@
 # Ask Quality Phase 4 — 4A Core Evidence Report
 
 **Status:** Source Projection 后最新完整 Core 为 `12 / 13 COMPLETED`；AQ17a / b
-首轮通过，AQ09 第一轮工具预算耗尽，AQ06 金额分析行为仍有缺口，Gate OPEN（2026-09-27）。
+首轮通过。其后 AQ09 定向在线两轮完成，但 AQ06 金额分析行为仍有缺口，
+完整 Core 尚未重跑，Gate OPEN（2026-09-28）。
 不是 4A Gate PASS，也尚未提交最终 Human Review。
+
+### 2026-09-28 AQ09 定向在线复核
+
+用户运行 `p4-4a-aq09-accounting-1/r1`（`qwen3.7-max-2026-06-08`）。
+AQ09 两轮均为 `COMPLETED / DEGRADED`，无 Request Failure、无 Repair，分别耗时
+`25.95s`、`30.68s`。每轮 Trace 均为显式 Quote、自动 Market Context、显式
+Price History、显式 News：`tool_invocation_count=3`、`provider_fetch_count=4`。
+Quote / History 为 `NO_DATA`、News 为 `NO_NEWS_FOUND`，因此 DEGRADED 合理；
+模型没有伪造当前 GOOG 报价或新闻。两轮均只引用成功的 SPY Market Context
+及 Portfolio Snapshot；未把空结果作为可引用来源。第二轮正确延续 GOOG 话题，
+没有假称另有历史事实。Usage / Cost 仍为 `UNKNOWN`。
+
+这次模型**没有**显式调用 `get_market_context`，因此真实模型证据证明自动获取
+没有占用显式 Tool Invocation、并且原 AQ09 预算故障在本次路径不再发生；
+不能据此声称在线直接走过“自动获取后首次显式复用”的分支。该分支及成功、
+空结果、抛异常时单次 Provider 获取，由离线测试覆盖。不为诱发非确定性工具
+选择而重复付费。回答初审仍有质量问题：首轮把账户 Cash“充裕”列为支持
+加仓的条件，虽随后澄清 Cash 不等于本轮 Budget；第二轮在用户未给预算时
+举“本轮投入 $1,000”为例，可能被读作擅自拟定预算。News 的
+`NO_NEWS_FOUND` 亦不应与 Provider 获取失败混为一谈。这些不改变本次请求
+执行成功的事实，但须在 AQ06 金额分析规则修复与下一次完整 Core 评分时检查。
+本次是单 Case 定向运行，其余 12 个 Core Case `NOT_RUN`，Critical Gate 仍为
+`NOT_EVALUATED`，Human Review 仍为 `PENDING`；不回写旧完整 Core 的 12/13 结果。
 
 ### 2026-09-27 AQ09 已批准计数澄清：离线实现
 
@@ -17,8 +41,8 @@ Invocation 的 4 次上限不变，自动 Market 获取单独保留在 Trace。�
 次数及已产生的 Quote / 关联 Market Trace；随后首次显式复用保持同一失败
 状态与 Source 身份，不再次请求 Provider，也不把异常请求记成零次获取。
 
-当前仅有离线验证；AQ09 两轮真实模型路径、AQ06 金额分析行为及完整 4A Gate
-均未重新在线验证。旧 Artifact 与失败判定不改写。
+本节记录实施时的离线状态；AQ09 定向在线结果见上节。AQ06 金额分析行为及
+完整 4A Gate 均未重新在线验证。旧 Artifact 与失败判定不改写。
 相关离线测试 `74 passed`；Ruff Check / Format 及修改模块的 Mypy 通过。
 
 ### 2026-09-27 Source Projection 完整 Core Review
