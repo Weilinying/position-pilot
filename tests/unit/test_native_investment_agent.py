@@ -1,14 +1,17 @@
 """Native Investment Agent Production Facade 的离线测试。"""
 
+import hashlib
 import json
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass, field
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from uuid import UUID
 
 import pytest
 
+import position_pilot.application.native_investment_agent as native_module
 from position_pilot.application.agent_runtime import (
     AgentRunRequest,
     AgentRunResult,
@@ -16,7 +19,15 @@ from position_pilot.application.agent_runtime import (
     AgentToolBudgetExceeded,
     AgentToolTrace,
 )
+from position_pilot.application.conversation_citations import (
+    CitationValidationError,
+    validate_citations,
+)
 from position_pilot.application.investment_agent import (
+    BASE_SYSTEM_PROMPT,
+    CONTEXT_TOOLS,
+    LEGACY_AMOUNT_ANALYSIS_PROMPT,
+    SYSTEM_PROMPT,
     InvestmentAnswer,
     InvestmentFailureCode,
     InvestmentRequestFailure,
@@ -24,8 +35,13 @@ from position_pilot.application.investment_agent import (
 from position_pilot.application.investment_context import InvestmentPortfolioContext
 from position_pilot.application.llm import LLMMessage, LLMRole, LLMStatus
 from position_pilot.application.market_data_service import HistoricalBarsQuery
-from position_pilot.application.native_investment_agent import NativeInvestmentAgent
+from position_pilot.application.native_investment_agent import (
+    AMOUNT_ANALYSIS_PROMPT,
+    NativeInvestmentAgent,
+)
 from position_pilot.application.news_service import NewsQuery
+from position_pilot.application.source_registry import ContextSource, ContextSourceType
+from position_pilot.application.tool_catalog import current_financial_tool_descriptors
 from position_pilot.domain.market_context import MarketRegime, MarketRegimeContext
 from position_pilot.domain.market_data import (
     HistoricalBars,
@@ -205,6 +221,47 @@ def test_no_tool_run_preserves_existing_answer_contract() -> None:
     assert data.quote_calls == []
 
 
+@pytest.mark.parametrize(
+    ("enabled_tool_names", "tool_budget"),
+    ((frozenset(), 0), (frozenset({"get_current_quote"}), 2), (None, 7)),
+)
+def test_native_budget_follows_exposed_tool_quotas(
+    enabled_tool_names: frozenset[str] | None,
+    tool_budget: int,
+) -> None:
+    """本轮暴露集合决定工具额度，并始终为 Final 留一次请求。"""
+
+    runtime = ScriptedNativeRuntime(
+        lambda request: _completed(_candidate({"type": "PORTFOLIO_SNAPSHOT"}))
+    )
+    result = _agent(runtime, FixedFinancialData(), enabled_tool_names=enabled_tool_names).answer(
+        USER_ID, "我还有多少现金？"
+    )
+
+    assert isinstance(result, InvestmentAnswer)
+    assert runtime.requests[0].budget.tool_calls == tool_budget
+    assert runtime.requests[0].budget.model_requests == tool_budget + 1
+
+
+def test_native_budget_changes_with_descriptor_policy(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """修改单个 Tool 的配额后，请求预算无需单独改数字。"""
+
+    descriptors = current_financial_tool_descriptors(CONTEXT_TOOLS)
+    revised = (replace(descriptors[0], max_calls_per_run=3), *descriptors[1:])
+    monkeypatch.setattr(native_module, "current_financial_tool_descriptors", lambda _: revised)
+    runtime = ScriptedNativeRuntime(
+        lambda request: _completed(_candidate({"type": "PORTFOLIO_SNAPSHOT"}))
+    )
+
+    result = _agent(runtime, FixedFinancialData()).answer(USER_ID, "我还有多少现金？")
+
+    assert isinstance(result, InvestmentAnswer)
+    assert runtime.requests[0].budget.tool_calls == 8
+    assert runtime.requests[0].budget.model_requests == 9
+
+
 def test_missing_strategy_does_not_end_conditional_analysis_prompt() -> None:
     """无持久策略时仍要求使用已知事实分析，而不代用户创建策略。"""
 
@@ -215,9 +272,6 @@ def test_missing_strategy_does_not_end_conditional_analysis_prompt() -> None:
         assert "按已知 Position Type 区分分析" in prompt
         assert "不得把假设分支说成用户已有仓位或已确认策略" in prompt
         assert "不得代用户创造目标仓位、价格触发条件或持久 Strategy" in prompt
-        assert "不把碎股权限或实际可执行股数列为建议前置或关键澄清问题" in prompt
-        assert "账户 Cash 是 Ledger 事实，不等于用户本轮 Budget" in prompt
-        assert "只有用户明确询问购买股数、实际可执行数量或账户权限时" in prompt
         assert "不证明用户的长期投资判断或 Thesis 正确" in prompt
         assert "分母不含 Cash，不等于全部资产或市值占比" in prompt
         assert "继续买入不能使该口径占比进一步提高" in prompt
@@ -230,6 +284,39 @@ def test_missing_strategy_does_not_end_conditional_analysis_prompt() -> None:
     )
 
     assert isinstance(result, InvestmentAnswer)
+
+
+@pytest.mark.parametrize("with_history", [False, True])
+def test_native_amount_policy_replaces_legacy_policy(with_history: bool) -> None:
+    """验证两个入口实际发送唯一金额规则；模型遵循情况仍须在线评测。"""
+
+    runtime = ScriptedNativeRuntime(
+        lambda request: _completed(_candidate({"type": "PORTFOLIO_SNAPSHOT"}))
+    )
+    agent = _agent(runtime, FixedFinancialData())
+    if with_history:
+        result = agent.answer_with_history(USER_ID, "GOOG 现在值得加仓吗？", ())
+    else:
+        result = agent.answer(USER_ID, "GOOG 现在值得加仓吗？")
+
+    assert isinstance(result, InvestmentAnswer)
+    prompt = runtime.requests[0].messages[0].content
+    assert prompt is not None
+    assert prompt.startswith(BASE_SYSTEM_PROMPT + "\n")
+    assert prompt.count(AMOUNT_ANALYSIS_PROMPT) == 1
+    assert "今天或现在已到某个具体价位时，必须调用 get_current_quote" in prompt
+    assert "可与 get_recent_news 同轮调用" in prompt
+    assert "不证明盘中是否曾触及该价" in prompt
+    assert LEGACY_AMOUNT_ANALYSIS_PROMPT not in prompt
+    assert "普通加仓分析涉及资金分配时" not in prompt
+
+
+def test_legacy_system_prompt_remains_frozen() -> None:
+    """保留修改前完整 Prompt 的摘要，避免重组改变旧 Runtime 对照基线。"""
+
+    assert hashlib.sha256(SYSTEM_PROMPT.encode()).hexdigest() == (
+        "8426116a285ec144ac1bebc948683ced4a1bc15de4990748f78835f2b95214b0"
+    )
 
 
 def test_conversation_revision_prompt_requires_fresh_relevant_evidence() -> None:
@@ -624,9 +711,13 @@ def test_market_context_reuse_keeps_fetch_budget_and_source_identity(
         assert bindings["get_recent_news"]({"ticker": "GOOG"}).provider_fetch_count == 1
         with pytest.raises(AgentToolBudgetExceeded):
             bindings["get_market_context"]({})
+        second_quote = bindings["get_current_quote"](
+            {"ticker": "AAPL", "request_purpose": "DISCRETIONARY_CURRENT_RISK_ACTION"}
+        )
+        assert second_quote.related_calls == ()
         with pytest.raises(AgentToolBudgetExceeded):
             bindings["get_current_quote"](
-                {"ticker": "AAPL", "request_purpose": "INFORMATION_RETRIEVAL"}
+                {"ticker": "MSFT", "request_purpose": "INFORMATION_RETRIEVAL"}
             )
         return _completed(_candidate({"type": "PORTFOLIO_SNAPSHOT"}))
 
@@ -634,8 +725,128 @@ def test_market_context_reuse_keeps_fetch_budget_and_source_identity(
     result = _agent(ScriptedNativeRuntime(run), data).answer(USER_ID, "分析 GOOG 当前风险。")
 
     assert isinstance(result, InvestmentAnswer)
-    assert data.quote_calls == ["GOOG"]
+    assert data.quote_calls == ["GOOG", "AAPL"]
     assert data.market_context_calls == 1
+
+
+@pytest.mark.parametrize(
+    "tool_name",
+    ("get_current_quote", "get_recent_news", "get_recent_price_history"),
+)
+def test_ticker_tools_reject_third_call_even_when_provider_result_is_cached(
+    tool_name: str,
+) -> None:
+    """每种 ticker Tool 各有两次额度，重复参数不会豁免。"""
+
+    def run(request: AgentRunRequest) -> AgentRunResult:
+        binding = next(item for item in request.tools if item.definition.name == tool_name)
+        arguments = {"ticker": "GOOG"}
+        if tool_name == "get_current_quote":
+            arguments["request_purpose"] = "INFORMATION_RETRIEVAL"
+        binding.executor(arguments)
+        binding.executor(arguments)
+        with pytest.raises(AgentToolBudgetExceeded):
+            binding.executor(arguments)
+        return _completed(_candidate({"type": "PORTFOLIO_SNAPSHOT"}))
+
+    result = _agent(ScriptedNativeRuntime(run), FixedFinancialData()).answer(USER_ID, "分析 GOOG。")
+
+    assert isinstance(result, InvestmentAnswer)
+
+
+def test_parallel_discretionary_quotes_share_one_market_context_quota() -> None:
+    """同轮并发 Tool 必须顺序更新额度与 Market 缓存，不重复预留。"""
+
+    def run(request: AgentRunRequest) -> AgentRunResult:
+        quote = next(
+            item.executor for item in request.tools if item.definition.name == "get_current_quote"
+        )
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            results = tuple(
+                pool.map(
+                    quote,
+                    (
+                        {"ticker": "GOOG", "request_purpose": "DISCRETIONARY_CURRENT_RISK_ACTION"},
+                        {"ticker": "AAPL", "request_purpose": "DISCRETIONARY_CURRENT_RISK_ACTION"},
+                    ),
+                )
+            )
+        assert sum(len(item.related_calls) for item in results) == 1
+        with pytest.raises(AgentToolBudgetExceeded):
+            quote({"ticker": "MSFT", "request_purpose": "INFORMATION_RETRIEVAL"})
+        return _completed(_candidate({"type": "PORTFOLIO_SNAPSHOT"}))
+
+    data = FixedFinancialData()
+    result = _agent(ScriptedNativeRuntime(run), data).answer(USER_ID, "对比 GOOG 和 AAPL。")
+
+    assert isinstance(result, InvestmentAnswer)
+    assert set(data.quote_calls) == {"GOOG", "AAPL"}
+    assert data.market_context_calls == 1
+
+
+def test_reused_market_source_is_declared_once_in_final_answer() -> None:
+    """自动取得后显式复用的 Market Source 不应使合法 inline Citation 触发重复错误。"""
+
+    def run(request: AgentRunRequest) -> AgentRunResult:
+        bindings = {item.definition.name: item.executor for item in request.tools}
+        quote = bindings["get_current_quote"](
+            {"ticker": "GOOG", "request_purpose": "DISCRETIONARY_CURRENT_RISK_ACTION"}
+        )
+        market = bindings["get_market_context"]({})
+        auto_market = quote.related_calls[0]
+        assert auto_market.sources == market.sources
+        quote_id = quote.sources[0]["source_id"]
+        market_id = market.sources[0]["source_id"]
+        candidate = json.dumps(
+            {
+                "answer": (
+                    f"GOOG 报价已取得 [source:{quote_id}]，市场状态已取得 [source:{market_id}]。"
+                ),
+                "source_refs": [
+                    {"type": "PORTFOLIO_SNAPSHOT"},
+                    {"type": "CURRENT_QUOTE", "ticker": "GOOG"},
+                    {"type": "MARKET_CONTEXT", "ticker": "SPY"},
+                ],
+            }
+        )
+        return _completed(
+            candidate,
+            sources=(*quote.sources, *auto_market.sources, *market.sources),
+        )
+
+    runtime = ScriptedNativeRuntime(run)
+    result = _agent(runtime, MarketReadyData()).answer_with_history(
+        USER_ID, "GOOG 现在值得加仓吗？", ()
+    )
+
+    assert isinstance(result, InvestmentAnswer)
+    assert len(runtime.requests) == 1
+    assert [source.type for source in result.sources] == [
+        ContextSourceType.PORTFOLIO_SNAPSHOT,
+        ContextSourceType.CURRENT_QUOTE,
+        ContextSourceType.MARKET_CONTEXT,
+    ]
+
+
+def test_conflicting_source_identity_is_not_deduplicated() -> None:
+    """相同 Source ID 的不同内容仍必须由 Citation Validator 拒绝。"""
+
+    source = ContextSource(
+        ContextSourceType.MARKET_CONTEXT,
+        "OK",
+        ticker="SPY",
+        feed="SIP",
+        source_id=UUID("00000000-0000-0000-0000-000000000123"),
+    )
+    sources: list[ContextSource] = []
+    NativeInvestmentAgent._append_distinct_success_sources(
+        sources,
+        (source, source, replace(source, feed="CONFLICT")),
+    )
+
+    assert len(sources) == 2
+    with pytest.raises(CitationValidationError, match="Source ID 重复"):
+        validate_citations(f"市场状态 [source:{source.source_id}]。", sources)
 
 
 def test_invalid_symbol_still_counts_one_real_provider_fetch() -> None:
@@ -861,7 +1072,8 @@ def test_invalid_source_uses_one_no_tool_repair_run() -> None:
 
     assert isinstance(result, InvestmentAnswer)
     assert len(runtime.requests) == 2
-    assert runtime.requests[0].budget.model_requests == 3
+    assert runtime.requests[0].budget.model_requests == 8
+    assert runtime.requests[0].budget.tool_calls == 7
     assert runtime.requests[0].budget.wall_clock_seconds == 60
     assert runtime.requests[1].budget.model_requests == 1
     assert 0 < runtime.requests[1].budget.wall_clock_seconds < 60

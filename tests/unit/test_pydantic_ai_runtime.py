@@ -156,6 +156,93 @@ def test_json_final_output_tool_returns_provider_neutral_candidate_without_tool_
     assert len(script.calls) == 1
 
 
+def test_native_json_final_returns_same_business_candidate_without_output_tool() -> None:
+    """Bedrock Native 路径使用文本候选，仍交给同一业务解析器。"""
+
+    script = ScriptedModel([_text_response('{"answer":"缺少新数据。","source_refs":[]}')])
+
+    def scripted(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
+        return script(messages, info)
+
+    runtime = PydanticAIRuntime(
+        FunctionModel(scripted, model_name="bedrock-fixture"), output_mechanism="NATIVE"
+    )
+    result = runtime.run(_request(response_format="JSON_OBJECT", budget=AgentRunBudget(1, 0, 30)))
+
+    assert result.status is AgentRunStatus.COMPLETED
+    assert result.final_candidate is not None
+    assert parse_structured_answer(result.final_candidate).answer == "缺少新数据。"
+    assert result.tool_trace == ()
+    assert "请调用 final_investment_answer" not in runtime._instructions(
+        ("只根据事实",), _request(response_format="JSON_OBJECT")
+    )
+
+
+def test_native_json_tool_loop_keeps_source_validation() -> None:
+    """正常工具与 Native Final 共存时仍产出可由 Application 校验的引用。"""
+
+    binding = AgentToolBinding(
+        _definition("get_quote"),
+        lambda arguments: ToolExecutionResult(
+            "OK",
+            {"price": "210.25"},
+            sources=(
+                {"source_id": "quote-1", "type": "CURRENT_QUOTE", "ticker": "GOOG", "status": "OK"},
+            ),
+        ),
+    )
+    script = ScriptedModel(
+        [
+            _tool_response("get_quote", {"ticker": "GOOG"}, "call-1"),
+            _text_response(
+                '{"answer":"报价为 210.25 美元。",'
+                '"source_refs":[{"type":"CURRENT_QUOTE","ticker":"GOOG"}]}'
+            ),
+        ]
+    )
+
+    def scripted(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
+        return script(messages, info)
+
+    runtime = PydanticAIRuntime(
+        FunctionModel(scripted, model_name="bedrock-fixture"), output_mechanism="NATIVE"
+    )
+    result = runtime.run(_request(tools=(binding,), response_format="JSON_OBJECT"))
+
+    assert result.status is AgentRunStatus.COMPLETED
+    assert result.final_candidate is not None
+    parsed, error = SourceValidator.evaluate(result.final_candidate, ())
+    assert parsed is None and error is not None
+    assert len(result.tool_trace) == 1
+    assert len(script.calls) == 2
+
+
+def test_runtime_records_final_provider_finish_reason() -> None:
+    """保存最终模型响应的结束原因，避免把完整 JSON 误当完整回答。"""
+
+    binding = AgentToolBinding(
+        _definition("get_quote"),
+        lambda arguments: ToolExecutionResult("OK", {"price": "210.25"}),
+    )
+    script = ScriptedModel(
+        [
+            ModelResponse(
+                parts=(ToolCallPart("get_quote", {"ticker": "GOOG"}, "call-1"),),
+                provider_details={"finish_reason": "tool_use"},
+            ),
+            ModelResponse(
+                parts=(TextPart("已提供报价。"),),
+                provider_details={"finish_reason": "max_tokens"},
+            ),
+        ]
+    )
+
+    result = _runtime(script).run(_request(tools=(binding,)))
+
+    assert result.status is AgentRunStatus.COMPLETED
+    assert result.provider_finish_reason == "max_tokens"
+
+
 def test_json_tool_loop_keeps_application_source_validation_authority() -> None:
     """Output Tool 不占普通 Tool Trace，候选仍交给 Application 校验来源。"""
 
@@ -198,6 +285,182 @@ def test_json_tool_loop_keeps_application_source_validation_authority() -> None:
     assert parse_structured_answer(result.final_candidate).source_refs[0].ticker == "GOOG"
     assert SourceValidator.evaluate(result.final_candidate, ())[1] is not None
     assert len(script.calls) == 2
+
+
+def test_native_json_three_tools_in_one_response_need_one_final_request() -> None:
+    """同轮三个独立 Tool Call 均执行并回填，只占一次模型请求轮次。"""
+
+    executed: list[str] = []
+
+    def binding(name: str) -> AgentToolBinding:
+        def execute(arguments: Mapping[str, object]) -> ToolExecutionResult:
+            assert arguments == {"ticker": "GOOG"}
+            executed.append(name)
+            return ToolExecutionResult("OK", {"tool": name})
+
+        return AgentToolBinding(_definition(name), execute)
+
+    tool_names = ("get_quote", "get_news", "get_history")
+    script = ScriptedModel(
+        [
+            ModelResponse(
+                parts=tuple(
+                    ToolCallPart(name, {"ticker": "GOOG"}, f"call-{index}")
+                    for index, name in enumerate(tool_names)
+                )
+            ),
+            _text_response('{"answer":"已完成三项查询。","source_refs":[]}'),
+        ]
+    )
+
+    def scripted(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
+        return script(messages, info)
+
+    runtime = PydanticAIRuntime(
+        FunctionModel(scripted, model_name="native-fixture"), output_mechanism="NATIVE"
+    )
+
+    result = runtime.run(
+        _request(
+            tools=tuple(binding(name) for name in tool_names),
+            response_format="JSON_OBJECT",
+            budget=AgentRunBudget(model_requests=2, tool_calls=3, wall_clock_seconds=30),
+        )
+    )
+
+    assert result.status is AgentRunStatus.COMPLETED
+    assert len(script.calls) == 2
+    assert set(executed) == set(tool_names)
+    assert len(result.tool_trace) == 3
+    assert {trace.name for trace in result.tool_trace} == set(tool_names)
+    assert result.final_candidate is not None
+    assert parse_structured_answer(result.final_candidate).answer == "已完成三项查询。"
+    returned_tool_names = {
+        part.tool_name for part in script.calls[1][-1].parts if isinstance(part, ToolReturnPart)
+    }
+    assert returned_tool_names == set(tool_names)
+
+
+@pytest.mark.parametrize("tool_call_budget", (0, 1, 2, 4))
+def test_native_json_serial_tool_calls_leave_one_final_request(
+    tool_call_budget: int,
+) -> None:
+    """按本轮工具额度派生请求上界，串行耗尽后仍可生成 Final。"""
+
+    script = ScriptedModel(
+        [
+            *(
+                _tool_response("get_quote", {"ticker": "GOOG"}, f"call-{index}")
+                for index in range(tool_call_budget)
+            ),
+            _text_response('{"answer":"已完成查询。","source_refs":[]}'),
+        ]
+    )
+
+    def scripted(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
+        return script(messages, info)
+
+    runtime = PydanticAIRuntime(
+        FunctionModel(scripted, model_name="native-fixture"), output_mechanism="NATIVE"
+    )
+    binding = AgentToolBinding(
+        _definition("get_quote"), lambda arguments: ToolExecutionResult("NO_DATA")
+    )
+    result = runtime.run(
+        _request(
+            tools=(binding,) if tool_call_budget else (),
+            response_format="JSON_OBJECT",
+            budget=AgentRunBudget(
+                model_requests=tool_call_budget + 1,
+                tool_calls=tool_call_budget,
+                wall_clock_seconds=30,
+            ),
+        )
+    )
+
+    assert result.status is AgentRunStatus.COMPLETED
+    assert len(script.calls) == tool_call_budget + 1
+    assert len(result.tool_trace) == tool_call_budget
+    assert result.final_candidate is not None
+    assert parse_structured_answer(result.final_candidate).answer == "已完成查询。"
+
+
+def test_native_json_tool_call_after_budget_exhaustion_is_rejected() -> None:
+    """同一工具重复调用超过总额度时，最后一次请求不能继续取数。"""
+
+    script = ScriptedModel(
+        [
+            _tool_response("get_quote", {"ticker": "GOOG"}, "call-1"),
+            _tool_response("get_quote", {"ticker": "AAPL"}, "call-2"),
+            _tool_response("get_quote", {"ticker": "MSFT"}, "call-3"),
+        ]
+    )
+    result = _runtime(script).run(
+        _request(
+            tools=(
+                AgentToolBinding(
+                    _definition("get_quote"), lambda arguments: ToolExecutionResult("NO_DATA")
+                ),
+            ),
+            response_format="JSON_OBJECT",
+            budget=AgentRunBudget(model_requests=3, tool_calls=2, wall_clock_seconds=30),
+        )
+    )
+
+    assert result.status is AgentRunStatus.BUDGET_EXHAUSTED
+    assert result.failure_code == "TOOL_CALL_BUDGET_EXCEEDED"
+    assert len(script.calls) == 3
+    assert len(result.tool_trace) == 2
+    assert result.final_candidate is None
+
+
+@pytest.mark.parametrize("model_request_limit", (3, 4))
+def test_native_json_three_sequential_tool_rounds_need_four_requests(
+    model_request_limit: int,
+) -> None:
+    """三轮串行 Tool 后须留第四次模型请求，才能取得 Native Final。"""
+
+    tool_names = ("get_quote", "get_news", "get_history")
+    script = ScriptedModel(
+        [
+            *(
+                _tool_response(name, {"ticker": "GOOG"}, f"call-{index}")
+                for index, name in enumerate(tool_names)
+            ),
+            _text_response('{"answer":"已完成三项查询。","source_refs":[]}'),
+        ]
+    )
+
+    def scripted(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
+        return script(messages, info)
+
+    runtime = PydanticAIRuntime(
+        FunctionModel(scripted, model_name="native-fixture"), output_mechanism="NATIVE"
+    )
+    bindings = tuple(
+        AgentToolBinding(_definition(name), lambda arguments: ToolExecutionResult("NO_DATA"))
+        for name in tool_names
+    )
+    result = runtime.run(
+        _request(
+            tools=bindings,
+            response_format="JSON_OBJECT",
+            budget=AgentRunBudget(
+                model_requests=model_request_limit, tool_calls=3, wall_clock_seconds=30
+            ),
+        )
+    )
+
+    assert [trace.name for trace in result.tool_trace] == list(tool_names)
+    assert len(script.calls) == model_request_limit
+    if model_request_limit == 3:
+        assert result.status is AgentRunStatus.BUDGET_EXHAUSTED
+        assert result.failure_code == "MODEL_REQUEST_BUDGET_EXCEEDED"
+        assert result.final_candidate is None
+    else:
+        assert result.status is AgentRunStatus.COMPLETED
+        assert result.final_candidate is not None
+        assert parse_structured_answer(result.final_candidate).answer == "已完成三项查询。"
 
 
 def test_invalid_json_output_tool_arguments_are_provider_response_failure() -> None:
@@ -317,6 +580,7 @@ def test_one_tool_binds_application_executor_and_returns_sources() -> None:
         for part in message.parts
         if isinstance(part, ToolReturnPart)
     )
+    assert isinstance(tool_return.content, str)
     observation = json.loads(tool_return.content)
     assert observation["sources"] == [
         {"source_id": "quote-1", "type": "CURRENT_QUOTE", "status": "OK"}
@@ -510,6 +774,7 @@ def test_related_application_call_has_separate_trace_source_and_budget_count() -
     )
     assert [item.invoked_by_model for item in result.tool_trace] == [True, False]
     assert [item.provider_fetch_count for item in result.tool_trace] == [1, 1]
+    assert len(script.calls) == 2
 
 
 def test_auto_market_then_explicit_reuse_keeps_four_model_invocations() -> None:
@@ -635,6 +900,25 @@ def test_provider_invalid_parameter_details_remain_internal() -> None:
     assert result.provider_error_message == message
     assert message not in repr(result)
     assert "must-not-leak" not in repr(result)
+
+
+def test_bedrock_provider_error_details_are_classified() -> None:
+    """Bedrock 的大写 Error 字段应保留可诊断错误码。"""
+
+    def fail(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
+        del messages, info
+        raise ModelHTTPError(
+            403,
+            "fixture",
+            {"Error": {"Code": "AccessDeniedException", "Message": "Model access denied"}},
+        )
+
+    result = PydanticAIRuntime(FunctionModel(fail, model_name="bedrock-fixture")).run(_request())
+
+    assert result.status is AgentRunStatus.FAILED
+    assert result.llm_status is LLMStatus.AUTHENTICATION_FAILED
+    assert result.provider_error_code == "AccessDeniedException"
+    assert result.provider_error_message == "Model access denied"
 
 
 def test_usage_unknown_is_explicit_and_timeout_retry_boundaries_are_fixed() -> None:

@@ -21,21 +21,21 @@ from phase4_core_harness import (
 def test_phase4_core_live_fixture_run() -> None:
     """记录完整 4A 证据；质量与 Critical Gate 由后续 Human Review 判定。"""
 
+    provider = os.getenv("LLM_PROVIDER", DEFAULT_PROVIDER).strip().upper()
+    if provider not in {DEFAULT_PROVIDER, "AIHUBMIX", "GOOGLE_GEMINI"}:
+        pytest.fail(f"Phase 4 Eval 不支持 Provider: {provider}")
+    credentials: tuple[str, ...]
+    if provider == "GOOGLE_GEMINI":
+        credentials = ("GEMINI_API_KEY",)
+    else:
+        credentials = ("LLM_API_KEY", "LLM_BASE_URL")
     missing = [
         name
-        for name in (
-            "LLM_API_KEY",
-            "LLM_BASE_URL",
-            "LLM_MODEL",
-            "EVAL_RUN_ID",
-            "PHASE4_ARTIFACT_DIR",
-        )
+        for name in (*credentials, "LLM_MODEL", "EVAL_RUN_ID", "PHASE4_ARTIFACT_DIR")
         if not os.getenv(name)
     ]
     if missing:
         pytest.fail(f"Phase 4 在线 Eval 缺少进程环境变量: {', '.join(missing)}")
-    if os.getenv("LLM_PROVIDER", DEFAULT_PROVIDER).strip().upper() != DEFAULT_PROVIDER:
-        pytest.fail(f"Phase 4 固定 Eval Provider 必须为 {DEFAULT_PROVIDER}")
     result = run_phase4_evaluation()
     summary = cast(dict[str, object], result["summary"])
     print(json.dumps(summary, ensure_ascii=False, sort_keys=True, indent=2))

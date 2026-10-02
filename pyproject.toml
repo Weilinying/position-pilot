@@ -24,7 +24,7 @@ dev = [
 spike = [
     "httpx>=0.28,<1",
     "openai-agents==0.22.3",
-    "pydantic-ai-slim[mcp,openai]==1.107.6",
+    "pydantic-ai-slim[google,mcp,openai]==1.107.6",
 ]
 
 [tool.uv]

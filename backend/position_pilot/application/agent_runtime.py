@@ -113,6 +113,7 @@ class AgentRunResult:
     provider_error_message: str | None = field(default=None, repr=False)
     framework_error_kind: str | None = None
     framework_error_cause: str | None = None
+    provider_finish_reason: str | None = None
 
     def __post_init__(self) -> None:
         if (

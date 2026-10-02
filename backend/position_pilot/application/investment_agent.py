@@ -101,7 +101,7 @@ class QuoteRequestPurpose(StrEnum):
     RULE_OR_EXECUTION_CHECK = "RULE_OR_EXECUTION_CHECK"
 
 
-SYSTEM_PROMPT = "\n".join(
+BASE_SYSTEM_PROMPT = "\n".join(
     (
         "你是 PositionPilot 的 Single Investment Agent。",
         "1. 只能使用 Structured Facts、Tool Results 和 Deterministic Derived Facts。",
@@ -190,6 +190,12 @@ SYSTEM_PROMPT = "\n".join(
         ),
         "不得声明未成功取得的 Source；Source Reference 不是逐句 Citation。",
         "cash_vs_one_share_price 只表示数值关系，不表示交易资格、能否成交或可买至少一股。",
+    )
+)
+
+# 旧 Runtime 保留冻结的金额规则和完整 Prompt，Native 使用独立的金额分析规则。
+LEGACY_AMOUNT_ANALYSIS_PROMPT = "\n".join(
+    (
         (
             "普通投资分析、加仓建议和资金分配按用户明确金额表达，不要求先查询或确认碎股权限；"
             "不得因权限 UNKNOWN 拒绝分析，也不得擅自提高本轮预算。"
@@ -205,6 +211,8 @@ SYSTEM_PROMPT = "\n".join(
         ),
     )
 )
+
+SYSTEM_PROMPT = BASE_SYSTEM_PROMPT + "\n" + LEGACY_AMOUNT_ANALYSIS_PROMPT
 
 CURRENT_QUOTE_TOOL = LLMToolDefinition(
     name=CURRENT_QUOTE_TOOL_NAME,

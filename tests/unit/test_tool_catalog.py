@@ -1,6 +1,7 @@
 """P4-T1 Tool Catalog、授权与 Context Floor 的定向测试。"""
 
 from collections.abc import Mapping
+from dataclasses import replace
 from uuid import UUID
 
 import pytest
@@ -83,6 +84,46 @@ def test_current_financial_contracts_keep_names_order_description_and_schema() -
         tuple(descriptor.risk_class for descriptor in descriptors) == (ToolRiskClass.READ_ONLY,) * 4
     )
     assert tuple(descriptor.version for descriptor in descriptors) == ("v1",) * 4
+    assert tuple(descriptor.max_calls_per_run for descriptor in descriptors) == (2, 2, 2, 1)
+
+
+def test_exposure_budget_follows_authorized_tool_quotas() -> None:
+    """工具集合或单工具额度变化时，总额度从 Descriptor 自动求和。"""
+
+    descriptors = current_financial_tool_descriptors(CONTEXT_TOOLS)
+    catalog = ToolCatalog(
+        (StaticToolProvider(CatalogTool(item, _executor) for item in descriptors),)
+    )
+    policy = StaticToolAccessPolicy()
+
+    assert catalog.expose((), account_id=ACCOUNT_ID, policy=policy).tool_call_budget == 0
+    assert (
+        catalog.expose(
+            (CURRENT_QUOTE_TOOL_NAME,), account_id=ACCOUNT_ID, policy=policy
+        ).tool_call_budget
+        == 2
+    )
+    assert catalog.expose(catalog.names, account_id=ACCOUNT_ID, policy=policy).tool_call_budget == 7
+
+    changed = (replace(descriptors[0], max_calls_per_run=3), *descriptors[1:])
+    changed_catalog = ToolCatalog(
+        (StaticToolProvider(CatalogTool(item, _executor) for item in changed),)
+    )
+    assert (
+        changed_catalog.expose(
+            changed_catalog.names, account_id=ACCOUNT_ID, policy=policy
+        ).tool_call_budget
+        == 8
+    )
+
+
+@pytest.mark.parametrize("limit", (0, -1, True))
+def test_tool_quota_must_be_a_finite_positive_call_count(limit: int) -> None:
+    """未定义有效额度的 Tool 不得进入预算派生。"""
+
+    descriptor = current_financial_tool_descriptors(CONTEXT_TOOLS)[0]
+    with pytest.raises(ValueError, match="额度必须是正整数"):
+        replace(descriptor, max_calls_per_run=limit)
 
 
 def test_exposure_uses_catalog_order_and_only_requested_enabled_tools() -> None:
@@ -194,6 +235,7 @@ def test_mutation_risk_is_denied_by_default_policy() -> None:
         capability_tags=("test",),
         risk_class=ToolRiskClass.MUTATION,
         source_policy=descriptor.source_policy,
+        max_calls_per_run=1,
     )
     provider = StaticToolProvider((CatalogTool(mutation, _executor),))
     catalog = ToolCatalog((provider,))

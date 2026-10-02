@@ -42,6 +42,7 @@ class ToolDescriptor:
     capability_tags: tuple[str, ...]
     risk_class: ToolRiskClass
     source_policy: ToolSourcePolicy
+    max_calls_per_run: int
 
     def __post_init__(self) -> None:
         if not self.tool_id.strip():
@@ -52,6 +53,12 @@ class ToolDescriptor:
             raise ValueError("Tool id 必须与 Tool name 一致")
         if len(self.capability_tags) != len(set(self.capability_tags)):
             raise ValueError("Tool capability tags 不能重复")
+        if (
+            isinstance(self.max_calls_per_run, bool)
+            or not isinstance(self.max_calls_per_run, int)
+            or self.max_calls_per_run <= 0
+        ):
+            raise ValueError("Tool 单轮调用额度必须是正整数")
 
     @property
     def name(self) -> str:
@@ -188,6 +195,12 @@ class ToolExposure:
     descriptors: tuple[ToolDescriptor, ...]
     definitions: tuple[LLMToolDefinition, ...]
     executors: Mapping[str, ToolExecutor]
+
+    @property
+    def tool_call_budget(self) -> int:
+        """只汇总本轮实际暴露 Tool 的调用额度。"""
+
+        return sum(descriptor.max_calls_per_run for descriptor in self.descriptors)
 
 
 @dataclass(frozen=True, slots=True)
@@ -341,6 +354,12 @@ def current_financial_tool_descriptors(
 ) -> tuple[ToolDescriptor, ...]:
     """将现有金融 Tool 映射为 Catalog Descriptor，不复制其 Contract。"""
 
+    call_limits = {
+        "get_current_quote": 2,
+        "get_recent_price_history": 2,
+        "get_recent_news": 2,
+        "get_market_context": 1,
+    }
     return tuple(
         ToolDescriptor(
             tool_id=definition.name,
@@ -349,6 +368,7 @@ def current_financial_tool_descriptors(
             capability_tags=(definition.name.removeprefix("get_"), "financial_data"),
             risk_class=ToolRiskClass.READ_ONLY,
             source_policy=ToolSourcePolicy.FINANCIAL_DATA,
+            max_calls_per_run=call_limits[definition.name],
         )
         for definition in definitions
     )

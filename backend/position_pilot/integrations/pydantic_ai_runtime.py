@@ -6,12 +6,14 @@ from collections.abc import AsyncIterator, Callable, Mapping
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from dataclasses import dataclass, field
 from time import monotonic
+from typing import Literal
 
 from openai import AsyncOpenAI
 from pydantic import BaseModel, ConfigDict
 from pydantic_ai import (
     Agent,
     FunctionToolset,
+    NativeOutput,
     Tool,
     ToolOutput,
     UsageLimitExceeded,
@@ -204,6 +206,29 @@ class _StructuredFinalCandidate(BaseModel):
     source_refs: list[dict[str, str]]
 
 
+class _NativePortfolioSourceRef(BaseModel):
+    """Native strict Schema 中不带 ticker 的 Portfolio 来源。"""
+
+    model_config = ConfigDict(extra="forbid")
+    type: Literal["PORTFOLIO_SNAPSHOT"]
+
+
+class _NativeTickerSourceRef(BaseModel):
+    """Native strict Schema 中必须带 ticker 的市场来源。"""
+
+    model_config = ConfigDict(extra="forbid")
+    type: Literal["CURRENT_QUOTE", "PRICE_HISTORY", "RECENT_NEWS", "MARKET_CONTEXT"]
+    ticker: str
+
+
+class _NativeStructuredFinalCandidate(BaseModel):
+    """与业务 Final Contract 等价，并能通过 Bedrock strict JSON Schema 表达。"""
+
+    model_config = ConfigDict(extra="forbid")
+    answer: str
+    source_refs: list[_NativePortfolioSourceRef | _NativeTickerSourceRef]
+
+
 class PydanticAIRuntime(AgentRuntime):
     """使用 PydanticAI 原生 Agent.run 与 Tool Loop 的 Production Adapter。"""
 
@@ -217,6 +242,7 @@ class PydanticAIRuntime(AgentRuntime):
         max_retries: int = 0,
         clock: Callable[[], float] = monotonic,
         model_context_factory: Callable[[], AbstractAsyncContextManager[Model]] | None = None,
+        output_mechanism: Literal["TOOL", "NATIVE"] = "TOOL",
     ) -> None:
         if timeout_seconds <= 0:
             raise ValueError("timeout_seconds 必须是正数")
@@ -229,6 +255,7 @@ class PydanticAIRuntime(AgentRuntime):
         self._timeout_seconds = timeout_seconds
         self._max_retries = max_retries
         self._clock = clock
+        self._output_mechanism = output_mechanism
 
     @property
     def provider_name(self) -> str:
@@ -363,7 +390,7 @@ class PydanticAIRuntime(AgentRuntime):
                 started_at,
                 bridge,
             )
-        if isinstance(result.output, _StructuredFinalCandidate):
+        if isinstance(result.output, (_StructuredFinalCandidate, _NativeStructuredFinalCandidate)):
             final_candidate = result.output.model_dump_json()
         elif isinstance(result.output, str):
             final_candidate = result.output
@@ -381,6 +408,14 @@ class PydanticAIRuntime(AgentRuntime):
         warnings = () if usage is not None else ("USAGE_NOT_REPORTED",)
         if bridge is not None:
             warnings = (*bridge.warnings, *warnings)
+        responses = (
+            message for message in result.all_messages() if isinstance(message, ModelResponse)
+        )
+        last_response = next(reversed(tuple(responses)), None)
+        provider_details = None if last_response is None else last_response.provider_details
+        finish_reason = (
+            provider_details.get("finish_reason") if isinstance(provider_details, Mapping) else None
+        )
         return AgentRunResult(
             AgentRunStatus.COMPLETED,
             final_candidate,
@@ -391,6 +426,7 @@ class PydanticAIRuntime(AgentRuntime):
             self._latency_ms(started_at),
             llm_status=LLMStatus.OK,
             warnings=tuple(warnings),
+            provider_finish_reason=finish_reason if isinstance(finish_reason, str) else None,
         )
 
     @staticmethod
@@ -477,15 +513,27 @@ class PydanticAIRuntime(AgentRuntime):
     ) -> PydanticAgentRunResult[object]:
         """对完整 Model / Tool Loop 应用可中断的总 Wall-clock Ceiling。"""
 
-        output_type = (
-            ToolOutput(
-                _StructuredFinalCandidate,
-                name="final_investment_answer",
-                max_retries=0,
-            )
-            if request.response_format is LLMResponseFormat.JSON_OBJECT
-            else str
+        output_type: (
+            NativeOutput[_NativeStructuredFinalCandidate]
+            | ToolOutput[_StructuredFinalCandidate]
+            | type[str]
         )
+        if request.response_format is LLMResponseFormat.JSON_OBJECT:
+            output_type = (
+                NativeOutput(
+                    _NativeStructuredFinalCandidate,
+                    name="final_investment_answer",
+                    strict=True,
+                )
+                if self._output_mechanism == "NATIVE"
+                else ToolOutput(
+                    _StructuredFinalCandidate,
+                    name="final_investment_answer",
+                    max_retries=0,
+                )
+            )
+        else:
+            output_type = str
         agent = Agent(
             model,
             output_type=output_type,
@@ -512,8 +560,8 @@ class PydanticAIRuntime(AgentRuntime):
             timeout=request.budget.wall_clock_seconds,
         )
 
-    @staticmethod
     def _instructions(
+        self,
         instructions: tuple[str, ...],
         request: AgentRunRequest,
     ) -> str:
@@ -521,10 +569,13 @@ class PydanticAIRuntime(AgentRuntime):
 
         values = list(instructions)
         if request.response_format is LLMResponseFormat.JSON_OBJECT:
-            values.append(
-                "最终请调用 final_investment_answer 输出 answer 和 source_refs；"
-                "不要以普通文本或 Markdown 代码围栏返回 JSON。"
-            )
+            if self._output_mechanism == "NATIVE":
+                values.append("最终按结构化输出格式返回 answer 和 source_refs。")
+            else:
+                values.append(
+                    "最终请调用 final_investment_answer 输出 answer 和 source_refs；"
+                    "不要以普通文本或 Markdown 代码围栏返回 JSON。"
+                )
         return "\n\n".join(values)
 
     @staticmethod
@@ -584,11 +635,11 @@ class PydanticAIRuntime(AgentRuntime):
         body = error.body
         if not isinstance(body, Mapping):
             return None, None
-        detail = body.get("error", body)
+        detail = body.get("error", body.get("Error", body))
         if not isinstance(detail, Mapping):
             return None, None
-        code = detail.get("code", detail.get("error_code"))
-        message = detail.get("message", detail.get("error_message"))
+        code = detail.get("code", detail.get("error_code", detail.get("Code")))
+        message = detail.get("message", detail.get("error_message", detail.get("Message")))
         return (
             code if isinstance(code, str) else None,
             message if isinstance(message, str) else None,
@@ -655,7 +706,7 @@ class PydanticAIRuntime(AgentRuntime):
 
 
 def create_pydantic_ai_runtime(settings: Settings) -> PydanticAIRuntime:
-    """根据已校验 Settings 创建 Alibaba / OpenAI-compatible Native Adapter。"""
+    """根据已校验 Settings 创建当前 Provider 对应的 PydanticAI Adapter。"""
 
     api_key = settings.llm_api_key.get_secret_value() if settings.llm_api_key else None
     if not api_key:

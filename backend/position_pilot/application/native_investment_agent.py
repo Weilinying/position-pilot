@@ -4,6 +4,7 @@ import json
 import logging
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
+from threading import Lock
 from uuid import UUID, uuid4
 
 from position_pilot.application.agent_runtime import (
@@ -20,13 +21,13 @@ from position_pilot.application.conversation_citations import (
     validate_citations,
 )
 from position_pilot.application.investment_agent import (
+    BASE_SYSTEM_PROMPT,
     CONTEXT_TOOLS,
     CURRENT_QUOTE_TOOL_NAME,
     MARKET_CONTEXT_TOOL_NAME,
     MAX_QUESTION_LENGTH,
     RECENT_NEWS_TOOL_NAME,
     RECENT_PRICE_HISTORY_TOOL_NAME,
-    SYSTEM_PROMPT,
     ContextSource,
     ContextSourceType,
     InvestmentAgent,
@@ -70,27 +71,46 @@ from position_pilot.domain.market_data import MarketDataResult
 from position_pilot.domain.news import NewsResult
 
 LOGGER = logging.getLogger(__name__)
-DEFAULT_MODEL_REQUEST_BUDGET = 3
-DEFAULT_TOOL_CALL_BUDGET = 4
 DEFAULT_WALL_CLOCK_BUDGET_SECONDS = 60.0
+
+
+AMOUNT_ANALYSIS_PROMPT = (
+    "本轮最新消息若仅声明或修改预算、留存现金、风险容忍度等约束，未同时请求分析或行动判断，"
+    "只简短确认并在当前对话上下文中使用该约束，不调用行情、新闻、历史价格或市场工具，"
+    "不展开投资分析；Portfolio 中的持仓不自动成为本轮分析任务，也不声称已写入持久策略。"
+    "若同时请求标的、行情、市场分析或买卖判断，按该请求正常选择必要 Tool。"
+    "仅在用户请求投资分析或行动判断时，先完成当前证据支持的条件判断，再说明关键缺口。"
+    "用户已提供适用预算时，在预算内讨论金额，不得提高预算；历史预算仅在仍适用且未被更正时使用，"
+    "用户后续更正优先。账户 Cash 是独立的 Ledger 事实，不代替 Budget，也不能单独作为加仓理由。"
+    "用户请求投资分析但没有适用预算时，先完成不依赖投入金额的条件分析；"
+    "需要细化金额时再询问预算，"
+    "不自行设定具体投入金额，包括假设性金额示例。"
+    "普通金额分析按金额讨论，不主动比较预算能否覆盖一股或展开可买股数、碎股权限，"
+    "也不因执行权限未知拒绝分析。只有用户明确询问股数、预算可买数量，或所请求的执行计算"
+    "必须使用数量时才展开数量分析；声明支持碎股本身不等于请求数量计算。"
+    "用户明确询问股数时，只引用 Application 提供的、基于适用预算与可靠 Quote 的确定性理论股数，"
+    "并标明不代表账户实际可执行订单数量。"
+    "用户询问账户权限或实际可执行数量时，按可靠执行证据回答，缺少依据保持 UNKNOWN。"
+    "用户明确说明账户支持碎股时可作为本轮条件使用，无需重复确认。"
+)
 
 
 class _AuthorizedToolSession:
     """在 Provider 调用前统一执行本轮 Tool 授权与预算预留。"""
 
-    def __init__(self, allowed_names: frozenset[str], call_budget: int) -> None:
-        self._allowed_names = allowed_names
-        self._call_budget = call_budget
-        self._used_calls = 0
+    def __init__(self, call_limits: Mapping[str, int]) -> None:
+        self._call_limits = call_limits
+        self._used_calls: dict[str, int] = dict.fromkeys(call_limits, 0)
+        self.execution_lock = Lock()
         self._explicit_market_context_observed = False
         self._automatic_market_context_credit = False
         self._market_context_source: Mapping[str, object] | None = None
 
     @property
-    def explicit_market_context_observed(self) -> bool:
-        """标识模型本轮是否已明确调用 Market Context。"""
+    def market_context_observed(self) -> bool:
+        """标识本轮是否已显式或自动获取 Market Context。"""
 
-        return self._explicit_market_context_observed
+        return self._explicit_market_context_observed or self._automatic_market_context_credit
 
     def note_explicit_market_context(self) -> None:
         """记录模型已为 Market Context 单独消耗一次 Tool Call。"""
@@ -112,17 +132,25 @@ class _AuthorizedToolSession:
     def reserve(self, names: tuple[str, ...], *, reuse_automatic_market: bool = False) -> bool:
         """原子预留一组实际调用，避免复合 Tool 只计算外层调用。"""
 
-        if any(name not in self._allowed_names for name in names):
+        if any(name not in self._call_limits for name in names):
             return False
         reuse = (
             reuse_automatic_market
             and names == (MARKET_CONTEXT_TOOL_NAME,)
             and self._automatic_market_context_credit
         )
-        charge = len(names) - int(reuse)
-        if self._used_calls + charge > self._call_budget:
+        charges: dict[str, int] = {}
+        for name in names:
+            charges[name] = charges.get(name, 0) + 1
+        if reuse:
+            charges[MARKET_CONTEXT_TOOL_NAME] -= 1
+        if any(
+            self._used_calls[name] + charge > self._call_limits[name]
+            for name, charge in charges.items()
+        ):
             raise AgentToolBudgetExceeded
-        self._used_calls += charge
+        for name, charge in charges.items():
+            self._used_calls[name] += charge
         if reuse:
             self._automatic_market_context_credit = False
         return True
@@ -205,31 +233,34 @@ class NativeInvestmentAgent:
                 InvestmentResponseStatus.OK.value,
             )
         ]
-        prompt = SYSTEM_PROMPT + (
-            "\n在 Native Tool Loop 中，若 get_current_quote 使用 "
-            "DISCRETIONARY_CURRENT_RISK_ACTION，本次 Quote Observation 的 "
-            "required_market_context 已包含必要的 Market Context；不要为同一问题重复调用 "
-            "get_market_context。若 required_market_context 未成功，须按失败状态保持 UNKNOWN。"
-            "\n缺少已确认 Strategy、风险预算或交易计划时，仍须先基于已知 Portfolio、"
-            "当前市场事实与已成功 Tool 结果完成条件式分析：说明哪些已知条件支持继续评估加仓，"
-            "哪些风险或未知条件支持暂缓，并按已知 Position Type 区分分析。"
-            "若加仓目的未确认，可比较 LONG_TERM 追加与 SWING 新仓的条件，"
-            "但不得把假设分支说成用户已有仓位或已确认策略。"
-            "随后只澄清会改变判断的关键个人条件；不得因缺少策略把整个判断退回给用户，"
-            "也不得代用户创造目标仓位、价格触发条件或持久 Strategy。"
-            "普通加仓分析涉及资金分配时按用户本轮预算的金额讨论，未提供预算不得自拟金额；"
-            "账户 Cash 是 Ledger 事实，不等于用户本轮 Budget；没有本轮 Budget 时，"
-            "不得把 Cash 数值充裕说成已满足个人加仓资金约束。"
-            "不把碎股权限或实际可执行股数列为建议前置或关键澄清问题；"
-            "只有用户明确询问购买股数、实际可执行数量或账户权限时，才按已有理论股数"
-            "与可靠账户证据回答；理论股数不代表实际订单数量，缺乏执行证据时保持 UNKNOWN。"
-            "\n现价与平均成本的关系仅在本轮可靠报价已提供时用于描述当前盈亏，"
-            "不证明用户的长期投资判断或 Thesis 正确；Portfolio 成本和 Position Type 不能证明"
-            "当前浮盈、浮亏或个人风险承受度，缺少依据保持 UNKNOWN；"
-            "示例条件须明确假设，不能冒充用户当前事实。"
-            "持仓成本占比的分母不含 Cash，不等于全部资产或市值占比；"
-            "单一标的成本占比已为 100% 时，继续买入不能使该口径占比进一步提高，"
-            "只能在有依据时讨论绝对资金敞口增加，不臆造个人集中度上限。"
+        prompt = (
+            BASE_SYSTEM_PROMPT
+            + "\n"
+            + AMOUNT_ANALYSIS_PROMPT
+            + (
+                "\n用户声称股票今天或现在已到某个具体价位时，必须调用 get_current_quote "
+                "核实当前价位；即使同时询问变动原因也一样，可与 get_recent_news 同轮调用。"
+                "Quote 只核实当前价位，不证明盘中是否曾触及该价，也不证明变动原因。"
+                "\n在 Native Tool Loop 中，若 get_current_quote 使用 "
+                "DISCRETIONARY_CURRENT_RISK_ACTION，本次 Quote Observation 的 "
+                "required_market_context 已包含必要的 Market Context；不要为同一问题重复调用 "
+                "get_market_context。若 required_market_context 未成功，须按失败状态保持 UNKNOWN。"
+                "\n用户请求加仓判断且缺少已确认 Strategy、风险预算或交易计划时，"
+                "仍须先基于已知 Portfolio、"
+                "当前市场事实与已成功 Tool 结果完成条件式分析：说明哪些已知条件支持继续评估加仓，"
+                "哪些风险或未知条件支持暂缓，并按已知 Position Type 区分分析。"
+                "若加仓目的未确认，可比较 LONG_TERM 追加与 SWING 新仓的条件，"
+                "但不得把假设分支说成用户已有仓位或已确认策略。"
+                "随后只澄清会改变判断的关键个人条件；不得因缺少策略把整个判断退回给用户，"
+                "也不得代用户创造目标仓位、价格触发条件或持久 Strategy。"
+                "\n现价与平均成本的关系仅在本轮可靠报价已提供时用于描述当前盈亏，"
+                "不证明用户的长期投资判断或 Thesis 正确；Portfolio 成本和 Position Type 不能证明"
+                "当前浮盈、浮亏或个人风险承受度，缺少依据保持 UNKNOWN；"
+                "示例条件须明确假设，不能冒充用户当前事实。"
+                "持仓成本占比的分母不含 Cash，不等于全部资产或市值占比；"
+                "单一标的成本占比已为 100% 时，继续买入不能使该口径占比进一步提高，"
+                "只能在有依据时讨论绝对资金敞口增加，不臆造个人集中度上限。"
+            )
         )
         if citation_mode:
             prompt += (
@@ -261,6 +292,7 @@ class NativeInvestmentAgent:
             conversation_history=conversation_history,
         )
         exposure = self._exposure(user_id)
+        tool_call_budget = exposure.tool_call_budget
         executor = FinancialToolExecutor(
             self._market_data,
             self._news,
@@ -268,8 +300,7 @@ class NativeInvestmentAgent:
             clock=self._clock,
         )
         tool_session = _AuthorizedToolSession(
-            frozenset(descriptor.name for descriptor in exposure.descriptors),
-            DEFAULT_TOOL_CALL_BUDGET,
+            {descriptor.name: descriptor.max_calls_per_run for descriptor in exposure.descriptors},
         )
         bindings = tuple(
             AgentToolBinding(
@@ -289,8 +320,8 @@ class NativeInvestmentAgent:
                 messages,
                 bindings,
                 AgentRunBudget(
-                    model_requests=DEFAULT_MODEL_REQUEST_BUDGET,
-                    tool_calls=DEFAULT_TOOL_CALL_BUDGET,
+                    model_requests=tool_call_budget + 1,
+                    tool_calls=tool_call_budget,
                     wall_clock_seconds=self._wall_clock_budget_seconds,
                 ),
                 LLMResponseFormat.JSON_OBJECT,
@@ -300,7 +331,10 @@ class NativeInvestmentAgent:
         if failure is not None:
             return failure
         assert result.final_candidate is not None
-        sources.extend(self._context_sources(result.sources))
+        self._append_distinct_success_sources(
+            sources,
+            self._context_sources(result.sources),
+        )
 
         floor_failure = self._validate_context_floor(result)
         if floor_failure is not None:
@@ -362,7 +396,7 @@ class NativeInvestmentAgent:
                 and arguments.get("request_purpose") == "DISCRETIONARY_CURRENT_RISK_ACTION"
             )
             auto_fetch_market_context = (
-                needs_market_context and not tool_session.explicit_market_context_observed
+                needs_market_context and not tool_session.market_context_observed
             )
             required_names = (
                 (tool_name, MARKET_CONTEXT_TOOL_NAME) if auto_fetch_market_context else (tool_name,)
@@ -503,7 +537,12 @@ class NativeInvestmentAgent:
                 provider_fetch_count=provider_fetch_count,
             )
 
-        return execute
+        def synchronized_execute(arguments: Mapping[str, object]) -> ToolExecutionResult:
+            # 同轮批量 Tool 可并发进入 Runtime，预算与 Context 缓存必须顺序更新。
+            with tool_session.execution_lock:
+                return execute(arguments)
+
+        return synchronized_execute
 
     @staticmethod
     def _observed_sources(
@@ -586,6 +625,23 @@ class NativeInvestmentAgent:
         values: tuple[Mapping[str, object], ...],
     ) -> tuple[ContextSource, ...]:
         return tuple(cls._context_source(value) for value in values)
+
+    @staticmethod
+    def _append_distinct_success_sources(
+        sources: list[ContextSource],
+        observed: tuple[ContextSource, ...],
+    ) -> None:
+        """复用的成功 Tool 来源只声明一次；同 ID 的冲突记录继续交给 Validator 拒绝。"""
+
+        seen = {
+            source for source in sources if source.status == "OK" and source.source_id is not None
+        }
+        for source in observed:
+            if source.status == "OK" and source.source_id is not None:
+                if source in seen:
+                    continue
+                seen.add(source)
+            sources.append(source)
 
     @staticmethod
     def _context_source(value: Mapping[str, object]) -> ContextSource:

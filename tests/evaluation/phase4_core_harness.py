@@ -41,11 +41,13 @@ from behavioral_harness import (
     FixedNews,
     FixedPortfolioReader,
 )
+from phase4_provider_support import aihubmix_runtime, classify_failure, gemini_runtime
 from pydantic import AnyHttpUrl, PostgresDsn, SecretStr
 
 from position_pilot.application.agent_runtime import (
     AgentRunRequest,
     AgentRunResult,
+    AgentRunStatus,
     AgentRuntime,
 )
 from position_pilot.application.investment_agent import (
@@ -57,7 +59,6 @@ from position_pilot.application.investment_agent import (
 )
 from position_pilot.application.llm import LLMMessage, LLMRole
 from position_pilot.application.native_investment_agent import (
-    DEFAULT_WALL_CLOCK_BUDGET_SECONDS,
     NativeInvestmentAgent,
 )
 from position_pilot.config import Settings
@@ -75,6 +76,7 @@ DEFAULT_MODEL = "qwen3.7-max"
 DEFAULT_PROVIDER = "ALIYUN_MODEL_STUDIO"
 DEFAULT_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 DEFAULT_TIMEOUT_SECONDS = 30.0
+DEFAULT_WALL_CLOCK_BUDGET_SECONDS = 30.0
 
 # 4A Primary 只执行 Core FULL 与 Earnings Diagnostic；Research Gate 未批准时
 # 仍在 Artifact 中保留明确的 NOT_MEASURED 记录。
@@ -148,6 +150,8 @@ class RecordingAgentRuntime:
     def run(self, request: AgentRunRequest) -> AgentRunResult:
         """委托一次 Native Run，并保存不含 Prompt Secret 的结构化观察。"""
 
+        request_trace = getattr(self.delegate, "phase4_request_trace", None)
+        trace_start = len(request_trace) if isinstance(request_trace, list) else 0
         started_at = monotonic()
         result = self.delegate.run(request)
         self.calls.append(
@@ -172,6 +176,7 @@ class RecordingAgentRuntime:
                     else None
                 ),
                 "final_candidate": result.final_candidate,
+                "provider_finish_reason": result.provider_finish_reason,
                 "latency_ms": result.latency_ms,
                 "wall_latency_ms": round((monotonic() - started_at) * 1000, 2),
                 "usage": _usage_payload(result.usage),
@@ -184,6 +189,9 @@ class RecordingAgentRuntime:
                     item.provider_fetch_count for item in result.tool_trace
                 ),
                 "source_count": len(result.sources),
+                "model_requests": (
+                    list(request_trace[trace_start:]) if isinstance(request_trace, list) else []
+                ),
             }
         )
         return result
@@ -359,7 +367,11 @@ def create_run_metadata(
         conversation_prompt_mode="CITATION_MODE",
         provider=values.get("LLM_PROVIDER", DEFAULT_PROVIDER).strip().upper() or DEFAULT_PROVIDER,
         model=values.get("LLM_MODEL", DEFAULT_MODEL).strip() or DEFAULT_MODEL,
-        llm_base_url=_safe_base_url(values.get("LLM_BASE_URL", DEFAULT_BASE_URL)),
+        llm_base_url=(
+            "https://generativelanguage.googleapis.com"
+            if values.get("LLM_PROVIDER", DEFAULT_PROVIDER).strip().upper() == "GOOGLE_GEMINI"
+            else _safe_base_url(values.get("LLM_BASE_URL", DEFAULT_BASE_URL))
+        ),
         native_request_timeout_seconds=DEFAULT_WALL_CLOCK_BUDGET_SECONDS,
         wall_clock_budget_seconds=DEFAULT_WALL_CLOCK_BUDGET_SECONDS,
         run_id=run_id,
@@ -374,13 +386,25 @@ def create_run_metadata(
 def _build_eval_runtime(environment: Mapping[str, str]) -> AgentRuntime | None:
     """用显式环境变量装配 PydanticAI；不让 Settings 读取 Repository `.env`。"""
 
+    provider = environment.get("LLM_PROVIDER", DEFAULT_PROVIDER).strip().upper()
+    model = environment.get("LLM_MODEL", "").strip()
+    if provider == "AIHUBMIX":
+        key = environment.get("LLM_API_KEY", "").strip()
+        url = environment.get("LLM_BASE_URL", "").strip()
+        if not key or not url or not model:
+            return None
+        return aihubmix_runtime(api_key=key, base_url=url, model_name=model)
+    if provider == "GOOGLE_GEMINI":
+        key = environment.get("GEMINI_API_KEY", "").strip()
+        if not key or not model:
+            return None
+        return gemini_runtime(api_key=key, model_name=model)
+    if provider != DEFAULT_PROVIDER:
+        raise ValueError(f"Phase 4 Eval 不支持 Provider: {provider}")
     api_key = environment.get("LLM_API_KEY", "").strip()
     base_url = environment.get("LLM_BASE_URL", "").strip()
-    model = environment.get("LLM_MODEL", "").strip()
     if not api_key or not base_url or not model:
         return None
-    if environment.get("LLM_PROVIDER", DEFAULT_PROVIDER).strip().upper() != DEFAULT_PROVIDER:
-        raise ValueError(f"Phase 4 固定 Eval Provider 必须为 {DEFAULT_PROVIDER}")
     settings = Settings(
         _env_file=None,  # type: ignore[call-arg]
         database_url=PostgresDsn("postgresql+psycopg://phase4-eval.invalid/phase4_eval"),
@@ -428,6 +452,63 @@ def build_native_agent(
         clock=lambda: NOW + timedelta(minutes=30),
         wall_clock_budget_seconds=wall_clock_budget_seconds,
     )
+
+
+def runtime_readiness_check(*, require_search: bool = False) -> dict[str, object]:
+    """调用真实 Agent 暴露的固定 Fixture Executor；不声称外部联网能力已验证。"""
+
+    observations: dict[str, object] = {}
+
+    class ReadinessRuntime:
+        def run(self, request: AgentRunRequest) -> AgentRunResult:
+            bindings = {binding.definition.name: binding for binding in request.tools}
+            for name in ("get_current_quote", "get_recent_news"):
+                binding = bindings.get(name)
+                if binding is None:
+                    observations[name] = {"callable": False, "status": "NOT_EXPOSED"}
+                    continue
+                try:
+                    arguments: dict[str, object] = {"ticker": "GOOG"}
+                    if name == "get_current_quote":
+                        arguments["request_purpose"] = "INFORMATION_RETRIEVAL"
+                    result = binding.executor(arguments)
+                    observations[name] = {
+                        "callable": result.status == "OK",
+                        "status": result.status,
+                    }
+                except Exception as error:
+                    observations[name] = {"callable": False, "status": type(error).__name__}
+            observations["web_search"] = {"callable": False, "status": "NOT_CONNECTED"}
+            return AgentRunResult(
+                AgentRunStatus.COMPLETED,
+                '{"answer":"准备检查。","source_refs":[]}',
+                None,
+                (),
+                (),
+                None,
+                0.0,
+            )
+
+    build_native_agent(CASES_BY_ID["AQ03"], ReadinessRuntime()).answer_with_history(
+        USER_ID,
+        "查询 GOOG 当前报价与最新新闻。",
+        (),
+    )
+    required = ["get_current_quote", "get_recent_news"]
+    if require_search:
+        required.append("web_search")
+    ready = all(
+        isinstance(observations.get(name), dict)
+        and cast(dict[str, object], observations[name])["callable"] is True
+        for name in required
+    )
+    return {
+        "ready": ready,
+        "scope": "FIXTURE_EXECUTORS_ONLY",
+        "tools": observations,
+        "search_required": require_search,
+        "live_information_access": "NOT_EVALUATED",
+    }
 
 
 def _source_payload(source: ContextSource) -> dict[str, object]:
@@ -480,7 +561,23 @@ def _turn_record(
         "usage": usage,
     }
     if isinstance(result, InvestmentRequestFailure):
+        last = runtime_calls[-1] if runtime_calls else {}
+        error = last.get("provider_error")
+        error = error if isinstance(error, dict) else {}
+        domain, reason = classify_failure(
+            status=error.get("http_status"),
+            message=str(error.get("error_message", "")),
+            code=str(last.get("failure_code") or result.code.value),
+        )
+        if last.get("status") == "COMPLETED" and any(
+            contract in result.message
+            for contract in ("Structured Source Contract", "Citation Contract")
+        ):
+            domain, reason = "BEHAVIORAL", "FINAL_BUSINESS_VALIDATION_FAILED"
         return {
+            "failure_domain": domain,
+            "failure_reason": reason,
+            "behavioral_status": "FAIL" if domain == "BEHAVIORAL" else "NOT_EVALUATED",
             **common,
             "execution_status": "REQUEST_FAILED",
             "failure_code": result.code.value,
@@ -491,6 +588,9 @@ def _turn_record(
     return {
         **common,
         "execution_status": "COMPLETED",
+        "failure_domain": None,
+        "failure_reason": None,
+        "behavioral_status": "PENDING",
         "failure_code": None,
         "answer": result.answer,
         "response_status": result.status.value,
@@ -658,6 +758,16 @@ def _summary(
             "request_success_rate": core_completed / core_attempted if core_attempted else None,
             "completed_turn_count": completed_turns,
             "request_failed_turn_count": len(core_turns) - completed_turns,
+            "failure_domains": {
+                str(domain): sum(turn.get("failure_domain") == domain for turn in core_turns)
+                for domain in sorted(
+                    {
+                        str(turn["failure_domain"])
+                        for turn in core_turns
+                        if turn.get("failure_domain") is not None
+                    }
+                )
+            },
             "turn_success_rate": completed_turns / len(core_turns) if core_turns else None,
             "critical_failure_gate": "NOT_EVALUATED",
         },
@@ -773,6 +883,9 @@ def run_phase4_evaluation(
     for case_id in PHASE4_RESEARCH_CASE_IDS:
         records.append(not_measured_record(case_id, reason="RESEARCH_GATE_NOT_MEASURED"))
     online_enabled = values.get(RUN_PHASE4_EVAL_ENV, "").strip() == "1"
+    readiness = runtime_readiness_check(
+        require_search=bool(selected & set(PHASE4_RESEARCH_CASE_IDS))
+    )
     runtime = None if not online_enabled else (runtime_factory or _build_eval_runtime)(values)
     for case_id in PRIMARY_CASE_IDS:
         if case_id not in selected:
@@ -780,6 +893,9 @@ def run_phase4_evaluation(
             continue
         if not online_enabled:
             records.append(not_run_record(case_id, reason="ONLINE_EVAL_DISABLED"))
+            continue
+        if not readiness["ready"]:
+            records.append(not_run_record(case_id, reason="RUNTIME_NOT_READY"))
             continue
         if runtime is None:
             records.append(not_run_record(case_id, reason="MODEL_CONFIG_MISSING"))
@@ -796,6 +912,7 @@ def run_phase4_evaluation(
         key=lambda item: (PRIMARY_CASE_IDS + PHASE4_RESEARCH_CASE_IDS).index(str(item["case_id"]))
     )
     summary = _summary(metadata, records)
+    summary["runtime_readiness"] = readiness
     if artifact_raw:
         write_artifacts(Path(artifact_raw), metadata, records, summary)
     progress({"status": "RUN_FINISHED", "complete": True})

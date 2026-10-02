@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, cast
 
+import phase4_core_harness
 import pytest
 from ask_quality_cases import CASES_BY_ID
 from ask_quality_phase4_manifest import PHASE4_CORE_CASE_IDS, PHASE4_RESEARCH_CASE_IDS
@@ -78,7 +79,7 @@ def test_offline_manifest_keeps_core_not_run_and_research_not_measured() -> None
 
 
 def test_eval_only_agent_budget_can_compare_prior_30_second_ceiling() -> None:
-    """普通 4A Fixture 使用获批 60 秒，诊断仍可单独观察旧 30 秒。"""
+    """4A Eval 显式保持 30 秒，不继承 Production 工作树的不同默认值。"""
 
     default_runtime = ScriptedRuntime()
     diagnostic_runtime = ScriptedRuntime()
@@ -90,7 +91,7 @@ def test_eval_only_agent_budget_can_compare_prior_30_second_ceiling() -> None:
         case, diagnostic_runtime, wall_clock_budget_seconds=30.0
     ).answer_with_history(USER_ID, case.executable_questions[0], ())
 
-    assert default_runtime.requests[0].budget.wall_clock_seconds == 60.0
+    assert default_runtime.requests[0].budget.wall_clock_seconds == 30.0
     assert diagnostic_runtime.requests[0].budget.wall_clock_seconds == 30.0
 
 
@@ -117,9 +118,10 @@ def test_fixture_runner_uses_native_agent_and_preserves_unknown_usage(tmp_path: 
     assert len(runtime.requests) == 1
     assert record["execution_status"] == "COMPLETED"
     assert record["usage"]["total_tokens"] == "UNKNOWN"
+    assert record["turns"][0]["runtime_calls"][0]["provider_finish_reason"] is None
     assert result["summary"]["core_full"]["completed_case_count"] == 1
-    assert result["metadata"]["native_request_timeout_seconds"] == 60.0
-    assert result["metadata"]["wall_clock_budget_seconds"] == 60.0
+    assert result["metadata"]["native_request_timeout_seconds"] == 30.0
+    assert result["metadata"]["wall_clock_budget_seconds"] == 30.0
     assert result["summary"]["latency"]["median_ms"] is not None
     assert (artifact_dir / "manifest.json").is_file()
     assert (artifact_dir / "cases.jsonl").is_file()
@@ -378,3 +380,315 @@ def test_existing_artifact_is_not_overwritten(tmp_path: Path) -> None:
         run_phase4_evaluation(environment=environment, runtime_factory=lambda _: runtime)
     assert len(runtime.requests) == 1
     assert (tmp_path / "run" / "summary.json").read_text(encoding="utf-8") == original_artifact
+
+
+def test_readiness_executes_fixture_tools_and_does_not_infer_web_search() -> None:
+    """实际 Fixture Executor 可调用不代表模型已有联网能力。"""
+    report = cast(dict[str, Any], phase4_core_harness.runtime_readiness_check())
+    assert report["ready"] is True
+    assert report["tools"]["get_current_quote"] == {"callable": True, "status": "OK"}
+    assert report["tools"]["get_recent_news"] == {"callable": True, "status": "OK"}
+    assert report["tools"]["web_search"]["callable"] is False
+    assert report["live_information_access"] == "NOT_EVALUATED"
+    assert phase4_core_harness.runtime_readiness_check(require_search=True)["ready"] is False
+
+
+@pytest.mark.parametrize(
+    "http_status,domain,message",
+    [
+        (400, "PROVIDER_CAPABILITY", "tool_choice is unsupported"),
+        (400, "UNCLASSIFIED", "bad request"),
+        (401, "ACCESS_OR_AUTH", "unauthorized"),
+        (429, "RATE_LIMIT", "quota"),
+    ],
+)
+def test_provider_failure_does_not_score_behavior(
+    http_status: int,
+    domain: str,
+    message: str,
+) -> None:
+    """请求失败留在可靠性分母，质量评分保持未评估。"""
+
+    class FailedRuntime:
+        def run(self, request: AgentRunRequest) -> AgentRunResult:
+            return AgentRunResult(
+                AgentRunStatus.FAILED,
+                None,
+                "MODEL_HTTP_FAILURE",
+                (),
+                (),
+                None,
+                1.0,
+                provider_http_status=http_status,
+                provider_error_message=message,
+            )
+
+    result = cast(
+        dict[str, Any],
+        run_phase4_evaluation(
+            environment={RUN_PHASE4_EVAL_ENV: "1", "PHASE4_CASE_IDS": "AQ20"},
+            runtime_factory=lambda _: FailedRuntime(),
+        ),
+    )
+    turn = next(r for r in result["records"] if r["case_id"] == "AQ20")["turns"][0]
+    assert turn["failure_domain"] == domain
+    assert turn["behavioral_status"] == "NOT_EVALUATED"
+    assert result["summary"]["core_full"]["request_failed_case_count"] == 1
+    assert result["summary"]["core_full"]["request_success_rate"] == 0
+
+
+def test_business_validation_failure_is_separate_from_provider_failure() -> None:
+    """模型成功返回但两次伪造引用被拒绝时保留业务失败。"""
+
+    class FabricatedRuntime:
+        def run(self, request: AgentRunRequest) -> AgentRunResult:
+            return AgentRunResult(
+                AgentRunStatus.COMPLETED,
+                '{"answer":"假来源 [source:00000000-0000-0000-0000-000000000000]",'
+                '"source_refs":[]}',
+                None,
+                (),
+                (),
+                None,
+                1.0,
+            )
+
+    result = cast(
+        dict[str, Any],
+        run_phase4_evaluation(
+            environment={RUN_PHASE4_EVAL_ENV: "1", "PHASE4_CASE_IDS": "AQ20"},
+            runtime_factory=lambda _: FabricatedRuntime(),
+        ),
+    )
+    turn = next(r for r in result["records"] if r["case_id"] == "AQ20")["turns"][0]
+    assert turn["failure_domain"] == "BEHAVIORAL"
+    assert turn["behavioral_status"] == "FAIL"
+
+
+def test_aihubmix_assembly_and_native_schema_match_smoke() -> None:
+    """离线比较测试客户端及 Core 的既有 Native Schema，不创建真实请求。"""
+    import asyncio
+
+    from phase4_output_mechanism_spike import (
+        _NativeStructuredFinalCandidate,
+    )
+    from pydantic_ai.providers.openai import OpenAIProvider
+
+    from position_pilot.integrations.pydantic_ai_runtime import (
+        PydanticAIRuntime,
+    )
+    from position_pilot.integrations.pydantic_ai_runtime import (
+        _NativeStructuredFinalCandidate as CoreSchema,
+    )
+
+    runtime = phase4_core_harness._build_eval_runtime(
+        {
+            "LLM_PROVIDER": "AIHUBMIX",
+            "LLM_API_KEY": "test",
+            "LLM_MODEL": "arbitrary-model",
+            "LLM_BASE_URL": "https://example.com/v1",
+        }
+    )
+    assert isinstance(runtime, PydanticAIRuntime)
+    assert runtime.timeout_seconds == 30.0
+    assert runtime.max_retries == 0
+    assert runtime._output_mechanism == "NATIVE"
+    assert _NativeStructuredFinalCandidate is CoreSchema
+
+    async def inspect() -> None:
+        assert runtime._model_context_factory is not None
+        async with runtime._model_context_factory() as model:
+            assert type(model._provider) is OpenAIProvider
+            assert model.profile.supports_json_schema_output is True
+
+    asyncio.run(inspect())
+
+
+def test_gemini_core_assembly_uses_official_native_model_without_base_url() -> None:
+    """Core 测试入口只读 Gemini Key，并复用 A/B 已验证的官方 Native 模型。"""
+    import asyncio
+
+    from phase4_provider_support import _GeminiRequestTraceModel
+    from pydantic_ai.models.google import GoogleModel
+    from pydantic_ai.providers.google import GoogleProvider
+
+    from position_pilot.integrations.pydantic_ai_runtime import PydanticAIRuntime
+
+    values = {
+        "LLM_PROVIDER": "GOOGLE_GEMINI",
+        "LLM_MODEL": "gemini-3.8-flash",
+        "GEMINI_API_KEY": "offline-fixture-key",
+        "LLM_BASE_URL": "https://old-aliyun.example/v1",
+    }
+    runtime = phase4_core_harness._build_eval_runtime(values)
+    assert isinstance(runtime, PydanticAIRuntime)
+    assert runtime.provider_name == "GOOGLE_GEMINI"
+    assert runtime.model_name == "gemini-3.8-flash"
+    assert runtime.timeout_seconds == 30.0
+    assert runtime.max_retries == 0
+    assert runtime._output_mechanism == "NATIVE"
+    assert phase4_core_harness.create_run_metadata(environment=values).llm_base_url == (
+        "https://generativelanguage.googleapis.com"
+    )
+
+    async def inspect() -> None:
+        assert runtime._model_context_factory is not None
+        async with runtime._model_context_factory() as model:
+            assert isinstance(model, _GeminiRequestTraceModel)
+            assert isinstance(model.wrapped, GoogleModel)
+            assert type(model.wrapped._provider) is GoogleProvider
+
+    asyncio.run(inspect())
+
+
+def test_gemini_trace_distinguishes_sequential_tool_rounds_without_content() -> None:
+    """三个分步工具请求会耗尽三次模型请求，逐次记录不保存正文或参数。"""
+    import asyncio
+
+    from phase4_provider_support import _GeminiRequestTraceModel
+    from pydantic_ai import Agent, UsageLimits
+    from pydantic_ai.exceptions import UsageLimitExceeded
+    from pydantic_ai.messages import ModelMessage, ModelResponse, TextPart, ToolCallPart
+    from pydantic_ai.models.function import AgentInfo, FunctionModel
+
+    tool_calls = (
+        ToolCallPart("get_recent_news", {"ticker": "GOOG"}),
+        ToolCallPart("get_current_quote", {"ticker": "GOOG"}),
+        ToolCallPart("get_market_context", {}),
+    )
+    model_calls: list[int] = []
+
+    def reply(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
+        model_calls.append(len(messages))
+        index = len(model_calls) - 1
+        return ModelResponse(parts=[tool_calls[index] if index < 3 else TextPart("完成")])
+
+    def get_recent_news(ticker: str) -> str:
+        return "新闻已取得"
+
+    def get_current_quote(ticker: str) -> str:
+        return "报价已取得"
+
+    def get_market_context() -> str:
+        return "市场已取得"
+
+    trace: list[dict[str, object]] = []
+    agent = Agent(
+        _GeminiRequestTraceModel(FunctionModel(reply), trace),
+        tools=[get_recent_news, get_current_quote, get_market_context],
+        retries=0,
+    )
+    with pytest.raises(UsageLimitExceeded, match="request_limit of 3"):
+        asyncio.run(
+            agent.run("固定测试问题", usage_limits=UsageLimits(request_limit=3, tool_calls_limit=4))
+        )
+    assert len(model_calls) == 3
+    assert [item["tool_call_names"] for item in trace] == [
+        ["get_recent_news"],
+        ["get_current_quote"],
+        ["get_market_context"],
+    ]
+    assert trace[1]["tool_results_in_latest_request"] == ["get_recent_news"]
+    assert trace[2]["tool_results_in_latest_request"] == ["get_current_quote"]
+    assert all("GOOG" not in str(item) and "完成" not in str(item) for item in trace)
+
+
+def test_core_artifact_records_only_current_runtime_model_requests() -> None:
+    """逐次模型 Trace 随当前 Runtime Call 写入 Artifact，不混入先前轮次。"""
+
+    class TracedRuntime:
+        phase4_request_trace: list[dict[str, object]] = [
+            {"request_index": 1, "tool_call_names": ["previous_call"]}
+        ]
+
+        def run(self, request: AgentRunRequest) -> AgentRunResult:
+            self.phase4_request_trace.append(
+                {"request_index": 2, "tool_call_names": ["get_current_quote"]}
+            )
+            return AgentRunResult(
+                AgentRunStatus.COMPLETED,
+                '{"answer":"固定测试回答。","source_refs":[{"type":"PORTFOLIO_SNAPSHOT"}]}',
+                None,
+                (),
+                (),
+                None,
+                1.0,
+            )
+
+    recording = RecordingAgentRuntime(TracedRuntime())
+    case = CASES_BY_ID["AQ20"]
+    build_native_agent(case, recording).answer_with_history(
+        USER_ID, case.executable_questions[0], ()
+    )
+    assert recording.calls[0]["model_requests"] == [
+        {"request_index": 2, "tool_call_names": ["get_current_quote"]}
+    ]
+
+
+def test_model_request_budget_is_not_classified_as_provider_failure() -> None:
+    """本轮已观察的预算耗尽独立归因，不能误报 Provider Capability。"""
+    from phase4_provider_support import classify_failure
+
+    assert classify_failure(code="MODEL_REQUEST_BUDGET_EXCEEDED") == (
+        "RUNTIME_BUDGET",
+        "MODEL_REQUEST_BUDGET_EXCEEDED",
+    )
+
+
+def test_gemini_core_rejects_missing_key_and_other_model() -> None:
+    """没有独立 Gemini Key 时不借用旧 LLM Key，也不切换候选模型。"""
+    values = {
+        "LLM_PROVIDER": "GOOGLE_GEMINI",
+        "LLM_MODEL": "gemini-3.8-flash",
+        "LLM_API_KEY": "old-aliyun-key",
+    }
+    assert phase4_core_harness._build_eval_runtime(values) is None
+    with pytest.raises(ValueError, match="只允许 gemini-3.8-flash"):
+        phase4_core_harness._build_eval_runtime(
+            {**values, "GEMINI_API_KEY": "offline-fixture-key", "LLM_MODEL": "other-model"}
+        )
+
+
+def test_gemini_online_entry_requires_no_aliyun_base_url(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """在线入口的配置校验只要求 Gemini Key；这里不调用模型。"""
+    import test_phase4_core_online
+
+    monkeypatch.setenv(RUN_PHASE4_EVAL_ENV, "1")
+    monkeypatch.setenv("LLM_PROVIDER", "GOOGLE_GEMINI")
+    monkeypatch.setenv("LLM_MODEL", "gemini-3.8-flash")
+    monkeypatch.setenv("GEMINI_API_KEY", "offline-fixture-key")
+    monkeypatch.setenv("EVAL_RUN_ID", "offline-gemini-entry")
+    monkeypatch.setenv("PHASE4_ARTIFACT_DIR", str(tmp_path))
+    monkeypatch.delenv("LLM_BASE_URL", raising=False)
+    calls: list[bool] = []
+
+    def fake_run() -> dict[str, object]:
+        calls.append(True)
+        return {"summary": {"online_called": False}}
+
+    monkeypatch.setattr(test_phase4_core_online, "run_phase4_evaluation", fake_run)
+    test_phase4_core_online.test_phase4_core_live_fixture_run()
+    assert calls == [True]
+
+
+def test_readiness_failure_blocks_model_calls(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Readiness 失败不能仍运行模型或标记行为失败。"""
+    monkeypatch.setattr(
+        phase4_core_harness,
+        "runtime_readiness_check",
+        lambda **kwargs: {"ready": False, "scope": "FIXTURE_EXECUTORS_ONLY"},
+    )
+    runtime = ScriptedRuntime()
+    result = cast(
+        dict[str, Any],
+        run_phase4_evaluation(
+            environment={RUN_PHASE4_EVAL_ENV: "1", "PHASE4_CASE_IDS": "AQ20"},
+            runtime_factory=lambda _: runtime,
+        ),
+    )
+    assert runtime.requests == []
+    record = next(r for r in result["records"] if r["case_id"] == "AQ20")
+    assert record["not_run_reason"] == "RUNTIME_NOT_READY"
+    assert record["critical_failure_gate"]["status"] == "NOT_EVALUATED"
