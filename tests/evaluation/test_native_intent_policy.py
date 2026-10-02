@@ -86,7 +86,7 @@ def test_intent_regression_context_and_executor_path(case: IntentRegressionCase)
             assert "若同时请求标的、行情、市场分析或买卖判断" in prompt
             assert "用户请求加仓判断且缺少已确认 Strategy" in prompt
             assert "用户请求投资分析但没有适用预算时" in prompt
-            assert "不主动比较预算能否覆盖一股" in prompt
+            assert "不主动将 Budget、Cash、Available Cash 或计划投入金额与单股价格比较" in prompt
             assert "预算可买数量" in prompt
             assert "不声称已写入持久策略" in prompt
             payload = json.loads(request.messages[-1].content or "")

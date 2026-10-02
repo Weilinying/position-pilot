@@ -623,6 +623,69 @@ def test_failure_persists_without_assistant_message_and_expired_run_is_abandoned
         )
 
 
+@pytest.mark.parametrize(
+    "failure_code",
+    (
+        "WALL_CLOCK_BUDGET_EXCEEDED",
+        "LLM_PROVIDER_UNAVAILABLE",
+        "LLM_INVALID_REQUEST",
+        "MODEL_REQUEST_BUDGET_EXCEEDED",
+    ),
+)
+def test_failure_then_two_turns_persist_only_successful_assistant_answers(
+    failure_code: str,
+) -> None:
+    """失败轮不持久化 Assistant，后续两轮只能收到真实保存的用户与成功回答。"""
+
+    class FirstFailureAgent(RecordingAgent):
+        def answer(
+            self,
+            *,
+            account_id: UUID,
+            portfolio_user_id: UUID,
+            question: str,
+            history: tuple[ConversationHistoryMessage, ...],
+        ) -> ConversationAgentResult:
+            result = super().answer(
+                account_id=account_id,
+                portfolio_user_id=portfolio_user_id,
+                question=question,
+                history=history,
+            )
+            return (
+                ConversationAgentResult(failure_code=failure_code)
+                if len(self.calls) == 1
+                else result
+            )
+
+    store = FakeConversationStore()
+    agent = FirstFailureAgent(store, answer="基于当前信息重新分析，尚未作既定决定。")
+    service = make_service(store, agent=agent)
+    thread = service.start_thread(ACCOUNT_ID)
+    for index, question in enumerate(("第一次分析。", "重新分析。", "继续分析。")):
+        result = service.ask(
+            ACCOUNT_ID,
+            thread.id,
+            portfolio_user_id=PORTFOLIO_USER_ID,
+            question=question,
+            client_request_id=uuid4(),
+            expected_thread_revision=index * 2,
+        )
+        if index == 0:
+            assert result.assistant_message is None
+            assert result.turn.status is ConversationTurnStatus.FAILED
+    assert [(m.role, m.content) for m in agent.calls[1][3]] == [
+        (ConversationMessageRole.USER, "第一次分析。")
+    ]
+    assert [(m.role, m.content) for m in agent.calls[2][3]] == [
+        (ConversationMessageRole.USER, "第一次分析。"),
+        (ConversationMessageRole.USER, "重新分析。"),
+        (ConversationMessageRole.ASSISTANT, agent.answer_text),
+    ]
+    page = service.history(ACCOUNT_ID, thread.id)
+    assert sum(m.role is ConversationMessageRole.ASSISTANT for m in page.messages) == 2
+
+
 def test_delete_is_soft_and_excludes_thread_from_future_reads() -> None:
     """删除只设置 deleted_at，之后列表与读取均不再暴露 Thread。"""
 
