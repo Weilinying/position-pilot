@@ -590,7 +590,7 @@ def test_gemini_trace_distinguishes_sequential_tool_rounds_without_content() -> 
     ]
     assert trace[1]["tool_results_in_latest_request"] == ["get_recent_news"]
     assert trace[2]["tool_results_in_latest_request"] == ["get_current_quote"]
-    assert all("GOOG" not in str(item) and "完成" not in str(item) for item in trace)
+    assert all("GOOG" not in item.values() and "完成" not in str(item) for item in trace)
 
 
 def test_core_artifact_records_only_current_runtime_model_requests() -> None:

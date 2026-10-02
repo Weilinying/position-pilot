@@ -3,8 +3,11 @@
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import replace
+from socket import gaierror
+from ssl import SSLCertVerificationError, SSLError
 from time import monotonic
 
+import httpx
 from openai import AsyncOpenAI
 from pydantic_ai.messages import (
     ModelMessage,
@@ -32,6 +35,41 @@ class GeminiEvalRuntime(PydanticAIRuntime):
     phase4_request_trace: list[dict[str, object]]
 
 
+def _exception_diagnostics(error: BaseException) -> dict[str, object]:
+    """只保留异常类型与有明确证据的连接类别，不读取异常正文或请求内容。"""
+
+    chain: list[BaseException] = []
+    seen: set[int] = set()
+    current: BaseException | None = error
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        chain.append(current)
+        current = current.__cause__ or (
+            None if current.__suppress_context__ else current.__context__
+        )
+    category = "UNKNOWN"
+    for cause in reversed(chain):
+        if isinstance(cause, gaierror):
+            category = "DNS_RESOLUTION"
+        elif isinstance(cause, SSLCertVerificationError):
+            category = "TLS_CERTIFICATE"
+        elif isinstance(cause, SSLError):
+            category = "TLS"
+        elif isinstance(cause, ConnectionRefusedError):
+            category = "CONNECTION_REFUSED"
+        elif isinstance(cause, ConnectionResetError):
+            category = "CONNECTION_RESET"
+        elif isinstance(cause, httpx.ConnectTimeout):
+            category = "CONNECT_TIMEOUT"
+        else:
+            continue
+        break
+    return {
+        "error_cause_chain": [type(cause).__name__ for cause in chain[1:]],
+        "transport_error_category": category,
+    }
+
+
 class _GeminiRequestTraceModel(WrapperModel):
     """记录每次模型返回的工具名称，区分分步调用与同轮批量调用。"""
 
@@ -49,6 +87,9 @@ class _GeminiRequestTraceModel(WrapperModel):
         parts = latest.parts if isinstance(latest, ModelRequest) else ()
         entry: dict[str, object] = {
             "request_index": len(self.trace) + 1,
+            "execution_phase": "MODEL_REQUEST",
+            "provider": "GOOGLE_GEMINI",
+            "model": self.wrapped.model_name,
             "tool_results_in_latest_request": [
                 part.tool_name for part in parts if isinstance(part, ToolReturnPart)
             ],
@@ -67,6 +108,7 @@ class _GeminiRequestTraceModel(WrapperModel):
                 error_type=type(error).__name__,
                 latency_ms=round((monotonic() - started) * 1000, 2),
             )
+            entry.update(_exception_diagnostics(error))
             self.trace.append(entry)
             raise
         entry.update(
