@@ -20,6 +20,10 @@ from position_pilot.application.tool_catalog import ToolExecutor
 class AgentToolBudgetExceeded(RuntimeError):
     """Application Tool Session 在执行前拒绝超过本轮预算的调用。"""
 
+    def __init__(self, tool_name: str | None = None) -> None:
+        super().__init__("application tool quota exhausted")
+        self.tool_name = tool_name
+
 
 @dataclass(frozen=True, slots=True)
 class AgentToolBinding:
@@ -31,7 +35,7 @@ class AgentToolBinding:
 
 @dataclass(frozen=True, slots=True)
 class AgentRunBudget:
-    """一次 Native Agent Run 的 Application-owned 预算。"""
+    """单次 Run 预算；tool_calls 限制模型 attempt 准入，重复和拒绝也占额度。"""
 
     model_requests: int
     tool_calls: int
@@ -70,6 +74,10 @@ class AgentToolTrace:
     sources: tuple[Mapping[str, object], ...] = ()
     invoked_by_model: bool = True
     provider_fetch_count: int = 1
+    application_execution_count: int = 1
+    cache_reused: bool = False
+    duplicate_attempt: bool = False
+    tool_call_id: str | None = None
 
 
 class AgentRunStatus(StrEnum):
@@ -114,6 +122,10 @@ class AgentRunResult:
     framework_error_kind: str | None = None
     framework_error_cause: str | None = None
     provider_finish_reason: str | None = None
+    model_request_count: int = 0
+    tool_attempt_count: int = 0
+    tool_attempt_admission_count: int = 0
+    final_only_request_count: int = 0
 
     def __post_init__(self) -> None:
         if (

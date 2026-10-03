@@ -185,6 +185,22 @@ class RecordingAgentRuntime:
                 "exposed_tools": [binding.definition.name for binding in request.tools],
                 "tool_trace": [_tool_trace_payload(item) for item in result.tool_trace],
                 "tool_invocation_count": sum(item.invoked_by_model for item in result.tool_trace),
+                "model_request_count": result.model_request_count,
+                "tool_attempt_count": result.tool_attempt_count,
+                "tool_attempt_admission_count": result.tool_attempt_admission_count,
+                "final_only_request_count": result.final_only_request_count,
+                "application_execution_count": sum(
+                    item.application_execution_count for item in result.tool_trace
+                ),
+                "successful_application_execution_count": sum(
+                    item.application_execution_count
+                    for item in result.tool_trace
+                    if item.status == "OK"
+                ),
+                "cache_reuse_count": sum(item.cache_reused for item in result.tool_trace),
+                "per_tool_denial_count": sum(
+                    item.status == "TOOL_QUOTA_EXHAUSTED" for item in result.tool_trace
+                ),
                 "provider_fetch_count": sum(
                     item.provider_fetch_count for item in result.tool_trace
                 ),
@@ -240,6 +256,10 @@ def _tool_trace_payload(trace: object) -> dict[str, object]:
         "error_code": getattr(trace, "error_code", None),
         "invoked_by_model": getattr(trace, "invoked_by_model", True),
         "provider_fetch_count": getattr(trace, "provider_fetch_count", 1),
+        "application_execution_count": getattr(trace, "application_execution_count", 1),
+        "cache_reused": getattr(trace, "cache_reused", False),
+        "duplicate_attempt": getattr(trace, "duplicate_attempt", False),
+        "tool_call_id": getattr(trace, "tool_call_id", None),
         "sources": _json_safe(getattr(trace, "sources", ())),
     }
 

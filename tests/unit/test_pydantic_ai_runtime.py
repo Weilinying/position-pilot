@@ -47,11 +47,19 @@ class ScriptedModel:
 
     responses: list[ModelResponse]
     calls: list[list[ModelMessage]] = field(default_factory=list)
+    function_tool_names: list[list[str]] = field(default_factory=list)
+    output_tool_names: list[list[str]] = field(default_factory=list)
+    native_schema_payloads: list[str | None] = field(default_factory=list)
 
     def __call__(self, messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
         """返回下一条脚本响应。"""
 
-        del info
+        self.function_tool_names.append([tool.name for tool in info.function_tools])
+        self.output_tool_names.append([tool.name for tool in info.output_tools])
+        schema = info.model_request_parameters.output_object
+        self.native_schema_payloads.append(
+            None if schema is None else json.dumps(schema.json_schema, sort_keys=True)
+        )
         self.calls.append(list(messages))
         return self.responses.pop(0)
 
@@ -451,7 +459,9 @@ def test_native_json_three_sequential_tool_rounds_need_four_requests(
         )
     )
 
-    assert [trace.name for trace in result.tool_trace] == list(tool_names)
+    assert [trace.name for trace in result.tool_trace] == list(
+        tool_names[: model_request_limit - 1]
+    )
     assert len(script.calls) == model_request_limit
     if model_request_limit == 3:
         assert result.status is AgentRunStatus.BUDGET_EXHAUSTED
@@ -618,7 +628,8 @@ def test_failed_source_is_not_model_citable_but_remains_in_trace(
         {"get_recent_news": binding}, AgentRunBudget(2, 1, 30), lambda: 0.0, 0.0
     )
 
-    observation = json.loads(bridge.execute("get_recent_news", {"ticker": "GOOG"}))
+    bridge.observe_attempts(_tool_response("get_recent_news", {"ticker": "GOOG"}, "c1"), set())
+    observation = json.loads(bridge.execute("get_recent_news", {"ticker": "GOOG"}, "c1"))
 
     assert observation["sources"] == []
     assert observation["attempt_observations"] == [
@@ -665,7 +676,8 @@ def test_degraded_observation_exposes_only_successful_sources_and_all_attempts()
         {"get_quote": binding}, AgentRunBudget(2, 2, 30), lambda: 0.0, 0.0
     )
 
-    observation = json.loads(bridge.execute("get_quote", {"ticker": "GOOG"}))
+    bridge.observe_attempts(_tool_response("get_quote", {"ticker": "GOOG"}, "c1"), set())
+    observation = json.loads(bridge.execute("get_quote", {"ticker": "GOOG"}, "c1"))
 
     assert observation["status"] == "DEGRADED"
     assert observation["sources"] == [quote]
@@ -694,7 +706,8 @@ def test_model_visible_sources_exclude_malformed_reference_identity() -> None:
         {"get_quote": binding}, AgentRunBudget(2, 1, 30), lambda: 0.0, 0.0
     )
 
-    observation = json.loads(bridge.execute("get_quote", {"ticker": "GOOG"}))
+    bridge.observe_attempts(_tool_response("get_quote", {"ticker": "GOOG"}, "c1"), set())
+    observation = json.loads(bridge.execute("get_quote", {"ticker": "GOOG"}, "c1"))
 
     assert observation["sources"] == []
     assert bridge.sources == [missing_type, invalid_id]
@@ -828,21 +841,161 @@ def test_auto_market_then_explicit_reuse_keeps_four_model_invocations() -> None:
     assert result.tool_trace[2].provider_fetch_count == 0
 
 
-def test_application_tool_budget_exception_maps_to_stable_runtime_failure() -> None:
-    """Application 预留拒绝不得被降级成普通 Tool Failure。"""
+def test_application_quota_denial_allows_final_and_preserves_observation() -> None:
+    """Application 预留拒绝回填明确 Observation，不吞掉后续 Final。"""
 
     def reject(arguments: Mapping[str, object]) -> ToolExecutionResult:
         del arguments
         raise AgentToolBudgetExceeded
 
-    script = ScriptedModel([_tool_response("get_quote", {"ticker": "GOOG"}, "call-1")])
+    script = ScriptedModel(
+        [
+            _tool_response("get_quote", {"ticker": "GOOG"}, "call-1"),
+            _text_response("行情暂时未知。"),
+        ]
+    )
 
     result = _runtime(script).run(
         _request(tools=(AgentToolBinding(_definition("get_quote"), reject),))
     )
 
-    assert result.status is AgentRunStatus.BUDGET_EXHAUSTED
-    assert result.failure_code == "TOOL_CALL_BUDGET_EXCEEDED"
+    assert result.status is AgentRunStatus.COMPLETED
+    assert result.failure_code is None
+    assert result.tool_trace[0].status == "TOOL_QUOTA_EXHAUSTED"
+    assert result.tool_trace[0].provider_fetch_count == 0
+    assert result.tool_trace[0].application_execution_count == 0
+    observations = []
+    for message in script.calls[1]:
+        for part in message.parts:
+            if isinstance(part, ToolReturnPart):
+                assert isinstance(part.content, str)
+                observations.append(json.loads(part.content))
+    assert observations[0]["status"] == "TOOL_QUOTA_EXHAUSTED"
+
+
+def test_repeated_quota_denials_consume_attempts_and_leave_native_final() -> None:
+    """拒绝不是免费重试，总 attempt 耗尽后只能用原 Native Schema 返回 Final。"""
+    executions: list[str] = []
+
+    def reject(arguments: Mapping[str, object]) -> ToolExecutionResult:
+        executions.append(str(arguments["ticker"]))
+        raise AgentToolBudgetExceeded("get_quote")
+
+    script = ScriptedModel(
+        [
+            *(_tool_response("get_quote", {"ticker": "GOOG"}, f"c{i}") for i in range(3)),
+            _text_response('{"answer":"行情未知，基于已有资料回答。","source_refs":[]}'),
+        ]
+    )
+
+    def respond(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
+        return script(messages, info)
+
+    runtime = PydanticAIRuntime(FunctionModel(respond), output_mechanism="NATIVE")
+    result = runtime.run(
+        _request(
+            tools=(AgentToolBinding(_definition("get_quote"), reject),),
+            response_format="JSON_OBJECT",
+            budget=AgentRunBudget(4, 3, 30),
+        )
+    )
+    assert result.status is AgentRunStatus.COMPLETED
+    assert result.model_request_count == 4
+    assert result.tool_attempt_count == result.tool_attempt_admission_count == 3
+    assert result.final_only_request_count == 1
+    assert executions == ["GOOG"] * 3
+    assert [trace.status for trace in result.tool_trace] == ["TOOL_QUOTA_EXHAUSTED"] * 3
+    assert [trace.duplicate_attempt for trace in result.tool_trace] == [False, True, True]
+    assert all(
+        trace.provider_fetch_count == trace.application_execution_count == 0
+        for trace in result.tool_trace
+    )
+    assert script.function_tool_names == [["get_quote"]] * 3 + [[]]
+    assert len(set(script.native_schema_payloads)) == 1
+    assert script.native_schema_payloads[0] is not None
+    assert all(not names for names in script.output_tool_names)
+
+
+@pytest.mark.parametrize("native", (True, False))
+def test_batch_overflow_is_observed_denied_and_followed_by_final(native: bool) -> None:
+    """整批超额按响应顺序准入，不让框架预检取消所有结果或 Final。"""
+    executions: list[str] = []
+
+    def quote(arguments: Mapping[str, object]) -> ToolExecutionResult:
+        executions.append(str(arguments["ticker"]))
+        return ToolExecutionResult("OK", {"price": "210"})
+
+    script = ScriptedModel(
+        [
+            _tool_response("get_quote", {"ticker": "GOOG"}, "first"),
+            ModelResponse(
+                parts=[
+                    ToolCallPart("get_quote", {"ticker": ticker}, ticker)
+                    for ticker in ("AAPL", "MSFT", "NVDA")
+                ]
+            ),
+            (
+                _text_response('{"answer":"缺少资料保持 UNKNOWN。","source_refs":[]}')
+                if native
+                else _final_output_response("缺少资料保持 UNKNOWN。", [])
+            ),
+        ]
+    )
+
+    def respond(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
+        return script(messages, info)
+
+    result = PydanticAIRuntime(
+        FunctionModel(respond), output_mechanism="NATIVE" if native else "TOOL"
+    ).run(
+        _request(
+            tools=(AgentToolBinding(_definition("get_quote"), quote),),
+            response_format="JSON_OBJECT",
+            budget=AgentRunBudget(3, 2, 30),
+        )
+    )
+    assert result.status is AgentRunStatus.COMPLETED
+    assert executions == ["GOOG", "AAPL"]
+    assert result.model_request_count == 3
+    assert result.tool_attempt_count == 4 and result.tool_attempt_admission_count == 2
+    assert result.final_only_request_count == 1
+    # 并发 Trace 按完成顺序产生，准入必须按模型原响应顺序而不是完成顺序。
+    statuses = {trace.tool_call_id: trace.status for trace in result.tool_trace}
+    assert statuses == {
+        "first": "OK",
+        "AAPL": "OK",
+        "MSFT": "TOOL_ATTEMPT_BUDGET_EXHAUSTED",
+        "NVDA": "TOOL_ATTEMPT_BUDGET_EXHAUSTED",
+    }
+    assert sum(trace.provider_fetch_count for trace in result.tool_trace) == 2
+    assert sum(trace.application_execution_count for trace in result.tool_trace) == 2
+    assert script.function_tool_names[-1] == []
+    returns = [
+        part
+        for message in script.calls[-1]
+        for part in message.parts
+        if isinstance(part, ToolReturnPart)
+    ]
+    assert {part.tool_call_id for part in returns} == {"first", "AAPL", "MSFT", "NVDA"}
+    if native:
+        assert len(set(script.native_schema_payloads)) == 1
+    else:
+        assert script.output_tool_names[-1] == ["final_investment_answer"]
+
+
+def test_unknown_tool_attempt_is_counted_without_execution_or_retry() -> None:
+    """即使框架在未知工具校验时终止，原始 attempt 也不会从计量消失。"""
+    script = ScriptedModel([_tool_response("unknown", {}, "unknown-1")])
+    result = _runtime(script).run(
+        _request(
+            tools=(
+                AgentToolBinding(_definition("get_quote"), lambda args: ToolExecutionResult("OK")),
+            ),
+        )
+    )
+    assert result.status is AgentRunStatus.FAILED
+    assert result.tool_attempt_count == 1 and result.model_request_count == 1
+    assert result.tool_trace == ()
 
 
 @pytest.mark.parametrize(

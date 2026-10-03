@@ -3,6 +3,7 @@
 import json
 import logging
 from collections.abc import Callable, Mapping
+from dataclasses import replace
 from datetime import UTC, datetime
 from threading import Lock
 from uuid import UUID, uuid4
@@ -105,24 +106,70 @@ class _AuthorizedToolSession:
         self._used_calls: dict[str, int] = dict.fromkeys(call_limits, 0)
         self.execution_lock = Lock()
         self._explicit_market_context_observed = False
-        self._automatic_market_context_credit = False
+        self._automatic_market_context_observed = False
         self._market_context_source: Mapping[str, object] | None = None
+        self._observations: dict[str, ToolExecutionResult] = {}
+        self._uncached_failure_statuses: dict[str, str] = {}
 
     @property
     def market_context_observed(self) -> bool:
         """标识本轮是否已显式或自动获取 Market Context。"""
 
-        return self._explicit_market_context_observed or self._automatic_market_context_credit
+        return self._explicit_market_context_observed or self._automatic_market_context_observed
 
     def note_explicit_market_context(self) -> None:
-        """记录模型已为 Market Context 单独消耗一次 Tool Call。"""
+        """记录本轮已经显式取得 Market Context 的成功或失败观察。"""
 
         self._explicit_market_context_observed = True
 
     def note_automatic_market_context(self) -> None:
-        """标记自动获取已占预算，可供随后首次显式调用复用。"""
+        """标记自动获取已经占用执行额度并产生本轮 Observation。"""
 
-        self._automatic_market_context_credit = True
+        self._automatic_market_context_observed = True
+
+    def is_authorized(self, names: tuple[str, ...]) -> bool:
+        """缓存复用前仍须确认本轮授权，不从缓存扩大工具权限。"""
+        return all(name in self._call_limits for name in names)
+
+    @staticmethod
+    def _observation_key(name: str, arguments: Mapping[str, object]) -> str:
+        normalized = dict(arguments)
+        if isinstance(ticker := normalized.get("ticker"), str):
+            normalized["ticker"] = ticker.strip().upper()
+        return json.dumps([name, normalized], sort_keys=True)
+
+    def observation(self, name: str, arguments: Mapping[str, object]) -> ToolExecutionResult | None:
+        """仅复用同轮完整业务参数匹配的格式化 Observation。"""
+        return self._observations.get(self._observation_key(name, arguments))
+
+    def note_uncached_failure(
+        self, name: str, arguments: Mapping[str, object], status: str
+    ) -> None:
+        """失败历史可见不等于可重放缓存，不改变底层原有异常缓存策略。"""
+        self._uncached_failure_statuses[self._observation_key(name, arguments)] = status
+
+    def failure_status(self, name: str, arguments: Mapping[str, object]) -> str | None:
+        """让 quota denial 如实说明已有失败观察，而不声称存在成功行情。"""
+        return self._uncached_failure_statuses.get(self._observation_key(name, arguments))
+
+    def remember(
+        self, name: str, arguments: Mapping[str, object], result: ToolExecutionResult
+    ) -> None:
+        """保存可重放结果，关联 Context 的来源保留但不重记其执行。"""
+        self._observations.setdefault(
+            self._observation_key(name, arguments),
+            replace(
+                result,
+                sources=(
+                    *result.sources,
+                    *(s for call in result.related_calls for s in call.sources),
+                ),
+                related_calls=(),
+                provider_fetch_count=0,
+                application_execution_count=0,
+                cache_reused=True,
+            ),
+        )
 
     def market_context_source(self, source: ContextSource) -> Mapping[str, object]:
         """同轮复用 Market Context 的 Source 身份，包括失败状态。"""
@@ -131,31 +178,17 @@ class _AuthorizedToolSession:
             self._market_context_source = NativeInvestmentAgent._source_mapping(source)
         return self._market_context_source
 
-    def reserve(self, names: tuple[str, ...], *, reuse_automatic_market: bool = False) -> bool:
+    def reserve(self, names: tuple[str, ...]) -> None:
         """原子预留一组实际调用，避免复合 Tool 只计算外层调用。"""
 
-        if any(name not in self._call_limits for name in names):
-            return False
-        reuse = (
-            reuse_automatic_market
-            and names == (MARKET_CONTEXT_TOOL_NAME,)
-            and self._automatic_market_context_credit
-        )
         charges: dict[str, int] = {}
         for name in names:
             charges[name] = charges.get(name, 0) + 1
-        if reuse:
-            charges[MARKET_CONTEXT_TOOL_NAME] -= 1
-        if any(
-            self._used_calls[name] + charge > self._call_limits[name]
-            for name, charge in charges.items()
-        ):
-            raise AgentToolBudgetExceeded
+        for name, charge in charges.items():
+            if self._used_calls[name] + charge > self._call_limits[name]:
+                raise AgentToolBudgetExceeded(name)
         for name, charge in charges.items():
             self._used_calls[name] += charge
-        if reuse:
-            self._automatic_market_context_credit = False
-        return True
 
 
 class NativeInvestmentAgent:
@@ -398,6 +431,7 @@ class NativeInvestmentAgent:
                     "INVALID_ARGUMENTS",
                     error_code=validation_failure.code.value,
                     provider_fetch_count=0,
+                    application_execution_count=0,
                 )
             needs_market_context = (
                 tool_name == CURRENT_QUOTE_TOOL_NAME
@@ -409,19 +443,41 @@ class NativeInvestmentAgent:
             required_names = (
                 (tool_name, MARKET_CONTEXT_TOOL_NAME) if auto_fetch_market_context else (tool_name,)
             )
-            if not tool_session.reserve(
-                required_names,
-                reuse_automatic_market=(tool_name == MARKET_CONTEXT_TOOL_NAME),
-            ):
+            if not tool_session.is_authorized(required_names):
                 return ToolExecutionResult(
                     "REQUIRED_CONTEXT_UNAUTHORIZED",
                     error_code="REQUIRED_CONTEXT_UNAUTHORIZED",
                     provider_fetch_count=0,
+                    application_execution_count=0,
+                )
+            if cached := tool_session.observation(tool_name, arguments):
+                return cached
+            try:
+                tool_session.reserve(required_names)
+            except AgentToolBudgetExceeded as error:
+                existing_status = tool_session.failure_status(tool_name, arguments)
+                return ToolExecutionResult(
+                    "TOOL_QUOTA_EXHAUSTED",
+                    {
+                        "tool": tool_name,
+                        "blocking_tool": error.tool_name,
+                        "existing_observation_available": existing_status is not None,
+                        **(
+                            {"existing_observation_status": existing_status}
+                            if existing_status is not None
+                            else {}
+                        ),
+                        "retry_same_tool": False,
+                    },
+                    error_code="TOOL_QUOTA_EXHAUSTED",
+                    provider_fetch_count=0,
+                    application_execution_count=0,
                 )
             fetch_count_before = executor.provider_fetch_count
             try:
                 execution = executor.execute(tool_call)
             except InvalidFinancialToolResult:
+                tool_session.note_uncached_failure(tool_name, arguments, "INVALID_ARGUMENTS")
                 return ToolExecutionResult(
                     "INVALID_ARGUMENTS",
                     error_code=InvestmentFailureCode.INVALID_TOOL_CALL.value,
@@ -440,12 +496,18 @@ class NativeInvestmentAgent:
                             )
                         ),
                     )
-                return ToolExecutionResult(
+                failure = ToolExecutionResult(
                     "TOOL_FAILURE",
                     error_code="TOOL_FAILURE",
                     sources=failed_sources,
                     provider_fetch_count=executor.provider_fetch_count - fetch_count_before,
                 )
+                if tool_name == MARKET_CONTEXT_TOOL_NAME:
+                    # 底层已缓存 Market 异常，重放不能再次请求 Provider。
+                    tool_session.remember(tool_name, arguments, failure)
+                else:
+                    tool_session.note_uncached_failure(tool_name, arguments, "TOOL_FAILURE")
+                return failure
             provider_fetch_count = executor.provider_fetch_count - fetch_count_before
             if tool_name == MARKET_CONTEXT_TOOL_NAME:
                 tool_session.note_explicit_market_context()
@@ -496,6 +558,13 @@ class NativeInvestmentAgent:
                     }
                     if auto_fetch_market_context:
                         tool_session.note_automatic_market_context()
+                        tool_session.remember(
+                            MARKET_CONTEXT_TOOL_NAME,
+                            {},
+                            ToolExecutionResult(
+                                "TOOL_FAILURE", error_code="TOOL_FAILURE", sources=(failed_market,)
+                            ),
+                        )
                         related_calls = (
                             ToolExecutionRecord(
                                 MARKET_CONTEXT_TOOL_NAME,
@@ -506,13 +575,15 @@ class NativeInvestmentAgent:
                                 executor.provider_fetch_count - required_fetch_count_before,
                             ),
                         )
-                    return ToolExecutionResult(
+                    degraded = ToolExecutionResult(
                         "DEGRADED",
                         payload,
                         sources=source_mappings,
                         related_calls=related_calls,
                         provider_fetch_count=provider_fetch_count,
                     )
+                    tool_session.remember(tool_name, arguments, degraded)
+                    return degraded
                 required_provider_fetch_count = (
                     executor.provider_fetch_count - required_fetch_count_before
                 )
@@ -524,6 +595,15 @@ class NativeInvestmentAgent:
                 required_payload = json.loads(required_message.content)
                 payload["required_market_context"] = required_payload
                 required_source_mapping = tool_session.market_context_source(required_source)
+                tool_session.remember(
+                    MARKET_CONTEXT_TOOL_NAME,
+                    {},
+                    ToolExecutionResult(
+                        str(required_payload["status"]),
+                        {key: value for key, value in required_payload.items() if key != "status"},
+                        sources=(required_source_mapping,),
+                    ),
+                )
                 if auto_fetch_market_context:
                     tool_session.note_automatic_market_context()
                     related_calls = (
@@ -537,13 +617,15 @@ class NativeInvestmentAgent:
                     )
                 if required_payload["status"] != "OK":
                     status = "DEGRADED"
-            return ToolExecutionResult(
+            result = ToolExecutionResult(
                 status,
                 payload,
                 sources=source_mappings,
                 related_calls=related_calls,
                 provider_fetch_count=provider_fetch_count,
             )
+            tool_session.remember(tool_name, arguments, result)
+            return result
 
         def synchronized_execute(arguments: Mapping[str, object]) -> ToolExecutionResult:
             # 同轮批量 Tool 可并发进入 Runtime，预算与 Context 缓存必须顺序更新。

@@ -16,7 +16,6 @@ from position_pilot.application.agent_runtime import (
     AgentRunRequest,
     AgentRunResult,
     AgentRunStatus,
-    AgentToolBudgetExceeded,
     AgentToolTrace,
 )
 from position_pilot.application.conversation_citations import (
@@ -681,7 +680,7 @@ def test_market_context_reuse_keeps_fetch_budget_and_source_identity(
     market_available: bool,
     quote_first: bool,
 ) -> None:
-    """自动与显式调用只复用首次 Market 获取，额外显式调用仍占预算。"""
+    """自动与显式 Market 共用同轮 Observation，不重复执行或占 quota。"""
 
     def run(request: AgentRunRequest) -> AgentRunResult:
         bindings = {item.definition.name: item.executor for item in request.tools}
@@ -709,16 +708,19 @@ def test_market_context_reuse_keeps_fetch_budget_and_source_identity(
             assert market.sources[0]["source_id"] is None
         assert bindings["get_recent_price_history"]({"ticker": "GOOG"}).provider_fetch_count == 1
         assert bindings["get_recent_news"]({"ticker": "GOOG"}).provider_fetch_count == 1
-        with pytest.raises(AgentToolBudgetExceeded):
-            bindings["get_market_context"]({})
+        repeated = bindings["get_market_context"]({})
+        assert repeated.cache_reused and repeated.application_execution_count == 0
+        assert repeated.sources == market.sources
+        assert repeated.provider_fetch_count == 0
         second_quote = bindings["get_current_quote"](
             {"ticker": "AAPL", "request_purpose": "DISCRETIONARY_CURRENT_RISK_ACTION"}
         )
         assert second_quote.related_calls == ()
-        with pytest.raises(AgentToolBudgetExceeded):
-            bindings["get_current_quote"](
-                {"ticker": "MSFT", "request_purpose": "INFORMATION_RETRIEVAL"}
-            )
+        denied = bindings["get_current_quote"](
+            {"ticker": "MSFT", "request_purpose": "INFORMATION_RETRIEVAL"}
+        )
+        assert denied.status == "TOOL_QUOTA_EXHAUSTED"
+        assert denied.provider_fetch_count == denied.application_execution_count == 0
         return _completed(_candidate({"type": "PORTFOLIO_SNAPSHOT"}))
 
     data = MarketReadyData() if market_available else FixedFinancialData()
@@ -733,20 +735,26 @@ def test_market_context_reuse_keeps_fetch_budget_and_source_identity(
     "tool_name",
     ("get_current_quote", "get_recent_news", "get_recent_price_history"),
 )
-def test_ticker_tools_reject_third_call_even_when_provider_result_is_cached(
+def test_ticker_tools_replay_without_consuming_new_execution_quota(
     tool_name: str,
 ) -> None:
-    """每种 ticker Tool 各有两次额度，重复参数不会豁免。"""
+    """重复 Observation 不扣新执行额度，但不同参数仍受原有两次额度限制。"""
 
     def run(request: AgentRunRequest) -> AgentRunResult:
         binding = next(item for item in request.tools if item.definition.name == tool_name)
         arguments = {"ticker": "GOOG"}
         if tool_name == "get_current_quote":
             arguments["request_purpose"] = "INFORMATION_RETRIEVAL"
-        binding.executor(arguments)
-        binding.executor(arguments)
-        with pytest.raises(AgentToolBudgetExceeded):
-            binding.executor(arguments)
+        first = binding.executor(arguments)
+        for _ in range(2):
+            cached = binding.executor(arguments)
+            assert cached.cache_reused
+            assert cached.provider_fetch_count == cached.application_execution_count == 0
+            assert cached.data == first.data and cached.sources == first.sources
+        assert binding.executor({**arguments, "ticker": "AAPL"}).provider_fetch_count == 1
+        denied = binding.executor({**arguments, "ticker": "MSFT"})
+        assert denied.status == "TOOL_QUOTA_EXHAUSTED"
+        assert denied.provider_fetch_count == denied.application_execution_count == 0
         return _completed(_candidate({"type": "PORTFOLIO_SNAPSHOT"}))
 
     result = _agent(ScriptedNativeRuntime(run), FixedFinancialData()).answer(USER_ID, "分析 GOOG。")
@@ -772,8 +780,9 @@ def test_parallel_discretionary_quotes_share_one_market_context_quota() -> None:
                 )
             )
         assert sum(len(item.related_calls) for item in results) == 1
-        with pytest.raises(AgentToolBudgetExceeded):
-            quote({"ticker": "MSFT", "request_purpose": "INFORMATION_RETRIEVAL"})
+        denied = quote({"ticker": "MSFT", "request_purpose": "INFORMATION_RETRIEVAL"})
+        assert denied.status == "TOOL_QUOTA_EXHAUSTED"
+        assert denied.provider_fetch_count == 0
         return _completed(_candidate({"type": "PORTFOLIO_SNAPSHOT"}))
 
     data = FixedFinancialData()
@@ -889,8 +898,7 @@ def test_first_explicit_market_reuse_works_after_four_fetch_slots_are_reserved()
         assert market.status == "NO_DATA"
         assert market.provider_fetch_count == 0
         assert market.sources == quote.related_calls[0].sources
-        with pytest.raises(AgentToolBudgetExceeded):
-            bindings["get_market_context"]({})
+        assert bindings["get_market_context"]({}).cache_reused
         return _completed(_candidate({"type": "PORTFOLIO_SNAPSHOT"}))
 
     data = FixedFinancialData()
@@ -919,13 +927,21 @@ def test_provider_exception_keeps_real_fetch_count_and_failure_status() -> None:
         assert observation.error_code == "TOOL_FAILURE"
         assert observation.provider_fetch_count == 1
         assert observation.sources == ()
+        second = binding.executor({"ticker": "GOOG", "request_purpose": "INFORMATION_RETRIEVAL"})
+        assert second.status == "TOOL_FAILURE" and second.provider_fetch_count == 1
+        denied = binding.executor({"ticker": "GOOG", "request_purpose": "INFORMATION_RETRIEVAL"})
+        assert denied.status == "TOOL_QUOTA_EXHAUSTED" and denied.sources == ()
+        assert denied.provider_fetch_count == denied.application_execution_count == 0
+        assert denied.data is not None
+        assert denied.data["existing_observation_available"] is True
+        assert denied.data["existing_observation_status"] == "TOOL_FAILURE"
         return _completed(_candidate({"type": "PORTFOLIO_SNAPSHOT"}))
 
     data = FailingQuoteData()
     result = _agent(ScriptedNativeRuntime(run), data).answer(USER_ID, "查询 GOOG 报价。")
 
     assert isinstance(result, InvestmentAnswer)
-    assert data.quote_calls == ["GOOG"]
+    assert data.quote_calls == ["GOOG", "GOOG"]
 
 
 def test_automatic_market_exception_keeps_quote_and_failed_fetch_trace() -> None:
@@ -958,8 +974,9 @@ def test_automatic_market_exception_keeps_quote_and_failed_fetch_trace() -> None
         assert explicit_market.sources == failed_market.sources
         assert bindings["get_recent_price_history"]({"ticker": "GOOG"}).provider_fetch_count == 1
         assert bindings["get_recent_news"]({"ticker": "GOOG"}).provider_fetch_count == 1
-        with pytest.raises(AgentToolBudgetExceeded):
-            bindings["get_market_context"]({})
+        repeated = bindings["get_market_context"]({})
+        assert repeated.cache_reused and repeated.status == "TOOL_FAILURE"
+        assert repeated.provider_fetch_count == repeated.application_execution_count == 0
         return _completed(_candidate({"type": "PORTFOLIO_SNAPSHOT"}))
 
     data = FailingMarketData()
@@ -1031,17 +1048,16 @@ def test_composite_quote_reserves_two_calls_and_rejects_over_budget() -> None:
         third_arguments = {**first_arguments, "ticker": "MSFT"}
         binding.executor(first_arguments)
         binding.executor(second_arguments)
-        with pytest.raises(AgentToolBudgetExceeded):
-            binding.executor(third_arguments)
-        return AgentRunResult(
-            AgentRunStatus.BUDGET_EXHAUSTED,
-            None,
-            "TOOL_CALL_BUDGET_EXCEEDED",
-            (),
-            (),
-            None,
-            1.0,
-        )
+        denied = binding.executor(third_arguments)
+        assert denied.status == "TOOL_QUOTA_EXHAUSTED"
+        assert denied.data == {
+            "tool": "get_current_quote",
+            "blocking_tool": "get_current_quote",
+            "existing_observation_available": False,
+            "retry_same_tool": False,
+        }
+        assert denied.provider_fetch_count == denied.application_execution_count == 0
+        return _completed(_candidate({"type": "PORTFOLIO_SNAPSHOT"}))
 
     data = FixedFinancialData()
     result = _agent(ScriptedNativeRuntime(run), data).answer(
@@ -1049,10 +1065,40 @@ def test_composite_quote_reserves_two_calls_and_rejects_over_budget() -> None:
         "连续评估 GOOG 加仓机会。",
     )
 
-    assert isinstance(result, InvestmentRequestFailure)
-    assert result.code is InvestmentFailureCode.TOOL_CALL_LIMIT_EXCEEDED
+    assert isinstance(result, InvestmentAnswer)
     assert data.quote_calls == ["GOOG", "AAPL"]
     assert data.market_context_calls == 1
+
+
+def test_quote_purpose_change_is_new_execution_and_keeps_required_context() -> None:
+    """相同 ticker 不等于相同业务调用，purpose 改变仍应用必要 Context 和 quota。"""
+
+    def run(request: AgentRunRequest) -> AgentRunResult:
+        binding = next(
+            tool for tool in request.tools if tool.definition.name == "get_current_quote"
+        )
+        info = {"ticker": "GOOG", "request_purpose": "INFORMATION_RETRIEVAL"}
+        first = binding.executor(info)
+        assert first.data is not None and "required_market_context" not in first.data
+        cached = binding.executor(info)
+        assert cached.cache_reused and cached.sources == first.sources
+        risk = binding.executor({**info, "request_purpose": "DISCRETIONARY_CURRENT_RISK_ACTION"})
+        assert not risk.cache_reused and risk.application_execution_count == 1
+        assert risk.provider_fetch_count == 0
+        assert risk.data is not None and risk.data["required_market_context"] is not None
+        assert len(risk.related_calls) == 1 and risk.related_calls[0].provider_fetch_count == 1
+        replay = binding.executor({**info, "request_purpose": "DISCRETIONARY_CURRENT_RISK_ACTION"})
+        assert replay.cache_reused and replay.related_calls == ()
+        assert replay.application_execution_count == replay.provider_fetch_count == 0
+        assert risk.related_calls[0].sources[0] in replay.sources
+        denied = binding.executor({**info, "ticker": "AAPL"})
+        assert denied.status == "TOOL_QUOTA_EXHAUSTED" and denied.provider_fetch_count == 0
+        return _completed(_candidate({"type": "PORTFOLIO_SNAPSHOT"}))
+
+    data = MarketReadyData()
+    result = _agent(ScriptedNativeRuntime(run), data).answer(USER_ID, "分析 GOOG。")
+    assert isinstance(result, InvestmentAnswer)
+    assert data.quote_calls == ["GOOG"] and data.market_context_calls == 1
 
 
 def test_invalid_source_uses_one_no_tool_repair_run() -> None:

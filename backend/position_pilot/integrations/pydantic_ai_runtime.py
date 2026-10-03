@@ -22,6 +22,7 @@ from pydantic_ai import (
 from pydantic_ai import (
     AgentRunResult as PydanticAgentRunResult,
 )
+from pydantic_ai.capabilities import AbstractCapability
 from pydantic_ai.exceptions import (
     ModelAPIError,
     ModelHTTPError,
@@ -37,11 +38,13 @@ from pydantic_ai.messages import (
     ToolReturnPart,
     UserPromptPart,
 )
-from pydantic_ai.models import Model
+from pydantic_ai.models import Model, ModelRequestContext
 from pydantic_ai.models.openai import OpenAIChatModel
 from pydantic_ai.providers import Provider
 from pydantic_ai.providers.alibaba import AlibabaProvider
 from pydantic_ai.providers.openai import OpenAIProvider
+from pydantic_ai.tools import RunContext, ToolDefinition
+from pydantic_ai.toolsets import AbstractToolset
 
 from position_pilot.application.agent_runtime import (
     AgentRunBudget,
@@ -77,32 +80,98 @@ class _ToolBridge:
     warnings: list[str] = field(default_factory=list)
     invocation_count: int = 0
     provider_fetch_count: int = 0
+    model_request_count: int = 0
+    tool_attempt_count: int = 0
+    final_only_request_count: int = 0
+    final_only_reason: str | None = None
+    final_only_violation: bool = False
+    admissions: dict[str, bool] = field(default_factory=dict)
+    duplicate_calls: set[str] = field(default_factory=set)
+    seen_arguments: set[str] = field(default_factory=set)
 
-    def execute(self, name: str, arguments: Mapping[str, object]) -> str:
+    def prepare_tools(
+        self, ctx: RunContext[None], definitions: list[ToolDefinition]
+    ) -> list[ToolDefinition]:
+        """仅在取证额度耗尽或最后请求时隐藏业务工具，输出机制保持原样。"""
+        if self.invocation_count >= self.budget.tool_calls:
+            self.final_only_reason = "TOOL_CALL_BUDGET_EXCEEDED"
+        elif ctx.usage.requests >= self.budget.model_requests - 1:
+            self.final_only_reason = "MODEL_REQUEST_BUDGET_EXCEEDED"
+        return [] if self.final_only_reason is not None else definitions
+
+    def observe_attempts(self, response: ModelResponse, output_names: set[str]) -> None:
+        """按响应原顺序准入，记录全部模型 attempt，包括整批超额和未知工具。"""
+        self.admissions.clear()
+        self.duplicate_calls.clear()
+        for part in response.parts:
+            if not isinstance(part, ToolCallPart) or part.tool_name in output_names:
+                continue
+            self.tool_attempt_count += 1
+            try:
+                arguments: object = part.args_as_dict()
+            except ValueError:
+                arguments = part.args
+            if isinstance(arguments, dict) and isinstance(ticker := arguments.get("ticker"), str):
+                arguments = {**arguments, "ticker": ticker.strip().upper()}
+            key = json.dumps([part.tool_name, arguments], sort_keys=True)
+            if key in self.seen_arguments:
+                self.duplicate_calls.add(part.tool_call_id)
+            self.seen_arguments.add(key)
+            admitted = (
+                self.final_only_reason is None and self.invocation_count < self.budget.tool_calls
+            )
+            self.admissions[part.tool_call_id] = admitted
+            if admitted:
+                self.invocation_count += 1
+            if self.final_only_reason is not None:
+                self.final_only_violation = True
+                self.warnings.append("TOOL_CALL_AFTER_FINAL_ONLY")
+
+    def execute(self, name: str, arguments: Mapping[str, object], call_id: str) -> str:
         """执行一次 Application Tool，并把失败转换为显式模型观察。"""
 
         self._check_wall_clock()
-        if self.invocation_count >= self.budget.tool_calls:
-            raise UsageLimitExceeded("tool call budget exhausted")
-        self.invocation_count += 1
         binding = self.bindings.get(name)
         normalized_arguments = dict(arguments)
-        if binding is None:
+        if not self.admissions[call_id]:
             result = ToolExecutionResult(
-                "UNKNOWN_TOOL", error_code="UNKNOWN_TOOL", provider_fetch_count=0
+                "TOOL_ATTEMPT_BUDGET_EXHAUSTED",
+                {"tool": name, "retry_same_tool": False},
+                error_code="TOOL_ATTEMPT_BUDGET_EXHAUSTED",
+                provider_fetch_count=0,
+                application_execution_count=0,
+            )
+        elif binding is None:
+            result = ToolExecutionResult(
+                "UNKNOWN_TOOL",
+                error_code="UNKNOWN_TOOL",
+                provider_fetch_count=0,
+                application_execution_count=0,
             )
         else:
             try:
                 result = binding.executor(normalized_arguments)
                 if not isinstance(result, ToolExecutionResult):
                     raise TypeError("Tool Executor 必须返回 ToolExecutionResult")
-            except AgentToolBudgetExceeded:
-                raise UsageLimitExceeded("tool call budget exhausted") from None
+            except AgentToolBudgetExceeded as error:
+                result = ToolExecutionResult(
+                    "TOOL_QUOTA_EXHAUSTED",
+                    {
+                        "tool": name,
+                        "blocking_tool": error.tool_name or name,
+                        "existing_observation_available": False,
+                        "retry_same_tool": False,
+                    },
+                    error_code="TOOL_QUOTA_EXHAUSTED",
+                    provider_fetch_count=0,
+                    application_execution_count=0,
+                )
             except (TypeError, ValueError):
                 result = ToolExecutionResult(
                     "INVALID_ARGUMENTS",
                     error_code="INVALID_ARGUMENTS",
                     provider_fetch_count=0,
+                    application_execution_count=0,
                 )
             except Exception:  # noqa: BLE001 - Provider / Tool Failure 必须成为显式观察。
                 result = ToolExecutionResult(
@@ -116,6 +185,10 @@ class _ToolBridge:
             error_code=result.error_code,
             sources=result.sources,
             provider_fetch_count=result.provider_fetch_count,
+            application_execution_count=result.application_execution_count,
+            cache_reused=result.cache_reused,
+            duplicate_attempt=call_id in self.duplicate_calls or result.cache_reused,
+            tool_call_id=call_id,
         )
         self.tool_trace.append(trace)
         self.provider_fetch_count += result.provider_fetch_count
@@ -132,6 +205,8 @@ class _ToolBridge:
                     sources=related.sources,
                     invoked_by_model=False,
                     provider_fetch_count=related.provider_fetch_count,
+                    application_execution_count=related.application_execution_count,
+                    cache_reused=related.cache_reused,
                 )
             )
             self.provider_fetch_count += related.provider_fetch_count
@@ -195,6 +270,36 @@ class _ToolBridge:
                 },
                 ensure_ascii=False,
             )
+
+
+@dataclass
+class _ToolLoopCapability(AbstractCapability[None]):
+    """复用框架响应边界记录 attempt，不包装 Provider 或改写模型结果。"""
+
+    bridge: _ToolBridge
+
+    async def before_model_request(
+        self, ctx: RunContext[None], request_context: ModelRequestContext
+    ) -> ModelRequestContext:
+        """记录请求开始与无业务 Tool 的 Final-only 机会，不增加额外请求。"""
+        self.bridge.model_request_count += 1
+        if not request_context.model_request_parameters.function_tools:
+            self.bridge.final_only_request_count += 1
+        return request_context
+
+    async def after_model_request(
+        self,
+        ctx: RunContext[None],
+        *,
+        request_context: ModelRequestContext,
+        response: ModelResponse,
+    ) -> ModelResponse:
+        """登记完整响应的 attempt，再交回原生框架处理，Final Tool 不占取证额度。"""
+        self.bridge.observe_attempts(
+            response,
+            {tool.name for tool in request_context.model_request_parameters.output_tools},
+        )
+        return response
 
 
 class _StructuredFinalCandidate(BaseModel):
@@ -310,6 +415,7 @@ class PydanticAIRuntime(AgentRuntime):
                     request,
                     instructions,
                     toolset,
+                    bridge,
                 )
             )
         except TimeoutError:
@@ -348,8 +454,12 @@ class PydanticAIRuntime(AgentRuntime):
             )
         except UnexpectedModelBehavior as error:
             return self._failure(
-                AgentRunStatus.FAILED,
-                "INVALID_PROVIDER_RESPONSE",
+                AgentRunStatus.BUDGET_EXHAUSTED
+                if bridge and bridge.final_only_violation
+                else AgentRunStatus.FAILED,
+                bridge.final_only_reason
+                if bridge and bridge.final_only_violation and bridge.final_only_reason is not None
+                else "INVALID_PROVIDER_RESPONSE",
                 started_at,
                 bridge,
                 llm_status=LLMStatus.INVALID_PROVIDER_RESPONSE,
@@ -427,6 +537,10 @@ class PydanticAIRuntime(AgentRuntime):
             llm_status=LLMStatus.OK,
             warnings=tuple(warnings),
             provider_finish_reason=finish_reason if isinstance(finish_reason, str) else None,
+            model_request_count=bridge.model_request_count,
+            tool_attempt_count=bridge.tool_attempt_count,
+            tool_attempt_admission_count=bridge.invocation_count,
+            final_only_request_count=bridge.final_only_request_count,
         )
 
     @staticmethod
@@ -488,18 +602,19 @@ class PydanticAIRuntime(AgentRuntime):
         history: list[ModelMessage],
         request: AgentRunRequest,
         instructions: tuple[str, ...],
-        toolset: FunctionToolset[None] | None,
+        toolset: AbstractToolset[None] | None,
+        bridge: _ToolBridge,
     ) -> PydanticAgentRunResult[object]:
         """确保 Provider Client 的创建、使用和关闭发生在同一个 Event Loop。"""
 
         if self._model_context_factory is not None:
             async with self._model_context_factory() as model:
                 return await self._run_with_wall_clock_limit(
-                    model, user_prompt, history, request, instructions, toolset
+                    model, user_prompt, history, request, instructions, toolset, bridge
                 )
         assert self._model is not None
         return await self._run_with_wall_clock_limit(
-            self._model, user_prompt, history, request, instructions, toolset
+            self._model, user_prompt, history, request, instructions, toolset, bridge
         )
 
     async def _run_with_wall_clock_limit(
@@ -509,7 +624,8 @@ class PydanticAIRuntime(AgentRuntime):
         history: list[ModelMessage],
         request: AgentRunRequest,
         instructions: tuple[str, ...],
-        toolset: FunctionToolset[None] | None,
+        toolset: AbstractToolset[None] | None,
+        bridge: _ToolBridge,
     ) -> PydanticAgentRunResult[object]:
         """对完整 Model / Tool Loop 应用可中断的总 Wall-clock Ceiling。"""
 
@@ -541,6 +657,7 @@ class PydanticAIRuntime(AgentRuntime):
             toolsets=(() if toolset is None else (toolset,)),
             retries=0,
             end_strategy="exhaustive",
+            capabilities=(_ToolLoopCapability(bridge),),
         )
         return await asyncio.wait_for(
             agent.run(
@@ -554,7 +671,7 @@ class PydanticAIRuntime(AgentRuntime):
                 },
                 usage_limits=UsageLimits(
                     request_limit=request.budget.model_requests,
-                    tool_calls_limit=request.budget.tool_calls,
+                    # 整批超额由 admission 返回 Observation，框架只保留请求 Ceiling。
                 ),
             ),
             timeout=request.budget.wall_clock_seconds,
@@ -582,7 +699,7 @@ class PydanticAIRuntime(AgentRuntime):
     def _toolset(
         bindings: tuple[AgentToolBinding, ...],
         bridge: _ToolBridge,
-    ) -> FunctionToolset[None] | None:
+    ) -> AbstractToolset[None] | None:
         """按本轮动态 Binding 建立 Framework Toolset。"""
 
         if not bindings:
@@ -591,12 +708,14 @@ class PydanticAIRuntime(AgentRuntime):
         for binding in bindings:
 
             def execute_dynamic(
-                _tool_name: str = binding.definition.name,
+                ctx: RunContext[None],
                 **arguments: object,
             ) -> str:
                 """将动态 JSON Schema 参数交给 Application Executor。"""
 
-                return bridge.execute(_tool_name, arguments)
+                assert ctx.tool_call_id is not None
+                assert ctx.tool_name is not None
+                return bridge.execute(ctx.tool_name, arguments, ctx.tool_call_id)
 
             toolset.add_tool(
                 Tool.from_schema(
@@ -604,9 +723,10 @@ class PydanticAIRuntime(AgentRuntime):
                     name=binding.definition.name,
                     description=binding.definition.description,
                     json_schema=dict(binding.definition.parameters),
+                    takes_ctx=True,
                 )
             )
-        return toolset
+        return toolset.prepared(bridge.prepare_tools)
 
     @staticmethod
     def _map_usage(usage: object) -> LLMUsage | None:
@@ -699,6 +819,10 @@ class PydanticAIRuntime(AgentRuntime):
             provider_error_message=provider_error_message,
             framework_error_kind=framework_error_kind,
             framework_error_cause=framework_error_cause,
+            model_request_count=0 if bridge is None else bridge.model_request_count,
+            tool_attempt_count=0 if bridge is None else bridge.tool_attempt_count,
+            tool_attempt_admission_count=0 if bridge is None else bridge.invocation_count,
+            final_only_request_count=0 if bridge is None else bridge.final_only_request_count,
         )
 
     def _latency_ms(self, started_at: float) -> float:

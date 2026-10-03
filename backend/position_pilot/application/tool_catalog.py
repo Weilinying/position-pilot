@@ -77,6 +77,8 @@ class ToolExecutionRecord:
     error_code: str | None = None
     sources: tuple[Mapping[str, object], ...] = ()
     provider_fetch_count: int = 1
+    application_execution_count: int = 1
+    cache_reused: bool = False
 
     def __post_init__(self) -> None:
         if isinstance(self.provider_fetch_count, bool) or self.provider_fetch_count not in (0, 1):
@@ -93,6 +95,8 @@ class ToolExecutionResult:
     sources: tuple[Mapping[str, object], ...] = ()
     related_calls: tuple[ToolExecutionRecord, ...] = ()
     provider_fetch_count: int = 1
+    application_execution_count: int = 1
+    cache_reused: bool = False
 
     def __post_init__(self) -> None:
         if not self.status.strip():
@@ -198,7 +202,7 @@ class ToolExposure:
 
     @property
     def tool_call_budget(self) -> int:
-        """只汇总本轮实际暴露 Tool 的调用额度。"""
+        """汇总实际暴露工具的新执行配额，派生本轮总 attempt 准入额度。"""
 
         return sum(descriptor.max_calls_per_run for descriptor in self.descriptors)
 
