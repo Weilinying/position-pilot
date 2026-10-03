@@ -78,11 +78,11 @@ class _GeminiRequestTraceModel(WrapperModel):
         wrapped: Model,
         trace: list[dict[str, object]],
         *,
-        retry_connect_errors: bool = False,
+        retry_transport_errors: bool = False,
     ) -> None:
         super().__init__(wrapped)
         self.trace = trace
-        self.retry_connect_errors = retry_connect_errors
+        self.retry_transport_errors = retry_transport_errors
         self._model_request_index = 0
 
     async def request(
@@ -122,9 +122,9 @@ class _GeminiRequestTraceModel(WrapperModel):
             except BaseException as error:
                 diagnostics = _exception_diagnostics(error)
                 retry = (
-                    self.retry_connect_errors
+                    self.retry_transport_errors
                     and attempt_index == 1
-                    and isinstance(error, httpx.ConnectError)
+                    and isinstance(error, (httpx.ConnectError, httpx.ReadError))
                     and diagnostics["transport_error_category"] != "TLS_CERTIFICATE"
                 )
                 entry.update(
@@ -137,7 +137,7 @@ class _GeminiRequestTraceModel(WrapperModel):
                 self.trace.append(entry)
                 if not retry:
                     raise
-                # 只重发未取得响应的连接失败；不重跑 Tool、History 或整个 Agent Run。
+                # 连接或读取失败只重发原请求一次；不重跑 Tool、History 或整个 Agent Run。
                 attempt_index += 1
                 continue
             entry.update(
@@ -226,7 +226,7 @@ def gemini_runtime(*, api_key: str, model_name: str) -> PydanticAIRuntime:
                 yield _GeminiRequestTraceModel(
                     GoogleModel(model_name, provider=GoogleProvider(client=client)),
                     trace,
-                    retry_connect_errors=True,
+                    retry_transport_errors=True,
                 )
             finally:
                 await client.aio.aclose()

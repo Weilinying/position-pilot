@@ -145,7 +145,7 @@ Fixtures 和 Evaluation Rules，并保持工作区干净。
 
 ## Acceptance 与历史结果
 
-2026-10-03 Human Review 允许 Gemini Phase 4 Core 的连接重试：仅 `httpx.ConnectError`
+2026-10-03 Human Review 允许 Gemini Phase 4 Core 的传输重试：`httpx.ConnectError` 或 `httpx.ReadError`
 自动重发同一个模型请求一次（最多两个 Provider attempts）；明确 TLS 证书校验错误不重试。
 timeout、401/403、429、5xx、Schema、Tool quota 和 Behavioral failure 不触发此策略。
 重试使用原 Tool Result、History 与 Native Schema，不重新执行 Tool 或整个 Case，也不重置
