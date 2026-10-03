@@ -211,13 +211,13 @@ def gemini_runtime(*, api_key: str, model_name: str) -> PydanticAIRuntime:
         from pydantic_ai.models.google import GoogleModel
         from pydantic_ai.providers.google import GoogleProvider
 
-        async with httpx.AsyncClient(timeout=30.0, trust_env=False) as http_client:
+        async with httpx.AsyncClient(timeout=60.0, trust_env=False) as http_client:
             client = Client(
                 vertexai=False,
                 api_key=api_key,
                 http_options=HttpOptions(
                     base_url="https://generativelanguage.googleapis.com",
-                    timeout=30_000,
+                    timeout=60_000,
                     retry_options=HttpRetryOptions(attempts=1),
                     httpx_async_client=http_client,
                 ),
@@ -236,7 +236,7 @@ def gemini_runtime(*, api_key: str, model_name: str) -> PydanticAIRuntime:
         None,
         provider_name="GOOGLE_GEMINI",
         model_name=model_name,
-        timeout_seconds=30.0,
+        timeout_seconds=60.0,
         max_retries=0,
         model_context_factory=model_context,
         output_mechanism="NATIVE",

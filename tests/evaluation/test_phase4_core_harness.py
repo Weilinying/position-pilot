@@ -79,7 +79,7 @@ def test_offline_manifest_keeps_core_not_run_and_research_not_measured() -> None
 
 
 def test_eval_only_agent_budget_can_compare_prior_30_second_ceiling() -> None:
-    """4A Eval 显式保持 30 秒，不继承 Production 工作树的不同默认值。"""
+    """4A Eval 默认使用 60 秒，显式 30 秒仍可复现旧时限边界。"""
 
     default_runtime = ScriptedRuntime()
     diagnostic_runtime = ScriptedRuntime()
@@ -91,7 +91,7 @@ def test_eval_only_agent_budget_can_compare_prior_30_second_ceiling() -> None:
         case, diagnostic_runtime, wall_clock_budget_seconds=30.0
     ).answer_with_history(USER_ID, case.executable_questions[0], ())
 
-    assert default_runtime.requests[0].budget.wall_clock_seconds == 30.0
+    assert default_runtime.requests[0].budget.wall_clock_seconds == 60.0
     assert diagnostic_runtime.requests[0].budget.wall_clock_seconds == 30.0
 
 
@@ -120,8 +120,8 @@ def test_fixture_runner_uses_native_agent_and_preserves_unknown_usage(tmp_path: 
     assert record["usage"]["total_tokens"] == "UNKNOWN"
     assert record["turns"][0]["runtime_calls"][0]["provider_finish_reason"] is None
     assert result["summary"]["core_full"]["completed_case_count"] == 1
-    assert result["metadata"]["native_request_timeout_seconds"] == 30.0
-    assert result["metadata"]["wall_clock_budget_seconds"] == 30.0
+    assert result["metadata"]["native_request_timeout_seconds"] == 60.0
+    assert result["metadata"]["wall_clock_budget_seconds"] == 60.0
     assert result["summary"]["latency"]["median_ms"] is not None
     assert (artifact_dir / "manifest.json").is_file()
     assert (artifact_dir / "cases.jsonl").is_file()
@@ -504,16 +504,26 @@ def test_aihubmix_assembly_and_native_schema_match_smoke() -> None:
     asyncio.run(inspect())
 
 
-def test_gemini_core_assembly_uses_official_native_model_without_base_url() -> None:
+def test_gemini_core_assembly_uses_official_native_model_without_base_url(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Core 测试入口只读 Gemini Key，并复用 A/B 已验证的官方 Native 模型。"""
     import asyncio
 
+    from google.genai import Client
     from phase4_provider_support import _GeminiRequestTraceModel
     from pydantic_ai.models.google import GoogleModel
     from pydantic_ai.providers.google import GoogleProvider
 
     from position_pilot.integrations.pydantic_ai_runtime import PydanticAIRuntime
 
+    captured_options: list[Any] = []
+
+    def capture_client(**kwargs: Any) -> Client:
+        captured_options.append(kwargs["http_options"])
+        return Client(**kwargs)
+
+    monkeypatch.setattr("google.genai.Client", capture_client)
     values = {
         "LLM_PROVIDER": "GOOGLE_GEMINI",
         "LLM_MODEL": "gemini-3.8-flash",
@@ -524,7 +534,7 @@ def test_gemini_core_assembly_uses_official_native_model_without_base_url() -> N
     assert isinstance(runtime, PydanticAIRuntime)
     assert runtime.provider_name == "GOOGLE_GEMINI"
     assert runtime.model_name == "gemini-3.8-flash"
-    assert runtime.timeout_seconds == 30.0
+    assert runtime.timeout_seconds == 60.0
     assert runtime.max_retries == 0
     assert runtime._output_mechanism == "NATIVE"
     assert phase4_core_harness.create_run_metadata(environment=values).llm_base_url == (
@@ -538,6 +548,8 @@ def test_gemini_core_assembly_uses_official_native_model_without_base_url() -> N
             assert isinstance(model.wrapped, GoogleModel)
             assert type(model.wrapped._provider) is GoogleProvider
             assert model.retry_transport_errors is True
+            assert captured_options[0].timeout == 60_000
+            assert captured_options[0].httpx_async_client.timeout.read == 60.0
 
     asyncio.run(inspect())
 

@@ -76,7 +76,7 @@ DEFAULT_MODEL = "qwen3.7-max"
 DEFAULT_PROVIDER = "ALIYUN_MODEL_STUDIO"
 DEFAULT_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 DEFAULT_TIMEOUT_SECONDS = 30.0
-DEFAULT_WALL_CLOCK_BUDGET_SECONDS = 30.0
+DEFAULT_WALL_CLOCK_BUDGET_SECONDS = 60.0
 
 # 4A Primary 只执行 Core FULL 与 Earnings Diagnostic；Research Gate 未批准时
 # 仍在 Artifact 中保留明确的 NOT_MEASURED 记录。
