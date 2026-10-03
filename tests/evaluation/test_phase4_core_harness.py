@@ -537,6 +537,7 @@ def test_gemini_core_assembly_uses_official_native_model_without_base_url() -> N
             assert isinstance(model, _GeminiRequestTraceModel)
             assert isinstance(model.wrapped, GoogleModel)
             assert type(model.wrapped._provider) is GoogleProvider
+            assert model.retry_connect_errors is True
 
     asyncio.run(inspect())
 

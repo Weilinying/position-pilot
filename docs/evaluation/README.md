@@ -145,6 +145,19 @@ Fixtures 和 Evaluation Rules，并保持工作区干净。
 
 ## Acceptance 与历史结果
 
+2026-10-03 Human Review 允许 Gemini Phase 4 Core 的连接重试：仅 `httpx.ConnectError`
+自动重发同一个模型请求一次（最多两个 Provider attempts）；明确 TLS 证书校验错误不重试。
+timeout、401/403、429、5xx、Schema、Tool quota 和 Behavioral failure 不触发此策略。
+重试使用原 Tool Result、History 与 Native Schema，不重新执行 Tool 或整个 Case，也不重置
+30s per-turn wall-clock。SDK / PydanticAI / Output 重试仍为0；Production不启用此测试策略。
+
+`model_request_count` 继续计 Agent Loop 的模型 step，最多8；物理 Provider 请求尝试另计
+`provider_model_request_attempt_count`，最多16（不含原配置 Application Repair 的独立请求）。
+Trace 的 `request_index` 是 Run 内物理尝试序号；`model_request_index` 是当前 Runtime Call
+内模型 step，`attempt_index` 为该 step 的第1/2次尝试。首次错误不删除；重试后成功明确记录
+`transport_retry_count` 和 `transport_retry_recovered_count`，不能表述为首次请求成功。
+更改 Retry Policy 后使用新 Candidate / 独立 Run，不改写冻结 V4 的 Retry=0 历史证据。
+
 8-Case Model Comparison 只选择值得进入完整 Dataset 的候选，不代表 M6 完成。候选必须继续完成全量 Dataset、Automated Evaluation 与 Human Factual Grounding，才能进入 M6 Human Acceptance。
 
 真实 Alpaca Market / News、Investment Agent Online Smoke 与 PostgreSQL Integration 可作为 Human Acceptance Evidence；受 Credential 或第三方服务状态影响的 Online Smoke 不作为常规 CI Gate。

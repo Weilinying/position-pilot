@@ -73,9 +73,17 @@ def _exception_diagnostics(error: BaseException) -> dict[str, object]:
 class _GeminiRequestTraceModel(WrapperModel):
     """记录每次模型返回的工具名称，区分分步调用与同轮批量调用。"""
 
-    def __init__(self, wrapped: Model, trace: list[dict[str, object]]) -> None:
+    def __init__(
+        self,
+        wrapped: Model,
+        trace: list[dict[str, object]],
+        *,
+        retry_connect_errors: bool = False,
+    ) -> None:
         super().__init__(wrapped)
         self.trace = trace
+        self.retry_connect_errors = retry_connect_errors
+        self._model_request_index = 0
 
     async def request(
         self,
@@ -85,8 +93,9 @@ class _GeminiRequestTraceModel(WrapperModel):
     ) -> ModelResponse:
         latest = messages[-1] if messages else None
         parts = latest.parts if isinstance(latest, ModelRequest) else ()
-        entry: dict[str, object] = {
-            "request_index": len(self.trace) + 1,
+        self._model_request_index += 1
+        context: dict[str, object] = {
+            "model_request_index": self._model_request_index,
             "execution_phase": "MODEL_REQUEST",
             "provider": "GOOGLE_GEMINI",
             "model": self.wrapped.model_name,
@@ -97,30 +106,51 @@ class _GeminiRequestTraceModel(WrapperModel):
                 isinstance(part, RetryPromptPart) for part in parts
             ),
         }
-        started = monotonic()
-        try:
-            response = await self.wrapped.request(
-                messages, model_settings, model_request_parameters
-            )
-        except BaseException as error:
+        attempt_index = 1
+        while True:
+            entry: dict[str, object] = {
+                **context,
+                "request_index": len(self.trace) + 1,
+                "attempt_index": attempt_index,
+                "transport_retry": attempt_index > 1,
+            }
+            started = monotonic()
+            try:
+                response = await self.wrapped.request(
+                    messages, model_settings, model_request_parameters
+                )
+            except BaseException as error:
+                diagnostics = _exception_diagnostics(error)
+                retry = (
+                    self.retry_connect_errors
+                    and attempt_index == 1
+                    and isinstance(error, httpx.ConnectError)
+                    and diagnostics["transport_error_category"] != "TLS_CERTIFICATE"
+                )
+                entry.update(
+                    status="ERROR",
+                    error_type=type(error).__name__,
+                    latency_ms=round((monotonic() - started) * 1000, 2),
+                    retry_scheduled=retry,
+                )
+                entry.update(diagnostics)
+                self.trace.append(entry)
+                if not retry:
+                    raise
+                # 只重发未取得响应的连接失败；不重跑 Tool、History 或整个 Agent Run。
+                attempt_index += 1
+                continue
             entry.update(
-                status="ERROR",
-                error_type=type(error).__name__,
+                status="COMPLETED",
                 latency_ms=round((monotonic() - started) * 1000, 2),
+                response_part_types=[type(part).__name__ for part in response.parts],
+                tool_call_names=[
+                    part.tool_name for part in response.parts if isinstance(part, ToolCallPart)
+                ],
+                retry_scheduled=False,
             )
-            entry.update(_exception_diagnostics(error))
             self.trace.append(entry)
-            raise
-        entry.update(
-            status="COMPLETED",
-            latency_ms=round((monotonic() - started) * 1000, 2),
-            response_part_types=[type(part).__name__ for part in response.parts],
-            tool_call_names=[
-                part.tool_name for part in response.parts if isinstance(part, ToolCallPart)
-            ],
-        )
-        self.trace.append(entry)
-        return response
+            return response
 
 
 def probe_provider(client: AsyncOpenAI, provider_name: str) -> Provider[AsyncOpenAI]:
@@ -194,7 +224,9 @@ def gemini_runtime(*, api_key: str, model_name: str) -> PydanticAIRuntime:
             )
             try:
                 yield _GeminiRequestTraceModel(
-                    GoogleModel(model_name, provider=GoogleProvider(client=client)), trace
+                    GoogleModel(model_name, provider=GoogleProvider(client=client)),
+                    trace,
+                    retry_connect_errors=True,
                 )
             finally:
                 await client.aio.aclose()

@@ -154,6 +154,7 @@ class RecordingAgentRuntime:
         trace_start = len(request_trace) if isinstance(request_trace, list) else 0
         started_at = monotonic()
         result = self.delegate.run(request)
+        current_trace = list(request_trace[trace_start:]) if isinstance(request_trace, list) else []
         self.calls.append(
             {
                 "status": result.status.value,
@@ -205,8 +206,16 @@ class RecordingAgentRuntime:
                     item.provider_fetch_count for item in result.tool_trace
                 ),
                 "source_count": len(result.sources),
-                "model_requests": (
-                    list(request_trace[trace_start:]) if isinstance(request_trace, list) else []
+                "model_requests": current_trace,
+                "provider_model_request_attempt_count": (
+                    len(current_trace) if isinstance(request_trace, list) else UNKNOWN
+                ),
+                "transport_retry_count": sum(
+                    item.get("transport_retry") is True for item in current_trace
+                ),
+                "transport_retry_recovered_count": sum(
+                    item.get("transport_retry") is True and item.get("status") == "COMPLETED"
+                    for item in current_trace
                 ),
             }
         )
