@@ -15,16 +15,21 @@ pytest 负责验证 Tool Selection / Trace、参数与预算、Response Status�
 Human Review 负责判断自由文本是否：
 
 - 越过 `UNKNOWN` 或 Source Boundary；
-- 把 Cash / Quote 数值关系错误解释为实际购买能力；
+- 未请求数量时主动比较 Cash / Budget 与单股价格，或据此推断实际购买能力；
 - 正确使用 Historical BUY Facts 与 `LONG_TERM` / `SWING`；
 - 把 Market Regime 或 Position Type 转化成过强建议；
 - 出现自动规则无法低误报识别的事实错误或推荐强度问题。
 
 `Automated Pass != Human Grounding Pass`。合法 `source_refs` 只证明来源声明满足 Application Contract，不证明每个自然语言 Claim 正确。
 
+2026-10-03：成功 Quote 不再自动提供 Cash / 单股价格的派生关系，也不再允许复述该旧字段。
+Cash 和 Quote 分别保留；显式数量请求仍须使用 Application 提供的可靠确定性结果。
+旧 Behavioral Dataset 因输入/评审口径变更升级为 1.1；Phase 4 AQ Dataset 0.2 与固定行情 Fixture 不变。
+历史 Artifact 不回写，详见[清理决策](../engineering-notes/phase4-cash-quote-context-interference.md)。
+
 ## Dataset
 
-当前 Dataset Version 为 `1.0`，定义在 `tests/evaluation/test_real_model_behavior.py`。每个 `BehavioralCase` 包含固定问题、Portfolio 与 Provider Fixtures、Automated Tool / Status Expectations、Human Checks，以及存在时的 Case-specific Known Limitation。
+当前 Dataset Version 为 `1.1`，定义在 `tests/evaluation/test_real_model_behavior.py`。每个 `BehavioralCase` 包含固定问题、Portfolio 与 Provider Fixtures、Automated Tool / Status Expectations、Human Checks，以及存在时的 Case-specific Known Limitation。
 
 Coverage Matrix 与 Controlled Contrast 也保存在同一文件。pytest 继续作为唯一 Execution Engine；Harness 不重新实现测试发现或断言。
 

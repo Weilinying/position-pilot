@@ -310,12 +310,15 @@ def test_native_amount_policy_replaces_legacy_policy(with_history: bool) -> None
     assert "普通加仓分析涉及资金分配时" not in prompt
 
 
-def test_legacy_system_prompt_remains_frozen() -> None:
-    """保留修改前完整 Prompt 的摘要，避免重组改变旧 Runtime 对照基线。"""
+def test_system_prompt_and_tools_do_not_encourage_cash_to_quote_comparison() -> None:
+    """当前版本删除旧比较引导；旧冻结版本保留在各自 Commit 中。"""
 
     assert hashlib.sha256(SYSTEM_PROMPT.encode()).hexdigest() == (
-        "8426116a285ec144ac1bebc948683ced4a1bc15de4990748f78835f2b95214b0"
+        "d110e4709f2a1ec1fefb26e836e90a8ef475a5082b92334bc20719e8ee56ff70"
     )
+    for instructions in (SYSTEM_PROMPT, *(tool.description for tool in CONTEXT_TOOLS)):
+        assert "cash_vs_one_share_price" not in instructions
+        assert "Cash/Quote" not in instructions
 
 
 def test_conversation_revision_prompt_requires_fresh_relevant_evidence() -> None:
@@ -370,7 +373,8 @@ def test_quote_binding_executes_application_tool_and_registers_real_source(quest
         facts = payload["deterministic_derived_facts"]
         assert isinstance(facts, dict)
         assert "executable_purchase_quantity" not in facts
-        assert "cash_vs_one_share_price" in facts
+        assert "cash_vs_one_share_price" not in facts
+        assert "cash_quote_relation_allowed_use" not in contract
         assert "price_vs_average_cost_by_position" in facts
         trace = AgentToolTrace(
             "get_current_quote",

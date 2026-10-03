@@ -282,10 +282,11 @@ def test_quote_context_does_not_require_unsolicited_quantity_framing(question: s
     assert observations[0]["last_price"] == "210.25"
     facts = observations[0]["deterministic_derived_facts"]
     assert isinstance(facts, dict)
-    assert facts["cash_vs_one_share_price"]["relation"] == "ABOVE"
+    assert "cash_vs_one_share_price" not in facts
     assert "executable_purchase_quantity" not in facts
     contract = observations[0]["response_contract"]
     assert isinstance(contract, dict)
+    assert "cash_quote_relation_allowed_use" not in contract
     assert contract["purchase_execution_status_reporting"] == (
         "ONLY_WHEN_USER_ASKS_EXECUTABILITY_OR_ACCOUNT_PERMISSIONS"
     )

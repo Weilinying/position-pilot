@@ -130,10 +130,7 @@ BASE_SYSTEM_PROMPT = "\n".join(
             "Average Cost、缺席 Ticker 或确定性持仓结构时，必须直接回答且不得调用 Tool；"
             "Portfolio 中出现 Ticker 本身不是调用 Quote 的理由。"
         ),
-        (
-            "5. 判断需要当前价格、Cash/Quote 关系或 Quote/Average Cost 关系时，"
-            "必须调用 get_current_quote。"
-        ),
+        ("5. 判断需要当前价格或 Quote/Average Cost 关系时，必须调用 get_current_quote。"),
         "询问今天或现在是否加仓、减仓或建仓，本身即需要 Current Quote；无需用户另行要求报价。",
         (
             "Market Context、Portfolio Facts 或历史 BUY 事实都不能替代"
@@ -141,7 +138,7 @@ BASE_SYSTEM_PROMPT = "\n".join(
         ),
         "若判断 Current Quote 必要且 Tool 可用，必须立即调用，不得询问用户是否需要调用。",
         (
-            "每次 get_current_quote 调用必须声明 request_purpose：纯价格或 Cash/Quote 数值比较使用 "
+            "每次 get_current_quote 调用必须声明 request_purpose：纯价格查询使用 "
             "INFORMATION_RETRIEVAL；没有明确既定交易规则、并要求判断当前是否应该增加或减少"
             "风险暴露时使用 DISCRETIONARY_CURRENT_RISK_ACTION；按既定规则确认或执行已决定动作"
             "时使用 RULE_OR_EXECUTION_CHECK。"
@@ -169,7 +166,7 @@ BASE_SYSTEM_PROMPT = "\n".join(
             "时，get_market_context 属于 minimum decision context。"
         ),
         (
-            "纯报价、Portfolio Facts、Cash/Quote 数值关系、Recent Price History、"
+            "纯报价、Portfolio Facts、Recent Price History、"
             "Recent News，以及按明确 Strategy / Trade Plan / Exit Rule 确认或执行动作时，"
             "不得仅因出现建仓、加仓或减仓字样机械调用 Market Context。"
         ),
@@ -189,7 +186,6 @@ BASE_SYSTEM_PROMPT = "\n".join(
             "Application 只验证来源真实性，不从 answer 反向解析金融事实。"
         ),
         "不得声明未成功取得的 Source；Source Reference 不是逐句 Citation。",
-        "cash_vs_one_share_price 只表示数值关系，不表示交易资格、能否成交或可买至少一股。",
     )
 )
 
@@ -217,7 +213,7 @@ SYSTEM_PROMPT = BASE_SYSTEM_PROMPT + "\n" + LEGACY_AMOUNT_ANALYSIS_PROMPT
 CURRENT_QUOTE_TOOL = LLMToolDefinition(
     name=CURRENT_QUOTE_TOOL_NAME,
     description=(
-        "获取美股或美国上市 ETF 的当前 Quote；回答需要当前价格、Cash/Quote 或 "
+        "获取美股或美国上市 ETF 的当前 Quote；回答需要当前价格或 "
         "Quote/Average Cost 关系时立即调用；今天或现在是否加仓、减仓或建仓属于此类。"
         "Portfolio Snapshot 已包含 available cash、positions、shares 和 average cost；"
         "若问题仅询问 Cash、Position、Shares、Position Type、Average Cost、缺席 Ticker"
@@ -294,7 +290,7 @@ MARKET_CONTEXT_TOOL = LLMToolDefinition(
         "获取基于固定 SPY 调整后 Daily Bars 的确定性 V1 Market Regime。"
         "用于没有明确既定交易规则、并要求判断当前是否应该增加或减少风险暴露的问题，"
         "以及明确的整体市场风险或 Market Regime 问题；"
-        "纯报价、Cash/Quote 数值比较、Portfolio Facts、Recent Price History、Recent News，"
+        "纯报价、Portfolio Facts、Recent Price History、Recent News，"
         "或按既定规则确认/执行动作时不得机械调用。"
         "该 Regime 是未回测的工程启发式市场压力描述，不是行业标准或投资信号。"
     ),

@@ -422,7 +422,6 @@ class PositionPriceRelation:
 class QuoteDerivedFacts:
     """Quote 成功后自动产生的最小确定性关系，不表示交易可执行性。"""
 
-    cash_vs_one_share_price: DecimalRelation
     price_vs_average_cost_by_position: tuple[PositionPriceRelation, ...]
     executable_purchase_quantity: str = "UNKNOWN"
 
@@ -447,10 +446,6 @@ class QuoteDerivedFacts:
             if position.ticker == quote.ticker
         )
         return cls(
-            cash_vs_one_share_price=_decimal_relation(
-                snapshot.available_cash,
-                quote.last_price,
-            ),
             price_vs_average_cost_by_position=relations,
         )
 
@@ -458,16 +453,6 @@ class QuoteDerivedFacts:
         """输出不包含购买股数或 Position Sizing 的派生事实。"""
 
         return {
-            "cash_vs_one_share_price": {
-                "relation": self.cash_vs_one_share_price.value,
-                "meaning": "numeric_comparison_only",
-                "supports_purchase_execution_conclusion": False,
-                "prohibited_interpretations": [
-                    "cash_is_sufficient_or_insufficient_to_buy",
-                    "can_or_cannot_buy_one_share",
-                    "cash_covers_or_does_not_cover_one_share",
-                ],
-            },
             "executable_purchase_quantity": {
                 "status": self.executable_purchase_quantity,
                 "reason": "asset_metadata_and_order_capabilities_unavailable",
@@ -487,7 +472,6 @@ def quote_response_contract() -> dict[str, object]:
         "cross_ticker_quote_comparison": "PROHIBITED_UNLESS_PROVIDED",
         "new_financial_calculations": "ONLY_APPLICATION_PROVIDED_DETERMINISTIC_FACTS",
         "purchase_execution_conclusion": "PROHIBITED",
-        "cash_quote_relation_allowed_use": "repeat_relation_only",
         "amount_based_analysis": "ALLOWED_WITHIN_EXPLICIT_BUDGET_WITH_CASH_REPORTED_SEPARATELY",
         "fractional_permission_required_for_amount_analysis": False,
         "theoretical_share_quantity": (

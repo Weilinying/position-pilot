@@ -983,7 +983,8 @@ def test_model_selected_market_context_is_not_added_twice() -> None:
     assert providers.market_context_requests == 1
 
 
-def test_quote_result_includes_only_proven_deterministic_relations() -> None:
+@pytest.mark.parametrize("available_cash", ("25", "210.25", "800"))
+def test_quote_result_includes_only_proven_deterministic_relations(available_cash: str) -> None:
     """Quote 派生关系由代码生成，且不伪造可执行购买数量。"""
 
     agent, _, market_data, llm = make_agent(
@@ -992,24 +993,17 @@ def test_quote_result_includes_only_proven_deterministic_relations() -> None:
             quote_final_message("基于当前已知事实的回答", "GOOG"),
         ],
         market_results={"GOOG": quote("GOOG", "210.25")},
+        portfolio=make_portfolio(available_cash=available_cash),
     )
 
     assert_answer(agent.answer(USER_ID, "结合我的状态，GOOG 今天还能加一点吗？"))
 
+    snapshot = json.loads(llm.completions[0].messages[-1].content or "")["portfolio_snapshot"]
+    assert snapshot["available_cash"] == available_cash
     tool_content = llm.completions[1].messages[-1].content
     assert tool_content is not None
     derived_facts = json.loads(tool_content)["deterministic_derived_facts"]
     assert derived_facts == {
-        "cash_vs_one_share_price": {
-            "relation": "ABOVE",
-            "meaning": "numeric_comparison_only",
-            "supports_purchase_execution_conclusion": False,
-            "prohibited_interpretations": [
-                "cash_is_sufficient_or_insufficient_to_buy",
-                "can_or_cannot_buy_one_share",
-                "cash_covers_or_does_not_cover_one_share",
-            ],
-        },
         "executable_purchase_quantity": {
             "status": "UNKNOWN",
             "reason": "asset_metadata_and_order_capabilities_unavailable",
@@ -1037,7 +1031,6 @@ def test_quote_result_includes_only_proven_deterministic_relations() -> None:
     assert tool_payload["ask_price"] is None
     assert tool_payload["response_contract"] == {
         "amount_based_analysis": ("ALLOWED_WITHIN_EXPLICIT_BUDGET_WITH_CASH_REPORTED_SEPARATELY"),
-        "cash_quote_relation_allowed_use": "repeat_relation_only",
         "current_quote_value_in_answer": "ALLOWED_FROM_SUCCESSFUL_TOOL_CONTEXT",
         "cross_ticker_quote_comparison": "PROHIBITED_UNLESS_PROVIDED",
         "fractional_permission_required_for_amount_analysis": False,
@@ -1052,7 +1045,7 @@ def test_quote_result_includes_only_proven_deterministic_relations() -> None:
 
 
 def test_quote_without_position_does_not_invent_price_to_cost_relation() -> None:
-    """无对应 Position 时只提供 Cash 关系，不生成 Average Cost 关系。"""
+    """无对应 Position 时不生成成本关系，也不注入现金与单股价格比较。"""
 
     agent, _, market_data, llm = make_agent(
         [
@@ -1067,16 +1060,8 @@ def test_quote_without_position_does_not_invent_price_to_cost_relation() -> None
     tool_content = llm.completions[1].messages[-1].content
     assert tool_content is not None
     derived_facts = json.loads(tool_content)["deterministic_derived_facts"]
-    assert derived_facts["cash_vs_one_share_price"] == {
-        "relation": "BELOW",
-        "meaning": "numeric_comparison_only",
-        "supports_purchase_execution_conclusion": False,
-        "prohibited_interpretations": [
-            "cash_is_sufficient_or_insufficient_to_buy",
-            "can_or_cannot_buy_one_share",
-            "cash_covers_or_does_not_cover_one_share",
-        ],
-    }
+    assert "cash_vs_one_share_price" not in derived_facts
+    assert "cash_quote_relation_allowed_use" not in json.loads(tool_content)["response_contract"]
     assert derived_facts["executable_purchase_quantity"] == {
         "status": "UNKNOWN",
         "reason": "asset_metadata_and_order_capabilities_unavailable",
