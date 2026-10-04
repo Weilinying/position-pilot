@@ -499,9 +499,7 @@ def _real_llm() -> OpenAICompatibleLLMProvider:
     api_key = os.getenv("LLM_API_KEY")
     base_url = os.getenv("LLM_BASE_URL", DEFAULT_LLM_BASE_URL)
     model = os.getenv("LLM_MODEL", DEFAULT_EVALUATION_MODEL)
-    timeout_seconds = float(
-        os.getenv("LLM_REQUEST_TIMEOUT_SECONDS", DEFAULT_LLM_TIMEOUT_SECONDS)
-    )
+    timeout_seconds = float(os.getenv("LLM_REQUEST_TIMEOUT_SECONDS", DEFAULT_LLM_TIMEOUT_SECONDS))
     if provider_name == ALIYUN_MODEL_STUDIO:
         return AliyunLLMProvider(
             api_key=api_key,

@@ -223,9 +223,7 @@ def test_dynamic_catalog_rejects_disabled_and_unknown_tools() -> None:
     """禁用与未知 Tool 在进入 Framework 前被 Application 拒绝。"""
 
     executor = FunctionToolExecutor(lambda arguments: ToolObservation("OK", dict(arguments)))
-    catalog = ToolCatalog(
-        (CatalogTool(_definition("disabled", {}), executor, enabled=False),)
-    )
+    catalog = ToolCatalog((CatalogTool(_definition("disabled", {}), executor, enabled=False),))
 
     with pytest.raises(ToolCatalogError, match="DISABLED_TOOL"):
         catalog.expose(("disabled",))

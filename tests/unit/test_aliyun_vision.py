@@ -158,9 +158,9 @@ def test_invalid_response_warning_contains_shape_only(caplog: pytest.LogCaptureF
         if record.name == "position_pilot.integrations.aliyun_vision"
     )
     assert "secret text" not in str(record.__dict__)
-    assert record.payload_shape["content_type"] == "str"
-    assert record.stage == "completion_parse"
-    assert record.failure_kind == "INVALID_COMPLETION_RESPONSE"
+    assert record.__dict__["payload_shape"]["content_type"] == "str"
+    assert record.__dict__["stage"] == "completion_parse"
+    assert record.__dict__["failure_kind"] == "INVALID_COMPLETION_RESPONSE"
 
 
 def test_invalid_draft_warning_uses_schema_stage(caplog: pytest.LogCaptureFixture) -> None:
@@ -187,8 +187,8 @@ def test_invalid_draft_warning_uses_schema_stage(caplog: pytest.LogCaptureFixtur
         for record in caplog.records
         if record.name == "position_pilot.integrations.aliyun_vision"
     )
-    assert record.stage == "draft_schema"
-    assert record.failure_kind == "INVALID_DRAFT_SCHEMA"
+    assert record.__dict__["stage"] == "draft_schema"
+    assert record.__dict__["failure_kind"] == "INVALID_DRAFT_SCHEMA"
 
 
 def test_text_uses_data_only_instruction_and_never_enters_agent_contract() -> None:

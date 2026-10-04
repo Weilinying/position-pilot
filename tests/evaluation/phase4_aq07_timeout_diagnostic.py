@@ -68,9 +68,7 @@ class TimedModel(WrapperModel):
 
         started_at = monotonic()
         try:
-            result = await self.wrapped.request(
-                messages, model_settings, model_request_parameters
-            )
+            result = await self.wrapped.request(messages, model_settings, model_request_parameters)
         except asyncio.CancelledError:
             self._trace.mark("MODEL_REQUEST", started_at, status="CANCELLED_BY_BUDGET")
             raise
@@ -79,9 +77,7 @@ class TimedModel(WrapperModel):
                 "MODEL_REQUEST", started_at, status="ERROR", error_type=type(error).__name__
             )
             raise
-        tool_names = [
-            part.tool_name for part in result.parts if isinstance(part, ToolCallPart)
-        ]
+        tool_names = [part.tool_name for part in result.parts if isinstance(part, ToolCallPart)]
         usage = result.usage
         self._trace.mark(
             "MODEL_REQUEST",
@@ -122,8 +118,11 @@ class TimedToolRuntime:
                     result = binding.executor(arguments)
                 except Exception as error:
                     self.trace.mark(
-                        "TOOL", started_at, name=binding.definition.name,
-                        status="ERROR", error_type=type(error).__name__,
+                        "TOOL",
+                        started_at,
+                        name=binding.definition.name,
+                        status="ERROR",
+                        error_type=type(error).__name__,
                     )
                     raise
                 self.trace.mark(
@@ -167,9 +166,7 @@ def run_aq07_timeout_diagnostic(
             api_key=api_key, base_url=base_url, timeout=timeout_seconds, max_retries=0
         )
         try:
-            model = OpenAIChatModel(
-                model_name, provider=AlibabaProvider(openai_client=client)
-            )
+            model = OpenAIChatModel(model_name, provider=AlibabaProvider(openai_client=client))
             yield TimedModel(model, trace)
         finally:
             await client.close()
@@ -194,9 +191,7 @@ def run_aq07_timeout_diagnostic(
         "answer": turn.get("answer"),
         "latency_ms": turn["latency_ms"],
         "repair_count": turn["repair_count"],
-        "tool_names": [
-            item["name"] for item in cast(list[dict[str, object]], turn["tool_trace"])
-        ],
+        "tool_names": [item["name"] for item in cast(list[dict[str, object]], turn["tool_trace"])],
         "usage": turn["usage"],
     }
     artifact = {

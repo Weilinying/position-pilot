@@ -101,9 +101,9 @@ def test_conversation_uow_recovers_account_owned_turn_and_source() -> None:
         assert history.answers[0].message_id == completed.assistant_message.id
         assert history.answers[0].sources[0].provider_reference == "quote:GOOG"
         assert history.answers[0].warnings == ("USAGE_NOT_REPORTED",)
-        assert recovered.get_thread(account_id, thread.id).last_turn.warnings == (
-            "USAGE_NOT_REPORTED",
-        )
+        last_turn = recovered.get_thread(account_id, thread.id).last_turn
+        assert last_turn is not None
+        assert last_turn.warnings == ("USAGE_NOT_REPORTED",)
         with create_session_factory(engine)() as session:
             source_count = session.scalar(
                 select(MessageSourceModel.source_id).where(
