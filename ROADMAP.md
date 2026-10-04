@@ -13,7 +13,7 @@
 **Current Milestone:** M13 — Position-Aware Market Chart
 **Status:** DONE — Human Accepted and merged to local `main`（2026-09-13）
 **Current Release State:** `v1.3.0` Release Candidate 已进入本地 `main`；Git Tag / GitHub Release 尚待发布
-**Next Planned Work:** Answer Quality Phase 4 P4-T5 Core（IN PROGRESS）；M10、M12 继续暂缓
+**Next Planned Work:** Answer Quality Phase 4 P4-T8（操作验证完成，等待 Final Human Acceptance）；M10、M12 继续暂缓
 
 Milestone 状态统一使用 `NOT STARTED`、`IN PROGRESS`、`DONE`，不维护百分比进度。
 
@@ -537,6 +537,11 @@ Human Review，Phase 3 至此完成。当时尚未批准
 Intent 修订后通过 Human Review。当前授权严格限定为 P4-T0 → T1 → T2 → T3 → T4A → T5 Core；
 T5 Report 后必须暂停，未经下一次 Human Review 不进入 T6～T8。T4R Research Decision 继续作为独立
 Gate，不阻塞 Runtime / Conversation 实现。
+
+2026-10-05 Phase 4 收尾：4A 已获 Human Acceptance，4B T6/T7 已实现并获得 Primary / Repeat 有限验收，
+AQ12 r1 非致命语言概括瑕疵获明确例外通过。T8 浏览器 / 隔离 SQL / 保留数据的应用回退完成；
+[最终报告](docs/evaluation/reports/2026-10-05-phase4-t8-final.md)等待整个 Phase 4 Final Human Acceptance。
+AQ04、Research / Web Search 和完整 Memory 继续延期；不新建 Release / Tag，不提前 merge main。
 
 只有上述范围通过 Human Review，并由固定 Evaluation 或真实 Failure Mode 证明最小方案后，才新增对应正式 Milestone、实施 Plan、ADR 与 Release Mapping；Discovery 工作计划不等于实施或选型批准。Discovery 不预设 Vector Database、LangGraph、Multi-Agent 或不受控 General Browser。
 

@@ -95,3 +95,9 @@ r2/r3 首轮均生成 `GOOG:LONG_TERM / POSITION_PLAN_V1 / INVALIDATE / PENDING`
 
 本轮只做离线 Artifact / 引用 digest / 来源与生命周期一致性检查、冻结预检和文档 Review。
 无 Production 修改，无新增在线请求，无 .env 读取，无 main 合并 / push。没有代码变更，不重复无关 pytest。
+
+## Human Decision（2026-10-04）
+
+Human 明确接受 AQ12 r1 历史概括偏强为已知 non-blocking finding，给予本次压力测试例外通过。
+原 CS / EI 建议 1 分及冻结最低分保持原始记录；Critical PASS；不改 Prompt，不重跑任何测试。
+批准进入 T8 浏览器、数据保留回退演练和最终报告。整个 Phase 4 Final Acceptance 仍待 T8 后单独确认。

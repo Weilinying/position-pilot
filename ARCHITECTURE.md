@@ -477,7 +477,7 @@ LLM_INVALID_PROVIDER_RESPONSE
 
 ## 14. Phase 4 Conversation / Confirmed Intent Boundary
 
-2026-10-04：4A 已通过 Human Acceptance；4B/T6 已完成离线实现，4B 行为验收尚未完成。
+2026-10-05：4A 已通过 Human Acceptance；4B Primary / Repeat 已获 Human 有限接受（AQ12 r1 语言瑕疵例外）。T8 浏览器 / SQL 与应用回退验证完成，整个 Phase 4 Final Human Acceptance 待确认。
 §7 / §8 / §13 中独立 Question、单个 Tool Round 与无持久对话的描述属于旧接口边界。
 
 当前 `/v1/threads` 使用 Account-owned Conversation Service，保存 User / 成功 Assistant Message、
@@ -509,3 +509,8 @@ Memory 通过 Conversation Adapter 的既有只读 Reader 检索，在进入 Nat
 scope、confirmed 和有效期；Production 默认 NoOp。Fixture 可显式给定检索 scope，非空结果仅作为
 非权威背景注入，不能覆盖 Ledger、Confirmed Intent 或当前用户指令。未接入真实 Memory 服务、
 Scope 选择模型或写入能力；完整 Decision Memory / 自动记忆仍不属于本阶段。
+
+T8 使用真实前端 / API / PostgreSQL 与明确外部 Fixture 验证生命周期及应用回退；不是新 Provider 联网验收。
+回退保留 Migration 0011 与 Conversation / Strategy / Ledger，恢复新版后业务摘要一致。
+[最终范围、原生删除确认限制与证据](docs/evaluation/reports/2026-10-05-phase4-t8-final.md)。
+Legacy 不在 Production 装配路径，源码清理依原计划在 Final Acceptance 后进行。

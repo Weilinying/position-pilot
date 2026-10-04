@@ -77,3 +77,12 @@
   不满足冻结逐次最低分，不能用另外两次抵消。
 - 一次 ConnectError 经既有 transport retry 恢复；无最终 failure / timeout / Repair。
 - 等待 Human 决定是否接受上述已知质量瑕疵作为本次验收例外后进入 T8；不自动修 Prompt、重跑或扩大 Core。
+
+## T8 收尾（2026-10-05）
+
+T7 已获 Human 例外通过，保留 AQ12 r1 扣分与 non-blocking finding，不改 Prompt / 不重跑套件。
+T8 真实浏览器 + FastAPI + 隔离 PostgreSQL 生命周期、跨 Owner、应用回退 / 前向恢复已完成。
+原生删除 confirm 因 macOS 锁屏未完成，HTTP + SQL 删除 / 取消边界通过；不伪装浏览器成功。
+详见 [最终报告](../evaluation/reports/2026-10-05-phase4-t8-final.md)。临时服务已停止，原数据库未操作。
+当前状态：等待整个 Phase 4 Final Human Acceptance，未 merge / push。Legacy 已退出 Production Bootstrap；
+源码物理清理按原计划 §12.4 在 Final Acceptance 后执行，不在本轮无测试重跑条件下改共享模块。

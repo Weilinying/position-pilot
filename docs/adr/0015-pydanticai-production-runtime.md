@@ -83,3 +83,12 @@ Current Runtime 的 `LLM_REQUEST_TIMEOUT_SECONDS=30` 回归基线保持不变；
 - 产品需要 Multi-Agent 或 Durable Workflow，且 Single Agent + Application-owned State 已证明不足。
 
 任何重新考虑都必须通过新的 ADR / Capability Spike 和 Human Review，不在 Phase 4 内临时扩展。
+
+### 2026-10-05 实施与回退证据
+
+4A 已获 Human Acceptance；4B 仅保存显式确认、按仓位 scope 隔离的持续意图，Primary / Repeat
+已获有限接受，AQ12 r1 语言概括偏强保留为例外。PydanticAI 为唯一 Production Bootstrap Runtime，
+Gemini 官方接线仍只在 Eval；NoOp Memory、Research 延期等边界未扩大。
+T8 真实浏览器 / SQL 及应用 Artifact 回退演练完成，保留 additive Schema 与所有业务数据，
+[最终报告](../evaluation/reports/2026-10-05-phase4-t8-final.md)等待 Final Human Acceptance；未 merge / push。
+该记录是已批准方案的实施证据，不引入新框架、Provider、Migration 回退或发布承诺。
