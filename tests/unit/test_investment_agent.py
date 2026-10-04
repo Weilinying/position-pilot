@@ -8,9 +8,11 @@ from uuid import UUID
 
 import pytest
 
+from legacy.investment_agent import (
+    InvestmentAgent,
+)
 from position_pilot.application.investment_agent import (
     ContextSourceType,
-    InvestmentAgent,
     InvestmentAnswer,
     InvestmentFailureCode,
     InvestmentRequestFailure,
@@ -746,7 +748,7 @@ def test_no_tool_call_returns_ok_without_mechanical_market_request(
 ) -> None:
     """模型直接回答 Portfolio 问题时，Agent 不应机械调用 Market Tool。"""
 
-    caplog.set_level("INFO", logger="position_pilot.application.investment_agent")
+    caplog.set_level("INFO", logger="legacy.investment_agent")
     agent, _, market_data, llm = make_agent([final_message("可用现金为 300")])
 
     result = assert_answer(agent.answer(USER_ID, "我还有多少可用现金？"))
@@ -782,7 +784,7 @@ def test_executes_up_to_four_tools_in_one_round_then_requests_final_response(
 ) -> None:
     """一个 Tool Round 可以执行最多四个按需调用，并只进行一次 Final Completion。"""
 
-    caplog.set_level("INFO", logger="position_pilot.application.investment_agent")
+    caplog.set_level("INFO", logger="legacy.investment_agent")
     agent, _, market_data, llm = make_agent(
         [
             tool_message(
@@ -850,7 +852,7 @@ def test_required_context_floor_adds_market_context_after_llm_routing(
 ) -> None:
     """LLM 声明 discretionary current action 时，Application 只补足缺失 Market Context。"""
 
-    caplog.set_level("INFO", logger="position_pilot.application.investment_agent")
+    caplog.set_level("INFO", logger="legacy.investment_agent")
     agent, _, providers, llm = make_agent(
         [
             tool_message(
@@ -1601,7 +1603,7 @@ def test_rejects_unknown_tool_or_invalid_arguments(
 ) -> None:
     """Application 必须校验模型输出，不能把任意调用交给 Tool。"""
 
-    caplog.set_level("INFO", logger="position_pilot.application.investment_agent")
+    caplog.set_level("INFO", logger="legacy.investment_agent")
     agent, _, market_data, _ = make_agent(
         [LLMResult.success(LLMMessage(LLMRole.ASSISTANT, None, (tool_call,)))]
     )

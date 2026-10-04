@@ -44,6 +44,9 @@ from behavioral_harness import (
 from phase4_provider_support import aihubmix_runtime, classify_failure, gemini_runtime
 from pydantic import AnyHttpUrl, PostgresDsn, SecretStr
 
+from legacy.investment_agent import (
+    SYSTEM_PROMPT,
+)
 from position_pilot.application.agent_runtime import (
     AgentRunRequest,
     AgentRunResult,
@@ -52,7 +55,6 @@ from position_pilot.application.agent_runtime import (
 )
 from position_pilot.application.investment_agent import (
     CONTEXT_TOOLS,
-    SYSTEM_PROMPT,
     ContextSource,
     InvestmentAnswer,
     InvestmentRequestFailure,

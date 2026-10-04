@@ -12,6 +12,10 @@ from uuid import UUID
 import pytest
 
 import position_pilot.application.native_investment_agent as native_module
+from legacy.investment_agent import (
+    LEGACY_AMOUNT_ANALYSIS_PROMPT,
+    SYSTEM_PROMPT,
+)
 from position_pilot.application.agent_runtime import (
     AgentRunRequest,
     AgentRunResult,
@@ -25,8 +29,6 @@ from position_pilot.application.conversation_citations import (
 from position_pilot.application.investment_agent import (
     BASE_SYSTEM_PROMPT,
     CONTEXT_TOOLS,
-    LEGACY_AMOUNT_ANALYSIS_PROMPT,
-    SYSTEM_PROMPT,
     InvestmentAnswer,
     InvestmentFailureCode,
     InvestmentRequestFailure,

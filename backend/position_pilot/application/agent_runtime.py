@@ -9,7 +9,6 @@ from typing import Protocol
 from position_pilot.application.llm import (
     LLMMessage,
     LLMResponseFormat,
-    LLMResult,
     LLMStatus,
     LLMToolDefinition,
     LLMUsage,
@@ -149,18 +148,6 @@ class AgentRunResult:
             raise ValueError("失败 Run 必须包含稳定 failure_code")
 
 
-class ModelCompletionRuntime(Protocol):
-    """Legacy InvestmentAgent 使用的低层 Completion Port。"""
-
-    def complete(
-        self,
-        messages: tuple[LLMMessage, ...],
-        *,
-        tools: tuple[LLMToolDefinition, ...] = (),
-        response_format: LLMResponseFormat = LLMResponseFormat.TEXT,
-    ) -> LLMResult: ...
-
-
 class AgentRuntime(Protocol):
     """Production Agent 使用的高层 Native Tool Loop Port。"""
 
@@ -176,5 +163,4 @@ __all__ = [
     "AgentToolBinding",
     "AgentToolBudgetExceeded",
     "AgentToolTrace",
-    "ModelCompletionRuntime",
 ]

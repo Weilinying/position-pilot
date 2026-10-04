@@ -6,9 +6,12 @@ from uuid import UUID
 
 import pytest
 
+from legacy.aliyun_llm import AliyunLLMProvider
+from legacy.investment_agent import (
+    InvestmentAgent,
+)
 from position_pilot.application.investment_agent import (
     ContextSourceType,
-    InvestmentAgent,
     InvestmentAnswer,
 )
 from position_pilot.application.investment_context import InvestmentPortfolioContext
@@ -16,7 +19,6 @@ from position_pilot.application.market_context_service import MarketContextServi
 from position_pilot.application.market_data_service import MarketDataService
 from position_pilot.application.news_service import NewsService
 from position_pilot.domain.portfolio import CashBalance, PortfolioState
-from position_pilot.integrations.aliyun_llm import AliyunLLMProvider
 from position_pilot.integrations.alpaca_market_data import AlpacaMarketDataProvider
 from position_pilot.integrations.alpaca_news import AlpacaNewsProvider
 

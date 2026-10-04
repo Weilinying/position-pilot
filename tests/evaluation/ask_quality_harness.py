@@ -38,10 +38,12 @@ from behavioral_harness import (
     structured_response_diagnostics,
 )
 
-from position_pilot.application.investment_agent import (
-    CONTEXT_TOOLS,
+from legacy.investment_agent import (
     SYSTEM_PROMPT,
     InvestmentAgent,
+)
+from position_pilot.application.investment_agent import (
+    CONTEXT_TOOLS,
     InvestmentAnswer,
     InvestmentRequestFailure,
 )

@@ -6,6 +6,14 @@ from dataclasses import dataclass, field
 import pytest
 from pydantic import AnyHttpUrl, PostgresDsn, SecretStr
 
+from legacy.aliyun_llm import (
+    AliyunLLMProvider,
+    LLMJsonHttpResponse,
+    LLMTransportFailureKind,
+    LLMTransportUnavailable,
+    OpenAICompatibleLLMProvider,
+    create_llm_provider,
+)
 from position_pilot.application.llm import (
     LLMMessage,
     LLMResponseFormat,
@@ -15,14 +23,6 @@ from position_pilot.application.llm import (
     LLMToolDefinition,
 )
 from position_pilot.config import Settings
-from position_pilot.integrations.aliyun_llm import (
-    AliyunLLMProvider,
-    LLMJsonHttpResponse,
-    LLMTransportFailureKind,
-    LLMTransportUnavailable,
-    OpenAICompatibleLLMProvider,
-    create_llm_provider,
-)
 
 DATABASE_URL = "postgresql+psycopg://position_pilot:secret@localhost:5432/position_pilot"
 

@@ -6,11 +6,13 @@ from uuid import UUID
 
 import pytest
 
+from legacy.investment_agent import (
+    MAX_TOOL_CALLS_PER_ROUND,
+)
 from position_pilot.application.investment_agent import (
     CONTEXT_TOOLS,
     CURRENT_QUOTE_TOOL_NAME,
     MARKET_CONTEXT_TOOL_NAME,
-    MAX_TOOL_CALLS_PER_ROUND,
     RECENT_NEWS_TOOL_NAME,
 )
 from position_pilot.application.llm import LLMToolCall

@@ -7,7 +7,10 @@ from uuid import UUID
 
 import pytest
 
-from position_pilot.application.investment_agent import SYSTEM_PROMPT, InvestmentAgent
+from legacy.investment_agent import (
+    SYSTEM_PROMPT,
+    InvestmentAgent,
+)
 from position_pilot.application.investment_context import (
     InvestmentPortfolioContext,
     PortfolioSnapshot,

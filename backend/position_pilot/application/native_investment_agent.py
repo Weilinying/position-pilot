@@ -31,7 +31,6 @@ from position_pilot.application.investment_agent import (
     RECENT_PRICE_HISTORY_TOOL_NAME,
     ContextSource,
     ContextSourceType,
-    InvestmentAgent,
     InvestmentAnswer,
     InvestmentFailureCode,
     InvestmentRequestFailure,
@@ -41,13 +40,23 @@ from position_pilot.application.investment_agent import (
     PortfolioContextReader,
     RecentNewsReader,
 )
-from position_pilot.application.investment_answer import StructuredInvestmentAnswer
+from position_pilot.application.investment_answer import (
+    StructuredInvestmentAnswer,
+    structured_repair_instruction,
+)
 from position_pilot.application.investment_context import PortfolioSnapshot
 from position_pilot.application.investment_context_builder import InvestmentContextBuilder
 from position_pilot.application.investment_tool_executor import (
     FinancialToolExecution,
     FinancialToolExecutor,
     InvalidFinancialToolResult,
+)
+from position_pilot.application.investment_tool_results import (
+    history_tool_result,
+    market_context_tool_result,
+    news_tool_result,
+    quote_tool_result,
+    validate_financial_tool_call,
 )
 from position_pilot.application.llm import (
     LLMMessage,
@@ -481,7 +490,7 @@ class NativeInvestmentAgent:
     ) -> Callable[[Mapping[str, object]], ToolExecutionResult]:
         def execute(arguments: Mapping[str, object]) -> ToolExecutionResult:
             tool_call = LLMToolCall("native-runtime-call", tool_name, arguments)
-            validation_failure = InvestmentAgent._validate_tool_calls((tool_call,))
+            validation_failure = validate_financial_tool_call(tool_call)
             if validation_failure is not None:
                 return ToolExecutionResult(
                     "INVALID_ARGUMENTS",
@@ -732,18 +741,18 @@ class NativeInvestmentAgent:
         if call.name == CURRENT_QUOTE_TOOL_NAME:
             result = execution.result
             assert isinstance(result, MarketDataResult)
-            return InvestmentAgent._quote_tool_result(call, result, snapshot)  # type: ignore[arg-type]
+            return quote_tool_result(call, result, snapshot)  # type: ignore[arg-type]
         if call.name == RECENT_PRICE_HISTORY_TOOL_NAME:
             result = execution.result
             assert isinstance(result, MarketDataResult)
-            return InvestmentAgent._history_tool_result(call, result)  # type: ignore[arg-type]
+            return history_tool_result(call, result)  # type: ignore[arg-type]
         if call.name == RECENT_NEWS_TOOL_NAME:
             result = execution.result
             assert isinstance(result, NewsResult)
-            return InvestmentAgent._news_tool_result(call, result)
+            return news_tool_result(call, result)
         result = execution.result
         assert isinstance(result, MarketDataResult)
-        return InvestmentAgent._market_context_tool_result(call, result)  # type: ignore[arg-type]
+        return market_context_tool_result(call, result)  # type: ignore[arg-type]
 
     @staticmethod
     def _source_mapping(source: ContextSource) -> Mapping[str, object]:
@@ -851,7 +860,7 @@ class NativeInvestmentAgent:
             assert answer is not None
             return answer
         repair_payload = (
-            InvestmentAgent._build_structured_repair_instruction(error)
+            structured_repair_instruction(error)
             if error is not None
             else self._citation_repair_instruction(citation_error, sources)
         )

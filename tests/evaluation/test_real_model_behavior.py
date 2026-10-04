@@ -35,10 +35,17 @@ from behavioral_harness import (
     structured_response_diagnostics,
 )
 
+from legacy.aliyun_llm import (
+    ALIYUN_MODEL_STUDIO,
+    AliyunLLMProvider,
+    OpenAICompatibleLLMProvider,
+)
+from legacy.investment_agent import (
+    InvestmentAgent,
+)
 from position_pilot.application.investment_agent import (
     ContextSource,
     ContextSourceType,
-    InvestmentAgent,
     InvestmentAnswer,
     InvestmentFailureCode,
     InvestmentRequestFailure,
@@ -71,11 +78,6 @@ from position_pilot.domain.portfolio import (
     Transaction,
     User,
     rebuild_portfolio,
-)
-from position_pilot.integrations.aliyun_llm import (
-    ALIYUN_MODEL_STUDIO,
-    AliyunLLMProvider,
-    OpenAICompatibleLLMProvider,
 )
 
 DATASET_VERSION = "1.1"

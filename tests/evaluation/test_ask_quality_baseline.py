@@ -37,6 +37,11 @@ from ask_quality_harness import (
     selected_cases,
 )
 
+from legacy.aliyun_llm import (
+    ALIYUN_MODEL_STUDIO,
+    AliyunLLMProvider,
+    OpenAICompatibleLLMProvider,
+)
 from position_pilot.application.llm import (
     LLMMessage,
     LLMResponseFormat,
@@ -47,11 +52,6 @@ from position_pilot.application.llm import (
     LLMToolCall,
     LLMToolDefinition,
     LLMUsage,
-)
-from position_pilot.integrations.aliyun_llm import (
-    ALIYUN_MODEL_STUDIO,
-    AliyunLLMProvider,
-    OpenAICompatibleLLMProvider,
 )
 
 
