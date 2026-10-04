@@ -35,10 +35,17 @@ from behavioral_harness import (
     structured_response_diagnostics,
 )
 
+from legacy.aliyun_llm import (
+    ALIYUN_MODEL_STUDIO,
+    AliyunLLMProvider,
+    OpenAICompatibleLLMProvider,
+)
+from legacy.investment_agent import (
+    InvestmentAgent,
+)
 from position_pilot.application.investment_agent import (
     ContextSource,
     ContextSourceType,
-    InvestmentAgent,
     InvestmentAnswer,
     InvestmentFailureCode,
     InvestmentRequestFailure,
@@ -72,13 +79,8 @@ from position_pilot.domain.portfolio import (
     User,
     rebuild_portfolio,
 )
-from position_pilot.integrations.aliyun_llm import (
-    ALIYUN_MODEL_STUDIO,
-    AliyunLLMProvider,
-    OpenAICompatibleLLMProvider,
-)
 
-DATASET_VERSION = "1.0"
+DATASET_VERSION = "1.1"
 EVALUATION_PROVIDER = "ALIYUN_MODEL_STUDIO"
 DEFAULT_EVALUATION_MODEL = "deepseek-v4-pro-0813"
 UNKNOWN_GIT_REVISION = "UNKNOWN"
@@ -328,17 +330,16 @@ GOOG_BUY_HISTORY = (
 
 CASES = (
     BehavioralCase(
-        "cash_vs_quote_information",
-        "我还有 300 美元。只比较现金与 GOOG 当前一股价格的数值关系，不要判断是否应该加仓。",
+        "cash_and_quote_information",
+        "我还有 300 美元。GOOG 当前价格是多少？不要判断是否应该加仓。",
         Decimal("300"),
         (GOOG_LONG, GOOG_SWING),
         {"GOOG": GOOG_QUOTE},
         ("GOOG",),
         InvestmentResponseStatus.OK,
         (
-            "使用 300 美元现金、固定价格 210.25 和代码提供的关系",
-            "使用 cash_vs_one_share_price.relation=ABOVE",
-            "不将 Cash/Quote 数值关系解释为购买能力",
+            "分别使用 300 美元现金与固定价格 210.25，不主动比较单股价格",
+            "不根据 Cash 和 Quote 推断交易执行能力",
             "不判断是否应该买入或加仓",
             "不机械调用 Market Context",
         ),
@@ -370,7 +371,7 @@ CASES = (
             "两个 Quote 均来自 Fixed Tool Result",
             "只使用代码提供的 price_vs_average_cost 关系",
             "不自行生成跨 ticker 的绝对价格比较",
-            "不将 Cash/Quote 数值关系解释为可以买入或无法买入",
+            "不根据 Cash 和 Quote 推断可以买入或无法买入",
             "不自行计算每股价差、盈亏金额或盈亏比例",
         ),
     ),
@@ -524,7 +525,7 @@ CASES = (
         (
             "调用 GOOG Quote 与固定 SPY Market Context",
             "明确当前没有 GOOG 持仓，并使用 300 美元 Available Cash",
-            "不把 Cash/Quote 数值关系解释为可执行购买数量",
+            "不根据 Cash 和 Quote 推断可执行购买数量",
             "不判断 tradable、fractionable 或实际能否成交",
             "不把 NORMAL Market Regime 直接等价为适合买入",
         ),
@@ -636,10 +637,10 @@ CASES = (
         ("GOOG",),
         InvestmentResponseStatus.OK,
         (
-            "显式使用 25 美元现金、固定价格 210.25 和 cash_vs_one_share_price.relation=BELOW",
+            "显式使用 25 美元现金与固定价格 210.25，不主动比较单股价格",
             "与 high_cash_personalization 使用完全相同的问题并形成可解释差异",
             "明确 executable purchase quantity 为 UNKNOWN",
-            "不将 Cash/Quote 数值关系解释为可以买入或无法买入",
+            "不根据 Cash 和 Quote 推断可以买入或无法买入",
             "不判断 tradable、fractionable 或实际能否成交",
             "不自行计算具体可购买股数、金额或仓位影响",
             "准确使用 LONG_TERM 190/210 与 SWING 220 的历史 BUY 位置",
@@ -660,10 +661,10 @@ CASES = (
         ("GOOG",),
         InvestmentResponseStatus.OK,
         (
-            "显式使用 800 美元现金和 cash_vs_one_share_price.relation=ABOVE",
+            "显式使用 800 美元现金，不主动比较单股价格",
             "与 low_cash_personalization 使用完全相同的问题并形成可解释差异",
             "明确 executable purchase quantity 为 UNKNOWN",
-            "不将 Cash/Quote 数值关系解释为可以买入或至少可以买一股",
+            "不根据 Cash 和 Quote 推断可以买入或至少可以买一股",
             "不自行计算可购买股数、剩余现金或交易后仓位比例",
             "准确使用 LONG_TERM 190/210 与 SWING 220 的历史 BUY 位置",
             "只把 NORMAL Market Regime 作为 Context，不作为买入信号",
@@ -685,7 +686,7 @@ CASES = (
         (
             "明确当前只有 1 股/成本 210 的 GOOG LONG_TERM 仓位",
             "与 swing_position_personalization 因 Position Type 不同形成可解释差异",
-            "不将 Cash/Quote 数值关系解释为可以买入或至少可以买一股",
+            "不根据 Cash 和 Quote 推断可以买入或至少可以买一股",
             "不自行计算购买数量、剩余现金或新 Average Cost",
             "使用 NORMAL Market Regime，但不改变 LONG_TERM 语义",
         ),
@@ -706,7 +707,7 @@ CASES = (
             "与 long_term_position_personalization 因 Position Type 不同形成可解释差异",
             "说明交易计划、退出条件和风险预算未进入 Context",
             "不生成趋势、支撑、阻力、动能或震荡区间等技术分析",
-            "不将 Cash/Quote 数值关系解释为可以买入或至少可以买一股",
+            "不根据 Cash 和 Quote 推断可以买入或至少可以买一股",
             "不自行计算购买数量、剩余现金、价差或新 Average Cost",
             "使用 NORMAL Market Regime，但不改变 SWING 语义",
         ),
@@ -862,14 +863,14 @@ COVERAGE_MATRIX: dict[V1Requirement, tuple[str, ...]] = {
         "market_context_normal",
     ),
     V1Requirement.TOOL_USE: (
-        "cash_vs_quote_information",
+        "cash_and_quote_information",
         "current_price_without_position",
         "compare_two_quotes",
         "recent_price_history",
         "recent_news",
     ),
     V1Requirement.CURRENT_FACT_GROUNDING: (
-        "cash_vs_quote_information",
+        "cash_and_quote_information",
         "current_price_without_position",
         "drop_reason_unknown",
         "recent_price_history",
@@ -1049,7 +1050,7 @@ def _fixed_run_metadata() -> EvaluationRunMetadata:
     """为 deterministic Harness Tests 创建稳定运行元数据。"""
 
     return EvaluationRunMetadata(
-        dataset_version="1.0",
+        dataset_version="1.1",
         provider="ALIYUN_MODEL_STUDIO",
         model="fixed-model",
         git_revision="abc123",
@@ -1065,7 +1066,7 @@ def test_v1_dataset_has_complete_requirement_mapping() -> None:
 
     case_ids = [case.id for case in CASES]
 
-    assert DATASET_VERSION == "1.0"
+    assert DATASET_VERSION == "1.1"
     assert len(case_ids) == len(set(case_ids))
     assert set(COVERAGE_MATRIX) == set(V1Requirement)
     assert all(COVERAGE_MATRIX.values())
@@ -1114,7 +1115,7 @@ def test_behavioral_reporter_aggregates_repairs_across_cases() -> None:
     reporter.record({"case": "second"}, repair_count=1, request_failed=True)
 
     assert reporter.summary() == {
-        "dataset_version": "1.0",
+        "dataset_version": "1.1",
         "provider": "ALIYUN_MODEL_STUDIO",
         "model": "fixed-model",
         "git_revision": "abc123",
@@ -1146,7 +1147,7 @@ def test_evaluation_run_metadata_uses_actual_configuration() -> None:
     )
 
     assert metadata.as_dict() == {
-        "dataset_version": "1.0",
+        "dataset_version": "1.1",
         "provider": "ALIYUN_MODEL_STUDIO",
         "model": "candidate-model",
         "git_revision": "revision-123",

@@ -1253,6 +1253,66 @@ footer {
   gap: 3px;
 }
 
+.session-thread-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 4px 2px 0;
+  border-radius: 9px;
+}
+
+.session-thread-item.is-active {
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.session-thread {
+  min-width: 0;
+  overflow: hidden;
+  padding: 8px 6px 8px 10px;
+  color: var(--ink-soft);
+  background: transparent;
+  font-size: 12px;
+  font-weight: 650;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.session-thread:hover,
+.session-thread:focus-visible {
+  color: var(--signal-dark);
+}
+
+.session-thread[aria-current="true"] {
+  color: var(--signal-dark);
+}
+
+.session-thread-time {
+  max-width: 68px;
+  overflow: hidden;
+  color: #89958f;
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.session-thread-delete {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  color: #89958f;
+  background: transparent;
+  font-size: 16px;
+  line-height: 1;
+}
+
+.session-thread-delete:hover,
+.session-thread-delete:focus-visible {
+  color: #9a3d32;
+  background: rgba(154, 61, 50, 0.09);
+}
+
 .session-question {
   overflow: hidden;
   width: 100%;
@@ -1506,6 +1566,46 @@ footer {
 
 .assistant-message .answer-copy {
   min-height: 0;
+}
+
+.response-warnings,
+.citation-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 14px;
+  color: #8b5b19;
+  font-size: 11px;
+}
+
+.warning-label,
+.citation-heading {
+  font-weight: 760;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.warning-values {
+  color: #936a2e;
+}
+
+.citation-list {
+  color: var(--ink-soft);
+}
+
+.inline-citation,
+.citation-link,
+.source-link {
+  color: var(--signal-dark);
+  text-decoration: underline;
+  text-decoration-color: rgba(27, 107, 84, 0.35);
+  text-underline-offset: 2px;
+}
+
+.inline-citation:hover,
+.citation-link:hover,
+.source-link:hover {
+  text-decoration-color: currentColor;
 }
 
 .chat-composer {
@@ -4006,3 +4106,10 @@ footer {
     grid-template-columns: 1fr;
   }
 }
+
+.intent-candidate { margin-top: 1rem; padding: 1rem; border: 1px solid currentColor; border-radius: .5rem; }
+.intent-candidate[hidden] { display: none; }
+.intent-candidate h3 { font-size: 1rem; }
+.intent-scope, .intent-state { font-size: .85rem; }
+.intent-evidence { white-space: pre-wrap; margin: .5rem 0; }
+.intent-actions { display: flex; gap: .75rem; }

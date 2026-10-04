@@ -14,6 +14,8 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from position_pilot.api.routers import conversation_router
+from position_pilot.api.routers.strategy import router as strategy_router
 from position_pilot.application.asset_metadata_service import AssetMetadataService
 from position_pilot.application.auth_service import (
     Account,
@@ -34,7 +36,7 @@ from position_pilot.application.investment_agent import (
     MAX_QUESTION_LENGTH,
     ContextSource,
     ContextSourceType,
-    InvestmentAgent,
+    InvestmentAgentPort,
     InvestmentAnswer,
     InvestmentFailureCode,
     InvestmentRequestFailure,
@@ -809,6 +811,9 @@ class RecognitionResponse(BaseModel):
 app = FastAPI(title="PositionPilot")
 app.mount("/static", StaticFiles(directory=FRONTEND_DIR), name="static")
 
+app.include_router(conversation_router)
+app.include_router(strategy_router)
+
 
 @app.get("/app/", include_in_schema=False)
 def get_product_interface() -> FileResponse:
@@ -824,7 +829,7 @@ def get_health() -> HealthResponse:
     return HealthResponse(status="ok")
 
 
-def get_investment_agent_dependency() -> InvestmentAgent:
+def get_investment_agent_dependency() -> InvestmentAgentPort:
     """延迟装配外部依赖，允许测试安全替换。"""
 
     return get_investment_agent()
@@ -2021,6 +2026,7 @@ def list_current_cash_events(
 @app.post(
     "/v1/investment/questions",
     response_model=InvestmentQuestionResponse,
+    deprecated=True,
     responses={
         404: {"description": "Portfolio User 不存在"},
         502: {"description": "Agent / LLM Contract 无法形成回答"},
@@ -2030,7 +2036,7 @@ def list_current_cash_events(
 def answer_investment_question(
     request: InvestmentQuestionRequest,
     account: Annotated[Account, Depends(get_current_account_dependency)],
-    agent: Annotated[InvestmentAgent, Depends(get_investment_agent_dependency)],
+    agent: Annotated[InvestmentAgentPort, Depends(get_investment_agent_dependency)],
 ) -> InvestmentQuestionResponse:
     """读取 Structured State 并执行最小 Investment Agent Vertical Slice。"""
 

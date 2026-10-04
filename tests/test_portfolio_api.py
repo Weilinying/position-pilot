@@ -14,6 +14,8 @@ from position_pilot.application.errors import OpeningStateSealed, UserNotFound
 from position_pilot.application.portfolio_service import (
     BuyTransactionCorrectionResult,
     CashAdjustmentResult,
+    ChangeLotClassificationCommand,
+    CorrectBuyTransactionCommand,
     InitializeOpeningPositionsCommand,
     LotClassificationResult,
     PositionReconciliationsResult,
@@ -218,15 +220,19 @@ class FakeLotMutationService:
 
     classification_result: LotClassificationResult | None = None
     correction_result: BuyTransactionCorrectionResult | None = None
-    classification_commands: list[object] = field(default_factory=list)
-    correction_commands: list[object] = field(default_factory=list)
+    classification_commands: list[ChangeLotClassificationCommand] = field(default_factory=list)
+    correction_commands: list[CorrectBuyTransactionCommand] = field(default_factory=list)
 
-    def change_lot_classification(self, command):
+    def change_lot_classification(
+        self, command: ChangeLotClassificationCommand
+    ) -> LotClassificationResult:
         self.classification_commands.append(command)
         assert self.classification_result is not None
         return self.classification_result
 
-    def correct_buy_transaction(self, command):
+    def correct_buy_transaction(
+        self, command: CorrectBuyTransactionCommand
+    ) -> BuyTransactionCorrectionResult:
         self.correction_commands.append(command)
         assert self.correction_result is not None
         return self.correction_result

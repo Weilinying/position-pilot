@@ -236,8 +236,7 @@ class OpenAICompatibleLLMProvider(LLMProvider):
             value.get("total_tokens"),
         )
         if any(
-            isinstance(item, bool) or not isinstance(item, int) or item < 0
-            for item in raw_values
+            isinstance(item, bool) or not isinstance(item, int) or item < 0 for item in raw_values
         ):
             return None
         input_tokens, output_tokens, total_tokens = cast(tuple[int, int, int], raw_values)

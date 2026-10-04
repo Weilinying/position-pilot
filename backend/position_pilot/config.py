@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     llm_api_key: SecretStr | None = None
     llm_model: str = "deepseek-v4-pro-0813"
     llm_request_timeout_seconds: float = 30.0
+    native_llm_request_timeout_seconds: float = 60.0
     vision_base_url: AnyHttpUrl = AnyHttpUrl("https://dashscope.aliyuncs.com/compatible-mode/v1")
     vision_api_key: SecretStr | None = None
     vision_model: str = "qwen3-vl-flash"
@@ -86,6 +87,15 @@ class Settings(BaseSettings):
 
         if not isfinite(value) or value <= 0 or value > 120:
             raise ValueError("LLM_REQUEST_TIMEOUT_SECONDS 必须在 0 到 120 秒之间")
+        return value
+
+    @field_validator("native_llm_request_timeout_seconds")
+    @classmethod
+    def require_bounded_native_llm_timeout(cls, value: float) -> float:
+        """将 Production Native Provider 的单次等待限制在获批上限内。"""
+
+        if not isfinite(value) or value <= 0 or value > 60:
+            raise ValueError("NATIVE_LLM_REQUEST_TIMEOUT_SECONDS 必须在 0 到 60 秒之间")
         return value
 
     @field_validator("llm_base_url")

@@ -13,7 +13,7 @@
 **Current Milestone:** M13 — Position-Aware Market Chart
 **Status:** DONE — Human Accepted and merged to local `main`（2026-09-13）
 **Current Release State:** `v1.3.0` Release Candidate 已进入本地 `main`；Git Tag / GitHub Release 尚待发布
-**Next Planned Work:** Answer Quality Phase 3 Framework / Capability Spike（IN PROGRESS）；M10、M12 继续暂缓
+**Next Planned Work:** Phase 4 已最终验收；AQ04 / Web Search 等后续范围待独立规划，M10、M12 继续暂缓
 
 Milestone 状态统一使用 `NOT STARTED`、`IN PROGRESS`、`DONE`，不维护百分比进度。
 
@@ -528,8 +528,21 @@ Agent、引入完整 Memory / Skills 系统或把 Framework History 作为产品
 Conversation / Strategy / Memory Retrieval 注入。OpenAI Agents SDK 的固定 Qwen No-tool、One-tool
 Live 完成；Multi-tool 完成 Search / Fetch 调用后被 Source Validation 安全拒绝，归类为固定模型
 Grounding Gap，不是 Framework Tool Calling Failure。综合当前 Qwen 接入、未来 OpenAI Provider 与维护
-成本，建议 Phase 4 选择 PydanticAI，Current Runtime 保留为迁移对照；该建议仍待 Human Review，
-不自动授权 Production Implementation。
+成本，建议 Phase 4 选择 PydanticAI，Current Runtime 保留为迁移对照；该建议已于 2026-09-21 通过
+Human Review，Phase 3 至此完成。当时尚未批准
+[Implementation Plan](docs/plans/ask-quality-phase-4-implementation.md)，因此该阶段结论本身不自动
+授权 Production Implementation；当前授权状态由下方后续 Plan Acceptance 更新。
+
+2026-09-21 Phase 4 Plan Acceptance：上述 Implementation Plan 已在完成 Strategy / Persistent User
+Intent 修订后通过 Human Review。当前授权严格限定为 P4-T0 → T1 → T2 → T3 → T4A → T5 Core；
+T5 Report 后必须暂停，未经下一次 Human Review 不进入 T6～T8。T4R Research Decision 继续作为独立
+Gate，不阻塞 Runtime / Conversation 实现。
+
+2026-10-05 Phase 4 收尾：4A 已获 Human Acceptance，4B T6/T7 已实现并获得 Primary / Repeat 有限验收，
+AQ12 r1 非致命语言概括瑕疵获明确例外通过。T8 浏览器 / 隔离 SQL / 保留数据的应用回退完成；
+[最终报告](docs/evaluation/reports/2026-10-05-phase4-t8-final.md)已获整个 Phase 4 Final Human Acceptance。
+按明确授权完成 Legacy 清理与本地 main 收口，见[收尾记录](docs/evaluation/reports/2026-10-05-phase4-final-acceptance.md)。
+AQ04、Research / Web Search 和完整 Memory 继续延期；不新建 Release / Tag，不 Push。
 
 只有上述范围通过 Human Review，并由固定 Evaluation 或真实 Failure Mode 证明最小方案后，才新增对应正式 Milestone、实施 Plan、ADR 与 Release Mapping；Discovery 工作计划不等于实施或选型批准。Discovery 不预设 Vector Database、LangGraph、Multi-Agent 或不受控 General Browser。
 

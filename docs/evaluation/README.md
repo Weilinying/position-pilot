@@ -15,16 +15,21 @@ pytest 负责验证 Tool Selection / Trace、参数与预算、Response Status�
 Human Review 负责判断自由文本是否：
 
 - 越过 `UNKNOWN` 或 Source Boundary；
-- 把 Cash / Quote 数值关系错误解释为实际购买能力；
+- 未请求数量时主动比较 Cash / Budget 与单股价格，或据此推断实际购买能力；
 - 正确使用 Historical BUY Facts 与 `LONG_TERM` / `SWING`；
 - 把 Market Regime 或 Position Type 转化成过强建议；
 - 出现自动规则无法低误报识别的事实错误或推荐强度问题。
 
 `Automated Pass != Human Grounding Pass`。合法 `source_refs` 只证明来源声明满足 Application Contract，不证明每个自然语言 Claim 正确。
 
+2026-10-03：成功 Quote 不再自动提供 Cash / 单股价格的派生关系，也不再允许复述该旧字段。
+Cash 和 Quote 分别保留；显式数量请求仍须使用 Application 提供的可靠确定性结果。
+旧 Behavioral Dataset 因输入/评审口径变更升级为 1.1；Phase 4 AQ Dataset 0.2 与固定行情 Fixture 不变。
+历史 Artifact 不回写，详见[清理决策](../engineering-notes/phase4-cash-quote-context-interference.md)。
+
 ## Dataset
 
-当前 Dataset Version 为 `1.0`，定义在 `tests/evaluation/test_real_model_behavior.py`。每个 `BehavioralCase` 包含固定问题、Portfolio 与 Provider Fixtures、Automated Tool / Status Expectations、Human Checks，以及存在时的 Case-specific Known Limitation。
+当前 Dataset Version 为 `1.1`，定义在 `tests/evaluation/test_real_model_behavior.py`。每个 `BehavioralCase` 包含固定问题、Portfolio 与 Provider Fixtures、Automated Tool / Status Expectations、Human Checks，以及存在时的 Case-specific Known Limitation。
 
 Coverage Matrix 与 Controlled Contrast 也保存在同一文件。pytest 继续作为唯一 Execution Engine；Harness 不重新实现测试发现或断言。
 
@@ -145,6 +150,19 @@ Fixtures 和 Evaluation Rules，并保持工作区干净。
 
 ## Acceptance 与历史结果
 
+2026-10-03 Human Review 允许 Gemini Phase 4 Core 的传输重试：`httpx.ConnectError` 或 `httpx.ReadError`
+自动重发同一个模型请求一次（最多两个 Provider attempts）；明确 TLS 证书校验错误不重试。
+timeout、401/403、429、5xx、Schema、Tool quota 和 Behavioral failure 不触发此策略。
+重试使用原 Tool Result、History 与 Native Schema，不重新执行 Tool 或整个 Case，也不重置
+30s per-turn wall-clock。SDK / PydanticAI / Output 重试仍为0；Production不启用此测试策略。
+
+`model_request_count` 继续计 Agent Loop 的模型 step，最多8；物理 Provider 请求尝试另计
+`provider_model_request_attempt_count`，最多16（不含原配置 Application Repair 的独立请求）。
+Trace 的 `request_index` 是 Run 内物理尝试序号；`model_request_index` 是当前 Runtime Call
+内模型 step，`attempt_index` 为该 step 的第1/2次尝试。首次错误不删除；重试后成功明确记录
+`transport_retry_count` 和 `transport_retry_recovered_count`，不能表述为首次请求成功。
+更改 Retry Policy 后使用新 Candidate / 独立 Run，不改写冻结 V4 的 Retry=0 历史证据。
+
 8-Case Model Comparison 只选择值得进入完整 Dataset 的候选，不代表 M6 完成。候选必须继续完成全量 Dataset、Automated Evaluation 与 Human Factual Grounding，才能进入 M6 Human Acceptance。
 
 真实 Alpaca Market / News、Investment Agent Online Smoke 与 PostgreSQL Integration 可作为 Human Acceptance Evidence；受 Credential 或第三方服务状态影响的 Online Smoke 不作为常规 CI Gate。
@@ -160,6 +178,108 @@ Ask Quality Dataset `0.1`、固定 Fixture、能力标签、Reporter 与真实�
 [2026-09-15 正式报告](reports/2026-09-15-ask-quality-baseline-qwen37max.md)。阶段一没有修改 Production
 Prompt、路由、工具或 State 能力。
 
+Phase 4 使用派生 Manifest `ask-quality-discovery / 0.2`，定义在
+`tests/evaluation/ask_quality_phase4_manifest.py`。它复用 `0.1` 的 21 个执行变体、固定 Fixture 与
+Rubric `0.1`，只冻结 4A Core、独立 Open Research Gate、AQ04 Earnings Regression 与 4B Strategy 的
+目标 Scope、Checkpoint 顺序与连续 Ask Script。Manifest 保存 `0.1` Fixture Digest 以检测历史漂移；
+`0.1` 的 Case 定义、Artifact、Hash 和历史结果保持不变。T4R 延后时 AQ01、AQ02、AQ19 继续记录为
+`DIAGNOSTIC / NOT_MEASURED`，不伪装成 Runtime Failure，也不阻塞 4A Core。
+
+### Phase 4 4A Core Eval
+
+入口实时打印每轮 `STARTED` / `TURN_FINISHED`（Case、轮次、状态、耗时），不是每个 Case 一个
+pytest item。60 秒预算按每轮回答计算，整套串行测试可能运行十几分钟；两条进度之间仍需等待模型。
+`progress.jsonl` 从 Run 开始创建，每轮结束立即追加完整固定 Fixture 证据；Ctrl+C 会在当前轮
+记录 `INTERRUPTED` 并保留已完成轮次。没有 `RUN_FINISHED` 的日志不是完整验收结果；正式
+manifest / cases / summary 仍在全部完成后写入。进度文件包含回答，不应公开分享。
+Provider HTTP Failure 的本地 Runtime Trace 还保留 HTTP Status、Provider Error Code 与 Error Message，
+仅用于诊断；对外 API 仍返回稳定失败码。诊断信息可能包含敏感请求细节，不要公开分享 Artifact。
+PydanticAI 的 `UnexpectedModelBehavior` 只记录安全的 Framework Failure Kind 和底层异常类名，
+不记录原始异常正文或 Provider 响应；这能辅助区分输出重试耗尽与响应形状异常，不能还原模型原文。
+已有部分进度的目录也禁止重复使用，避免意外重新付费；当前不提供自动续跑。
+
+`tests/evaluation/test_phase4_core_online.py` 是新的 pytest opt-in 入口。它复用 `0.1` 固定 Financial
+Fixtures，但实际 Ask 走 `NativeInvestmentAgent → PydanticAIRuntime`，多轮 Case 注入已发生的 User 与
+已完成的 Assistant 历史；不复用旧 `execute_case()` 的 Current Runtime 路径。每轮保存 Native Tool Trace、
+Source、Citation 文本、Repair 调用、Latency 和 Usage 或 `UNKNOWN`。Portfolio / Market / News 为固定
+Fixture，真实模型只用于 Agent 行为评估。它不验证真实金融 Provider 的时效与可用性。
+固定 Fixture 的 Runtime Final Candidate（包括 Repair 前未通过校验的候选）保存在 Artifact 中，
+用于区分 Source / Citation / Structured Output 问题；不要把 Artifact 当作可公开分享的脱敏日志。
+2026-09-24 Human Review 后，Production Native 和此 4A 入口的总 Wall-clock、单次模型请求上限
+均为 60 秒；Production 的 `NATIVE_LLM_REQUEST_TIMEOUT_SECONDS` 默认 60 秒且可在
+`0～60` 秒内配置，4A 固定为 60 秒以保持各次 Run 可比较。
+旧 `LLM_REQUEST_TIMEOUT_SECONDS` 仍用于 Current Runtime 回归路径，默认 30 秒。
+此前的 30/60 秒诊断与 Final Output 独立 Spike 保持历史原貌，不回写 Artifact。
+
+调用者先在自己的本地 Shell 导出 `LLM_API_KEY`、与当前 Region 对应的 `LLM_BASE_URL`，并显式设置
+`LLM_MODEL` 为本次实际可用的模型；`LLM_PROVIDER` 应为 `ALIYUN_MODEL_STUDIO`（未设置时使用该值）。
+一次完整 Run 的 r1 / r2 / r3 必须使用同一模型及 Endpoint，切换模型须使用新的 `EVAL_RUN_ID`
+和 Artifact 目录，并在报告中分开列出结果。既有 `qwen3.7-max` Artifact 保留为历史证据；
+其他模型的运行不自动替代其质量基线，也不改变 Production Model。Agent 不读取 `.env`。
+Primary 执行 13 个 Core FULL Case 与 AQ04 Diagnostic：
+
+```bash
+RUN_PHASE4_EVAL=1 \
+EVAL_RUN_ID=<same-run-id> \
+EVAL_REPETITION_INDEX=1 \
+PHASE4_ARTIFACT_DIR=build/evaluation-runs/<same-run-id>/r1 \
+PYTHONPATH=backend:tests/evaluation \
+.venv/bin/pytest tests/evaluation/test_phase4_core_online.py -m online -s -q
+```
+
+重复运行只需分别改为 `EVAL_REPETITION_INDEX=2/3`、Artifact 目录 `r2/r3`，保持相同的 `EVAL_RUN_ID`；
+默认 Repeat 集为 AQ03、AQ05、AQ06、AQ07、AQ17a、AQ17b。每个目录生成 `manifest.json`、
+`cases.jsonl`、`summary.json`；若目标目录已有 Artifact，会在模型调用前拒绝，不覆盖旧结果，
+也不会为了发现目录冲突再次付费调用。`PHASE4_CASE_IDS` 仅用于显式选取
+Core / AQ04 子集；正式 Primary 不设置它。AQ01、AQ02、AQ19 在 T4R 未批准时始终作为独立 Research Gate
+的 `NOT_MEASURED` 记录，不要求 Brave Key。pytest 的执行成功只证明请求与记录完成；逐 Case Rubric、
+Critical Failure、Protected Set 与 Repeat Gate 必须根据 Artifact 人工复核，不得把 `PENDING` 写成 PASS。
+Artifact 的 Manifest 包含 0.1 完整 Case / Rubric Fixture、0.2 Target Manifest、固定模型与 Endpoint
+元数据；Run Record 另外保存实际 Conversation Citation-mode System Prompt 的 Hash。
+
+### Phase 4 Final Output Tool 独立能力实验
+
+`tests/evaluation/test_phase4_final_output_spike_online.py` 是测试专用的配对入口，不修改 Production
+Agent、当前 JSON 输出路径或 30 秒 Wall-clock Ceiling。它在同一固定 GOOG Quote Fixture、模型、
+Endpoint 与预算下，依次测试与当前机制同类的 JSON 文本输出协议和 PydanticAI `ToolOutput`；
+它不是完整 Production Agent 路径的 A/B Eval。两臂都必须先调用只读
+`get_fixture_quote`；PositionPilot 的 Source / inline Citation 校验保持独立。`ToolOutput` 会改变
+Provider Request 中的输出工具 Schema / Tool Choice，因此本实验仅比较可观察结果，不主张两条路径
+内部 Payload 完全相同。单次配对 Smoke 也不是可靠性或成本统计结论。
+输出工具仅使用最小 `answer / source_refs` Schema；它通过不证明完整生产 Schema 与 AQ07 Prompt 兼容。
+本实验显式设置 `ToolOutput.max_retries=0`，使两臂都只使用 Application 层一次 Repair；
+`framework_output_retry_count` 仅用于确认没有隐藏重试，不代表已评估框架原生 Retry 策略。
+
+在本地先按既有流程把 `.env` 中的 Credential 导入当前 Shell；Agent 不读取该文件。使用未存在的
+Artifact 目录执行：
+
+```bash
+RUN_PHASE4_FINAL_OUTPUT_SPIKE=1 \
+LLM_PROVIDER=ALIYUN_MODEL_STUDIO \
+LLM_MODEL=qwen3.7-max \
+FINAL_OUTPUT_ARTIFACT_DIR=build/evaluation-runs/p4-final-output-spike/r1 \
+PYTHONPATH=backend:tests/evaluation \
+.venv/bin/pytest tests/evaluation/test_phase4_final_output_spike_online.py -m online -s -v
+```
+
+进程环境还须已有 `LLM_API_KEY` 与当前 Region 的 `LLM_BASE_URL`。每臂上限 30 秒、最多一次
+Application Repair，输出 `report.json`；标准输出只显示摘要。Artifact 记录首次输出合法性与错误类别、
+Repair 是否触发及其耗时、Framework Output Retry 次数、模型请求次数及各次耗时、工具调用、Token Usage
+（未报告则 `UNKNOWN`）、总耗时、成本 `UNKNOWN` 和原始固定 Fixture 候选。请勿把原始 Artifact 当作
+公开脱敏日志。`pytest PASSED` 只表示实验执行和记录完成；人工先核对金融 Tool → Final Output
+Tool 顺序、Source / Citation 合法性、两臂首次输出与最终输出、Repair、Latency、Token / Cost 可测性和
+Provider 错误。独立成功不代表 AQ07 修复或 4A Gate PASS。
+只有两个路径均产生有效首个输出且观测到正确 Tool 顺序，才能说该固定场景兼容；
+若 Usage 为 `UNKNOWN`，成本也保持 `UNKNOWN`，不据耗时推断费用。可测 Token 仅作为相对成本线索，
+正式费用比较仍需确定相同计费口径与重复样本。
+
+2026-09-24 的独立 r1 中，`ToolOutput` 首次输出通过，JSON 文本及其一次 Repair 均未通过；
+这不是完整 AQ07。受限 Production Adapter 调整已获 Human Approval 且离线验证通过。
+下一步使用原 `PHASE4_CASE_IDS=AQ07` 入口作完整 AQ07 回归，核对真实 Tool Trace、首次候选、
+Repair、Source / Citation 与 30 秒预算。若 AQ07 仍失败，先定位 Provider Schema / Tool Choice、
+模型提前结束、结构格式、Source 校验或超时；只有确有必要时才做仅限 Eval 的 30/60 秒对照，
+分别记录首个模型输出、工具调用与 Repair 耗时，不直接提高 Production 上限。
+
 Ask Quality 的 Research Capability 指 Runtime 真实向 Agent 提供并允许使用的外部事实获取机制，
 可以是自定义 Search Tool、Provider / Model Native Web Search、Page Fetch 或 Multi-round Research
 Loop；模型训练知识不算 Search。Research Sufficiency 只评价本次 Runtime 实际可用能力的使用情况，
@@ -168,3 +288,33 @@ Loop；模型训练知识不算 Search。Research Sufficiency 只评价本次 Ru
 holdout 需在后续另建。
 
 以下能力推迟到 V1 完成后再评估：Large-scale Dataset、Paraphrase / Prompt Variation、Adversarial Evaluation、Historical Market Scenario Dataset、Investment Backtesting、Statistical Confidence Analysis、Automated LLM-as-a-Judge、Large-scale Regression Benchmark、Latency / Token / Cost Optimization Benchmark、Recommendation Consistency Benchmark 与 Multi-model Ensemble Evaluation。
+
+
+### Phase 4B / T7 有限 Strategy Eval
+
+入口 `tests/evaluation/test_phase4_strategy_online.py`，显式 `RUN_PHASE4_STRATEGY_EVAL=1`；
+只接受 GOOGLE_GEMINI / gemini-3.8-flash 和 AQ13–AQ16，不自动运行 Repeat / Research / Earnings。
+候选配置通过 `PHASE4_CANDIDATE_CONFIG` 指定，在线请求前核对 clean commit 与实际 Native
+Prompt / Schema / Tool Policy / 四案例脚本。API Key 仍只读进程 `GEMINI_API_KEY`，无 Base URL 要求。
+
+四个 Case 共 6 次 Ask；每个 Case 独立 SQLite 数据库，真实 Conversation / Strategy Service / UoW
+处理确认、失效、过期与版本。Seed User/Assistant 属于明确的 Fixture Setup，不是模型生成证据。
+AQ13 从独立 Thread / 重建 Service 读取确认的 Thesis / Horizon；AQ14 使用真实 INVALIDATED 与
+过期 Pending；AQ15 模型提出目标配置的 INVALIDATE Candidate，再由确定性测试步骤模拟显式确认，
+最后在新 Thread 重新提问；AQ16 同 Thread 验证未确认建议。详见独立 `phase4b-strategy-v1` Overlay，
+不改写 Dataset 0.1 或历史 4A Artifact。旧分批计划不是允许的持久 Payload，ACTIVE 也没有自动过期
+状态，Overlay 如实表达当前 Contract，而不是伪造删除 / STALE 已完成。
+
+COMPLETED / pytest pass 仅代表 Runtime 与流程执行；Behavioral、Critical Gate 和 Rubric 等待
+Human Review。没有合法失效 Candidate 时后续步骤 NOT_RUN，记录 INCOMPLETE / Behavioral finding，
+不填补草案；传输失败仍是 NOT_EVALUATED。Memory Production / online 使用 NoOp，背景过滤与
+Ledger 不被覆盖只用离线 Fixture 验证。本轮不接数据库 Memory 或 Web Search。
+
+## Phase 4 最终验收后的历史对照
+
+Phase 4 已获 Final Human Acceptance。Production 只使用 PydanticAI；旧手写 Loop 和 urllib
+LLM Adapter 已移至 `tests/legacy/investment_agent.py` 与 `tests/legacy/aliyun_llm.py`。
+历史 Characterization / Phase 3 测试通过该目录保留原行为和 Artifact 意义。pytest 的测试路径包含
+`tests`，不把该目录加入 Production Python path。旧 `/questions` 仍委托 Native 入口，Aliyun OCR 保留。
+冻结 Candidate 的 Prompt / Schema / Budget / Fixture 未改变；不把代码搬迁宣称为新在线 Baseline。
+[最终收尾记录](reports/2026-10-05-phase4-final-acceptance.md)记录离线检查和验收边界。

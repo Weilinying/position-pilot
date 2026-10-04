@@ -8,9 +8,11 @@ from uuid import UUID
 
 import pytest
 
+from legacy.investment_agent import (
+    InvestmentAgent,
+)
 from position_pilot.application.investment_agent import (
     ContextSourceType,
-    InvestmentAgent,
     InvestmentAnswer,
     InvestmentFailureCode,
     InvestmentRequestFailure,
@@ -405,6 +407,7 @@ def make_agent(
     portfolio: PortfolioState | None = None,
     transactions: tuple[Transaction, ...] = (),
     clock: datetime = NOW,
+    enabled_tool_names: frozenset[str] | None = None,
 ) -> tuple[InvestmentAgent, FakePortfolioReader, FakeMarketData, ScriptedLLM]:
     """组装完全不依赖真实 Provider 的 Agent。"""
 
@@ -425,6 +428,7 @@ def make_agent(
             news=market_data,
             market_context=market_data,
             clock=lambda: clock,
+            enabled_tool_names=enabled_tool_names,
         ),
         portfolio_reader,
         market_data,
@@ -614,6 +618,34 @@ def test_quote_tool_description_distinguishes_portfolio_facts() -> None:
     assert "只有问题真正需要当前价格或基于当前价格的关系时才调用" in quote_tool.description
 
 
+def test_agent_exposes_only_enabled_catalog_tools() -> None:
+    """Production 调用路径只向 Runtime 暴露本轮启用的 Tool。"""
+
+    agent, _, _, llm = make_agent(
+        [final_message()],
+        enabled_tool_names=frozenset({"get_current_quote"}),
+    )
+
+    assert_answer(agent.answer(USER_ID, "我目前有多少可用现金？"))
+
+    assert [tool.name for tool in llm.completions[0].tools] == ["get_current_quote"]
+
+
+def test_agent_rejects_disabled_tool_before_provider_execution() -> None:
+    """模型即使请求未暴露 Tool，也必须在金融 Provider 前被拒绝。"""
+
+    agent, _, market_data, _ = make_agent(
+        [market_tool_message(("news-1", "get_recent_news", "GOOG"))],
+        enabled_tool_names=frozenset({"get_current_quote"}),
+    )
+
+    failure = assert_failure(agent.answer(USER_ID, "GOOG 最近有什么新闻？"))
+
+    assert failure.code is InvestmentFailureCode.INVALID_TOOL_CALL
+    assert failure.message == "UNAUTHORIZED_TOOL:get_recent_news"
+    assert market_data.news_queries == []
+
+
 def test_cash_event_adjusted_cash_reaches_agent_snapshot_without_cash_event_history() -> None:
     """Agent 应读取 Cash Event 重建后的现金，但不注入 Cash Event History。"""
 
@@ -716,7 +748,7 @@ def test_no_tool_call_returns_ok_without_mechanical_market_request(
 ) -> None:
     """模型直接回答 Portfolio 问题时，Agent 不应机械调用 Market Tool。"""
 
-    caplog.set_level("INFO", logger="position_pilot.application.investment_agent")
+    caplog.set_level("INFO", logger="legacy.investment_agent")
     agent, _, market_data, llm = make_agent([final_message("可用现金为 300")])
 
     result = assert_answer(agent.answer(USER_ID, "我还有多少可用现金？"))
@@ -752,7 +784,7 @@ def test_executes_up_to_four_tools_in_one_round_then_requests_final_response(
 ) -> None:
     """一个 Tool Round 可以执行最多四个按需调用，并只进行一次 Final Completion。"""
 
-    caplog.set_level("INFO", logger="position_pilot.application.investment_agent")
+    caplog.set_level("INFO", logger="legacy.investment_agent")
     agent, _, market_data, llm = make_agent(
         [
             tool_message(
@@ -820,7 +852,7 @@ def test_required_context_floor_adds_market_context_after_llm_routing(
 ) -> None:
     """LLM 声明 discretionary current action 时，Application 只补足缺失 Market Context。"""
 
-    caplog.set_level("INFO", logger="position_pilot.application.investment_agent")
+    caplog.set_level("INFO", logger="legacy.investment_agent")
     agent, _, providers, llm = make_agent(
         [
             tool_message(
@@ -953,7 +985,8 @@ def test_model_selected_market_context_is_not_added_twice() -> None:
     assert providers.market_context_requests == 1
 
 
-def test_quote_result_includes_only_proven_deterministic_relations() -> None:
+@pytest.mark.parametrize("available_cash", ("25", "210.25", "800"))
+def test_quote_result_includes_only_proven_deterministic_relations(available_cash: str) -> None:
     """Quote 派生关系由代码生成，且不伪造可执行购买数量。"""
 
     agent, _, market_data, llm = make_agent(
@@ -962,24 +995,17 @@ def test_quote_result_includes_only_proven_deterministic_relations() -> None:
             quote_final_message("基于当前已知事实的回答", "GOOG"),
         ],
         market_results={"GOOG": quote("GOOG", "210.25")},
+        portfolio=make_portfolio(available_cash=available_cash),
     )
 
     assert_answer(agent.answer(USER_ID, "结合我的状态，GOOG 今天还能加一点吗？"))
 
+    snapshot = json.loads(llm.completions[0].messages[-1].content or "")["portfolio_snapshot"]
+    assert snapshot["available_cash"] == available_cash
     tool_content = llm.completions[1].messages[-1].content
     assert tool_content is not None
     derived_facts = json.loads(tool_content)["deterministic_derived_facts"]
     assert derived_facts == {
-        "cash_vs_one_share_price": {
-            "relation": "ABOVE",
-            "meaning": "numeric_comparison_only",
-            "supports_purchase_execution_conclusion": False,
-            "prohibited_interpretations": [
-                "cash_is_sufficient_or_insufficient_to_buy",
-                "can_or_cannot_buy_one_share",
-                "cash_covers_or_does_not_cover_one_share",
-            ],
-        },
         "executable_purchase_quantity": {
             "status": "UNKNOWN",
             "reason": "asset_metadata_and_order_capabilities_unavailable",
@@ -1007,7 +1033,6 @@ def test_quote_result_includes_only_proven_deterministic_relations() -> None:
     assert tool_payload["ask_price"] is None
     assert tool_payload["response_contract"] == {
         "amount_based_analysis": ("ALLOWED_WITHIN_EXPLICIT_BUDGET_WITH_CASH_REPORTED_SEPARATELY"),
-        "cash_quote_relation_allowed_use": "repeat_relation_only",
         "current_quote_value_in_answer": "ALLOWED_FROM_SUCCESSFUL_TOOL_CONTEXT",
         "cross_ticker_quote_comparison": "PROHIBITED_UNLESS_PROVIDED",
         "fractional_permission_required_for_amount_analysis": False,
@@ -1022,7 +1047,7 @@ def test_quote_result_includes_only_proven_deterministic_relations() -> None:
 
 
 def test_quote_without_position_does_not_invent_price_to_cost_relation() -> None:
-    """无对应 Position 时只提供 Cash 关系，不生成 Average Cost 关系。"""
+    """无对应 Position 时不生成成本关系，也不注入现金与单股价格比较。"""
 
     agent, _, market_data, llm = make_agent(
         [
@@ -1037,16 +1062,8 @@ def test_quote_without_position_does_not_invent_price_to_cost_relation() -> None
     tool_content = llm.completions[1].messages[-1].content
     assert tool_content is not None
     derived_facts = json.loads(tool_content)["deterministic_derived_facts"]
-    assert derived_facts["cash_vs_one_share_price"] == {
-        "relation": "BELOW",
-        "meaning": "numeric_comparison_only",
-        "supports_purchase_execution_conclusion": False,
-        "prohibited_interpretations": [
-            "cash_is_sufficient_or_insufficient_to_buy",
-            "can_or_cannot_buy_one_share",
-            "cash_covers_or_does_not_cover_one_share",
-        ],
-    }
+    assert "cash_vs_one_share_price" not in derived_facts
+    assert "cash_quote_relation_allowed_use" not in json.loads(tool_content)["response_contract"]
     assert derived_facts["executable_purchase_quantity"] == {
         "status": "UNKNOWN",
         "reason": "asset_metadata_and_order_capabilities_unavailable",
@@ -1586,7 +1603,7 @@ def test_rejects_unknown_tool_or_invalid_arguments(
 ) -> None:
     """Application 必须校验模型输出，不能把任意调用交给 Tool。"""
 
-    caplog.set_level("INFO", logger="position_pilot.application.investment_agent")
+    caplog.set_level("INFO", logger="legacy.investment_agent")
     agent, _, market_data, _ = make_agent(
         [LLMResult.success(LLMMessage(LLMRole.ASSISTANT, None, (tool_call,)))]
     )

@@ -6,8 +6,8 @@ from dataclasses import replace
 
 import pytest
 
+from legacy.aliyun_llm import AliyunLLMProvider
 from position_pilot.application.llm import LLMMessage, LLMRole, LLMToolDefinition
-from position_pilot.integrations.aliyun_llm import AliyunLLMProvider
 
 from .contracts import (
     ResearchRequest,

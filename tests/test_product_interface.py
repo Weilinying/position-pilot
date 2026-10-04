@@ -183,7 +183,7 @@ def test_position_chart_uses_self_hosted_attributed_library() -> None:
 
 
 def test_client_script_preserves_session_identity_safe_text_and_question_boundary() -> None:
-    """前端应使用 Session-derived identity、安全 DOM 和独立 question 请求。"""
+    """前端应使用 Session-derived identity、安全 DOM 和 Account-owned Thread 请求。"""
 
     page, script, _ = _product_assets()
 
@@ -199,8 +199,10 @@ def test_client_script_preserves_session_identity_safe_text_and_question_boundar
         'requestJson("/v1/auth/register"',
         'requestJson("/v1/auth/login"',
         'requestJson("/v1/auth/logout"',
-        'requestJson("/v1/investment/questions"',
-        "body: JSON.stringify({ question })",
+        'requestJson("/v1/threads?limit=100"',
+        'requestJson("/v1/threads", options)',
+        "expected_thread_revision: expectedThreadRevision",
+        "client_request_id: clientRequestId",
         "questionPending",
         'state.writeState !== "refresh_required"',
         'HTTP_500: "unexpected_server_error"',
@@ -247,7 +249,7 @@ def test_client_script_preserves_session_identity_safe_text_and_question_boundar
         assert script.count(f"{label}:") >= 2
 
     assert 'ERROR_LABELS[error.code] ?? "unexpected_server_error"' in script
-    assert "20260912-m13-chart-2" in page
+    assert "20260923-p4-t4a" in page
     assert "lightweight-charts/5.2.0/lightweight-charts.standalone.production.js" in page
     assert "Chart" in script
     assert "position-chart-dialog" in script
@@ -270,6 +272,7 @@ def test_client_script_preserves_session_identity_safe_text_and_question_boundar
     assert "document.write" not in script
     assert "LOCAL_POINTER" not in script
     assert "localStorage" not in script
+    assert 'requestJson("/v1/investment/questions"' not in script
     assert "JSON.stringify({ user_id" not in script
     assert (
         "error.message"

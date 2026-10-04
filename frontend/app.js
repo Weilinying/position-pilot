@@ -108,7 +108,7 @@ const translations = {
     chat_intro_eyebrow: "Your portfolio is connected",
     chat_intro_title: "What decision are you working through?",
     chat_intro_body: "Ask one focused question. PositionPilot uses your portfolio and only the current context the question needs.",
-    no_memory_notice: "Questions remain in this browser tab only and are not model memory.",
+    no_memory_notice: "Conversations are saved to your account. They are context, not long-term model memory.",
     investment_question: "Investment question",
     question_placeholder: "For example: Can I add a little more GOOG today?",
     question_ready: "Uses your current portfolio. Enter to ask · Shift+Enter for a new line.",
@@ -249,6 +249,15 @@ const translations = {
     opening_sealed: "Existing positions can only be added before the first trade, cash entry, or position reconciliation.",
     future_time: "Occurred at cannot be in the future.",
     session_expired: "Your local session expired. Log in again.",
+    intent_pending_conflict: "A draft already exists for this position and intent. Confirm or cancel it before proposing another.",
+    intent_invalid: "This persistent intent is not supported or its source could not be verified.",
+    intent_expires: "Draft expires",
+    intent_plan: "Position capital target", intent_thesis: "Investment thesis", intent_horizon: "Holding horizon",
+    intent_title: "Persistent intent — review before confirming",
+    intent_confirm: "Confirm intent", intent_cancel: "Cancel draft",
+    intent_notice: "This saves an intent, not an order. Pending drafts do not take effect.",
+    intent_failed: "Could not update. Reload this conversation to inspect the saved state.",
+    intent_conflict: "This draft changed. The latest saved state is shown below.",
     working_title: "Assembling decision context",
     working_answer: "Reading your portfolio and selecting current context.",
     answer_label: "Answer",
@@ -270,6 +279,19 @@ const translations = {
     no_sources: "No supporting sources were returned.",
     question_required: "Enter a focused investment question.",
     question_failed: "PositionPilot could not complete this question. Review the status and try again.",
+    conversation_history: "Conversations",
+    server_history: "Saved to this account",
+    no_threads: "No saved conversations yet.",
+    loading_threads: "Loading conversations…",
+    loading_conversation: "Loading conversation…",
+    delete_thread: "Delete conversation",
+    thread_deleted: "Conversation deleted.",
+    conversation_conflict: "This conversation changed. It was reloaded; your question was not submitted again.",
+    conversation_failed: "This conversation could not be loaded. Try again.",
+    source_open: "Open source",
+    citation: "Citation",
+    warnings: "Warnings",
+    turn_failed: "This question did not complete.",
   },
   zh: {
     meta_description: "PositionPilot — 基于真实投资组合的投资决策支持。", brand_home: "PositionPilot 主页", account_actions: "账户操作", product_capabilities: "产品能力", authentication: "身份验证", create_account: "注册账户", log_in: "登录", log_out: "退出登录",
@@ -277,11 +299,20 @@ const translations = {
     account_eyebrow: "一个账户，一个投资组合。", register_title: "注册你的本地账户。", login_title: "欢迎回来。", auth_summary: "密码只在本地进行哈希保存；系统通过浏览器私有 Session 恢复身份，不再使用 UUID。", register: "注册", display_name: "显示名称", display_name_placeholder: "希望我们如何称呼你？", email: "邮箱", password: "密码", password_hint: "请输入 8–128 个字符。此本地 V1 暂不提供密码重置。", confirm_password: "确认密码", back_home: "返回主页", required_fields: "请填写所有必填字段。", invalid_email: "请输入有效邮箱。", invalid_password: "密码必须为 8–128 个字符。", password_mismatch: "两次输入的密码不一致。", registering: "正在创建本地账户…", logging_in: "正在登录…", register_unknown: "账户创建结果未知。请勿自动重试；请使用相同邮箱尝试登录。", login_network_error: "无法连接本地服务。请确认 PositionPilot 已启动后重试。", session_restore_failed: "无法确认当前 Session。请检查本地服务后刷新本页；在恢复前不要重复注册或登录。", unexpected_server_error: "本地服务未能完成本次请求。请先刷新恢复当前状态，再决定是否重试。", invalid_credentials: "邮箱或密码错误。", email_registered: "该邮箱已经注册，请直接登录。", logging_out: "正在退出…", logout_failed: "退出未完成，你仍处于登录状态。请检查本地服务后重试。", setup_required: "请先完成投资组合设置。", portfolio_unavailable: "当前 Session 无法访问此投资组合。", invalid_account: "请检查账户信息后重试。", portfolio_already_exists: "该账户已经存在投资组合，请刷新页面恢复。", invalid_portfolio: "请检查起始现金与持仓后重试。", invalid_opening_state: "请检查已有持仓记录后重试。", invalid_transaction: "请检查交易记录字段后重试。", invalid_cash_event: "请检查现金记录字段后重试。",
     setup_eyebrow: "起始状态", setup_title: "告诉 PositionPilot 你的起点。", setup_summary: "现金和已有持仓共同构成起始状态，不会被伪造成交易；也可以从零开始。", cash_balance: "现金余额", initial_cash: "初始现金", initial_cash_usd: "可用现金（USD）", cash_zero_hint: "未填写现金时，投资组合默认从 0 开始。", existing_holdings: "已有持仓", opening_positions: "起始持仓", opening_optional_hint: "可选。现在录入已持有股票，也可在第一笔交易或现金记录前稍后添加。", add_position: "添加一行持仓", start_empty: "从零开始", save_and_continue: "保存并继续 ↗", ticker: "标的", shares: "股数", average_cost: "平均成本", position_type_optional: "仓位类型（可选）", unspecified: "未分类", remove: "移除", invalid_cash: "现金必须是零或正数，且最多 8 位小数。", incomplete_position: "请完整填写标的、股数和平均成本，或移除此行。", invalid_positive_decimal: "请输入正数，且最多 8 位小数。", duplicate_position: "同一标的与仓位类型组合不能重复。", setup_saving: "正在保存起始状态…", setup_unknown: "投资组合设置结果未知。请勿自动重试；刷新页面以恢复当前状态。",
     workspace_navigation: "工作区导航", primary_navigation: "主要导航", new_question: "新问题", ask_nav: "提问", portfolio_nav: "投资组合", question_history: "问题记录", session_only: "仅当前标签页", no_questions: "还没有问题。", signed_in_as: "当前账户", context_aware: "上下文感知决策支持", chat_view_title: "投资问题", structured_state: "结构化状态", portfolio_manage_title: "投资组合工作区", portfolio_manage_summary: "查看确定性状态，或追加不可变交易与现金记录。", portfolio_ready: "投资组合已加载", portfolio_loading: "正在加载投资组合", portfolio_stale: "需要刷新", idle: "空闲", submitting: "正在保存", refresh_required: "需要刷新",
-    chat_intro_eyebrow: "你的投资组合已连接", chat_intro_title: "你正在思考什么投资决策？", chat_intro_body: "提出一个具体问题。PositionPilot 会使用你的持仓及问题所需的当前信息。", no_memory_notice: "问题仅保留在当前浏览器标签页，不构成模型记忆。", investment_question: "投资问题", question_placeholder: "例如：GOOG 今天还能加一点吗？", question_ready: "将使用你的当前投资组合。Enter 提交 · Shift+Enter 换行。", ask: "询问 PositionPilot ↗", asking: "分析中…",
+    chat_intro_eyebrow: "你的投资组合已连接", chat_intro_title: "你正在思考什么投资决策？", chat_intro_body: "提出一个具体问题。PositionPilot 会使用你的持仓及问题所需的当前信息。", no_memory_notice: "对话会保存到当前账户，作为上下文使用，不等同于长期模型记忆。", investment_question: "投资问题", question_placeholder: "例如：GOOG 今天还能加一点吗？", question_ready: "将使用你的当前投资组合。Enter 提交 · Shift+Enter 换行。", ask: "询问 PositionPilot ↗", asking: "分析中…",
     portfolio_reload: "刷新", portfolio_sections: "投资组合分区", overview_tab: "持仓", trade_tab: "交易", cash_tab: "现金记录", available_cash: "可用现金", ledger_derived: "账本计算 · USD", portfolio_context: "投资组合上下文", session_owned: "当前 Session 所属", session_owned_hint: "身份来自你的本地私有 Session。", opening_state: "起始状态", existing_positions_setup: "添加已有持仓", starting_facts: "一次性起始事实", opening_explainer: "记录开始跟踪前已经持有的仓位，不改变现金，也不创建虚假交易。", skip_for_now: "暂时跳过", save_opening_positions: "保存已有持仓", add_existing_positions: "添加已有持仓", open_positions: "当前持仓", portfolio_empty_loaded: "目前没有持仓。", opening_records: "起始持仓记录", records_empty: "暂无记录。", import_starting_positions: "导入起始持仓", import_review_title: "保存前请复核", draft_only_note: "仅为 Draft · 尚未保存", import_review_hint: "可以手动搜索、粘贴文本或选择一张截图，生成可编辑 Draft。请确认下面每个字段后再保存。", import_methods: "导入方式", manual_import: "手动搜索", text_import: "文本导入", screenshot_import: "截图识别", asset_search_label: "搜索标的或公司名称", asset_search_placeholder: "搜索标的或公司名称", search_assets: "搜索", asset_candidate_heading: "请选择已验证的标的", searching_assets: "搜索中…", use_asset: "使用此标的", asset_selected: "已选择标的。请补完其余字段，再点击保存完成确认。", asset_search_empty: "请输入标的或公司名称后搜索。", asset_no_match: "没有匹配的可用美国股票或 ETF。", asset_search_failed: "标的搜索暂时不可用。请稍后重试。", asset_provider_auth_failed: "标的搜索尚未配置，请先配置 Provider。", asset_rate_limited: "标的搜索已达到限流，请稍后重试。", asset_invalid_response: "标的搜索返回了无效响应。", text_import_label: "粘贴持仓文本", text_import_placeholder: "粘贴券商对账单中的持仓行", prepare_text_draft: "生成可编辑 Draft", preparing_text_draft: "正在生成文本 Draft…", screenshot_import_label: "选择一张券商持仓截图", prepare_screenshot_draft: "生成可编辑 Draft", preparing_screenshot_draft: "正在生成截图 Draft…", start_recognition: "开始识别", attachment_drop_prompt: "将图片拖到这里，或直接粘贴截图", attachment_drop_hint: "JPEG、PNG 或 WebP · 最大 10 MB", attachment_ready: "附件已准备好。点击“开始识别”前不会上传。", attachment_remove: "移除", attachment_file_required: "请先选择、拖入或粘贴图片。", screenshot_privacy_notice: "截图会发送至 Alibaba Model Studio 进行识别。PositionPilot 不保存图片；Provider 的固定保留时长尚未公开。", screenshot_file_required: "请先选择 JPEG、PNG 或 WebP 截图。", screenshot_file_invalid: "请选择受支持的 JPEG、PNG 或 WebP 截图。", screenshot_file_too_large: "截图过大，请选择不超过 10 MB 的图片。", recognition_invalid_request: "导入输入无效。请检查文本或截图后重试。", recognition_auth_failed: "截图识别尚未配置。你也可以手动搜索并选择持仓。", recognition_rate_limited: "识别请求已达到限流，请稍后重试或手动搜索并选择持仓。", recognition_provider_failed: "识别暂时不可用，你可以手动搜索并选择持仓。", recognition_invalid_response: "识别返回了无效响应，请手动复核字段。", recognition_empty: "没有识别出持仓行。请手动添加一行后继续。", draft_review_signal: "复核提示", draft_status_present: "已识别", draft_status_missing: "缺失 — 请填写", draft_status_invalid: "需要修正", draft_status_ambiguous: "有歧义 — 请选择匹配标的", confidence_signal: "识别置信度", confidence_unavailable: "未提供", find_matching_assets: "查找匹配标的", asset_selection_required: "保存前必须从已验证的候选列表中选择此标的。", asset_auto_selected: "已自动选择经过验证的标的。", recognition_draft_ready: "Draft 已生成。请复核每个字段，再点击保存完成确认。", recognition_input_text: "文本导入", recognition_input_screenshot: "截图导入", imported_warning: "Provider 提示", reconciliation_title: "用券商截图校准持仓", reconciliation_summary: "根据当前截图更新选中的持仓。截图中未出现的持仓保持不变，也不会创建交易或现金记录。", reconciliation_broker_label: "券商或来源（可选）", reconciliation_broker_placeholder: "例如：Fidelity、Schwab、IBKR", reconciliation_screenshot_label: "附加当前持仓截图", reconciliation_revalidate: "重新验证全部标的", reconciliation_revalidate_running: "正在重新验证标的…", reconciliation_save: "保存持仓校准", reconciliation_saved: "持仓校准已保存", reconciliation_no_positions: "请先识别截图，并确认至少一条持仓。", reconciliation_not_validated: "请重新验证并明确选择已验证的标的后再保存。", reconciliation_canonical_match: "找到规范标的。点击确认绑定", reconciliation_provider_unavailable: "标的 Provider 暂时不可用，请稍后重试。", reconciliation_invalid_asset: "没有找到与该 ticker 匹配的已验证候选。",
     reconciliation_records: "持仓校准记录", source: "来源", broker: "券商", source_info: "来源详情", confirmed_at: "确认时间",
     transaction_entry: "交易", trade_entry: "交易记录", immutable_entry: "追加不可变记录", action: "操作", price: "价格", occurred_at_optional: "发生时间（可选）", occurred_at_hint: "留空使用后端应用时间。", reason_optional: "原因（可选）", save_trade: "保存交易", transaction_history: "交易历史", cash_activity: "现金活动", cash_entry: "现金记录", cash_event_type: "现金类型", amount: "金额", save_cash: "保存现金记录", cash_history: "现金历史", cost_basis: "总成本", commission: "手续费", fee_schedule: "费用规则", occurred_at: "发生时间", reason: "原因", sequence: "序号", recorded_at: "记录时间", not_provided: "未填写", trade_saved: "交易已保存", cash_saved: "现金记录已保存", opening_saved: "已有持仓已保存", mutation_unknown: "结果未知。请勿自动重试，请刷新并检查最新投资组合状态。", refresh_failed: "写入可能已成功，但最新投资组合加载失败。继续前请先刷新。", invalid_form: "请检查标记的字段后再提交。", insufficient_cash: "可用现金不足以覆盖本次买入。", insufficient_shares: "该仓位类型下的股数不足。", opening_sealed: "已有持仓只能在第一笔交易、现金记录或持仓校准前添加。", future_time: "发生时间不能晚于当前时间。", session_expired: "本地 Session 已过期，请重新登录。",
-    working_title: "正在整理决策上下文", working_answer: "正在读取你的投资组合并选择当前信息。", answer_label: "回答", sources_used: "使用的来源", source_explainer: "支持本次回答的上下文。", answer_ready: "基于投资组合的回答", answer_degraded: "上下文有限的回答", answer_failed: "暂时无法回答", source_ticker: "标的", source_provider: "数据提供方", source_feed: "数据源", source_market_time: "市场时间", source_fetched: "获取时间", source_portfolio: "投资组合持仓与现金", source_quote: "当前市场报价", source_history: "价格历史", source_news: "近期新闻", source_market: "市场环境", no_sources: "本次未返回支持来源。", question_required: "请输入一个具体的投资问题。", question_failed: "PositionPilot 未能完成本次问题，请查看状态后重试。",
+    intent_pending_conflict: "此仓位已有同类待确认草案，请先确认或取消，再起草新版本。",
+    intent_invalid: "持续意图不符合支持范围，或无法核对其用户来源。",
+    intent_expires: "草案过期时间",
+    intent_plan: "仓位目标资本配置", intent_thesis: "投资逻辑", intent_horizon: "持有期限",
+    intent_title: "持续意图 — 请核对后确认",
+    intent_confirm: "确认意图", intent_cancel: "取消草案",
+    intent_notice: "仅保存意图，不会下单；待确认草案尚未生效。",
+    intent_failed: "更新未完成。请重新加载对话核对已保存状态。",
+    intent_conflict: "草案状态已变化，下方显示最新保存状态。",
+    working_title: "正在整理决策上下文", working_answer: "正在读取你的投资组合并选择当前信息。", answer_label: "回答", sources_used: "使用的来源", source_explainer: "支持本次回答的上下文。", answer_ready: "基于投资组合的回答", answer_degraded: "上下文有限的回答", answer_failed: "暂时无法回答", source_ticker: "标的", source_provider: "数据提供方", source_feed: "数据源", source_market_time: "市场时间", source_fetched: "获取时间", source_portfolio: "投资组合持仓与现金", source_quote: "当前市场报价", source_history: "价格历史", source_news: "近期新闻", source_market: "市场环境", no_sources: "本次未返回支持来源。", question_required: "请输入一个具体的投资问题。", question_failed: "PositionPilot 未能完成本次问题，请查看状态后重试。", conversation_history: "对话", server_history: "已保存到当前账户", no_threads: "还没有保存的对话。", loading_threads: "正在加载对话…", loading_conversation: "正在加载对话…", delete_thread: "删除对话", thread_deleted: "对话已删除。", conversation_conflict: "这段对话已经发生变化。已重新加载，本次问题没有自动重新提交。", conversation_failed: "无法加载这段对话，请重试。", source_open: "打开来源", citation: "引用", warnings: "提示", turn_failed: "本次问题未能完成。",
   },
 };
 
@@ -576,6 +607,13 @@ const state = {
   importController: null,
   importGeneration: 0,
   importPending: false,
+  threads: [],
+  activeThreadId: null,
+  activeThreadRevision: null,
+  activeThread: null,
+  conversationController: null,
+  conversationGeneration: 0,
+  conversationPending: false,
   questionController: null,
   questionPending: false,
   questionComposing: false,
@@ -609,6 +647,10 @@ const SOURCE_LABELS = {
 };
 const ERROR_LABELS = {
   HTTP_500: "unexpected_server_error",
+  STRATEGY_CANDIDATE_CONFLICT: "intent_pending_conflict",
+  STRATEGY_CONFLICT: "intent_conflict",
+  STRATEGY_INVALID: "intent_invalid",
+  STRATEGY_NOT_FOUND: "intent_failed",
   AUTHENTICATION_REQUIRED: "session_expired",
   PORTFOLIO_SETUP_REQUIRED: "setup_required",
   PORTFOLIO_NOT_FOUND: "portfolio_unavailable",
@@ -635,6 +677,11 @@ const ERROR_LABELS = {
   LLM_RATE_LIMITED: "question_failed",
   LLM_PROVIDER_UNAVAILABLE: "question_failed",
   LLM_INVALID_PROVIDER_RESPONSE: "question_failed",
+  THREAD_NOT_FOUND: "conversation_failed",
+  THREAD_CONFLICT: "conversation_conflict",
+  TURN_IN_PROGRESS: "conversation_conflict",
+  AGENT_REQUEST_FAILED: "question_failed",
+  AGENT_INVALID_RESPONSE: "question_failed",
 };
 
 function byId(id) {
@@ -817,6 +864,16 @@ function formatDecimal(value) {
 
 function formatMoney(value) {
   return `$${formatDecimal(value)}`;
+}
+
+function makeClientRequestId() {
+  if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
+  const bytes = new Uint8Array(16);
+  globalThis.crypto?.getRandomValues?.(bytes);
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = [...bytes].map((value) => value.toString(16).padStart(2, "0")).join("");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
 function formatTimestamp(value) {
@@ -1608,13 +1665,21 @@ function resetSensitiveState() {
   state.portfolioGeneration += 1;
   state.importGeneration += 1;
   state.questionGeneration += 1;
+  state.conversationGeneration += 1;
   state.portfolioController?.abort();
   state.importController?.abort();
+  state.conversationController?.abort();
   state.questionController?.abort();
   state.portfolioController = null;
   state.importController = null;
+  state.conversationController = null;
   state.questionController = null;
   state.importPending = false;
+  state.threads = [];
+  state.activeThreadId = null;
+  state.activeThreadRevision = null;
+  state.activeThread = null;
+  state.conversationPending = false;
   state.questionPending = false;
   state.questionComposing = false;
   state.pendingQuestionView = null;
@@ -1622,6 +1687,7 @@ function resetSensitiveState() {
   clearElement(elements.conversationList);
   clearElement(elements.sessionList);
   elements.sessionEmpty.hidden = false;
+  setLocalizedText(elements.sessionEmpty, "no_threads");
   elements.chatIntro.hidden = false;
   elements.question.value = "";
   elements.setupForm.reset();
@@ -1668,7 +1734,7 @@ function updateControls() {
   const writeBusy = state.writeState === "submitting";
   const readBusy = state.portfolioReadState === "loading";
   const authBusy = state.authTransition !== "idle";
-  const busy = writeBusy || readBusy || authBusy || state.questionPending || state.importPending;
+  const busy = writeBusy || readBusy || authBusy || state.questionPending || state.importPending || state.conversationPending;
   const contextReady = Boolean(state.snapshot) && state.writeState !== "refresh_required";
   elements.logout.disabled = writeBusy || authBusy;
   elements.headerLogout.disabled = writeBusy || authBusy;
@@ -1695,6 +1761,7 @@ function updateControls() {
   elements.navChat.disabled = busy;
   elements.navPortfolio.disabled = busy;
   elements.newQuestion.disabled = busy;
+  elements.sessionList?.querySelectorAll("button").forEach((button) => { button.disabled = busy; });
   renderPortfolioState();
   renderWriteState();
 }
@@ -1729,7 +1796,8 @@ async function restoreSession() {
     renderAccount();
     if (state.account.portfolio_ready) {
       showOnly(elements.appShell);
-      await refreshPortfolio();
+      const refreshed = await refreshPortfolio();
+      if (refreshed && state.account) await loadConversationWorkspace();
     } else {
       showSetup();
     }
@@ -1824,7 +1892,11 @@ async function handleLogin(event) {
     state.account = payload.account;
     elements.loginPassword.value = "";
     renderAccount();
-    if (state.account.portfolio_ready) { showOnly(elements.appShell); await refreshPortfolio(); } else showSetup();
+    if (state.account.portfolio_ready) {
+      showOnly(elements.appShell);
+      const refreshed = await refreshPortfolio();
+      if (refreshed && state.account) await loadConversationWorkspace();
+    } else showSetup();
   } catch (error) {
     if (generation !== state.authGeneration) return;
     state.authTransition = "idle";
@@ -1846,11 +1918,14 @@ async function logout() {
   state.portfolioGeneration += 1;
   state.importGeneration += 1;
   state.questionGeneration += 1;
+  state.conversationGeneration += 1;
   state.portfolioController?.abort();
   state.importController?.abort();
+  state.conversationController?.abort();
   state.questionController?.abort();
   state.portfolioController = null;
   state.importController = null;
+  state.conversationController = null;
   state.questionController = null;
   state.portfolioReadState = "idle";
   state.importPending = false;
@@ -1904,6 +1979,7 @@ async function handleSetup(event, forceEmpty = false) {
     const refreshed = await refreshPortfolio({ afterMutation: true });
     if (!state.account) return;
     state.writeState = refreshed ? "idle" : "refresh_required";
+    if (refreshed) await loadConversationWorkspace();
   } catch (error) {
     state.writeState = error instanceof TypeError || (error instanceof ApiError && error.code === "PORTFOLIO_ALREADY_EXISTS") ? "refresh_required" : "idle";
     if (error instanceof TypeError) setMessage(elements.setupMessage, "setup_unknown");
@@ -3223,19 +3299,49 @@ function sourceTone(status) {
   return "warning";
 }
 
+function isSafeHttpUrl(value) {
+  if (typeof value !== "string" || !value.trim()) return false;
+  try {
+    const url = new URL(value);
+    return (url.protocol === "http:" || url.protocol === "https:")
+      && !url.username && !url.password;
+  } catch {
+    return false;
+  }
+}
+
 function createSourceCard(source) {
   const card = makeElement("article", "source-card");
   card.dataset.tone = sourceTone(source.status);
   const top = makeElement("div", "source-card-top");
   const title = makeElement("strong");
-  const labelKey = SOURCE_LABELS[source.type];
-  if (labelKey) setLocalizedText(title, labelKey); else title.textContent = source.type;
-  top.append(title, makeElement("span", "source-status", source.status));
+  const sourceType = source.type ?? source.source_type ?? "UNKNOWN";
+  const labelKey = SOURCE_LABELS[sourceType];
+  if (labelKey) setLocalizedText(title, labelKey);
+  else title.textContent = source.title || sourceType;
+  const safeUrl = isSafeHttpUrl(source.url);
+  if (safeUrl) {
+    const link = makeElement("a", "source-link", source.title || translate("source_open"));
+    link.href = source.url;
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    link.setAttribute("aria-label", `${translate("source_open")}: ${source.title || source.url}`);
+    top.append(link);
+  }
+  top.append(makeElement("span", "source-status", source.status ?? "UNKNOWN"));
   const metadata = makeElement("div", "source-metadata");
-  for (const [key, value, mode] of [["source_ticker", source.ticker], ["source_provider", source.provider], ["source_feed", source.feed], ["source_market_time", source.market_timestamp, "timestamp"], ["source_fetched", source.fetched_at, "timestamp"]]) {
+  for (const [key, value, mode] of [
+    ["source_ticker", source.ticker ?? source.provider_reference],
+    ["source_provider", source.provider],
+    ["source_feed", source.feed ?? source.source_type],
+    ["source_market_time", source.market_timestamp ?? source.event_time ?? source.published_at, "timestamp"],
+    ["source_fetched", source.fetched_at, "timestamp"],
+    ["source_publisher", source.publisher],
+  ]) {
     if (!value) continue;
     const item = makeElement("div", "source-metadata-item");
-    const label = makeElement("span", "source-metadata-label"); setLocalizedText(label, key);
+    const label = makeElement("span", "source-metadata-label");
+    setLocalizedText(label, key === "source_publisher" ? "source_provider" : key);
     const content = makeElement("span", "source-metadata-value");
     if (mode === "timestamp") { content.dataset.timestamp = value; content.textContent = formatTimestamp(value); } else content.textContent = value;
     item.append(label, content); metadata.append(item);
@@ -3243,80 +3349,543 @@ function createSourceCard(source) {
   card.append(top, metadata); return card;
 }
 
-function createQuestionExchange(question) {
+function normalizeConversationAnswer(payload) {
+  const answer = payload?.answer;
+  const answerObject = answer && typeof answer === "object" ? answer : {};
+  const text = typeof answer === "string"
+    ? answer
+    : answerObject.text ?? payload?.assistant_message?.content ?? "";
+  const warnings = Array.isArray(answerObject.warnings) ? answerObject.warnings : [];
+  const sources = Array.isArray(answerObject.sources)
+    ? answerObject.sources
+    : Array.isArray(payload?.sources) ? payload.sources : [];
+  const citations = Array.isArray(answerObject.citations) ? answerObject.citations : [];
+  const status = payload?.status
+    ?? (payload?.turn?.status === "FAILED" ? "FAILED" : warnings.length ? "DEGRADED" : "COMPLETED");
+  return { text, warnings, sources, citations, status, candidate: answerObject.candidate ?? null };
+}
+
+function createQuestionExchange(question, {append = true} = {}) {
   state.questionCount += 1;
   const exchange = makeElement("section", "conversation-exchange");
   exchange.id = `question-${state.questionCount}`;
   exchange.append(makeElement("div", "user-message", question));
   const fragment = elements.responseTemplate.content.cloneNode(true);
   const assistant = fragment.querySelector(".assistant-message");
-  const view = { title: fragment.querySelector(".result-title"), status: fragment.querySelector(".response-status"), answer: fragment.querySelector(".answer-copy"), details: fragment.querySelector(".source-disclosure"), count: fragment.querySelector(".source-count"), sources: fragment.querySelector(".source-list") };
+  const view = {
+    root: exchange,
+    title: fragment.querySelector(".result-title"),
+    status: fragment.querySelector(".response-status"),
+    answer: fragment.querySelector(".answer-copy"),
+    details: fragment.querySelector(".source-disclosure"),
+    count: fragment.querySelector(".source-count"),
+    sources: fragment.querySelector(".source-list"),
+    citations: fragment.querySelector(".citation-list"),
+    warnings: fragment.querySelector(".response-warnings"),
+    completed: false,
+    candidate: makeElement("section", "intent-candidate"),
+  };
   setLocalizedText(view.title, "working_title");
   setLocalizedText(view.answer, "working_answer");
   setLocalizedText(fragment.querySelector(".answer-label"), "answer_label");
   setLocalizedText(fragment.querySelector(".source-disclosure summary span:first-child"), "sources_used");
   setLocalizedText(fragment.querySelector(".source-explainer"), "source_explainer");
+  assistant.append(view.candidate);
+  view.candidate.hidden = true;
   assistant.setAttribute("aria-live", "polite");
   exchange.append(fragment);
-  elements.conversationList.append(exchange);
+  if (append) elements.conversationList.append(exchange);
   elements.chatIntro.hidden = true;
   elements.sessionEmpty.hidden = true;
-  const history = makeElement("button", "session-question", question.length > 54 ? `${question.slice(0, 53)}…` : question);
-  history.type = "button";
-  history.addEventListener("click", () => { switchAppView("chat", false); exchange.scrollIntoView({ block: "start" }); });
-  elements.sessionList.append(history);
   elements.conversationScroll.scrollTop = elements.conversationScroll.scrollHeight;
   return view;
 }
 
-function renderQuestionResult(view, payload) {
-  setLocalizedText(view.title, payload.status === "DEGRADED" ? "answer_degraded" : "answer_ready");
-  view.status.textContent = payload.status;
-  view.status.dataset.tone = payload.status === "DEGRADED" ? "warning" : "success";
-  view.answer.textContent = payload.answer;
-  view.count.textContent = String(payload.sources.length);
+function renderTurnLoading(view) {
+  view.completed = false;
+  setLocalizedText(view.title, "working_title");
+  setLocalizedText(view.answer, "working_answer");
+  view.status.textContent = "RUNNING";
+  view.status.dataset.tone = "active";
+  view.count.textContent = "0";
   clearElement(view.sources);
-  if (payload.sources.length === 0) { const empty = makeElement("p", "source-placeholder"); setLocalizedText(empty, "no_sources"); view.sources.append(empty); }
-  else for (const source of payload.sources) view.sources.append(createSourceCard(source));
+  if (view.citations) { clearElement(view.citations); view.citations.hidden = true; }
+  if (view.warnings) { clearElement(view.warnings); view.warnings.hidden = true; }
+  view.details.open = false;
+}
+
+function renderCitationList(view, citations, sources) {
+  if (!view.citations) return;
+  clearElement(view.citations);
+  const sourceById = new Map(sources.map((source) => [String(source.source_id ?? source.id ?? ""), source]));
+  const valid = citations.filter((citation) => {
+    const source = sourceById.get(String(citation.source_id ?? ""));
+    return source && isSafeHttpUrl(source.url);
+  });
+  if (valid.length === 0) { view.citations.hidden = true; return; }
+  view.citations.hidden = false;
+  const heading = makeElement("span", "citation-heading");
+  setLocalizedText(heading, "citation");
+  view.citations.append(heading);
+  for (const [index, citation] of valid.entries()) {
+    const source = sourceById.get(String(citation.source_id));
+    const link = makeElement("a", "citation-link", `[${index + 1}] ${source.title || source.provider || source.url}`);
+    link.href = source.url;
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    if (citation.locator) link.title = String(citation.locator);
+    view.citations.append(link);
+  }
+}
+
+function renderAnswerWithCitations(container, answer, citations, sources) {
+  clearElement(container);
+  const citationIds = new Set(citations.map((citation) => String(citation.source_id ?? "")));
+  const sourceById = new Map(sources.map((source) => [String(source.source_id ?? ""), source]));
+  const tokens = /\[source:([^\]]+)\]/g;
+  let offset = 0;
+  for (const match of answer.matchAll(tokens)) {
+    const index = match.index ?? 0;
+    container.append(document.createTextNode(answer.slice(offset, index)));
+    const sourceId = match[1];
+    const source = citationIds.has(sourceId) ? sourceById.get(sourceId) : null;
+    if (!source) {
+      container.append(document.createTextNode(match[0]));
+    } else if (isSafeHttpUrl(source.url)) {
+      const link = makeElement("a", "inline-citation", "[source]");
+      link.href = source.url;
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      link.setAttribute("aria-label", `${translate("source_open")}: ${source.title || source.url}`);
+      container.append(link);
+    } else {
+      const label = makeElement("span", "inline-citation", "[source]");
+      label.title = source.title || source.provider || source.source_type || sourceId;
+      container.append(label);
+    }
+    offset = index + match[0].length;
+  }
+  container.append(document.createTextNode(answer.slice(offset)));
+}
+
+function renderIntentCandidate(view, candidate) {
+  if (!view.candidate) return;
+  clearElement(view.candidate);
+  view.candidate.hidden = !candidate;
+  if (!candidate) return;
+  const heading = makeElement("h3"); setLocalizedText(heading, "intent_title");
+  const scope = `${candidate.scope.ticker}:${candidate.scope.position_type}`;
+  const kindLabel = {POSITION_PLAN_V1: "intent_plan", INVESTMENT_THESIS_V1: "intent_thesis", HOLDING_HORIZON_V1: "intent_horizon"}[candidate.kind];
+  view.candidate.append(heading, makeElement("p", "intent-scope", `${scope} · ${translate(kindLabel)}`));
+  view.candidate.append(makeElement("p", "intent-state", `${candidate.operation} · ${candidate.status}`));
+  const payload = candidate.payload;
+  const content = candidate.operation === "INVALIDATE" ? "INVALIDATE"
+    : payload?.target_budget != null ? `${payload.target_budget} ${payload.currency}`
+    : payload?.thesis_text ?? `${payload?.horizon_category ?? ""} ${payload?.until ?? ""}`;
+  view.candidate.append(makeElement("p", "intent-value", content));
+  view.candidate.append(makeElement("blockquote", "intent-evidence", candidate.evidence_quote));
+  if (candidate.expires_at) view.candidate.append(makeElement("p", "intent-expires", `${translate("intent_expires")}: ${formatTimestamp(candidate.expires_at)}`));
+  const notice = makeElement("p"); setLocalizedText(notice, "intent_notice");
+  view.candidate.append(notice);
+  if (candidate.status !== "PENDING") return;
+  const actions = makeElement("div", "intent-actions");
+  const confirm = makeElement("button"); confirm.type = "button"; setLocalizedText(confirm, "intent_confirm");
+  const cancel = makeElement("button"); cancel.type = "button"; setLocalizedText(cancel, "intent_cancel");
+  const requestId = makeClientRequestId();
+  const authGeneration = state.authGeneration;
+  const accountKey = currentAccountKey();
+  const threadId = state.activeThreadId;
+  const isCurrent = () => authGeneration === state.authGeneration
+    && accountKey === currentAccountKey() && threadId === state.activeThreadId;
+  async function resolve(action) {
+    if (!isCurrent() || confirm.disabled) return;
+    confirm.disabled = true; cancel.disabled = true;
+    const body = {candidate_revision: candidate.candidate_revision};
+    if (action === "confirm") Object.assign(body, {base_version: candidate.base_version, client_request_id: requestId});
+    try {
+      await requestJson(`/v1/strategy-candidates/${candidate.id}/${action}`, {method: "POST", body: JSON.stringify(body)});
+      const latest = await requestJson(`/v1/strategy-candidates/${candidate.id}`);
+      if (isCurrent()) renderIntentCandidate(view, latest);
+    } catch (error) {
+      if (!isCurrent()) return;
+      if (error.status === 409) {
+        try {
+          const latest = await requestJson(`/v1/strategy-candidates/${candidate.id}`);
+          if (!isCurrent()) return;
+          renderIntentCandidate(view, latest);
+          const message = makeElement("p"); setLocalizedText(message, "intent_conflict"); view.candidate.append(message);
+          return;
+        } catch { /* 读取失败时保留未知状态，不自动重放确认。 */ }
+      }
+      const message = makeElement("p"); setLocalizedText(message, "intent_failed"); view.candidate.append(message);
+    }
+  }
+  confirm.addEventListener("click", () => resolve("confirm"));
+  cancel.addEventListener("click", () => resolve("cancel"));
+  actions.append(confirm, cancel); view.candidate.append(actions);
+}
+
+function renderQuestionResult(view, payload) {
+  const result = normalizeConversationAnswer(payload);
+  view.completed = true;
+  setLocalizedText(view.title, result.status === "DEGRADED" ? "answer_degraded" : "answer_ready");
+  view.status.textContent = result.status;
+  view.status.dataset.tone = result.status === "DEGRADED" ? "warning" : "success";
+  renderAnswerWithCitations(view.answer, result.text, result.citations, result.sources);
+  view.count.textContent = String(result.sources.length);
+  clearElement(view.sources);
+  if (result.sources.length === 0) { const empty = makeElement("p", "source-placeholder"); setLocalizedText(empty, "no_sources"); view.sources.append(empty); }
+  else for (const source of result.sources) view.sources.append(createSourceCard(source));
+  renderCitationList(view, result.citations, result.sources);
+  if (view.warnings) {
+    clearElement(view.warnings);
+    if (result.warnings.length) {
+      view.warnings.hidden = false;
+      const label = makeElement("span", "warning-label"); setLocalizedText(label, "warnings");
+      view.warnings.append(label, makeElement("span", "warning-values", result.warnings.join(", ")));
+    } else view.warnings.hidden = true;
+  }
+  renderIntentCandidate(view, result.candidate);
   view.details.open = false;
 }
 
 function renderQuestionError(view, error) {
+  view.completed = true;
   setLocalizedText(view.title, "answer_failed");
   view.status.textContent = error.code ?? "ERROR";
   view.status.dataset.tone = "danger";
   setLocalizedText(view.answer, error instanceof ApiError ? apiMessageKey(error) : "question_failed");
   view.count.textContent = "0";
   clearElement(view.sources);
+  if (view.citations) { clearElement(view.citations); view.citations.hidden = true; }
+  if (view.warnings) { clearElement(view.warnings); view.warnings.hidden = true; }
   view.details.open = false;
+}
+
+function renderConversationHistory(messages, snapshot = null, answers = {}) {
+  clearElement(elements.conversationList);
+  state.questionCount = 0;
+  const views = new Map();
+  for (const message of messages ?? []) {
+    const role = String(message.role ?? "").toUpperCase();
+    if (role === "USER") {
+      const view = createQuestionExchange(message.content, {append: true});
+      views.set(String(message.turn_id), view);
+    } else if (role === "ASSISTANT") {
+      const view = views.get(String(message.turn_id));
+      if (view) renderQuestionResult(view, {
+        answer: answers?.[message.id] ?? {text: message.content, sources: [], citations: []},
+        turn: {status: "COMPLETED"},
+      });
+    }
+  }
+  const activeTurn = snapshot?.active_turn;
+  const lastTurn = snapshot?.last_turn;
+  for (const [turnId, view] of views) {
+    if (view.completed) continue;
+    if (activeTurn && String(activeTurn.id) === turnId && activeTurn.status === "RUNNING") renderTurnLoading(view);
+    else if (lastTurn && String(lastTurn.id) === turnId && lastTurn.status === "FAILED") {
+      renderQuestionError(view, new ApiError(502, lastTurn.failure_code ?? "AGENT_REQUEST_FAILED", lastTurn.failure_code ?? "AGENT_REQUEST_FAILED"));
+    } else renderQuestionError(view, new ApiError(502, "AGENT_REQUEST_FAILED", "Conversation turn did not complete"));
+  }
+  const hasMessages = (messages ?? []).length > 0;
+  elements.chatIntro.hidden = hasMessages;
+  elements.sessionEmpty.hidden = state.threads.length > 0;
+  elements.conversationScroll.scrollTop = elements.conversationScroll.scrollHeight;
+}
+
+function renderThreadList() {
+  clearElement(elements.sessionList);
+  elements.sessionEmpty.hidden = state.threads.length > 0;
+  if (!state.threads.length) { setLocalizedText(elements.sessionEmpty, "no_threads"); return; }
+  for (const thread of state.threads) {
+    const item = makeElement("div", "session-thread-item");
+    item.dataset.threadId = thread.id;
+    item.classList.toggle("is-active", thread.id === state.activeThreadId);
+    const select = makeElement("button", "session-thread", thread.title || translate("new_question"));
+    select.type = "button";
+    select.dataset.threadId = thread.id;
+    select.setAttribute("aria-current", String(thread.id === state.activeThreadId));
+    select.addEventListener("click", () => loadConversationThread(thread.id));
+    const timestamp = makeElement("small", "session-thread-time", formatTimestamp(thread.updated_at));
+    const remove = makeElement("button", "session-thread-delete", "×");
+    remove.type = "button";
+    remove.dataset.threadId = thread.id;
+    remove.setAttribute("aria-label", `${translate("delete_thread")}: ${thread.title || translate("new_question")}`);
+    remove.title = translate("delete_thread");
+    remove.addEventListener("click", (event) => deleteConversationThread(thread.id, event));
+    item.append(select, timestamp, remove);
+    elements.sessionList.append(item);
+  }
+}
+
+function upsertThread(thread) {
+  if (!thread?.id) return;
+  const existing = state.threads.findIndex((item) => item.id === thread.id);
+  if (existing >= 0) state.threads.splice(existing, 1, thread);
+  else state.threads.unshift(thread);
+  state.threads.sort((left, right) => String(right.updated_at).localeCompare(String(left.updated_at)));
+  renderThreadList();
+}
+
+function clearConversationView() {
+  clearElement(elements.conversationList);
+  elements.chatIntro.hidden = false;
+  elements.sessionEmpty.hidden = state.threads.length > 0;
+  elements.conversationScroll.scrollTop = 0;
+}
+
+function cancelQuestionRequest() {
+  state.questionGeneration += 1;
+  state.questionController?.abort();
+  state.questionController = null;
+  state.questionPending = false;
+  state.pendingQuestionView = null;
+}
+
+function currentAccountKey() {
+  return state.account?.email?.trim().toLowerCase() ?? null;
+}
+
+function conversationMessagesUrl(threadId, before = null) {
+  const cursor = before == null ? "" : `&before=${encodeURIComponent(before)}`;
+  return `/v1/threads/${threadId}/messages?limit=100${cursor}`;
+}
+
+async function loadConversationThread(threadId, {cancelQuestion = true} = {}) {
+  if (!threadId || !state.account) return false;
+  if (cancelQuestion) cancelQuestionRequest();
+  const generation = ++state.conversationGeneration;
+  state.conversationController?.abort();
+  const controller = new AbortController();
+  state.conversationController = controller;
+  state.conversationPending = true;
+  updateControls();
+  try {
+    const [snapshot, history] = await Promise.all([
+      requestJson(`/v1/threads/${threadId}`, {signal: controller.signal}),
+      requestJson(conversationMessagesUrl(threadId), {signal: controller.signal}),
+    ]);
+    if (generation !== state.conversationGeneration) return false;
+    const messagePages = [history?.messages ?? []];
+    const answers = {...(history?.answers ?? {})};
+    const seenCursors = new Set();
+    let nextCursor = history?.next_cursor ?? null;
+    while (nextCursor !== null && nextCursor !== undefined && !seenCursors.has(String(nextCursor))) {
+      if (generation !== state.conversationGeneration) return false;
+      const cursor = String(nextCursor);
+      seenCursors.add(cursor);
+      const page = await requestJson(conversationMessagesUrl(threadId, cursor), {signal: controller.signal});
+      if (generation !== state.conversationGeneration) return false;
+      messagePages.unshift(page?.messages ?? []);
+      Object.assign(answers, page?.answers ?? {});
+      nextCursor = page?.next_cursor ?? null;
+    }
+    const thread = history?.thread ?? snapshot?.thread;
+    state.activeThreadId = thread.id;
+    state.activeThreadRevision = thread.revision;
+    state.activeThread = thread;
+    upsertThread(thread);
+    renderConversationHistory(messagePages.flat(), snapshot, answers);
+    switchAppView("chat", false);
+    return true;
+  } catch (error) {
+    if (error?.name === "AbortError" || generation !== state.conversationGeneration) return false;
+    if (error instanceof ApiError && error.status === 401) { enterHome("session_expired"); return false; }
+    if (error instanceof ApiError && error.status === 404) {
+      state.threads = state.threads.filter((thread) => thread.id !== threadId);
+      if (state.activeThreadId === threadId) { state.activeThreadId = null; state.activeThreadRevision = null; state.activeThread = null; clearConversationView(); }
+      renderThreadList();
+    } else {
+      setMessage(elements.questionHint, "conversation_failed", "danger");
+    }
+    return false;
+  } finally {
+    if (generation === state.conversationGeneration) {
+      state.conversationPending = false;
+      state.conversationController = null;
+      updateControls();
+    }
+  }
+}
+
+async function loadConversationWorkspace({threadId = null} = {}) {
+  if (!state.account) return false;
+  cancelQuestionRequest();
+  const generation = ++state.conversationGeneration;
+  state.conversationController?.abort();
+  const controller = new AbortController();
+  state.conversationController = controller;
+  state.conversationPending = true;
+  setLocalizedText(elements.sessionEmpty, "loading_threads");
+  elements.sessionEmpty.hidden = false;
+  updateControls();
+  try {
+    const payload = await requestJson("/v1/threads?limit=100", {signal: controller.signal});
+    if (generation !== state.conversationGeneration) return false;
+    state.threads = payload?.items ?? [];
+    renderThreadList();
+    const selected = threadId || (state.activeThreadId && state.threads.some((item) => item.id === state.activeThreadId) ? state.activeThreadId : state.threads[0]?.id);
+    state.conversationPending = false;
+    state.conversationController = null;
+    updateControls();
+    if (selected) return loadConversationThread(selected);
+    state.activeThreadId = null;
+    state.activeThreadRevision = null;
+    state.activeThread = null;
+    clearConversationView();
+    return true;
+  } catch (error) {
+    if (error?.name === "AbortError" || generation !== state.conversationGeneration) return false;
+    if (error instanceof ApiError && error.status === 401) enterHome("session_expired");
+    else { setLocalizedText(elements.sessionEmpty, "conversation_failed"); elements.sessionEmpty.hidden = false; }
+    return false;
+  } finally {
+    if (generation === state.conversationGeneration) {
+      state.conversationPending = false;
+      state.conversationController = null;
+      updateControls();
+    }
+  }
+}
+
+async function createConversationThread({authGeneration = state.authGeneration, accountKey = currentAccountKey(), signal} = {}) {
+  const options = {method: "POST", body: JSON.stringify({})};
+  if (signal) options.signal = signal;
+  const thread = await requestJson("/v1/threads", options);
+  if (authGeneration !== state.authGeneration || currentAccountKey() !== accountKey || !state.account) return null;
+  state.activeThreadId = thread.id;
+  state.activeThreadRevision = thread.revision;
+  state.activeThread = thread;
+  upsertThread(thread);
+  clearConversationView();
+  switchAppView("chat", false);
+  return thread;
+}
+
+async function handleNewQuestion() {
+  if (state.authTransition !== "idle" || state.conversationPending || state.writeState !== "idle" || !state.account) return;
+  cancelQuestionRequest();
+  const authGeneration = state.authGeneration;
+  const accountKey = currentAccountKey();
+  state.conversationPending = true;
+  updateControls();
+  try {
+    const thread = await createConversationThread({authGeneration, accountKey});
+    if (thread && authGeneration === state.authGeneration && currentAccountKey() === accountKey) elements.question.focus();
+  } catch (error) {
+    if (error?.name === "AbortError" || authGeneration !== state.authGeneration || currentAccountKey() !== accountKey) return;
+    if (error instanceof ApiError && error.status === 401) enterHome("session_expired");
+    else setMessage(elements.questionHint, "conversation_failed", "danger");
+  } finally {
+    if (authGeneration === state.authGeneration && currentAccountKey() === accountKey) {
+      state.conversationPending = false;
+      updateControls();
+    }
+  }
+}
+
+async function deleteConversationThread(threadId, event) {
+  event?.stopPropagation();
+  if (state.conversationPending || !threadId) return;
+  if (typeof window.confirm === "function" && !window.confirm(`${translate("delete_thread")}?`)) return;
+  cancelQuestionRequest();
+  state.conversationPending = true;
+  updateControls();
+  try {
+    await requestJson(`/v1/threads/${threadId}`, {method: "DELETE"});
+    state.threads = state.threads.filter((thread) => thread.id !== threadId);
+    if (state.activeThreadId === threadId) {
+      state.activeThreadId = null;
+      state.activeThreadRevision = null;
+      state.activeThread = null;
+      clearConversationView();
+    }
+    renderThreadList();
+    const next = state.threads[0];
+    if (next) await loadConversationThread(next.id);
+    else setMessage(elements.questionHint, "thread_deleted", "success");
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 401) enterHome("session_expired");
+    else if (error instanceof ApiError && error.status === 409) { await loadConversationWorkspace({threadId: state.activeThreadId}); setMessage(elements.questionHint, "conversation_conflict", "warning"); }
+    else setMessage(elements.questionHint, "conversation_failed", "danger");
+  } finally {
+    state.conversationPending = false;
+    updateControls();
+  }
 }
 
 async function handleQuestion(event) {
   event.preventDefault();
   const question = elements.question.value.trim();
   if (!question) { setMessage(elements.questionHint, "question_required"); elements.question.focus(); return; }
-  if (state.questionPending || state.writeState !== "idle" || state.portfolioReadState !== "idle" || state.authTransition !== "idle" || !state.loadedUserId || !state.snapshot) return;
+  if (state.questionPending || state.conversationPending || state.writeState !== "idle" || state.portfolioReadState !== "idle" || state.authTransition !== "idle" || !state.loadedUserId || !state.snapshot) return;
+  if (!state.activeThreadId) {
+    const authGeneration = state.authGeneration;
+    const accountKey = currentAccountKey();
+    state.conversationPending = true;
+    updateControls();
+    let thread;
+    try { thread = await createConversationThread({authGeneration, accountKey}); }
+    catch (error) {
+      if (error?.name === "AbortError" || authGeneration !== state.authGeneration || currentAccountKey() !== accountKey) return;
+      state.conversationPending = false;
+      updateControls();
+      if (error instanceof ApiError && error.status === 401) enterHome("session_expired");
+      else setMessage(elements.questionHint, "conversation_failed", "danger");
+      return;
+    }
+    if (authGeneration !== state.authGeneration || currentAccountKey() !== accountKey) return;
+    state.conversationPending = false;
+    updateControls();
+    if (!thread || authGeneration !== state.authGeneration || currentAccountKey() !== accountKey) return;
+  }
   const capturedUserId = state.loadedUserId;
+  const capturedThreadId = state.activeThreadId;
+  const expectedThreadRevision = state.activeThreadRevision ?? state.activeThread?.revision ?? 0;
   const generation = ++state.questionGeneration;
   state.questionController?.abort();
   const controller = new AbortController();
   state.questionController = controller;
   state.questionPending = true;
+  const clientRequestId = makeClientRequestId();
   setLocalizedText(elements.ask, "asking");
   updateControls();
   const view = createQuestionExchange(question);
   state.pendingQuestionView = view;
   elements.question.value = "";
+  let hintKey = null;
   try {
-    const payload = await requestJson("/v1/investment/questions", { method: "POST", body: JSON.stringify({ question }), signal: controller.signal });
+    const payload = await requestJson(`/v1/threads/${capturedThreadId}/messages`, {
+      method: "POST",
+      body: JSON.stringify({content: question, client_request_id: clientRequestId, expected_thread_revision: expectedThreadRevision}),
+      signal: controller.signal,
+    });
     if (generation !== state.questionGeneration || capturedUserId !== state.loadedUserId) return;
+    state.activeThreadRevision = payload.thread.revision;
+    state.activeThread = payload.thread;
+    upsertThread(payload.thread);
     renderQuestionResult(view, payload);
   } catch (error) {
     if (error?.name === "AbortError" || generation !== state.questionGeneration || capturedUserId !== state.loadedUserId) return;
     if (error instanceof ApiError && error.status === 401) enterHome("session_expired");
-    else renderQuestionError(view, error);
+    else if (error instanceof ApiError && error.status === 409) {
+      hintKey = error.code.startsWith("STRATEGY_") ? apiMessageKey(error) : "conversation_conflict";
+      await loadConversationThread(capturedThreadId, {cancelQuestion: false});
+    } else if (error instanceof TypeError) {
+      hintKey = "conversation_failed";
+      await loadConversationThread(capturedThreadId, {cancelQuestion: false});
+    } else renderQuestionError(view, error);
   } finally {
-    if (generation === state.questionGeneration) { state.questionPending = false; state.pendingQuestionView = null; state.questionController = null; setLocalizedText(elements.ask, "ask"); setLocalizedText(elements.questionHint, "question_ready"); updateControls(); }
+    if (generation === state.questionGeneration) {
+      state.questionPending = false;
+      state.pendingQuestionView = null;
+      state.questionController = null;
+      setLocalizedText(elements.ask, "ask");
+      if (hintKey) setMessage(elements.questionHint, hintKey, "warning");
+      else setLocalizedText(elements.questionHint, "question_ready");
+      updateControls();
+    }
   }
 }
 
@@ -3365,7 +3934,7 @@ function bindEvents() {
   elements.setupLogout.addEventListener("click", logout);
   elements.navChat.addEventListener("click", () => switchAppView("chat"));
   elements.navPortfolio.addEventListener("click", () => switchAppView("portfolio"));
-  elements.newQuestion.addEventListener("click", () => { switchAppView("chat", false); elements.question.focus(); });
+  elements.newQuestion.addEventListener("click", handleNewQuestion);
   elements.portfolioTabs.forEach((tab, index) => tab.addEventListener("click", () => switchPortfolioTab(index)));
   elements.reloadPortfolio.addEventListener("click", () => refreshPortfolio());
   elements.openBuy.addEventListener("click", () => openTradeDialog("BUY"));

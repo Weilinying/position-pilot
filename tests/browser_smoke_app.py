@@ -4,7 +4,7 @@
 Investment Agent，不是生产入口、不是自动化 E2E，也不构成真实模型验收证据。
 """
 
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
@@ -12,13 +12,31 @@ from threading import RLock
 from time import sleep
 from types import TracebackType
 from typing import Self
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi import Request
 from starlette.responses import RedirectResponse, Response
 
+from position_pilot.api.routers.conversation import (
+    get_conversation_auth_service_dependency,
+    get_conversation_service_dependency,
+)
 from position_pilot.application.asset_metadata_service import AssetMetadataService
 from position_pilot.application.auth_service import Account, AuthService, AuthSession
+from position_pilot.application.conversation_service import (
+    ConversationAgentResult,
+    ConversationHistoryMessage,
+    ConversationMessage,
+    ConversationMessagePage,
+    ConversationMessageRole,
+    ConversationService,
+    ConversationSource,
+    ConversationSourceInput,
+    ConversationThread,
+    ConversationThreadPage,
+    ConversationTurn,
+    ConversationTurnStatus,
+)
 from position_pilot.application.errors import OpeningStateSealed, UserNotFound
 from position_pilot.application.investment_agent import (
     ContextSource,
@@ -710,6 +728,276 @@ class BrowserSmokeAuthUnitOfWork:
         """Smoke Store 没有外部事务，提交由调用完成即视为成功。"""
 
 
+@dataclass(slots=True)
+class BrowserSmokeConversationStore:
+    """Engineering Smoke 使用的 Account-owned Conversation 内存 Store。
+
+    该 Store 只覆盖 Browser Smoke 所需的最小生命周期；它不模拟 PostgreSQL
+    事务、行锁、唯一索引或生产级恢复语义。正式 Persistence 行为仍由 T3/T4A
+    的 PostgreSQL Integration Test 验证。
+    """
+
+    threads: dict[UUID, ConversationThread] = field(default_factory=dict)
+    turns: dict[UUID, ConversationTurn] = field(default_factory=dict)
+    messages: dict[UUID, ConversationMessage] = field(default_factory=dict)
+    sources: dict[UUID, ConversationSource] = field(default_factory=dict)
+    lock: RLock = field(default_factory=RLock, repr=False)
+
+
+class BrowserSmokeConversationUnitOfWork:
+    """把 Conversation Service 的最小 Port 映射到进程内 Smoke Store。"""
+
+    def __init__(self, store: BrowserSmokeConversationStore) -> None:
+        self.store = store
+
+    def __enter__(self) -> Self:
+        self.store.lock.acquire()
+        return self
+
+    def __exit__(
+        self,
+        exception_type: type[BaseException] | None,
+        exception: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
+        del exception_type, exception, traceback
+        self.store.lock.release()
+
+    def get_thread(
+        self,
+        account_id: UUID,
+        thread_id: UUID,
+        *,
+        for_update: bool = False,
+    ) -> ConversationThread | None:
+        del for_update
+        thread = self.store.threads.get(thread_id)
+        return thread if thread is not None and thread.account_id == account_id else None
+
+    def add_thread(self, thread: ConversationThread) -> None:
+        self.store.threads[thread.id] = thread
+
+    def update_thread(self, thread: ConversationThread) -> None:
+        self.store.threads[thread.id] = thread
+
+    def list_threads(
+        self,
+        account_id: UUID,
+        *,
+        cursor: str | None,
+        limit: int,
+    ) -> ConversationThreadPage:
+        del cursor
+        items = sorted(
+            (
+                thread
+                for thread in self.store.threads.values()
+                if thread.account_id == account_id and thread.deleted_at is None
+            ),
+            key=lambda thread: (thread.updated_at, thread.id),
+            reverse=True,
+        )
+        return ConversationThreadPage(tuple(items[:limit]), None)
+
+    def get_turn_by_client_request_id(
+        self,
+        account_id: UUID,
+        thread_id: UUID,
+        client_request_id: UUID,
+        *,
+        for_update: bool = False,
+    ) -> ConversationTurn | None:
+        del for_update
+        return next(
+            (
+                turn
+                for turn in self.store.turns.values()
+                if turn.account_id == account_id
+                and turn.thread_id == thread_id
+                and turn.client_request_id == client_request_id
+            ),
+            None,
+        )
+
+    def get_turn(
+        self,
+        account_id: UUID,
+        thread_id: UUID,
+        turn_id: UUID,
+        *,
+        for_update: bool = False,
+    ) -> ConversationTurn | None:
+        del for_update
+        turn = self.store.turns.get(turn_id)
+        return (
+            turn
+            if turn is not None and turn.account_id == account_id and turn.thread_id == thread_id
+            else None
+        )
+
+    def get_running_turn(
+        self,
+        account_id: UUID,
+        thread_id: UUID,
+        *,
+        for_update: bool = False,
+    ) -> ConversationTurn | None:
+        del for_update
+        return next(
+            (
+                turn
+                for turn in self.store.turns.values()
+                if turn.account_id == account_id
+                and turn.thread_id == thread_id
+                and turn.status is ConversationTurnStatus.RUNNING
+            ),
+            None,
+        )
+
+    def get_last_turn(self, account_id: UUID, thread_id: UUID) -> ConversationTurn | None:
+        turns = [
+            turn
+            for turn in self.store.turns.values()
+            if turn.account_id == account_id and turn.thread_id == thread_id
+        ]
+        return max(turns, key=lambda turn: (turn.created_at, turn.id), default=None)
+
+    def get_user_message_for_turn(
+        self,
+        account_id: UUID,
+        thread_id: UUID,
+        turn_id: UUID,
+    ) -> ConversationMessage | None:
+        return self._message_for_turn(
+            account_id,
+            thread_id,
+            turn_id,
+            ConversationMessageRole.USER,
+        )
+
+    def get_assistant_message_for_turn(
+        self,
+        account_id: UUID,
+        thread_id: UUID,
+        turn_id: UUID,
+    ) -> ConversationMessage | None:
+        return self._message_for_turn(
+            account_id,
+            thread_id,
+            turn_id,
+            ConversationMessageRole.ASSISTANT,
+        )
+
+    def add_turn(self, turn: ConversationTurn) -> None:
+        self.store.turns[turn.id] = turn
+
+    def update_turn(self, turn: ConversationTurn) -> None:
+        self.store.turns[turn.id] = turn
+
+    def add_message(self, message: ConversationMessage) -> None:
+        self.store.messages[message.id] = message
+
+    def add_sources(self, sources: Sequence[ConversationSource]) -> None:
+        self.store.sources.update({source.source_id: source for source in sources})
+
+    def list_sources_for_message(
+        self,
+        account_id: UUID,
+        thread_id: UUID,
+        assistant_message_id: UUID,
+    ) -> tuple[ConversationSource, ...]:
+        message = self.store.messages.get(assistant_message_id)
+        if (
+            message is None
+            or message.account_id != account_id
+            or message.thread_id != thread_id
+            or message.role is not ConversationMessageRole.ASSISTANT
+        ):
+            return ()
+        return tuple(
+            source
+            for source in self.store.sources.values()
+            if source.assistant_message_id == assistant_message_id
+        )
+
+    def list_messages(
+        self,
+        account_id: UUID,
+        thread_id: UUID,
+        *,
+        before_sequence: int | None,
+        limit: int,
+    ) -> ConversationMessagePage:
+        messages = [
+            message
+            for message in self.store.messages.values()
+            if message.account_id == account_id
+            and message.thread_id == thread_id
+            and (before_sequence is None or message.sequence < before_sequence)
+        ]
+        ordered = sorted(messages, key=lambda message: message.sequence, reverse=True)
+        has_next = len(ordered) > limit
+        page = list(reversed(ordered[:limit]))
+        next_cursor = str(page[0].sequence) if has_next and page else None
+        return ConversationMessagePage(tuple(page), next_cursor)
+
+    def commit(self) -> None:
+        """Smoke Store 没有外部事务，调用完成即视为已提交。"""
+
+    def _message_for_turn(
+        self,
+        account_id: UUID,
+        thread_id: UUID,
+        turn_id: UUID,
+        role: ConversationMessageRole,
+    ) -> ConversationMessage | None:
+        return next(
+            (
+                message
+                for message in self.store.messages.values()
+                if message.account_id == account_id
+                and message.thread_id == thread_id
+                and message.turn_id == turn_id
+                and message.role is role
+            ),
+            None,
+        )
+
+
+class BrowserSmokeConversationAgent:
+    """返回固定 Citation 的 Conversation Fake Agent，不代表真实模型行为。"""
+
+    def answer(
+        self,
+        *,
+        account_id: UUID,
+        portfolio_user_id: UUID,
+        question: str,
+        history: tuple[ConversationHistoryMessage, ...],
+    ) -> ConversationAgentResult:
+        del account_id, portfolio_user_id, question, history
+        source_id = uuid4()
+        return ConversationAgentResult(
+            answer=(
+                "这是本地 Engineering Smoke 的固定回答：已读取当前会话上下文与模拟报价。"
+                f"该来源仅用于验证 Thread、History 与 Citation 展示 [source:{source_id}]"
+            ),
+            sources=(
+                ConversationSourceInput(
+                    source_id=source_id,
+                    source_type="CURRENT_QUOTE",
+                    provider="BROWSER_SMOKE",
+                    provider_reference="GOOG:fixture-quote",
+                    event_time=NOW,
+                    fetched_at=NOW,
+                    content_scope="STRUCTURED_FACT",
+                    status="OK",
+                ),
+            ),
+            warnings=("ENGINEERING_SMOKE_FAKE_AGENT",),
+        )
+
+
 class BrowserSmokeInvestmentAgent:
     """按问题文本返回固定结果的 Fake Agent，不代表真实模型行为。"""
 
@@ -1006,6 +1294,12 @@ portfolio_summary_service = PortfolioSummaryService(
     portfolio_valuation_service,
 )
 investment_agent = BrowserSmokeInvestmentAgent()
+conversation_store = BrowserSmokeConversationStore()
+conversation_service = ConversationService(
+    lambda: BrowserSmokeConversationUnitOfWork(conversation_store),
+    agent=BrowserSmokeConversationAgent(),
+    clock=lambda: NOW,
+)
 asset_metadata_service = AssetMetadataService(BrowserSmokeAssetMetadataProvider())
 recognition_service = RecognitionService(BrowserSmokeRecognitionProvider())
 auth_store = BrowserSmokeAuthStore()
@@ -1028,6 +1322,8 @@ app.dependency_overrides[get_portfolio_summary_service_dependency] = lambda: (
 app.dependency_overrides[get_portfolio_chart_service_dependency] = lambda: portfolio_chart_service
 app.dependency_overrides[get_investment_agent_dependency] = lambda: investment_agent
 app.dependency_overrides[get_auth_service_dependency] = lambda: auth_service
+app.dependency_overrides[get_conversation_auth_service_dependency] = lambda: auth_service
+app.dependency_overrides[get_conversation_service_dependency] = lambda: conversation_service
 app.dependency_overrides[get_asset_metadata_service_dependency] = lambda: asset_metadata_service
 app.dependency_overrides[get_recognition_service_dependency] = lambda: recognition_service
 app.dependency_overrides[get_opening_import_service_dependency] = lambda: opening_import_service

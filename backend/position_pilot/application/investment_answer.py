@@ -183,3 +183,29 @@ def _parse_source_reference(value: object) -> SourceReference:
     if not isinstance(ticker, str):
         raise InvalidStructuredAnswer("SourceReference.ticker 必须是字符串")
     return SourceReference(reference_type, ticker)
+
+
+def structured_repair_instruction(
+    error: InvalidStructuredAnswer | UnresolvedSourceReference,
+) -> dict[str, object]:
+    """构造一次性 Source Contract Repair，不审查 answer 自然语言。"""
+
+    return {
+        "task": "REPAIR_FINAL_RESPONSE",
+        "validation_errors": [
+            {
+                "code": "INVALID_STRUCTURED_ANSWER"
+                if isinstance(error, InvalidStructuredAnswer)
+                else "UNRESOLVED_SOURCE_REFERENCE",
+                "message": str(error),
+            }
+        ],
+        "instructions": [
+            "保持 answer 为自由自然语言，只修正外层 JSON 或 source_refs。",
+            "source_refs 只能声明本轮实际成功取得且回答使用的 Context。",
+            "缺失或失败的 Context 不得声明为 Source，相关事实应保持 UNKNOWN。",
+            "不得请求任何 Tool。",
+        ],
+        "structured_answer_schema": structured_answer_schema(),
+        "return_only_repaired_final_answer": True,
+    }

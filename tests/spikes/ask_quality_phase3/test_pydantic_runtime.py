@@ -382,9 +382,7 @@ def test_dynamic_schema_tool_closes_the_previous_bridge_gap() -> None:
     executor = FunctionToolExecutor(calculate)
     result = PydanticRuntimeCandidate(
         _model(
-            ScriptedModel(
-                [_tool_response("calculate_scenario", {}), _text_response("已计算。")]
-            )
+            ScriptedModel([_tool_response("calculate_scenario", {}), _text_response("已计算。")])
         ),
         {"calculate_scenario": executor},
     ).run(runtime_input)
@@ -439,9 +437,7 @@ def test_application_catalog_limits_pydantic_visible_tools() -> None:
 
     assert result.status is RuntimeExecutionStatus.COMPLETED
     assert calls == [{"ticker": "GOOG"}]
-    assert [tool.name for tool in script.infos[0].function_tools] == [
-        "get_indicator_snapshot"
-    ]
+    assert [tool.name for tool in script.infos[0].function_tools] == ["get_indicator_snapshot"]
 
 
 def test_missing_provider_usage_stays_unknown() -> None:

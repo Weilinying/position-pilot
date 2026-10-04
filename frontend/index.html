@@ -5,9 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="description" content="PositionPilot — portfolio-grounded investment decision support." data-i18n-content="meta_description" />
     <title>PositionPilot · Decision Desk</title>
-    <link rel="stylesheet" href="/static/styles.css?v=20260912-m13-chart-2" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260923-p4-t4a" />
     <script src="/static/vendor/lightweight-charts/5.2.0/lightweight-charts.standalone.production.js?v=5.2.0"></script>
-    <script type="module" src="/static/app.js?v=20260912-m13-chart-2"></script>
+    <script type="module" src="/static/app.js?v=20260923-p4-t4a"></script>
   </head>
   <body>
     <p class="engineering-smoke-banner" id="engineering-smoke-banner" data-i18n="engineering_smoke_notice" hidden>Engineering smoke · Fake Agent and fixture data · Not real investment analysis</p>
@@ -138,7 +138,7 @@
           <button class="nav-item is-active" id="nav-chat" type="button" aria-controls="chat-view" aria-current="page"><span class="nav-icon" aria-hidden="true">✦</span><span data-i18n="ask_nav">Ask</span></button>
           <button class="nav-item" id="nav-portfolio" type="button" aria-controls="portfolio-view"><span class="nav-icon" aria-hidden="true">▦</span><span data-i18n="portfolio_nav">Portfolio</span></button>
         </nav>
-        <section class="session-history" aria-labelledby="session-title"><div class="sidebar-section-heading"><span id="session-title" data-i18n="question_history">Question history</span><small data-i18n="session_only">This tab only</small></div><p class="session-empty" id="session-empty" data-i18n="no_questions">No questions yet.</p><div class="session-list" id="session-list"></div></section>
+        <section class="session-history" aria-labelledby="session-title"><div class="sidebar-section-heading"><span id="session-title" data-i18n="conversation_history">Conversations</span><small data-i18n="server_history">Saved to this account</small></div><p class="session-empty" id="session-empty" data-i18n="no_threads">No saved conversations yet.</p><div class="session-list" id="session-list"></div></section>
         <div class="account-card"><span data-i18n="signed_in_as">Signed in as</span><strong id="account-display-name">—</strong><small id="account-email">—</small><button class="text-button" id="logout-button" type="button" data-i18n="log_out">Log out</button></div>
       </aside>
 
@@ -206,6 +206,6 @@
 
     <dialog class="product-dialog summary-dialog" id="portfolio-summary-dialog" aria-labelledby="portfolio-summary-dialog-title"><div class="dialog-heading"><div><h3 id="portfolio-summary-dialog-title" data-i18n="pnl_breakdown">P/L breakdown</h3><p class="dialog-symbol" data-i18n="pnl_by_ticker_type">By ticker and position type</p></div><button class="dialog-close" id="portfolio-summary-dialog-close" type="button" aria-label="Close">×</button></div><div id="portfolio-summary-content"></div></dialog>
 
-    <template id="assistant-response-template"><article class="assistant-message result-card"><div class="result-heading"><div><p class="eyebrow response-eyebrow">PositionPilot</p><h2 class="result-title" data-i18n="working_title">Assembling decision context</h2></div><span class="response-badge response-status">Working</span></div><section class="answer-section"><p class="answer-label" data-i18n="answer_label">Answer</p><div class="answer-copy" data-i18n="working_answer">Reading your portfolio and selecting current context.</div></section><details class="source-disclosure"><summary><span data-i18n="sources_used">Sources used</span><span class="source-count">0</span></summary><p class="source-explainer" data-i18n="source_explainer">Supporting context for this answer.</p><div class="source-list"></div></details></article></template>
+    <template id="assistant-response-template"><article class="assistant-message result-card"><div class="result-heading"><div><p class="eyebrow response-eyebrow">PositionPilot</p><h2 class="result-title" data-i18n="working_title">Assembling decision context</h2></div><span class="response-badge response-status">Working</span></div><section class="answer-section"><p class="answer-label" data-i18n="answer_label">Answer</p><div class="answer-copy" data-i18n="working_answer">Reading your portfolio and selecting current context.</div><div class="response-warnings" hidden></div><div class="citation-list" hidden></div></section><details class="source-disclosure"><summary><span data-i18n="sources_used">Sources used</span><span class="source-count">0</span></summary><p class="source-explainer" data-i18n="source_explainer">Supporting context for this answer.</p><div class="source-list"></div></details></article></template>
   </body>
 </html>

@@ -2,6 +2,7 @@
 
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
+from uuid import UUID
 
 from position_pilot.application.portfolio_valuation_service import PortfolioValuationService
 from position_pilot.domain.market_data import (
@@ -11,6 +12,7 @@ from position_pilot.domain.market_data import (
     MarketQuote,
 )
 from position_pilot.domain.portfolio import (
+    PortfolioState,
     PositionType,
     Transaction,
     TransactionAction,
@@ -21,7 +23,7 @@ from position_pilot.domain.portfolio import (
 NOW = datetime(2026, 9, 10, 8, 0, tzinfo=UTC)
 
 
-def make_portfolio():
+def make_portfolio() -> PortfolioState:
     """建立同一 ticker 下两个策略批次。"""
 
     user = User.create(display_name="Alice", initial_cash=Decimal("1000"), created_at=NOW)
@@ -72,10 +74,10 @@ def make_quote() -> MarketQuote:
 class FakePortfolioReader:
     """返回固定 Portfolio。"""
 
-    def __init__(self, portfolio):
+    def __init__(self, portfolio: PortfolioState) -> None:
         self.portfolio = portfolio
 
-    def get_portfolio(self, user_id):
+    def get_portfolio(self, user_id: UUID) -> PortfolioState:
         assert user_id == self.portfolio.user_id
         return self.portfolio
 
@@ -83,11 +85,11 @@ class FakePortfolioReader:
 class FakeQuoteReader:
     """记录调用并返回固定行情结果。"""
 
-    def __init__(self, result):
+    def __init__(self, result: MarketDataResult[MarketQuote]) -> None:
         self.result = result
         self.tickers: list[str] = []
 
-    def get_current_quote(self, ticker):
+    def get_current_quote(self, ticker: str) -> MarketDataResult[MarketQuote]:
         self.tickers.append(ticker)
         return self.result
 
@@ -101,6 +103,7 @@ def test_values_ticker_types_and_lots_with_one_quote() -> None:
     result = PortfolioValuationService(
         FakePortfolioReader(portfolio),
         quotes,
+        clock=lambda: NOW,
     ).get_current_valuation(portfolio.user_id)
 
     assert quotes.tickers == ["GOOG"]

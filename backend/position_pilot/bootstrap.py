@@ -7,9 +7,11 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from position_pilot.application.asset_metadata_service import AssetMetadataService
 from position_pilot.application.auth_service import AuthService
-from position_pilot.application.investment_agent import InvestmentAgent
+from position_pilot.application.conversation_agent import ConversationInvestmentAgent
+from position_pilot.application.conversation_service import ConversationService
 from position_pilot.application.market_context_service import MarketContextService
 from position_pilot.application.market_data_service import MarketDataService
+from position_pilot.application.native_investment_agent import NativeInvestmentAgent
 from position_pilot.application.news_service import NewsService
 from position_pilot.application.opening_import_service import OpeningImportService
 from position_pilot.application.portfolio_chart_service import PortfolioChartService
@@ -17,14 +19,19 @@ from position_pilot.application.portfolio_service import PortfolioService
 from position_pilot.application.portfolio_summary_service import PortfolioSummaryService
 from position_pilot.application.portfolio_valuation_service import PortfolioValuationService
 from position_pilot.application.recognition_service import RecognitionService
+from position_pilot.application.strategy_service import StrategyService
 from position_pilot.config import get_settings
 from position_pilot.database import create_database_engine, create_session_factory
+from position_pilot.infrastructure.conversation_unit_of_work import (
+    SqlAlchemyConversationUnitOfWorkFactory,
+    conversation_strategy_repository,
+)
 from position_pilot.infrastructure.unit_of_work import SqlAlchemyPortfolioUnitOfWorkFactory
-from position_pilot.integrations.aliyun_llm import create_llm_provider
 from position_pilot.integrations.aliyun_vision import AliyunVisionProvider
 from position_pilot.integrations.alpaca_market_data import create_alpaca_market_data_provider
 from position_pilot.integrations.alpaca_news import create_alpaca_news_provider
 from position_pilot.integrations.finnhub_asset_metadata import FinnhubAssetMetadataProvider
+from position_pilot.integrations.pydantic_ai_runtime import create_pydantic_ai_runtime
 
 
 @lru_cache
@@ -118,19 +125,30 @@ def get_opening_import_service() -> OpeningImportService:
 
 
 @lru_cache
-def get_investment_agent() -> InvestmentAgent:
-    """按已批准依赖方向装配进程内共享 InvestmentAgent。"""
+def get_investment_agent() -> NativeInvestmentAgent:
+    """只装配 PydanticAI Production Runtime 的 Investment Agent。"""
 
     settings = get_settings()
     market_data_service = get_market_data_service()
     news_service = NewsService(create_alpaca_news_provider(settings))
-    llm_provider = create_llm_provider(settings)
-    return InvestmentAgent(
+    runtime = create_pydantic_ai_runtime(settings)
+    return NativeInvestmentAgent(
         get_portfolio_service(),
         market_data_service,
-        llm_provider,
+        runtime,
         news=news_service,
         market_context=MarketContextService(market_data_service),
+    )
+
+
+@lru_cache
+def get_conversation_service() -> ConversationService:
+    """装配 Account-owned Conversation Service 与同一 Production Agent。"""
+
+    return ConversationService(
+        SqlAlchemyConversationUnitOfWorkFactory(get_session_factory()),
+        agent=ConversationInvestmentAgent(get_investment_agent(), get_strategy_service()),
+        strategy_repository_factory=conversation_strategy_repository,
     )
 
 
@@ -141,3 +159,13 @@ def _secret_value(secret: SecretStr | None) -> str | None:
         return None
     normalized = secret.get_secret_value().strip()
     return normalized or None
+
+
+@lru_cache
+def get_strategy_service() -> StrategyService:
+    """独立意图事务服务，共用既有 PostgreSQL Session Factory。"""
+    from position_pilot.infrastructure.strategy_unit_of_work import (
+        SqlAlchemyStrategyUnitOfWorkFactory,
+    )
+
+    return StrategyService(SqlAlchemyStrategyUnitOfWorkFactory(get_session_factory()))

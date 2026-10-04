@@ -6,7 +6,11 @@ from alembic import context
 from sqlalchemy import engine_from_config, pool
 
 from position_pilot.database import get_database_url
-from position_pilot.infrastructure import models
+from position_pilot.infrastructure import (
+    conversation_models,  # noqa: F401
+    models,
+    strategy_models,  # noqa: F401
+)
 
 config = context.config
 

@@ -3,11 +3,17 @@
 ## 1. 状态与职责
 
 **Status:** DISCOVERY — Phase 1 HUMAN ACCEPTED（2026-09-15）；Phase 2 HUMAN ACCEPTED
-（2026-09-20）；Phase 3 IN PROGRESS，不绑定 Milestone 或 Release。
+（2026-09-20）；Phase 3 HUMAN ACCEPTED（2026-09-21）；Phase 4 PLAN HUMAN ACCEPTED / P4-T0 ～
+P4-T4A COMPLETE / P4-T5 CORE IN PROGRESS（2026-09-23），不绑定 Release。
 
 **记录日期：** 2026-09-13。Human Review 已批准 M13 后的 Discovery 方向，并要求区分五类状态、
 收窄框架候选、独立评价四类选型及在阶段四设置 4A / 4B 检查点；本版落实这些意见。
 方向性批准不等于 Framework / Provider 已选型、具体数据模型 / 公共 API 已批准或评测已执行。
+
+2026-09-21 修订：Human 已批准 Phase 4 使用 PydanticAI，Current Runtime 仅作为迁移回归基线，
+OpenAI Agents SDK 暂不进入 Production；Research Provider 继续独立选型且 Brave `NOT_MEASURED`
+不阻塞 Phase 4。Phase 4 的具体数据模型、公共 API 与验收范围仍以
+[Phase 4 Implementation Plan](ask-quality-phase-4-implementation.md) 的 Human Review 为准。
 
 本文件是 Discovery 的工作安排，不是新的 Milestone 实施承诺。产品现行语义以
 [PROJECT.md](../../PROJECT.md) 为准；发布范围以 [ROADMAP.md](../../ROADMAP.md) 为准；
