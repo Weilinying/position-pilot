@@ -1,0 +1,43 @@
+{
+  "status": "FROZEN_OFFLINE_READY_FOR_HUMAN_ONLINE_REVIEW",
+  "commit": "e9013eb4036b8714b7a8ea863f3b89113c505dac",
+  "worktree": "/private/tmp/position-pilot-phase4b-candidate-v1",
+  "provider": "GOOGLE_GEMINI",
+  "model": "gemini-3.8-flash",
+  "profile": {
+    "pydantic_ai_version": "1.107.6",
+    "runtime_system_prompt_sha256": "34821d82b65d01e736a94378177b164bc6cc42045d00b1f0600b46cdb4831ef5",
+    "native_output_schema_sha256": "8fc4671a333243ecfca2bd9e0ead8200c23882c85b8d0df8d24e78bd1fd99845",
+    "budget_policy": {
+      "get_current_quote": 2,
+      "get_recent_price_history": 2,
+      "get_recent_news": 2,
+      "get_market_context": 1
+    },
+    "budget_policy_sha256": "76724d05b0f33e01dc5743ac6a5ba7fb46780d13cdc5d0ba54674399895bc0a4",
+    "tool_attempt_budget": 7,
+    "model_request_budget": 8,
+    "wall_clock_seconds": 60.0,
+    "strategy_manifest_sha256": "88938a2314c2a8ceadbc27fc4b02408e445f5c9405f4abcba0de6fa28bd93865",
+    "memory_profile": "NOOP",
+    "base_fixture_manifest_sha256": "f907a653bd0dfb2c731b6084151fa68b8edb8c28f1f947da89c0aed62d11e149"
+  },
+  "online_case_ids": [
+    "AQ13",
+    "AQ14",
+    "AQ15",
+    "AQ16"
+  ],
+  "model_turn_count": 6,
+  "framework_retries": 0,
+  "transport_retry": "Inherited V8: ConnectError/ReadError retry once, original request, within wall-clock",
+  "repair": "Inherited V8: at most one source/citation repair, no tools, remaining wall-clock",
+  "logical_primary_request_upper_bound": 48,
+  "repair_request_upper_bound": 6,
+  "http_request_attempt_upper_bound_including_transport_retry": 108,
+  "key_environment_variable": "GEMINI_API_KEY",
+  "production_environment_or_database_loaded": false,
+  "online_requests_executed_by_agent": 0,
+  "behavioral_status": "NOT_EVALUATED",
+  "critical_gate": "NOT_EVALUATED"
+}
