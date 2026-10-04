@@ -67,3 +67,13 @@
   `p4b-gemini-primary-v1-20261004T141232Z` 已 4/4 Case、6/6 Turn COMPLETED。
   [实际 Artifact Review](../evaluation/reports/2026-10-04-phase4b-primary-review.md)建议生命周期 Behavioral / Critical PASS、State Authority 2；研究与推断瑕疵另列，等待 Human Review，不从运行完成自动推导 PASS。
 - Primary Human Review 后才决定有限影响回归与 AQ12 / AQ15 三次 Gate；不自动重跑完整 4A。
+
+## T7 Repeat Review（2026-10-04）
+
+- 独立 `p4b-gemini-repeat-v1-20261004T145019Z` 已新增 AQ12 三次与 AQ15 两次，13/13 Ask 完成；
+  AQ15 Primary 作为 r1 引用并核对相同配置 / Artifact digest。
+- [逐次 Review](../evaluation/reports/2026-10-04-phase4b-repeat-review.md)：六次执行均建议 Critical PASS；
+  AQ15 三次生命周期通过；AQ12 r1 t3 将此前事实分析概括为“审慎观望结论”，CS / EI 各建议 1，
+  不满足冻结逐次最低分，不能用另外两次抵消。
+- 一次 ConnectError 经既有 transport retry 恢复；无最终 failure / timeout / Repair。
+- 等待 Human 决定是否接受上述已知质量瑕疵作为本次验收例外后进入 T8；不自动修 Prompt、重跑或扩大 Core。
