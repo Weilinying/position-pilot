@@ -288,3 +288,24 @@ Loop；模型训练知识不算 Search。Research Sufficiency 只评价本次 Ru
 holdout 需在后续另建。
 
 以下能力推迟到 V1 完成后再评估：Large-scale Dataset、Paraphrase / Prompt Variation、Adversarial Evaluation、Historical Market Scenario Dataset、Investment Backtesting、Statistical Confidence Analysis、Automated LLM-as-a-Judge、Large-scale Regression Benchmark、Latency / Token / Cost Optimization Benchmark、Recommendation Consistency Benchmark 与 Multi-model Ensemble Evaluation。
+
+
+### Phase 4B / T7 有限 Strategy Eval
+
+入口 `tests/evaluation/test_phase4_strategy_online.py`，显式 `RUN_PHASE4_STRATEGY_EVAL=1`；
+只接受 GOOGLE_GEMINI / gemini-3.8-flash 和 AQ13–AQ16，不自动运行 Repeat / Research / Earnings。
+候选配置通过 `PHASE4_CANDIDATE_CONFIG` 指定，在线请求前核对 clean commit 与实际 Native
+Prompt / Schema / Tool Policy / 四案例脚本。API Key 仍只读进程 `GEMINI_API_KEY`，无 Base URL 要求。
+
+四个 Case 共 6 次 Ask；每个 Case 独立 SQLite 数据库，真实 Conversation / Strategy Service / UoW
+处理确认、失效、过期与版本。Seed User/Assistant 属于明确的 Fixture Setup，不是模型生成证据。
+AQ13 从独立 Thread / 重建 Service 读取确认的 Thesis / Horizon；AQ14 使用真实 INVALIDATED 与
+过期 Pending；AQ15 模型提出目标配置的 INVALIDATE Candidate，再由确定性测试步骤模拟显式确认，
+最后在新 Thread 重新提问；AQ16 同 Thread 验证未确认建议。详见独立 `phase4b-strategy-v1` Overlay，
+不改写 Dataset 0.1 或历史 4A Artifact。旧分批计划不是允许的持久 Payload，ACTIVE 也没有自动过期
+状态，Overlay 如实表达当前 Contract，而不是伪造删除 / STALE 已完成。
+
+COMPLETED / pytest pass 仅代表 Runtime 与流程执行；Behavioral、Critical Gate 和 Rubric 等待
+Human Review。没有合法失效 Candidate 时后续步骤 NOT_RUN，记录 INCOMPLETE / Behavioral finding，
+不填补草案；传输失败仍是 NOT_EVALUATED。Memory Production / online 使用 NoOp，背景过滤与
+Ledger 不被覆盖只用离线 Fixture 验证。本轮不接数据库 Memory 或 Web Search。

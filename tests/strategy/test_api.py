@@ -166,6 +166,8 @@ def test_conversation_reads_only_active_owner_intent_and_reloads_versions(store:
             question: str,
             conversation_history: tuple[LLMMessage, ...],
             confirmed: tuple[StrategyVersion, ...],
+            *,
+            memory_context: tuple[str, ...] = (),
         ) -> InvestmentAnswer:
             seen.append(confirmed)
             return InvestmentAnswer(InvestmentResponseStatus.OK, "只使用当前生效意图。", ())

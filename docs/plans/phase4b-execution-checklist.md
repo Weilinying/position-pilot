@@ -1,6 +1,6 @@
 # Phase 4B 执行清单
 
-2026-10-04。4A 已获 Human Acceptance；本清单整理既有 Phase 4 Implementation Plan 的 T6～T8 执行顺序，不重新设计架构。4B/T6 已于本日获 Human Approval，并完成下述补充 Contract 的离线实现；T7 在线验收仍待命令与预算 Review。
+2026-10-04。4A 已获 Human Acceptance；本清单整理既有 Phase 4 Implementation Plan 的 T6～T8 执行顺序，不重新设计架构。4B/T6 已于本日获 Human Approval，并完成下述补充 Contract 的离线实现；T7 离线连续 Ask / Memory Fixture 已验证；T7 在线验收仍待命令与预算 Review。
 
 补充 Contract：同 `account + scope + kind` 最多各一个 ACTIVE 和 PENDING，允许二者同时存在；确认新版本时在同一事务 Supersede。三种 Intent 的 scope 均为规范化 `ticker + LONG_TERM/SWING`，详见 [T6 交付记录](../evaluation/reports/2026-10-04-phase4b-t6.md)。
 
@@ -57,3 +57,11 @@
 - 前端 Node syntax / Conversation Contract 检查通过。
 
 这些是有限的离线检查维护，不作为新 Agent Behavioral failure、不撤销 Human 4A Acceptance、不触发在线补考。完整合并前需解决并重新检查。
+
+## T7 当前状态（2026-10-04）
+
+- 已完成四个真实生命周期脚本与只读 Memory Fixture 接线；History / Strategy / Ledger 不由 Prompt 伪造。
+- 离线 FunctionModel 验证 4B Native Schema + ordinary Quote Tool、确认跨 Thread 读取、替代 / 失效、
+  BUY / SELL 动态预算、SWING 隔离，以及 Memory 非权威过滤。
+- 4B Primary 准备仅 AQ13–AQ16 / 6 Ask，命令与配置单独 Freeze；在线尚未运行，Rubric / Critical 未评分。
+- Primary Human Review 后才决定有限影响回归与 AQ12 / AQ15 三次 Gate；不自动重跑完整 4A。

@@ -1,5 +1,8 @@
 """将 Conversation Contract 适配到 Production Investment Agent。"""
 
+import json
+from collections.abc import Callable
+from datetime import UTC, datetime
 from typing import Protocol, cast
 from uuid import UUID
 
@@ -20,6 +23,12 @@ from position_pilot.application.investment_agent import (
     InvestmentRequestFailure,
 )
 from position_pilot.application.llm import LLMMessage, LLMRole
+from position_pilot.application.memory import (
+    MemoryReader,
+    MemoryRetrievalContext,
+    NoOpMemoryReader,
+    filter_memory_hits,
+)
 from position_pilot.application.strategy_service import StrategyService
 from position_pilot.domain.strategy import StrategyVersion
 
@@ -42,6 +51,8 @@ class IntentAwareInvestmentAgent(HistoryAwareInvestmentAgent, Protocol):
         question: str,
         conversation_history: tuple[LLMMessage, ...],
         confirmed: tuple[StrategyVersion, ...],
+        *,
+        memory_context: tuple[str, ...] = (),
     ) -> InvestmentAnswer | InvestmentRequestFailure: ...
 
 
@@ -49,10 +60,19 @@ class ConversationInvestmentAgent:
     """保持 Conversation 与 Agent Runtime 状态边界的 Application Adapter。"""
 
     def __init__(
-        self, agent: HistoryAwareInvestmentAgent, strategies: StrategyService | None = None
+        self,
+        agent: HistoryAwareInvestmentAgent,
+        strategies: StrategyService | None = None,
+        *,
+        memory_reader: MemoryReader | None = None,
+        memory_scope: str | None = None,
+        clock: Callable[[], datetime] | None = None,
     ) -> None:
         self._agent = agent
         self._strategies = strategies
+        self._memory_reader = memory_reader or NoOpMemoryReader()
+        self._memory_scope = memory_scope
+        self._clock = clock or (lambda: datetime.now(UTC))
 
     def answer(
         self,
@@ -68,11 +88,18 @@ class ConversationInvestmentAgent:
         if self._strategies is None:
             result = self._agent.answer_with_history(portfolio_user_id, question, messages)
         else:
+            retrieval = MemoryRetrievalContext(scope=self._memory_scope, as_of=self._clock())
+            hits = filter_memory_hits(
+                self._memory_reader.retrieve(account_id, retrieval),
+                account_id=account_id,
+                retrieval_context=retrieval,
+            )
             result = cast(IntentAwareInvestmentAgent, self._agent).answer_with_intent(
                 portfolio_user_id,
                 question,
                 messages,
                 self._strategies.active(account_id),
+                memory_context=tuple(json.dumps(hit.as_dict(), ensure_ascii=False) for hit in hits),
             )
         if isinstance(result, InvestmentRequestFailure):
             return ConversationAgentResult(failure_code=result.code.value)

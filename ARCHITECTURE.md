@@ -505,4 +505,7 @@ Thread 删除取消来源 Pending，Confirmed Intent 保留；所有查询与操
 4B Candidate 是单独的可选输出字段；既有 FinalAnswer source/citation 验证继续执行。未启用该字段的
 4A Runtime / Schema 保持原样。新增能力不增加 Mutation Tool。继承的 Tool attempt / Model request
 额度为 7 / 8、Native wall-clock 为 60s；框架 retry、repair 与 Eval transport retry 策略没有改变。
-Memory 保留既有只读 / NoOp 接缝，T6 未装配新增检索；完整 Decision Memory / 自动记忆不属于 T6。
+Memory 通过 Conversation Adapter 的既有只读 Reader 检索，在进入 Native Context 前筛选 Owner、
+scope、confirmed 和有效期；Production 默认 NoOp。Fixture 可显式给定检索 scope，非空结果仅作为
+非权威背景注入，不能覆盖 Ledger、Confirmed Intent 或当前用户指令。未接入真实 Memory 服务、
+Scope 选择模型或写入能力；完整 Decision Memory / 自动记忆仍不属于本阶段。
