@@ -309,3 +309,12 @@ COMPLETED / pytest pass 仅代表 Runtime 与流程执行；Behavioral、Critica
 Human Review。没有合法失效 Candidate 时后续步骤 NOT_RUN，记录 INCOMPLETE / Behavioral finding，
 不填补草案；传输失败仍是 NOT_EVALUATED。Memory Production / online 使用 NoOp，背景过滤与
 Ledger 不被覆盖只用离线 Fixture 验证。本轮不接数据库 Memory 或 Web Search。
+
+## Phase 4 最终验收后的历史对照
+
+Phase 4 已获 Final Human Acceptance。Production 只使用 PydanticAI；旧手写 Loop 和 urllib
+LLM Adapter 已移至 `tests/legacy/investment_agent.py` 与 `tests/legacy/aliyun_llm.py`。
+历史 Characterization / Phase 3 测试通过该目录保留原行为和 Artifact 意义。pytest 的测试路径包含
+`tests`，不把该目录加入 Production Python path。旧 `/questions` 仍委托 Native 入口，Aliyun OCR 保留。
+冻结 Candidate 的 Prompt / Schema / Budget / Fixture 未改变；不把代码搬迁宣称为新在线 Baseline。
+[最终收尾记录](reports/2026-10-05-phase4-final-acceptance.md)记录离线检查和验收边界。

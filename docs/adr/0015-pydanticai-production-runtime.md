@@ -92,3 +92,11 @@ Gemini 官方接线仍只在 Eval；NoOp Memory、Research 延期等边界未扩
 T8 真实浏览器 / SQL 及应用 Artifact 回退演练完成，保留 additive Schema 与所有业务数据，
 [最终报告](../evaluation/reports/2026-10-05-phase4-t8-final.md)等待 Final Human Acceptance；未 merge / push。
 该记录是已批准方案的实施证据，不引入新框架、Provider、Migration 回退或发布承诺。
+
+### 2026-10-05 Final Human Acceptance / Legacy 清理
+
+Human 已正式接受整个 Phase 4；批准本地 main 收口，不 Push。旧手写 Loop 与 HTTP LLM Adapter
+迁至 `tests/legacy/`，不再属于 Production 发布包；低层旧 Completion Port 删除。
+Native Tool Observation / Source 校验与 Repair Payload 提取为共享函数，实际 Runtime / Schema /
+Budget / Fixture profile 与冻结 Candidate 一致；Aliyun OCR 与兼容 API 保留。
+详见[收尾记录](../evaluation/reports/2026-10-05-phase4-final-acceptance.md)。

@@ -1,6 +1,7 @@
 # Phase 4 T8 最终验收报告
 
-2026-10-05（本机演练于 10-04 开始）。状态：**T8 操作验证完成，等待整个 Phase 4 的 Final Human Acceptance；未合并 main。**
+2026-10-05（本机演练于 10-04 开始）。状态：**T8 操作验证完成，整个 Phase 4 已获 Final Human Acceptance（2026-10-05）。**
+最终 Legacy 清理及本地 Git 收口见[收尾记录](2026-10-05-phase4-final-acceptance.md)；下文保留 T8 当次证据与限制。
 
 ## 验收决定与版本
 
@@ -99,8 +100,8 @@ AQ15 r1 引用 Primary；行为结论依照各自 Review 与 Human 例外接受�
   正式 Provider Certification 仍是已批准延期范围，不能标 PASS，也不计成当前已启用范围未完成。
 - 原生删除确认本轮 NOT_COMPLETED，实际删除 / 取消 / Owner 边界已由 HTTP + SQL 验证；4A 已有原生删除 UI
   成功证据，当前新增的 Strategy cancel-on-delete 边界由本轮 SQL 证据补齐，未把旧证据拼成新模型 Baseline。
-- 尚需 **Final Human Acceptance**。此前“压力测试例外通过”与“进入 T8”不等于整个 Milestone 合并授权。
-  接受后按 AGENTS.md §12 完成 Legacy 有限清理与本地 main 收口，保留根工作树用户修改，不 push / 删除分支。
+- **Final Human Acceptance 已收到**；Human 明确接受上述限制与例外，并授权按 AGENTS.md §12
+  完成 Legacy 有限清理与本地 main 收口。保留根工作树用户修改，不 Push / 删除分支。
 
 依据：[4A 有限验收](2026-10-04-phase4-finite-acceptance.md)、[4A 持久化](2026-10-04-phase4-persistence-acceptance.md)、
 [4B Primary Review](2026-10-04-phase4b-primary-review.md)、[4B Repeat Review](2026-10-04-phase4b-repeat-review.md)。

@@ -86,3 +86,10 @@ T8 真实浏览器 + FastAPI + 隔离 PostgreSQL 生命周期、跨 Owner、应�
 详见 [最终报告](../evaluation/reports/2026-10-05-phase4-t8-final.md)。临时服务已停止，原数据库未操作。
 当前状态：等待整个 Phase 4 Final Human Acceptance，未 merge / push。Legacy 已退出 Production Bootstrap；
 源码物理清理按原计划 §12.4 在 Final Acceptance 后执行，不在本轮无测试重跑条件下改共享模块。
+
+## Final Human Acceptance（2026-10-05）
+
+Human 正式接受 4A、4B、T8 和保留的已知瑕疵；批准有限 Legacy 清理和本地 main 合并，不 Push。
+Production 旧 Loop / Completion Port 已移除，历史对照实现留在 `tests/legacy/`，Native 共享规则独立提取。
+本次只运行清理与 Merge Gate 必需的离线检查，不重跑在线 Eval，也不修改 Prompt、Budget 或 Timeout。
+[最终收尾记录](../evaluation/reports/2026-10-05-phase4-final-acceptance.md)是当前状态；上述各阶段记录保留当时的审批状态。

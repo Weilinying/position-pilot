@@ -291,7 +291,7 @@ stale / refresh_required; never automatic retry
 - 所有 API、LLM、Provider 与用户输入产生的动态文本使用 `textContent`、DOM Property 或等价安全接口。静态 Template 之外不使用动态 HTML 字符串，也不执行 Markdown HTML。
 - Answer 是问答卡的默认视觉主体。Sources 使用默认关闭的 `details` 展示后端已验证绑定的 Source Identity / Status 和失败 Tool Attempt；Ticker、Provider、Feed、Market Time 与 Fetched At 使用显式字段标签，不等价于逐 Claim Citation，也不返回完整 Tool Payload。
 - Browser 提供不持久化的中文 / 英文显示模式。切换只重绘静态标签、状态文案和本地化时间格式，不改变 Session、`loadedUserId`、Request Generation、Agent Answer 或 Provider 原始值。
-- 正式 `position_pilot.main:app` 装配真实 `InvestmentAgent`。确定性 Fake Agent 只存在于 Engineering Browser Smoke Fixture；Fixture URL 强制显示醒目的 Fake Agent / Fixture Data 警告，不能作为真实 Agent Human Acceptance Evidence。
+- 正式 `position_pilot.main:app` 装配真实 `NativeInvestmentAgent`（PydanticAI Runtime）。确定性 Fake Agent 只存在于 Engineering Browser Smoke Fixture；Fixture URL 强制显示醒目的 Fake Agent / Fixture Data 警告，不能作为真实 Agent Human Acceptance Evidence。
 - M8 使用固定 Checklist 的 Human Browser Smoke 作为界面 Evidence，不把它描述为自动化 E2E，也不将其纳入默认 Regression Gate。Network Ambiguity、POST 后 GET Failure、XSS Payload 与 delayed stale read 属于定向 Engineering Verification / Automated Review。
 
 ## 9. Asset Metadata、Attachment Composer 与 Position Import Boundary
@@ -432,7 +432,9 @@ NORMAL / ELEVATED_VOLATILITY / HIGH_STRESS / EXTREME_STRESS
 
 ## 13. Legacy Investment Agent 与 LLM Boundary
 
-本节保留迁移对照路径说明；当前 Production PydanticAI Conversation / Intent 接线以 §14 为准。
+本节仅记录历史迁移对照。手写 Loop 与 HTTP LLM Adapter 已迁至 `tests/legacy/`，
+不再属于发布包；当前 Production PydanticAI Conversation / Intent 接线以 §14 为准。
+业务 Tool Observation / Source 序列化由 `application/investment_tool_results.py` 共用。
 
 ```text
 Transaction + Cash Event Ledgers
@@ -477,7 +479,8 @@ LLM_INVALID_PROVIDER_RESPONSE
 
 ## 14. Phase 4 Conversation / Confirmed Intent Boundary
 
-2026-10-05：4A 已通过 Human Acceptance；4B Primary / Repeat 已获 Human 有限接受（AQ12 r1 语言瑕疵例外）。T8 浏览器 / SQL 与应用回退验证完成，整个 Phase 4 Final Human Acceptance 待确认。
+2026-10-05：Phase 4 已获 Final Human Acceptance，包括 4A、4B Primary / Repeat 的已知瑕疵例外，
+以及 T8 浏览器 / SQL 与应用回退证据。AQ04、Research / Web Search 等延期范围不计为已验证。
 §7 / §8 / §13 中独立 Question、单个 Tool Round 与无持久对话的描述属于旧接口边界。
 
 当前 `/v1/threads` 使用 Account-owned Conversation Service，保存 User / 成功 Assistant Message、
@@ -513,4 +516,5 @@ Scope 选择模型或写入能力；完整 Decision Memory / 自动记忆仍不�
 T8 使用真实前端 / API / PostgreSQL 与明确外部 Fixture 验证生命周期及应用回退；不是新 Provider 联网验收。
 回退保留 Migration 0011 与 Conversation / Strategy / Ledger，恢复新版后业务摘要一致。
 [最终范围、原生删除确认限制与证据](docs/evaluation/reports/2026-10-05-phase4-t8-final.md)。
-Legacy 不在 Production 装配路径，源码清理依原计划在 Final Acceptance 后进行。
+Final Acceptance 后已清理 Production 旧 Loop、旧 Completion Port 和 HTTP LLM Adapter；
+历史 Characterization 留在 `tests/legacy/`。公共 `/questions` 兼容入口、Aliyun OCR 和既有 Native 行为保留。
