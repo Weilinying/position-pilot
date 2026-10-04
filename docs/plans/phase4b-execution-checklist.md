@@ -1,6 +1,6 @@
 # Phase 4B 执行清单
 
-2026-10-04。4A 已获 Human Acceptance；本清单整理既有 Phase 4 Implementation Plan 的 T6～T8 执行顺序，不重新设计架构。4B/T6 已于本日获 Human Approval，并完成下述补充 Contract 的离线实现；T7 离线连续 Ask / Memory Fixture 已验证；T7 在线验收仍待命令与预算 Review。
+2026-10-04。4A 已获 Human Acceptance；本清单整理既有 Phase 4 Implementation Plan 的 T6～T8 执行顺序，不重新设计架构。4B/T6 已于本日获 Human Approval，并完成下述补充 Contract 的离线实现；T7 离线连续 Ask / Memory Fixture 已验证，四个 Case 的在线 Primary 已完成，Review 建议待 Human 接受。
 
 补充 Contract：同 `account + scope + kind` 最多各一个 ACTIVE 和 PENDING，允许二者同时存在；确认新版本时在同一事务 Supersede。三种 Intent 的 scope 均为规范化 `ticker + LONG_TERM/SWING`，详见 [T6 交付记录](../evaluation/reports/2026-10-04-phase4b-t6.md)。
 
@@ -63,5 +63,7 @@
 - 已完成四个真实生命周期脚本与只读 Memory Fixture 接线；History / Strategy / Ledger 不由 Prompt 伪造。
 - 离线 FunctionModel 验证 4B Native Schema + ordinary Quote Tool、确认跨 Thread 读取、替代 / 失效、
   BUY / SELL 动态预算、SWING 隔离，以及 Memory 非权威过滤。
-- 4B Primary 准备仅 AQ13–AQ16 / 6 Ask，命令与配置单独 Freeze；在线尚未运行，Rubric / Critical 未评分。
+- 4B Primary 仅 AQ13–AQ16 / 6 Ask，命令与配置单独 Freeze；独立 Run
+  `p4b-gemini-primary-v1-20261004T141232Z` 已 4/4 Case、6/6 Turn COMPLETED。
+  [实际 Artifact Review](../evaluation/reports/2026-10-04-phase4b-primary-review.md)建议生命周期 Behavioral / Critical PASS、State Authority 2；研究与推断瑕疵另列，等待 Human Review，不从运行完成自动推导 PASS。
 - Primary Human Review 后才决定有限影响回归与 AQ12 / AQ15 三次 Gate；不自动重跑完整 4A。
