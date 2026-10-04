@@ -8,6 +8,11 @@ from position_pilot.infrastructure.conversation_models import (
     ConversationTurnModel,
     MessageSourceModel,
 )
+from position_pilot.infrastructure.strategy_models import (
+    StrategyCandidateModel,
+    StrategyIdentityModel,
+    StrategyVersionModel,
+)
 
 
 def test_create_database_engine_uses_psycopg_postgresql_dialect() -> None:
@@ -23,8 +28,11 @@ def test_create_database_engine_uses_psycopg_postgresql_dialect() -> None:
 
 
 def test_metadata_contains_only_approved_source_of_truth_tables() -> None:
-    """只持久化 Account、Session、Opening State、校准事实与经济 Ledger。"""
+    """只持久化已批准的账户、Conversation、持续意图与经济 Ledger。"""
 
+    assert StrategyIdentityModel.__tablename__ == "strategy_identities"
+    assert StrategyCandidateModel.__tablename__ == "strategy_candidates"
+    assert StrategyVersionModel.__tablename__ == "confirmed_strategy_versions"
     assert models.UserModel.__tablename__ == "users"
     assert models.TransactionModel.__tablename__ == "transactions"
     assert models.CashEventModel.__tablename__ == "cash_events"
@@ -47,6 +55,9 @@ def test_metadata_contains_only_approved_source_of_truth_tables() -> None:
         "conversation_turns",
         "conversation_messages",
         "message_sources",
+        "strategy_identities",
+        "strategy_candidates",
+        "confirmed_strategy_versions",
         "opening_positions",
         "position_reconciliations",
         "lot_allocations",

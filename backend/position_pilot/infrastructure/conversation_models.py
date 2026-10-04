@@ -163,6 +163,7 @@ class ConversationMessageModel(Base):
             name="uq_conversation_messages_thread_sequence",
         ),
         UniqueConstraint("turn_id", "role", name="uq_conversation_messages_turn_role"),
+        UniqueConstraint("id", "thread_id", "account_id", name="uq_conversation_messages_id_owner"),
         CheckConstraint(
             "role IN ('USER', 'ASSISTANT')",
             name="ck_conversation_messages_role",

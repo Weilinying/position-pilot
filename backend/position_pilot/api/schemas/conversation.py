@@ -15,6 +15,7 @@ from position_pilot.application.conversation_service import (
     ConversationTurn,
     ConversationTurnStatus,
 )
+from position_pilot.domain.strategy import StrategyCandidate
 
 
 class ConversationThreadStartRequest(BaseModel):
@@ -171,7 +172,7 @@ class AnswerV2(BaseModel):
     warnings: tuple[str, ...]
     sources: tuple[ConversationSourceResponse, ...]
     citations: tuple[CitationV2, ...]
-    candidate: None = None
+    candidate: StrategyCandidate | None = None
 
 
 class ConversationThreadSnapshotResponse(BaseModel):

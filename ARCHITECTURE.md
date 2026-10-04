@@ -430,7 +430,9 @@ NORMAL / ELEVATED_VOLATILITY / HIGH_STRESS / EXTREME_STRESS
 - 少于 21 根 completed Bars 同样为 `NO_DATA`；认证、限流、Provider 不可用与非法成功 Payload 继续保持独立状态。
 - 决策、阈值、局限与重新考虑条件见 ADR 0007。
 
-## 13. Investment Agent 与 LLM Boundary
+## 13. Legacy Investment Agent 与 LLM Boundary
+
+本节保留迁移对照路径说明；当前 Production PydanticAI Conversation / Intent 接线以 §14 为准。
 
 ```text
 Transaction + Cash Event Ledgers
@@ -471,3 +473,36 @@ LLM_INVALID_PROVIDER_RESPONSE
 - 首轮 Routing Completion 使用 `LLMResponseFormat.TEXT`，允许选择 Tool 或直接形成无 Tool Answer；Tool Result 后的 Final 与 Repair 使用 `LLMResponseFormat.JSON_OBJECT`。Aliyun Adapter 映射 Provider-native JSON Mode；Parser、Source Validation 和一次 No-Tool Repair 继续作为防御层。Tool Call、Provider Failure 与 Source Contract 均未交给 JSON Mode 代替验证。
 - `FACT`、`INFERENCE`、`UNKNOWN` 是回答的语义约束，不强制固定输出标题。
 - 默认测试使用 Fake LLM；Opt-in Behavioral Eval 使用真实 Aliyun LLM 与固定 Fake Market Data，真实 LLM + 真实 Market Data 只用于 Smoke Test。
+
+
+## 14. Phase 4 Conversation / Confirmed Intent Boundary
+
+2026-10-04：4A 已通过 Human Acceptance；4B/T6 已完成离线实现，4B 行为验收尚未完成。
+§7 / §8 / §13 中独立 Question、单个 Tool Round 与无持久对话的描述属于旧接口边界。
+
+当前 `/v1/threads` 使用 Account-owned Conversation Service，保存 User / 成功 Assistant Message、
+Turn 与 Source。失败 Run 不产生虚构的 Assistant Answer。Production Composition Root 使用
+`NativeInvestmentAgent` + `PydanticAIRuntime`；Provider factory、Settings、默认 output mechanism
+保持原有配置，Gemini 官方接线仍限于 Eval。
+
+持续意图通过 Strategy Service 与三张新表接入：稳定 `strategy_identities`、待确认
+`strategy_candidates` 与历史 `confirmed_strategy_versions`。三种 V1 kind 均使用
+`account_id + canonical ticker + position_type + kind` 作为冲突域；LONG_TERM / SWING 独立。
+同一冲突域各最多一个 PENDING / ACTIVE，二者允许共存。
+
+模型只能在当前 User Message 的明确持续意图 / 持久计划请求下返回 typed Candidate Draft。
+Application 校验允许字段与真实本轮 User 依据，并与成功 Assistant Answer 在同一 UoW 提交。
+用户通过明确 Candidate Card / Session-owned API 确认；聊天肯定词、Tool 或模型不能确认。
+确认按 Thread → scope identity 的锁序在短事务中校验 revision / base version / expiry / Owner，
+Supersede 原 ACTIVE 并写新 ACTIVE / INVALIDATED 版本；不在锁内等待模型，不使用 Account-wide 锁。
+
+每次 Ask 只读取 ACTIVE Intent。其他 Candidate / Version 状态不进入决策 Context。
+`POSITION_PLAN_V1` 与当前权威 Portfolio Ledger 组合，复用 `PositionFundingSnapshot` 动态计算
+`max(target_budget - open_cost_basis, 0)`；剩余预算、实时价格、Quantity、Recommendation 等均不存入
+Intent。Thesis / Horizon 不修改 Lot / Position Type，所有意图操作不写 Ledger。
+Thread 删除取消来源 Pending，Confirmed Intent 保留；所有查询与操作由 Session 决定 Owner。
+
+4B Candidate 是单独的可选输出字段；既有 FinalAnswer source/citation 验证继续执行。未启用该字段的
+4A Runtime / Schema 保持原样。新增能力不增加 Mutation Tool。继承的 Tool attempt / Model request
+额度为 7 / 8、Native wall-clock 为 60s；框架 retry、repair 与 Eval transport retry 策略没有改变。
+Memory 保留既有只读 / NoOp 接缝，T6 未装配新增检索；完整 Decision Memory / 自动记忆不属于 T6。

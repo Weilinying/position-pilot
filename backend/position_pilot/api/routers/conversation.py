@@ -40,6 +40,8 @@ from position_pilot.application.conversation_service import (
     ConversationValidationError,
 )
 from position_pilot.application.errors import AuthenticationRequired
+from position_pilot.application.strategy_service import StrategyError
+from position_pilot.domain.strategy import StrategyCandidate
 
 SESSION_COOKIE_NAME = "positionpilot_session"
 
@@ -182,6 +184,7 @@ def get_messages(
                 message_by_id[item.message_id].content,
                 item.sources,
                 item.warnings,
+                candidate=item.candidate,
                 allow_legacy=True,
             )
             for item in page.answers
@@ -219,6 +222,9 @@ def post_message(
             client_request_id=request.client_request_id,
             expected_thread_revision=request.expected_thread_revision,
         )
+    except StrategyError as error:
+        code = 422 if error.code == "STRATEGY_INVALID" else 409
+        _raise_api_error(code, error.code, str(error))
     except ConversationThreadNotFound as error:
         _raise_api_error(status.HTTP_404_NOT_FOUND, "THREAD_NOT_FOUND", str(error))
     except ConversationRevisionConflict as error:
@@ -285,7 +291,13 @@ def _ask_response(completion: ConversationCompletion) -> ConversationAskResponse
 
     assistant = completion.assistant_message
     answer = (
-        _answer_v2(assistant.content, completion.sources, completion.warnings, allow_legacy=True)
+        _answer_v2(
+            assistant.content,
+            completion.sources,
+            completion.warnings,
+            candidate=completion.candidate,
+            allow_legacy=True,
+        )
         if assistant is not None
         else None
     )
@@ -306,6 +318,7 @@ def _answer_v2(
     warnings: tuple[str, ...],
     *,
     allow_legacy: bool = False,
+    candidate: StrategyCandidate | None = None,
 ) -> AnswerV2:
     """将已持久化来源映射为当前 Message 的 Answer V2。"""
 
@@ -322,7 +335,7 @@ def _answer_v2(
         warnings=warnings,
         sources=tuple(_source_response(source) for source in sources),
         citations=tuple(CitationV2(source_id=source_id) for source_id in citation_ids),
-        candidate=None,
+        candidate=candidate,
     )
 
 

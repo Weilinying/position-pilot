@@ -1,6 +1,6 @@
 """将 Conversation Contract 适配到 Production Investment Agent。"""
 
-from typing import Protocol
+from typing import Protocol, cast
 from uuid import UUID
 
 from position_pilot.application.conversation_citations import (
@@ -20,6 +20,8 @@ from position_pilot.application.investment_agent import (
     InvestmentRequestFailure,
 )
 from position_pilot.application.llm import LLMMessage, LLMRole
+from position_pilot.application.strategy_service import StrategyService
+from position_pilot.domain.strategy import StrategyVersion
 
 
 class HistoryAwareInvestmentAgent(Protocol):
@@ -33,11 +35,24 @@ class HistoryAwareInvestmentAgent(Protocol):
     ) -> InvestmentAnswer | InvestmentRequestFailure: ...
 
 
+class IntentAwareInvestmentAgent(HistoryAwareInvestmentAgent, Protocol):
+    def answer_with_intent(
+        self,
+        user_id: UUID,
+        question: str,
+        conversation_history: tuple[LLMMessage, ...],
+        confirmed: tuple[StrategyVersion, ...],
+    ) -> InvestmentAnswer | InvestmentRequestFailure: ...
+
+
 class ConversationInvestmentAgent:
     """保持 Conversation 与 Agent Runtime 状态边界的 Application Adapter。"""
 
-    def __init__(self, agent: HistoryAwareInvestmentAgent) -> None:
+    def __init__(
+        self, agent: HistoryAwareInvestmentAgent, strategies: StrategyService | None = None
+    ) -> None:
         self._agent = agent
+        self._strategies = strategies
 
     def answer(
         self,
@@ -49,12 +64,16 @@ class ConversationInvestmentAgent:
     ) -> ConversationAgentResult:
         """只注入当前 Account 已授权的用户可见历史。"""
 
-        del account_id
-        result = self._agent.answer_with_history(
-            portfolio_user_id,
-            question,
-            tuple(self._history_message(item) for item in history),
-        )
+        messages = tuple(self._history_message(item) for item in history)
+        if self._strategies is None:
+            result = self._agent.answer_with_history(portfolio_user_id, question, messages)
+        else:
+            result = cast(IntentAwareInvestmentAgent, self._agent).answer_with_intent(
+                portfolio_user_id,
+                question,
+                messages,
+                self._strategies.active(account_id),
+            )
         if isinstance(result, InvestmentRequestFailure):
             return ConversationAgentResult(failure_code=result.code.value)
         sources = tuple(self._source(source) for source in result.sources)
@@ -66,6 +85,7 @@ class ConversationInvestmentAgent:
             answer=result.answer,
             sources=sources,
             warnings=result.warnings,
+            strategy_draft=result.strategy_draft,
         )
 
     @staticmethod

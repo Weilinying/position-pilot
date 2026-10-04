@@ -1,6 +1,7 @@
 """组合 Investment Agent 所需的 Provider-neutral Context。"""
 
 import json
+from collections.abc import Mapping
 from dataclasses import dataclass
 
 from position_pilot.application.investment_answer import structured_answer_schema
@@ -32,6 +33,7 @@ class InvestmentContextBuilder:
         position_plan_intents: tuple[PositionPlanIntent, ...] = (),
         memory_context: tuple[str, ...] = (),
         conversation_history: tuple[LLMMessage, ...] = (),
+        confirmed_intents: tuple[Mapping[str, object], ...] = (),
     ) -> tuple[LLMMessage, ...]:
         """构造初始消息；Conversation 只接受用户可见的 User / Assistant 历史。"""
 
@@ -62,6 +64,8 @@ class InvestmentContextBuilder:
                     position_plan_intents,
                 )
             ]
+        if confirmed_intents:
+            payload["confirmed_user_intents"] = list(confirmed_intents)
         if memory_context:
             payload["memory_context"] = {
                 "authority": "NON_AUTHORITATIVE_BACKGROUND",

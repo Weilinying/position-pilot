@@ -15,6 +15,7 @@ from position_pilot.application.llm import (
     LLMUsage,
 )
 from position_pilot.application.tool_catalog import ToolExecutor
+from position_pilot.domain.strategy import StrategyDraft
 
 
 class AgentToolBudgetExceeded(RuntimeError):
@@ -96,6 +97,7 @@ class AgentRunRequest:
     tools: tuple[AgentToolBinding, ...]
     budget: AgentRunBudget
     response_format: LLMResponseFormat = LLMResponseFormat.TEXT
+    strategy_candidates_enabled: bool = False
 
     def __post_init__(self) -> None:
         names = tuple(binding.definition.name for binding in self.tools)
@@ -116,6 +118,7 @@ class AgentRunResult:
     latency_ms: float
     llm_status: LLMStatus | None = None
     warnings: tuple[str, ...] = ()
+    strategy_draft: StrategyDraft | None = None
     provider_http_status: int | None = None
     provider_error_code: str | None = None
     provider_error_message: str | None = field(default=None, repr=False)

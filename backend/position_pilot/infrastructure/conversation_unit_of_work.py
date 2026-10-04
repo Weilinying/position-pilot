@@ -10,7 +10,7 @@ import binascii
 from collections.abc import Sequence
 from datetime import UTC, datetime
 from types import TracebackType
-from typing import Any, NoReturn, Self, cast
+from typing import TYPE_CHECKING, Any, NoReturn, Self, cast
 from uuid import UUID
 
 from sqlalchemy import Select, and_, or_, select, update
@@ -40,6 +40,9 @@ from position_pilot.infrastructure.conversation_models import (
     ConversationTurnModel,
     MessageSourceModel,
 )
+
+if TYPE_CHECKING:
+    from position_pilot.infrastructure.strategy_repository import SqlAlchemyStrategyRepository
 
 
 def _to_thread(model: ConversationThreadModel) -> ConversationThread:
@@ -585,3 +588,14 @@ class SqlAlchemyConversationUnitOfWorkFactory:
 
     def __call__(self) -> ConversationUnitOfWork:
         return SqlAlchemyConversationUnitOfWork(self._session_factory)
+
+
+def conversation_strategy_repository(
+    unit_of_work: ConversationUnitOfWork,
+) -> "SqlAlchemyStrategyRepository":
+    """Composition Root 绑定 SQL 事务，在同一事务保存 Answer 与 Candidate。"""
+    from position_pilot.infrastructure.strategy_repository import SqlAlchemyStrategyRepository
+
+    if not isinstance(unit_of_work, SqlAlchemyConversationUnitOfWork):
+        raise TypeError("Strategy Repository 必须绑定同一个 SQL Conversation 事务")
+    return SqlAlchemyStrategyRepository(unit_of_work.session)

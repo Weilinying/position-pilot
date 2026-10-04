@@ -19,6 +19,12 @@ from position_pilot.application.conversation_citations import (
     CitationValidationError,
     validate_citations,
 )
+from position_pilot.application.strategy_service import (
+    StrategyError,
+    StrategyRepository,
+    StrategyService,
+)
+from position_pilot.domain.strategy import StrategyCandidate, StrategyDraft
 
 MAX_THREAD_TITLE_LENGTH = 200
 MAX_MESSAGE_LENGTH = 4_000
@@ -202,6 +208,7 @@ class ConversationAgentResult:
     sources: tuple[ConversationSourceInput, ...] = ()
     warnings: tuple[str, ...] = ()
     failure_code: str | None = None
+    strategy_draft: StrategyDraft | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -230,6 +237,7 @@ class ConversationHistoryAnswer:
     message_id: UUID
     sources: tuple[ConversationSource, ...]
     warnings: tuple[str, ...]
+    candidate: StrategyCandidate | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -270,6 +278,7 @@ class ConversationCompletion:
     assistant_message: ConversationMessage | None
     sources: tuple[ConversationSource, ...]
     warnings: tuple[str, ...] = ()
+    candidate: StrategyCandidate | None = None
 
 
 class ConversationAgent(Protocol):
@@ -445,6 +454,8 @@ class ConversationService:
         agent: ConversationAgent | None = None,
         clock: Callable[[], datetime] | None = None,
         run_timeout: timedelta = DEFAULT_RUN_TIMEOUT,
+        strategy_repository_factory: Callable[[ConversationUnitOfWork], StrategyRepository]
+        | None = None,
     ) -> None:
         if run_timeout <= timedelta(0):
             raise ConversationValidationError("run_timeout 必须为正数")
@@ -452,6 +463,7 @@ class ConversationService:
         self._agent = agent
         self._clock = clock or (lambda: datetime.now(UTC))
         self._run_timeout = run_timeout
+        self._strategy_repository_factory = strategy_repository_factory
 
     def start_thread(
         self,
@@ -602,6 +614,7 @@ class ConversationService:
         answer: str,
         sources: tuple[ConversationSourceInput, ...] = (),
         warnings: tuple[str, ...] = (),
+        strategy_draft: StrategyDraft | None = None,
     ) -> ConversationCompletion:
         """短事务追加 Assistant Message、Sources 并完成 Turn。"""
 
@@ -674,6 +687,20 @@ class ConversationService:
             unit_of_work.add_sources(persisted_sources)
             unit_of_work.update_turn(completed_turn)
             unit_of_work.update_thread(updated_thread)
+            candidate = None
+            if strategy_draft is not None:
+                if self._strategy_repository_factory is None:
+                    raise StrategyError("STRATEGY_INVALID", "当前 Ask 未启用持久意图")
+                candidate = StrategyService.propose_in_repository(
+                    self._strategy_repository_factory(unit_of_work),
+                    account_id=account_id,
+                    thread_id=thread.id,
+                    user_message_id=user_message.id,
+                    assistant_message_id=assistant_message.id,
+                    request_id=turn.client_request_id,
+                    draft=strategy_draft,
+                    now=now,
+                )
             unit_of_work.commit()
             return ConversationCompletion(
                 updated_thread,
@@ -682,6 +709,7 @@ class ConversationService:
                 assistant_message,
                 persisted_sources,
                 completed_turn.warnings,
+                candidate,
             )
 
     def fail_turn(
@@ -781,7 +809,11 @@ class ConversationService:
                 answer=result.answer,
                 sources=result.sources,
                 warnings=result.warnings,
+                strategy_draft=result.strategy_draft,
             )
+        except StrategyError as error:
+            self.fail_turn(account_id, thread_id, started.turn.id, failure_code=error.code)
+            raise
         except ConversationValidationError:
             return self.fail_turn(
                 account_id,
@@ -804,6 +836,10 @@ class ConversationService:
                     raise ConversationTurnInProgress(running.id)
             deleted = replace(thread, deleted_at=now, revision=thread.revision + 1, updated_at=now)
             unit_of_work.update_thread(deleted)
+            if self._strategy_repository_factory is not None:
+                self._strategy_repository_factory(unit_of_work).cancel_thread(
+                    account_id, thread_id, now
+                )
             unit_of_work.commit()
             return deleted
 
@@ -874,6 +910,7 @@ class ConversationService:
                         message.id,
                         unit_of_work.list_sources_for_message(account_id, thread_id, message.id),
                         turn.warnings,
+                        self._message_candidate(unit_of_work, account_id, message.id),
                     )
                 )
             return ConversationHistoryPage(
@@ -1005,10 +1042,13 @@ class ConversationService:
                 assistant,
                 tuple(sources),
                 started.turn.warnings,
+                self._message_candidate(unit_of_work, account_id, assistant.id)
+                if assistant
+                else None,
             )
 
-    @staticmethod
     def _completed_result(
+        self,
         unit_of_work: ConversationUnitOfWork,
         thread: ConversationThread,
         turn: ConversationTurn,
@@ -1037,7 +1077,18 @@ class ConversationService:
             assistant,
             tuple(sources),
             turn.warnings,
+            self._message_candidate(unit_of_work, turn.account_id, assistant.id)
+            if assistant
+            else None,
         )
+
+    def _message_candidate(
+        self, uow: ConversationUnitOfWork, owner: UUID, message_id: UUID
+    ) -> StrategyCandidate | None:
+        if self._strategy_repository_factory is None:
+            return None
+        candidate = self._strategy_repository_factory(uow).by_message(owner, message_id)
+        return StrategyService.visible(candidate, self._clock()) if candidate is not None else None
 
 
 __all__ = [

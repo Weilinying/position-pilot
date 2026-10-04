@@ -65,6 +65,7 @@ from position_pilot.application.llm import (
 )
 from position_pilot.application.tool_catalog import ToolExecutionResult
 from position_pilot.config import Settings
+from position_pilot.domain.strategy import StrategyDraft
 
 
 @dataclass(slots=True)
@@ -334,6 +335,18 @@ class _NativeStructuredFinalCandidate(BaseModel):
     source_refs: list[_NativePortfolioSourceRef | _NativeTickerSourceRef]
 
 
+class _StrategyNativeCandidate(_NativeStructuredFinalCandidate):
+    """4B 在原 Native Contract 上增加严格的待确认意图字段。"""
+
+    candidate: StrategyDraft | None = None
+
+
+class _StrategyToolCandidate(_StructuredFinalCandidate):
+    """默认 Output Tool 同样只能提出草案，没有写入或确认权限。"""
+
+    candidate: StrategyDraft | None = None
+
+
 class PydanticAIRuntime(AgentRuntime):
     """使用 PydanticAI 原生 Agent.run 与 Tool Loop 的 Production Adapter。"""
 
@@ -501,7 +514,7 @@ class PydanticAIRuntime(AgentRuntime):
                 bridge,
             )
         if isinstance(result.output, (_StructuredFinalCandidate, _NativeStructuredFinalCandidate)):
-            final_candidate = result.output.model_dump_json()
+            final_candidate = result.output.model_dump_json(exclude={"candidate"})
         elif isinstance(result.output, str):
             final_candidate = result.output
         else:
@@ -536,6 +549,11 @@ class PydanticAIRuntime(AgentRuntime):
             self._latency_ms(started_at),
             llm_status=LLMStatus.OK,
             warnings=tuple(warnings),
+            strategy_draft=(
+                result.output.candidate
+                if isinstance(result.output, (_StrategyNativeCandidate, _StrategyToolCandidate))
+                else None
+            ),
             provider_finish_reason=finish_reason if isinstance(finish_reason, str) else None,
             model_request_count=bridge.model_request_count,
             tool_attempt_count=bridge.tool_attempt_count,
@@ -630,20 +648,24 @@ class PydanticAIRuntime(AgentRuntime):
         """对完整 Model / Tool Loop 应用可中断的总 Wall-clock Ceiling。"""
 
         output_type: (
-            NativeOutput[_NativeStructuredFinalCandidate]
-            | ToolOutput[_StructuredFinalCandidate]
+            NativeOutput[_NativeStructuredFinalCandidate | _StrategyNativeCandidate]
+            | ToolOutput[_StructuredFinalCandidate | _StrategyToolCandidate]
             | type[str]
         )
         if request.response_format is LLMResponseFormat.JSON_OBJECT:
             output_type = (
                 NativeOutput(
-                    _NativeStructuredFinalCandidate,
+                    _StrategyNativeCandidate
+                    if request.strategy_candidates_enabled
+                    else _NativeStructuredFinalCandidate,
                     name="final_investment_answer",
                     strict=True,
                 )
                 if self._output_mechanism == "NATIVE"
                 else ToolOutput(
-                    _StructuredFinalCandidate,
+                    _StrategyToolCandidate
+                    if request.strategy_candidates_enabled
+                    else _StructuredFinalCandidate,
                     name="final_investment_answer",
                     max_retries=0,
                 )

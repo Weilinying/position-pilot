@@ -87,6 +87,7 @@ from position_pilot.domain.market_data import (
     MarketQuote,
 )
 from position_pilot.domain.news import NewsResult, NewsStatus, RecentNews
+from position_pilot.domain.strategy import StrategyDraft
 
 LOGGER = logging.getLogger(__name__)
 MAX_TOOL_CALLS_PER_ROUND = 4
@@ -368,6 +369,7 @@ class InvestmentAnswer:
     answer: str
     sources: tuple[ContextSource, ...]
     warnings: tuple[str, ...] = ()
+    strategy_draft: StrategyDraft | None = None
 
 
 @dataclass(frozen=True, slots=True)

@@ -1147,3 +1147,102 @@ def test_runtime_failure_maps_to_existing_public_failure_contract() -> None:
 
     assert isinstance(result, InvestmentRequestFailure)
     assert result.code is InvestmentFailureCode.LLM_PROVIDER_UNAVAILABLE
+
+
+def test_confirmed_plan_uses_current_ledger_after_buy_sell_and_never_swing_cost() -> None:
+    """Native Context 每次从真实 Ledger 派生，确认意图不持久化剩余金额。"""
+    from uuid import uuid4
+
+    from position_pilot.domain.portfolio import (
+        LotAllocation,
+        PositionType,
+        Transaction,
+        TransactionAction,
+        User,
+        rebuild_portfolio,
+    )
+    from position_pilot.domain.strategy import (
+        PositionPlanPayload,
+        StrategyKind,
+        StrategyScope,
+        StrategyVersion,
+        StrategyVersionStatus,
+    )
+
+    user = User.create(
+        user_id=USER_ID, display_name="Fixture", initial_cash=Decimal("1000"), created_at=NOW
+    )
+    transactions: list[Transaction] = []
+
+    class CurrentLedgerReader:
+        def get_investment_context(self, user_id: UUID) -> InvestmentPortfolioContext:
+            assert user_id == USER_ID
+            return InvestmentPortfolioContext.from_ledger(
+                rebuild_portfolio(
+                    user,
+                    transactions,
+                    [],
+                    lot_allocations=[
+                        LotAllocation.create(
+                            user_id=USER_ID,
+                            sell_transaction_id=tx.id,
+                            lot_id=transactions[0].id,
+                            shares=tx.shares,
+                        )
+                        for tx in transactions
+                        if tx.action is TransactionAction.SELL
+                    ],
+                ),
+                (),
+            )
+
+    intent = StrategyVersion(
+        id=uuid4(),
+        strategy_id=uuid4(),
+        account_id=uuid4(),
+        confirmed_by_account_id=uuid4(),
+        scope=StrategyScope(ticker="GOOG", position_type=PositionType.LONG_TERM),
+        kind=StrategyKind.POSITION_PLAN_V1,
+        payload=PositionPlanPayload(target_budget=Decimal("300")),
+        version=1,
+        status=StrategyVersionStatus.ACTIVE,
+        previous_version_id=None,
+        source_candidate_id=uuid4(),
+        confirmation_request_id=uuid4(),
+        confirmed_at=NOW,
+    )
+    runtime = ScriptedNativeRuntime(
+        lambda _: _completed(_candidate({"type": "PORTFOLIO_SNAPSHOT"}))
+    )
+    data = FixedFinancialData()
+    agent = NativeInvestmentAgent(
+        CurrentLedgerReader(), data, runtime, news=data, market_context=data, clock=lambda: NOW
+    )
+    for action, position_type, price, shares, expected in (
+        (TransactionAction.BUY, PositionType.LONG_TERM, "100", "2", "100.00000000"),
+        (TransactionAction.BUY, PositionType.SWING, "50", "1", "100.00000000"),
+        (TransactionAction.SELL, PositionType.LONG_TERM, "150", "1", "200.00000000"),
+    ):
+        transactions.append(
+            Transaction.create(
+                user_id=USER_ID,
+                sequence=len(transactions) + 1,
+                ticker="GOOG",
+                action=action,
+                price=Decimal(price),
+                shares=Decimal(shares),
+                position_type=position_type,
+                occurred_at=NOW,
+            )
+        )
+        result = agent.answer_with_intent(USER_ID, "检查我的长期目标", (), (intent,))
+        assert isinstance(result, InvestmentAnswer)
+        request = runtime.requests[-1]
+        context = json.loads(request.messages[-1].content or "{}")
+        assert context["position_funding_snapshots"][0]["remaining_target_budget"] == expected
+        assert context["confirmed_user_intents"][0]["id"] == str(intent.id)
+        assert "pending_intent_candidates" not in context
+        assert request.strategy_candidates_enabled
+        assert request.budget.tool_calls == 7 and request.budget.model_requests == 8
+        assert request.budget.wall_clock_seconds == 60
+    assert "remaining_target_budget" not in intent.model_dump_json()

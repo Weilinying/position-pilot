@@ -56,6 +56,7 @@ from position_pilot.application.llm import (
     LLMStatus,
     LLMToolCall,
 )
+from position_pilot.application.position_funding import PositionPlanIntent
 from position_pilot.application.source_registry import SourceValidator
 from position_pilot.application.tool_catalog import (
     DescriptorToolProvider,
@@ -70,6 +71,7 @@ from position_pilot.application.tool_catalog import (
 from position_pilot.domain.market_context import MARKET_PROXY_TICKER
 from position_pilot.domain.market_data import MarketDataResult
 from position_pilot.domain.news import NewsResult
+from position_pilot.domain.strategy import PositionPlanPayload, StrategyVersion
 
 LOGGER = logging.getLogger(__name__)
 DEFAULT_WALL_CLOCK_BUDGET_SECONDS = 60.0
@@ -243,6 +245,23 @@ class NativeInvestmentAgent:
             citation_mode=True,
         )
 
+    def answer_with_intent(
+        self,
+        user_id: UUID,
+        question: str,
+        conversation_history: tuple[LLMMessage, ...],
+        confirmed: tuple[StrategyVersion, ...],
+    ) -> InvestmentAnswer | InvestmentRequestFailure:
+        """由 Application 提供已授权意图，Runtime 不直接访问持久化。"""
+        return self._answer(
+            user_id,
+            question,
+            conversation_history=conversation_history,
+            citation_mode=True,
+            confirmed=confirmed,
+            strategy_enabled=True,
+        )
+
     def _answer(
         self,
         user_id: UUID,
@@ -250,6 +269,8 @@ class NativeInvestmentAgent:
         *,
         conversation_history: tuple[LLMMessage, ...],
         citation_mode: bool = False,
+        confirmed: tuple[StrategyVersion, ...] = (),
+        strategy_enabled: bool = False,
     ) -> InvestmentAnswer | InvestmentRequestFailure:
         """共享单问与 Thread Ask 流程，不让 Runtime 持有 Conversation 状态。"""
 
@@ -327,10 +348,33 @@ class NativeInvestmentAgent:
                 "成功来源仍可按需声明和引用。"
                 "source_refs 仍按原结构声明。"
             )
+        if strategy_enabled:
+            prompt += (
+                "\n持续意图：confirmed_user_intents 是用户已显式确认的持续目标，"
+                "不是交易事实或当前建议。"
+                "待确认草案不进入决策 Context，不得依据历史草案声称意图已生效。"
+                "只有 question 明确表达跨会话持续意图或请求起草持久计划时才返回 candidate；"
+                "单次预算、普通分析、模型建议、价格 trigger / tranche "
+                "或当次买入金额不能成为候选。"
+                "evidence_quote 必须逐字引用本轮 question 中的依据，"
+                "不引用 History / Tool / Assistant。"
+                "scope 必须明确 ticker 与 LONG_TERM / SWING，不猜测未声明的仓位类型；"
+                "POSITION_PLAN_V1 只保存目标当前资本配置，Thesis / Horizon 只保存用户背景意图。"
+                "取消既有持续意图使用 INVALIDATE 草案；确认只能经用户显式 UI / API，"
+                "不能声称草案已保存生效。"
+                "普通实时建议 candidate=null；新事实允许改变建议，不自动复用历史建议或价格条件。"
+                "PositionFundingSnapshot 是本轮权威 Ledger 派生值，不是本轮投入授权。"
+            )
         messages = InvestmentContextBuilder(prompt).build(
             portfolio_context,
             normalized_question,
             conversation_history=conversation_history,
+            position_plan_intents=tuple(
+                PositionPlanIntent(v.scope.ticker, v.scope.position_type, v.payload.target_budget)
+                for v in confirmed
+                if isinstance(v.payload, PositionPlanPayload)
+            ),
+            confirmed_intents=tuple(v.model_dump(mode="json") for v in confirmed),
         )
         exposure = self._exposure(user_id)
         tool_call_budget = exposure.tool_call_budget
@@ -366,6 +410,7 @@ class NativeInvestmentAgent:
                     wall_clock_seconds=self._wall_clock_budget_seconds,
                 ),
                 LLMResponseFormat.JSON_OBJECT,
+                strategy_candidates_enabled=strategy_enabled,
             )
         )
         failure = self._runtime_failure(result)
@@ -397,6 +442,7 @@ class NativeInvestmentAgent:
             structured.answer,
             SourceValidator.select_declared(structured, tuple(sources)),
             result.warnings,
+            strategy_draft=result.strategy_draft,
         )
 
     def _exposure(self, user_id: UUID) -> ToolExposure:

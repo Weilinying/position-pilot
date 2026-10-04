@@ -19,10 +19,12 @@ from position_pilot.application.portfolio_service import PortfolioService
 from position_pilot.application.portfolio_summary_service import PortfolioSummaryService
 from position_pilot.application.portfolio_valuation_service import PortfolioValuationService
 from position_pilot.application.recognition_service import RecognitionService
+from position_pilot.application.strategy_service import StrategyService
 from position_pilot.config import get_settings
 from position_pilot.database import create_database_engine, create_session_factory
 from position_pilot.infrastructure.conversation_unit_of_work import (
     SqlAlchemyConversationUnitOfWorkFactory,
+    conversation_strategy_repository,
 )
 from position_pilot.infrastructure.unit_of_work import SqlAlchemyPortfolioUnitOfWorkFactory
 from position_pilot.integrations.aliyun_vision import AliyunVisionProvider
@@ -145,7 +147,8 @@ def get_conversation_service() -> ConversationService:
 
     return ConversationService(
         SqlAlchemyConversationUnitOfWorkFactory(get_session_factory()),
-        agent=ConversationInvestmentAgent(get_investment_agent()),
+        agent=ConversationInvestmentAgent(get_investment_agent(), get_strategy_service()),
+        strategy_repository_factory=conversation_strategy_repository,
     )
 
 
@@ -156,3 +159,13 @@ def _secret_value(secret: SecretStr | None) -> str | None:
         return None
     normalized = secret.get_secret_value().strip()
     return normalized or None
+
+
+@lru_cache
+def get_strategy_service() -> StrategyService:
+    """独立意图事务服务，共用既有 PostgreSQL Session Factory。"""
+    from position_pilot.infrastructure.strategy_unit_of_work import (
+        SqlAlchemyStrategyUnitOfWorkFactory,
+    )
+
+    return StrategyService(SqlAlchemyStrategyUnitOfWorkFactory(get_session_factory()))
