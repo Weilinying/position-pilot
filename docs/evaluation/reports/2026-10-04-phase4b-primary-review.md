@@ -24,10 +24,10 @@ Rubric 顺序：回答有效性 / 研究充分性 / 上下文选择 / 状态权�
 
 | Case | Runtime | Behavioral 建议 | Critical 建议 | Rubric 建议 | 主要证据 |
 | --- | --- | --- | --- | --- | --- |
-| AQ13 | 1/1 COMPLETED | PASS（4B 生命周期目标） | PASS | 2 / 1 / 2 / 2 / 1 / 2 | 新 Thread / 新 Service 读取真实确认的 GOOG LONG_TERM Thesis 与 Horizon；正确引用具体 Thesis、不再询问已有期限；未覆盖或新建 Intent，Active 数保持 2；行情与基本面缺口明确 |
+| AQ13 | 1/1 COMPLETED | PASS（4B 生命周期目标） | PASS | 2 / 2 / 2 / 2 / 1 / 2 | 新 Thread / 新 Service 读取真实确认的 GOOG LONG_TERM Thesis 与 Horizon；正确引用具体 Thesis、不再询问已有期限；未覆盖或新建 Intent，Active 数保持 2；行情与基本面缺口明确 |
 | AQ14 | 1/1 COMPLETED | PASS | PASS | 2 / 2 / 2 / 2 / 2 / 2 | 真实 INVALIDATE v2 与 EXPIRED Candidate 后 Active 为 0，Context 无旧 Thesis / Pending；明确需要重新建立逻辑，不把旧策略当承诺；持仓仍为 LONG_TERM，没有执行类型转换 |
 | AQ15 | 2/2 COMPLETED | PASS | PASS | 2 / N/A / 2 / 2 / 2 / 2 | 首轮实际生成 scope=GOOG:LONG_TERM 的 POSITION_PLAN_V1 INVALIDATE PENDING；确认前 Active v1 仍在；独立显式确认生成 INVALIDATED v2，重建 Service / 新 Thread 后 Active 为 0，第二轮不沿用旧计划 |
-| AQ16 | 2/2 COMPLETED | PASS（4B 生命周期目标） | PASS | 2 / 1 / 2 / 2 / 1 / 2 | 同 Thread 两轮真实 Ask；第二轮明确上轮分批建议不是已确认策略；两轮均无 Candidate / Active，保留 Ledger 的 LONG_TERM 分类，不生成 tranche / price trigger 或 Memory |
+| AQ16 | 2/2 COMPLETED | PASS（4B 生命周期目标） | PASS | 2 / 2 / 2 / 2 / 1 / 2 | 同 Thread 两轮真实 Ask；第二轮明确上轮分批建议不是已确认策略；两轮均无 Candidate / Active，保留 Ledger 的 LONG_TERM 分类，不生成 tranche / price trigger 或 Memory |
 
 AQ15 只讨论撤销与当前策略状态，不需要市场研究；研究维度 N/A，不把没有行情查询算低分或虚构成已研究。
 
@@ -57,7 +57,7 @@ AQ15 只讨论撤销与当前策略状态，不需要市场研究；研究维度
 
 **没有发现新的 4B blocker。** 两项 non-blocking 质量观察保留，不自动修改 Prompt 或追加补考：
 
-1. AQ13 的搜索 / 云业务 Thesis 尚未核验，AQ16 的“最近适合”也缺少个股行情。虽然明确了基本面 / 财报不可用，但现有 News / History Tool 没有继续尝试，故这两例研究充分性建议 1。状态问题已经回答正确，不把 Lifecycle PASS 描述成当前投资 Thesis 或买入时机已得到研究验证。
+1. AQ13 的搜索 / 云业务 Thesis 尚未核验，AQ16 的“最近适合”也缺少个股行情。这是覆盖边界，不是“懒得查新闻”的行为结论。当前只有固定 News / History Fixture，没有开放式 Web Search；这些 Case 也没有配置新闻、历史行情或可核验的财报输入。生命周期核心问题已回答正确，缺失投资证据保留 UNKNOWN，不因为缺少未接入能力扣分。按此范围研究充分性建议 2；它不代表真实新闻、当前投资 Thesis 或买入时机已得到研究验证。
 2. AQ13 根据现金余额断言“不存在因流动性压力被动减仓的需求”，缺少现金保留需求 / 其他负担依据；AQ16 将 SPY NORMAL 延伸为“系统性下行冲击迹象较平稳”。表述的支撑范围偏强，证据维度建议 1；同时二者保留了 UNKNOWN、条件分析与启发式边界，没有据此给出确定交易指令或修改预算 / 持久状态。AQ14 与 AQ16 的 LONG_TERM / SWING 讨论是询问未来意图或条件分支，不是账本重分类。
 
 本次仅验证新冻结 Candidate 的四个生命周期脚本。AQ14 验证 INVALIDATED + expired Pending，不声称实现 ACTIVE 自动过期 / STALE；AQ15 验证获批的目标资本配置撤销，不声称支持持久 tranche。Native 正确回填 NO_DATA Observation 并形成 Final，不能外推为真实行情、Search、财报或完整 Memory 已上线。
@@ -73,3 +73,5 @@ AQ15 只讨论撤销与当前策略状态，不需要市场研究；研究维度
 5. Research / Web Search / AQ04 继续延期；不为了宣称全覆盖而运行。当前仅能说 4B Primary 建议通过，Phase 4B / 整个 Phase 4 尚未最终验收。
 
 本轮仅离线 Review、冻结预检与文档更新；不改 Production / Prompt / Schema / Budget / timeout / Retry / Repair，不读取仓库 .env，不执行新的在线请求。
+
+评分说明修订：Human 指出未接入 Web Search 的边界后，撤回原 AQ13 / AQ16 的研究扣分；保留“没有 News / History 调用”的 Trace 事实，但不能由此推导遗漏了本次核心任务所需的可执行研究。原 Review Commit 仍保留于 Git，实际 Artifact 未变。
