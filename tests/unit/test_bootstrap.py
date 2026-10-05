@@ -38,6 +38,8 @@ def make_settings(
     finnhub_api_key: SecretStr | None = None,
     llm_api_key: SecretStr | None = None,
     vision_api_key: SecretStr | None = None,
+    llm_provider: str = "ALIYUN_MODEL_STUDIO",
+    gemini_api_key: SecretStr | None = None,
 ) -> Settings:
     """创建不读取本地 .env 的固定配置。"""
 
@@ -47,7 +49,12 @@ def make_settings(
         finnhub_api_key=finnhub_api_key,
         finnhub_base_url=AnyHttpUrl("https://finnhub.example.test/api/v1"),
         finnhub_request_timeout_seconds=9,
+        llm_provider=llm_provider,
+        llm_model=(
+            "gemini-3.8-flash" if llm_provider == "GOOGLE_GEMINI" else "deepseek-v4-pro-0813"
+        ),
         llm_api_key=llm_api_key,
+        gemini_api_key=gemini_api_key,
         vision_base_url=AnyHttpUrl("https://vision.example.test/compatible-mode/v1"),
         vision_api_key=vision_api_key,
         vision_model="configured-qwen3-vl-flash",
@@ -123,12 +130,64 @@ def test_recognition_service_prefers_explicit_vision_key(
     assert provider._api_key == "dedicated-vision-secret"
 
 
-def test_investment_agent_bootstrap_uses_only_pydantic_ai_runtime(
+def test_gemini_key_is_not_reused_for_vision_provider(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Production Bootstrap 不再装配 Legacy Completion Runtime。"""
+    """Gemini Final Credential 不得回退为 Aliyun Vision Credential。"""
 
-    settings = make_settings(llm_api_key=SecretStr("runtime-secret"))
+    monkeypatch.setattr(
+        bootstrap,
+        "get_settings",
+        lambda: make_settings(
+            llm_provider="GOOGLE_GEMINI",
+            llm_api_key=SecretStr("unrelated-llm-secret"),
+            gemini_api_key=SecretStr("independent-gemini-secret"),
+        ),
+    )
+
+    service = bootstrap.get_recognition_service()
+
+    provider = service._provider
+    assert isinstance(provider, AliyunVisionProvider)
+    assert provider._api_key is None
+
+
+def test_gemini_provider_uses_only_explicit_vision_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Gemini 配置下只有显式 Vision Key 可用于 Vision Provider。"""
+
+    monkeypatch.setattr(
+        bootstrap,
+        "get_settings",
+        lambda: make_settings(
+            llm_provider="GOOGLE_GEMINI",
+            llm_api_key=SecretStr("unrelated-llm-secret"),
+            gemini_api_key=SecretStr("independent-gemini-secret"),
+            vision_api_key=SecretStr("dedicated-vision-secret"),
+        ),
+    )
+
+    service = bootstrap.get_recognition_service()
+
+    provider = service._provider
+    assert isinstance(provider, AliyunVisionProvider)
+    assert provider._api_key == "dedicated-vision-secret"
+
+
+@pytest.mark.parametrize("llm_provider", ["GOOGLE_GEMINI", "ALIYUN_MODEL_STUDIO"])
+def test_investment_agent_bootstrap_uses_only_pydantic_ai_runtime(
+    monkeypatch: pytest.MonkeyPatch,
+    llm_provider: str,
+) -> None:
+    """切换 Final Provider 不改变工具集合，遗留 Research 开关也不能暴露 Search。"""
+
+    monkeypatch.setenv("RESEARCH_ENABLED", "1")
+    settings = make_settings(
+        llm_api_key=SecretStr("runtime-secret"),
+        gemini_api_key=SecretStr("gemini-runtime-secret"),
+        llm_provider=llm_provider,
+    )
     runtime = object()
     portfolio_reader = object()
     market_data = object()
@@ -152,6 +211,12 @@ def test_investment_agent_bootstrap_uses_only_pydantic_ai_runtime(
     assert agent._runtime is runtime
     assert agent._portfolio_reader is portfolio_reader
     assert agent._market_data is market_data
+    assert set(agent._tool_catalog.names) == {
+        "get_current_quote",
+        "get_recent_price_history",
+        "get_recent_news",
+        "get_market_context",
+    }
 
 
 def test_conversation_service_reuses_production_agent_and_database_factory(

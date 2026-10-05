@@ -854,6 +854,11 @@ class PydanticAIRuntime(AgentRuntime):
 def create_pydantic_ai_runtime(settings: Settings) -> PydanticAIRuntime:
     """根据已校验 Settings 创建当前 Provider 对应的 PydanticAI Adapter。"""
 
+    if settings.llm_provider == "GOOGLE_GEMINI":
+        from position_pilot.integrations.gemini_runtime import create_gemini_runtime
+
+        return create_gemini_runtime(settings)
+
     api_key = settings.llm_api_key.get_secret_value() if settings.llm_api_key else None
     if not api_key:
         return PydanticAIRuntime(

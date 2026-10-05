@@ -137,9 +137,9 @@ uv run pytest \
 
 ## Investment Agent
 
-Agent 使用 Single Agent + Native Function Calling。Portfolio Snapshot 必定注入，Quote、History、News 与 Market Context 由 Agent 按需调用；默认 LLM Provider 为阿里云 Model Studio，业务层只依赖通用 `LLMProvider`。
+正式 Agent 使用 Single Agent + PydanticAI Runtime。Portfolio Snapshot 必定注入，Quote、History、News 与 Market Context 由 Agent 按需调用；默认 Final 为官方 Gemini `gemini-3.8-flash` + NativeOutput，独立配置 `GEMINI_API_KEY`。图片识别继续 Aliyun，需独立 `VISION_API_KEY`；只有显式选择 Aliyun Final 时保留复用 `LLM_API_KEY` 的既有 fallback。Research 为 DEFERRED，不暴露 Search。当前 Conversation / Confirmed Intent 边界见 [`ARCHITECTURE.md` §14](ARCHITECTURE.md#14-phase-4-conversation--confirmed-intent-boundary)，本次整合不等于新在线 Production Acceptance。
 
-在本地 `.env` 配置 `LLM_API_KEY` 后，登录用户可以直接在 Decision Questions 页面调用真实 Agent。开发者若需要直接检查 API，必须先取得本地 Session Cookie；Question Body 不接受 `user_id`：
+为当前默认 Final 配置 `GEMINI_API_KEY` 后，登录用户可以调用真实 Agent。开发者若需要检查保留的 deprecated Questions API，必须先取得本地 Session Cookie；Question Body 不接受 `user_id`：
 
 ```bash
 curl -c /tmp/positionpilot-cookie.txt \
@@ -153,11 +153,11 @@ curl -b /tmp/positionpilot-cookie.txt \
   -d '{"question":"GOOG 今天还能加一点吗？"}'
 ```
 
-`LLM_PROVIDER`、`LLM_BASE_URL`、`LLM_MODEL` 和 `LLM_REQUEST_TIMEOUT_SECONDS` 均可覆盖。
-Alibaba 使用专用薄 Adapter 隔离 `enable_thinking`；其他 OpenAI-compatible Provider 不接收该扩展。
+`LLM_PROVIDER`、`LLM_MODEL` 和 `NATIVE_LLM_REQUEST_TIMEOUT_SECONDS` 可覆盖；Gemini 使用官方端点，不读取 `LLM_BASE_URL` / `LLM_API_KEY`。
+显式选择 Aliyun Final 时仍使用兼容端点与 `LLM_API_KEY`。
 Authentication 仍只适合本地或受控开发环境，不应直接公开部署。
 
-真实模型 Behavioral Eval 使用固定 Fake Market Data，不进入默认 CI：
+下方历史 Aliyun / Legacy Behavioral 对照入口使用固定 Fake Market Data，不进入默认 CI，也不能作为当前 Gemini Production 接线的验收：
 
 ```bash
 RUN_REAL_LLM_BEHAVIORAL_EVAL=1 \

@@ -13,7 +13,7 @@
 **Current Milestone:** M13 — Position-Aware Market Chart
 **Status:** DONE — Human Accepted and merged to local `main`（2026-09-13）
 **Current Release State:** `v1.3.0` Release Candidate 已进入本地 `main`；Git Tag / GitHub Release 尚待发布
-**Next Planned Work:** Phase 4 已最终验收；AQ04 / Web Search 等后续范围待独立规划，M10、M12 继续暂缓
+**Next Planned Work:** Phase 4 已最终验收；独立批准的 Gemini Production Final 最小整合在独立分支交付离线 Candidate，在线 / 合并另行 Review，不重开 T6～T8。AQ04 / Web Search 为 DEFERRED，M10、M12 继续暂缓。
 
 Milestone 状态统一使用 `NOT STARTED`、`IN PROGRESS`、`DONE`，不维护百分比进度。
 

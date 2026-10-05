@@ -178,7 +178,7 @@ V1 已确定使用 Python、FastAPI、Pydantic、PostgreSQL 和 pytest。
 
 ## 10. 尚未确定的技术问题
 
-PositionPilot 自身的 Agent Orchestration 已在 M3 Human Review 中确定使用 Single Agent + Native Function Calling，M3 不引入 LangGraph。M2 已选择 Alpaca Market Data API v2 REST 作为 Market Data Provider，具体覆盖与限制见 ADR 0004；M3 已选择阿里云 Model Studio 作为 V1 默认 LLM Provider，并保持 Provider / Model 可配置和与 Agent / Domain 解耦；M9 已选择 Finnhub 作为 Asset Metadata Provider、Alibaba Model Studio `qwen3-vl-flash` 作为 Vision / OCR Capability，具体边界见 ADR 0010；News Provider 和 Financial Data Provider 尚未确定。
+PositionPilot 自身的 Agent Orchestration 已在 M3 Human Review 中确定使用 Single Agent + Native Function Calling，M3 不引入 LangGraph；Phase 4 已批准并采用 PydanticAI Runtime。M2 已选择 Alpaca Market Data API v2 REST 作为 Market Data Provider，具体覆盖与限制见 ADR 0004；M3 的阿里云默认 LLM 属于历史选择，2026-10-05 Human 独立批准 Gemini 官方 Production Final，默认 `gemini-3.8-flash`，Provider / Model 继续与业务层解耦，整合及凭据隔离见 ADR 0018；M9 的 Finnhub Asset Metadata 与 Alibaba Model Studio `qwen3-vl-flash` Vision / OCR 保持不变，具体边界见 ADR 0010。Recent News 使用 Alpaca（ADR 0006）；独立 Financial Data / Earnings 能力仍未确定，开放 Research 为 DEFERRED。
 
 “尚未确定”本身是一种有效状态。开发过程中不得因为需要继续编码，就未经评估默认选择某个 Framework 或 Provider。进入相关 Milestone 后，应根据真实需求、Technical Spike 或可验证比较做出决策，并在必要时记录 ADR。
 
