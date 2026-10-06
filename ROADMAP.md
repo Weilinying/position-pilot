@@ -13,7 +13,7 @@
 **Current Milestone:** M13 — Position-Aware Market Chart
 **Status:** DONE — Human Accepted and merged to local `main`（2026-09-13）
 **Current Release State:** `v1.3.0` Release Candidate 已进入本地 `main`；Git Tag / GitHub Release 尚待发布
-**Next Planned Work:** Phase 4 已最终验收；独立批准的 Gemini Production Final 最小整合在独立分支交付离线 Candidate，在线 / 合并另行 Review，不重开 T6～T8。AQ04 / Web Search 为 DEFERRED，M10、M12 继续暂缓。
+**Next Planned Work:** Phase 4 已最终验收；Gemini Production Final 有限在线回归已获 Human 接受（原质量偏差保留）并批准本地合并，合并待执行与验证。下一阶段仍需单独 Review，不重开 T6～T8。AQ04 / Web Search 为 DEFERRED，M10、M12 继续暂缓。
 
 Milestone 状态统一使用 `NOT STARTED`、`IN PROGRESS`、`DONE`，不维护百分比进度。
 
@@ -543,6 +543,12 @@ AQ12 r1 非致命语言概括瑕疵获明确例外通过。T8 浏览器 / 隔离
 [最终报告](docs/evaluation/reports/2026-10-05-phase4-t8-final.md)已获整个 Phase 4 Final Human Acceptance。
 按明确授权完成 Legacy 清理与本地 main 收口，见[收尾记录](docs/evaluation/reports/2026-10-05-phase4-final-acceptance.md)。
 AQ04、Research / Web Search 和完整 Memory 继续延期；不新建 Release / Tag，不 Push。
+
+2026-10-06 Gemini Final 整合：Human 接受当前 Phase 4B Runtime 上官方 Gemini Production Factory 的
+[有限在线回归](docs/evaluation/reports/2026-10-06-gemini-production-regression-review.md)，允许本地合并。
+Native Structured Output、Tool、Source 与 State Authority 关键链路取得 Critical 0/8；AQ06 / AQ13
+质量偏差原分保留，后续进入 Answer Quality / Research 能力优化范围，不代表全面 Production Quality Acceptance。
+当前不恢复 Research、不改全局 Rubric、不重开 Phase 4，也不自动启动 Phase 5 或新 Release。
 
 只有上述范围通过 Human Review，并由固定 Evaluation 或真实 Failure Mode 证明最小方案后，才新增对应正式 Milestone、实施 Plan、ADR 与 Release Mapping；Discovery 工作计划不等于实施或选型批准。Discovery 不预设 Vector Database、LangGraph、Multi-Agent 或不受控 General Browser。
 

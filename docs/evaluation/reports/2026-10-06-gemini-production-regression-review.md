@@ -1,6 +1,7 @@
 # Gemini Production Final：有限在线回归预审
 
-2026-10-06。Reviewer：Codex。**技术链路与关键状态边界支持通过；完整质量门槛尚未无条件通过，等待 Human 决定是否接受本次已知瑕疵。**
+2026-10-06。Reviewer：Codex。**Human 已接受本次有限 Provider 回归及已知质量偏差，允许整合分支进入合并流程。**
+下列预审分数与不足保留，具体 Human 决定见末尾；不把质量例外改写为达到原最低分。
 不是全面 Production Acceptance；不改写已经验收的 Phase 4 / 4A / 4B 结论。
 
 ## 冻结与实际运行
@@ -95,10 +96,26 @@ AQ17a/b 的 State Authority 客观不适用，记 N/A，不把未测状态能力
 | cases/AQ17b.json | aa3d1870b6fe84108034a287034eaba48dafc0b8de62e1474ed490b089133b07 |
 | progress.jsonl | 50499fd95b66cf52c575ef85ff91af24c578432823884f522be532ca4d83af37 |
 
-## 下一步
+## 预审时的下一步
 
 等待 Human 决定是否接受上述质量瑕疵作为本次有限 Provider 回归的例外；否则另行决定通用修复范围，
 不自动改 Prompt / Runtime 或追加在线补考。接受结果后，再单独决定 Gemini Final 整合分支是否合并。
 本轮只读取既有证据、执行离线冻结预检并记录 Review；没有改 Production / Config / Harness / Candidate，
 没有新在线调用。源码轮已通过的 59 项相关测试、Ruff、严格 mypy 记录见 [Readiness](2026-10-06-gemini-production-regression-readiness.md)，
 本轮文档预审不重复执行未受影响的测试。当前不 Merge / Push，不自动启动 Phase 5 或重新开发已完成的 Phase 4B。
+
+## Human Decision — 2026-10-06
+
+- 接受 `gemini-production-regression-2026-10-06-v1` 作为 Gemini Production Final 的有限 Provider 在线回归证据。
+- 确认 Production Factory、Native Structured Output、Tool Calling、Source 引用、Strategy Lifecycle 与 State Authority
+  关键链路正常，Critical Gate 0/8。
+- 明确接受 AQ06 的 AU / EI 与 AQ13 的 EI 未达到冻结最低 2 分要求，作为本次有限回归的已知质量偏差；
+  原扣分保留，不修改全局 Rubric、不覆盖 Phase 4 / 4A / 4B 历史结论，不解释为全面 Production Quality Acceptance。
+- 不追加上述非 Critical 偏差的在线补考；问题进入后续 Answer Quality / Research 能力优化范围。
+  这是后续问题记录，不授权当前恢复开放 Research，`OPEN_WEB_RESEARCH = DEFERRED` 不变。
+- 允许 Gemini Final 整合分支进入本地合并流程；不因此 Push、部署、删除封存引用或启动新阶段。
+
+合并前重新执行：全量离线 `1059 passed / 99 deselected`、Ruff lint / format（228 files）、严格 mypy
+（215 source files）全部通过；`uv --no-cache lock --check --offline` 解析 105 packages 通过。
+普通 lock 检查首次受 sandbox 的默认 UV cache 目录权限限制；改用临时无缓存离线检查后通过，未联网或修改 lock。
+完整 Production Scope diff 与冻结 Candidate 再核对；没有修改已验收 Runtime / Prompt / Strategy / Ledger。

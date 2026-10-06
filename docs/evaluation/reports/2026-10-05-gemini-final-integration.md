@@ -2,6 +2,11 @@
 
 2026-10-05。状态：**OFFLINE VERIFIED / FROZEN；ONLINE NOT RUN；MAIN NOT MERGED**。
 
+后续（2026-10-06）：原 Smoke 已由用户执行并取得技术 PASS；
+[有限 Provider 回归](2026-10-06-gemini-production-regression-review.md)取得 8 Cases / 12 Turns、Critical 0/8，
+Human 已接受 AQ06 / AQ13 原扣分作为本次质量偏差例外，并允许本地合并。
+不解释为全面 Production Quality Acceptance；下文保留离线 Candidate 交付时的历史状态和移植范围。
+
 - 权威基线：`main = 0d36e786b9f09b2e39c4a53630960b4bce4aaae4`，完整 Phase 4A / 4B 保留。
 - 整合分支：`codex/gemini-final-phase4b-integration`，从干净 main 新建。
 - 源码 Commit：`3638eff7abc8d870c0e7ec525661863bb41badfe`。

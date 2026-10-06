@@ -2,6 +2,11 @@
 
 2026-10-05。状态：Accepted；本轮只整合已批准的 Final 接线，在线验证待单独执行。
 
+2026-10-06 后续：Production Smoke 已取得技术 PASS；Human 已接受
+[有限 Production Provider 回归](../evaluation/reports/2026-10-06-gemini-production-regression-review.md)，
+允许本地整合分支合并；AQ06 / AQ13 原评分偏差保留，不视为全面 Production Quality Acceptance。
+原架构决策、Phase 4 已验收边界及 Research DEFERRED 均不变。
+
 ## 背景
 
 Human 已批准分析 / Final 使用 Gemini、图片识别继续 Aliyun。原实现与证据保存在 Stash

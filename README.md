@@ -137,7 +137,7 @@ uv run pytest \
 
 ## Investment Agent
 
-正式 Agent 使用 Single Agent + PydanticAI Runtime。Portfolio Snapshot 必定注入，Quote、History、News 与 Market Context 由 Agent 按需调用；默认 Final 为官方 Gemini `gemini-3.8-flash` + NativeOutput，独立配置 `GEMINI_API_KEY`。图片识别继续 Aliyun，需独立 `VISION_API_KEY`；只有显式选择 Aliyun Final 时保留复用 `LLM_API_KEY` 的既有 fallback。Research 为 DEFERRED，不暴露 Search。当前 Conversation / Confirmed Intent 边界见 [`ARCHITECTURE.md` §14](ARCHITECTURE.md#14-phase-4-conversation--confirmed-intent-boundary)，本次整合不等于新在线 Production Acceptance。
+正式 Agent 使用 Single Agent + PydanticAI Runtime。Portfolio Snapshot 必定注入，Quote、History、News 与 Market Context 由 Agent 按需调用；默认 Final 为官方 Gemini `gemini-3.8-flash` + NativeOutput，独立配置 `GEMINI_API_KEY`。图片识别继续 Aliyun，需独立 `VISION_API_KEY`；只有显式选择 Aliyun Final 时保留复用 `LLM_API_KEY` 的既有 fallback。Research 为 DEFERRED，不暴露 Search。当前 Conversation / Confirmed Intent 边界见 [`ARCHITECTURE.md` §14](ARCHITECTURE.md#14-phase-4-conversation--confirmed-intent-boundary)。[有限 Provider 在线回归](docs/evaluation/reports/2026-10-06-gemini-production-regression-review.md)已获 Human 接受，保留 AQ06 / AQ13 质量偏差，不等于全面 Production Quality Acceptance。
 
 为当前默认 Final 配置 `GEMINI_API_KEY` 后，登录用户可以调用真实 Agent。开发者若需要检查保留的 deprecated Questions API，必须先取得本地 Session Cookie；Question Body 不接受 `user_id`：
 
