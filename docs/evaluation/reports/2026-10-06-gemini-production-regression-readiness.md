@@ -2,6 +2,9 @@
 
 2026-10-06。Human 已批准本次有限补跑；尚未批准 Merge / Push。
 
+后续：用户已完成一次在线补跑，结果及预审见 [Regression Review](2026-10-06-gemini-production-regression-review.md)。
+以下内容保留运行前离线准备时的状态，不将历史 ONLINE NOT_RUN 或冻结 Candidate 回写为 Acceptance。
+
 ## 已取得的 Smoke 证据
 
 用户在自己的终端执行了被冻结的 Production Smoke。
