@@ -485,8 +485,11 @@ LLM_INVALID_PROVIDER_RESPONSE
 
 当前 `/v1/threads` 使用 Account-owned Conversation Service，保存 User / 成功 Assistant Message、
 Turn 与 Source。失败 Run 不产生虚构的 Assistant Answer。Production Composition Root 使用
-`NativeInvestmentAgent` + `PydanticAIRuntime`；Provider factory、Settings、默认 output mechanism
-保持原有配置，Gemini 官方接线仍限于 Eval。
+`NativeInvestmentAgent` + `PydanticAIRuntime`。2026-10-05 独立批准的 Gemini Final 整合只扩展
+Provider factory：默认 Google 官方 API + NativeOutput，包括当前 4B Candidate Schema；当前
+Runtime / Prompt / 工具预算与 Strategy 实现不替换。此改动的在线验收尚未执行，不改写既有 Eval。
+Gemini 只读 `GEMINI_API_KEY`；Aliyun OCR 用独立 `VISION_API_KEY`，仅显式 Aliyun Final 下保留
+`LLM_API_KEY` fallback。开放 Research 仍为 DEFERRED，没有 Production Search 装配 / 启用开关。
 
 持续意图通过 Strategy Service 与三张新表接入：稳定 `strategy_identities`、待确认
 `strategy_candidates` 与历史 `confirmed_strategy_versions`。三种 V1 kind 均使用

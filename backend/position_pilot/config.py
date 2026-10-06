@@ -18,12 +18,13 @@ class Settings(BaseSettings):
     finnhub_api_key: SecretStr | None = None
     finnhub_base_url: AnyHttpUrl = AnyHttpUrl("https://finnhub.io/api/v1")
     finnhub_request_timeout_seconds: float = 10.0
-    llm_provider: str = "ALIYUN_MODEL_STUDIO"
+    llm_provider: str = "GOOGLE_GEMINI"
     llm_base_url: AnyHttpUrl = AnyHttpUrl("https://dashscope.aliyuncs.com/compatible-mode/v1")
     llm_api_key: SecretStr | None = None
-    llm_model: str = "deepseek-v4-pro-0813"
+    llm_model: str = "gemini-3.8-flash"
     llm_request_timeout_seconds: float = 30.0
     native_llm_request_timeout_seconds: float = 60.0
+    gemini_api_key: SecretStr | None = None
     vision_base_url: AnyHttpUrl = AnyHttpUrl("https://dashscope.aliyuncs.com/compatible-mode/v1")
     vision_api_key: SecretStr | None = None
     vision_model: str = "qwen3-vl-flash"

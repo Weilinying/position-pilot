@@ -88,19 +88,22 @@ def test_settings_requires_https_alpaca_url(monkeypatch: pytest.MonkeyPatch) -> 
 def test_settings_uses_configurable_generic_llm_defaults(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """默认模型属于通用环境配置，不成为业务类型。"""
+    """Final 默认使用 Gemini，遗留 Base URL 不成为 Google 接线端点。"""
 
     monkeypatch.setenv(
         "DATABASE_URL",
         "postgresql+psycopg://position_pilot:secret@localhost:5432/position_pilot",
     )
+    for name in ("LLM_PROVIDER", "LLM_MODEL", "LLM_API_KEY", "GEMINI_API_KEY"):
+        monkeypatch.delenv(name, raising=False)
 
     settings = Settings(_env_file=None)  # type: ignore[call-arg]
 
     assert str(settings.llm_base_url) == ("https://dashscope.aliyuncs.com/compatible-mode/v1")
-    assert settings.llm_provider == "ALIYUN_MODEL_STUDIO"
-    assert settings.llm_model == "deepseek-v4-pro-0813"
+    assert settings.llm_provider == "GOOGLE_GEMINI"
+    assert settings.llm_model == "gemini-3.8-flash"
     assert settings.llm_api_key is None
+    assert settings.gemini_api_key is None
 
 
 def test_settings_reads_llm_api_key_as_secret(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -121,6 +124,28 @@ def test_settings_reads_llm_api_key_as_secret(monkeypatch: pytest.MonkeyPatch) -
     assert settings.llm_provider == "OPENAI"
     assert settings.llm_model == "replacement-model"
     assert "llm-secret" not in repr(settings)
+
+
+def test_settings_reads_gemini_api_key_as_independent_secret(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Gemini 凭据独立读取，且不与通用 LLM 凭据混淆。"""
+
+    monkeypatch.setenv(
+        "DATABASE_URL",
+        "postgresql+psycopg://position_pilot:secret@localhost:5432/position_pilot",
+    )
+    monkeypatch.setenv("GEMINI_API_KEY", "gemini-secret")
+    monkeypatch.setenv("LLM_API_KEY", "unrelated-llm-secret")
+
+    settings = Settings(_env_file=None)  # type: ignore[call-arg]
+
+    assert settings.gemini_api_key is not None
+    assert settings.gemini_api_key.get_secret_value() == "gemini-secret"
+    assert settings.llm_api_key is not None
+    assert settings.llm_api_key.get_secret_value() == "unrelated-llm-secret"
+    assert "gemini-secret" not in repr(settings)
+    assert "unrelated-llm-secret" not in repr(settings)
 
 
 @pytest.mark.parametrize("timeout", ["0", "nan", "121"])

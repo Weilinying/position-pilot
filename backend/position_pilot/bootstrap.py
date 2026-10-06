@@ -103,8 +103,10 @@ def get_recognition_service() -> RecognitionService:
     """装配进程内共享的 qwen3-vl-flash Recognition Application Service。"""
 
     settings = get_settings()
-    # Vision Credential 可独立配置；未配置时复用通用 LLM Credential，减少本地凭据数量。
-    vision_api_key = _secret_value(settings.vision_api_key) or _secret_value(settings.llm_api_key)
+    # 仅阿里云 Final 可与阿里云 Vision 共用凭据；其他 Provider 不得跨端点回退。
+    vision_api_key = _secret_value(settings.vision_api_key)
+    if vision_api_key is None and settings.llm_provider == "ALIYUN_MODEL_STUDIO":
+        vision_api_key = _secret_value(settings.llm_api_key)
     provider = AliyunVisionProvider(
         api_key=vision_api_key,
         base_url=str(settings.vision_base_url),
