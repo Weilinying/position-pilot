@@ -1,0 +1,77 @@
+{
+  "candidate_id": "gemini-production-regression-2026-10-06-v1",
+  "status": "PREPARED_OFFLINE_AWAITING_USER_EXECUTION",
+  "source_commit": "d48c0f6461202e09a228703715bf106192dd8b92",
+  "source_files_sha256": {
+    "tests/evaluation/ask_quality_cases.py": "baaf7ff6131d519fcb82bca48305861036edf9b25e6011de10bc49ef29776583",
+    "tests/evaluation/ask_quality_phase4_manifest.py": "6b2e6256ca3a8f00414784d80422108d26864d6d93ac204b0c1e13df46b766f8",
+    "tests/evaluation/behavioral_harness.py": "726e95dc2ef6a40d4bc699b90b533a312d968cd531777f6a4b33b7ad7dbaa1a4",
+    "tests/evaluation/gemini_final_candidate.py": "3b7f530e8a938cb6cdfd964e2e142344764fa3be168c1e8b886b129c36d02f1b",
+    "tests/evaluation/gemini_production_regression.py": "42cd0506e911d32a79598e766be6193658c0a49135a3a7ca9e84630596ab4867",
+    "tests/evaluation/gemini_production_smoke.py": "1850d991391a8e6b76d004efe513eb93af8209a0f8c4ac8795e3b6753aa9883a",
+    "tests/evaluation/gemini_regression_candidate.py": "53862697852b3ae52356ac8a743886df4518f277027de4d3154686d10eff6b63",
+    "tests/evaluation/phase4_core_harness.py": "a9df5e331833c155f0ccc59d7fc42e9bbd6c5b6061e935c7d6e25d0aee96c7e3",
+    "tests/evaluation/phase4_strategy_fixture.py": "2c549e44f2ea3a5d11ab0e6b167cc8626af185312caa9df4f9e7c84034e41dcc",
+    "tests/evaluation/phase4_strategy_freeze.py": "9d87069ecf154b4ecd8ec3f4b7d51f57bd404affdec5f8687bac415cea044e42",
+    "tests/evaluation/phase4_strategy_harness.py": "3c28f99dfef66d70229d8e15a122cf408388a587f8121e1864a76c7c23f828e9",
+    "tests/evaluation/phase4_strategy_manifest.py": "0836028100e44afc6c960993a5513d8d88b7df11433ac73ca11b7a7f3cb5d54c",
+    "tests/evaluation/test_gemini_production_regression.py": "b024e2498216ef7af5ea5ac8643dd891dd1a86f5fc1bcdee4a17081ec9401d02",
+    "tests/evaluation/test_gemini_production_smoke.py": "3247b0f95e975cffa682977649ab7deb72f25b6df7fcdfd6a20a13a2017130b8"
+  },
+  "source_git_blobs": {
+    "tests/evaluation/ask_quality_cases.py": "ff4cd071a335c06d88eb3ca6466b0676e77dc575",
+    "tests/evaluation/ask_quality_phase4_manifest.py": "3c2aee35b012153784523f4b5404e8dc882579d3",
+    "tests/evaluation/behavioral_harness.py": "22e6aa15112d8b7172a44a708fbe546c2a7f19ea",
+    "tests/evaluation/gemini_final_candidate.py": "9a392a8cfe0668102526f9e58de7c90dc958f030",
+    "tests/evaluation/gemini_production_regression.py": "eb597095ce36f62caf83d8b75c58bb9316a50ee9",
+    "tests/evaluation/gemini_production_smoke.py": "3f3961a87a3451785a38052c77e392eeab778896",
+    "tests/evaluation/gemini_regression_candidate.py": "52fc6427eb88709c3f7da324cb2d70a26d744b0e",
+    "tests/evaluation/phase4_core_harness.py": "4a733128148b6226f4caeaa936ea426b54c3ad82",
+    "tests/evaluation/phase4_strategy_fixture.py": "09b0c03d78d44fc1e261d40428f26fa8698a8f61",
+    "tests/evaluation/phase4_strategy_freeze.py": "03c0e22bff8c5459d2e33fd95650a626fdf435d9",
+    "tests/evaluation/phase4_strategy_harness.py": "eab957a8066d86444d63d82e8c2c3a3a3f813d79",
+    "tests/evaluation/phase4_strategy_manifest.py": "d9513fe938e372b4a8c38e2e6bcbdaa592bb2b1a",
+    "tests/evaluation/test_gemini_production_regression.py": "792211c43efe6bfa2342b6251667c544f4ae90aa",
+    "tests/evaluation/test_gemini_production_smoke.py": "ac388ab9554aabbb5bb71b7d1d34aa8ff8d34b43"
+  },
+  "parent_smoke_candidate": {
+    "candidate_id": "gemini-production-final-smoke-2026-10-05-v1",
+    "source_commit": "3638eff7abc8d870c0e7ec525661863bb41badfe",
+    "candidate_sha256": "d2983be1279f81708f968a1fee2165eff9178989adfd3f0247d4973b54af224a"
+  },
+  "run_profile": {
+    "provider": "GOOGLE_GEMINI",
+    "model": "gemini-3.8-flash",
+    "output_mechanism": "NATIVE",
+    "case_ids": [
+      "AQ06",
+      "AQ12",
+      "AQ13",
+      "AQ14",
+      "AQ15",
+      "AQ16",
+      "AQ17a",
+      "AQ17b"
+    ],
+    "expected_turn_count": 12,
+    "initial_native_budget_per_turn": {
+      "model_requests": 8,
+      "tool_attempts": 7,
+      "wall_clock_seconds": 60.0
+    },
+    "existing_source_repair_per_turn": {
+      "max_additional_model_requests": 1,
+      "tool_attempts": 0,
+      "shares_wall_clock_budget": true
+    },
+    "conservative_model_request_upper_bound": 108,
+    "framework_retry_count": 0,
+    "provider_http_attempts": 1,
+    "research": "DEFERRED",
+    "earnings_diagnostic": "NOT_TESTED",
+    "repeat": "NOT_RUN",
+    "behavioral_status": "PENDING_HUMAN_REVIEW",
+    "production_database_access": false,
+    "strategy_database": "ISOLATED_SQLITE_IN_MEMORY"
+  }
+}
