@@ -141,6 +141,18 @@ Unit Test 不依赖真实 LLM API 或真实金融 API，外部 Provider 应 Mock
 
 不得仅为满足本条规则擅自引入新的质量工具。没有实际执行的检查不得声称通过；测试失败不得通过删除测试、弱化断言或静默忽略错误制造绿色结果。
 
+### Eval 产物与长期证据
+
+将可复现的测试定义、可审计的验收结论与大量原始运行产物分开管理：
+
+- `/artifacts/` 默认加入 `.gitignore`，保存 Eval 原始日志、LLM Request / Response、Provider Smoke、在线回归及临时 JSON；不得整体提交或通过 `git add -f` 绕过规则。
+- Dataset、Rubric、Fixtures 与测试代码纳入 Git，沿用 `tests/evaluation/` 的现有结构。具有长期价值的 Benchmark Summary、冻结 Candidate 与 Phase 验收结论经筛选和敏感信息审查后纳入 `docs/evaluation/`，不为此新建平行目录或搬动历史证据。
+- 长期报告至少记录 Run ID、源码 Commit、Provider / Model、脱敏配置与执行预算、Dataset / Rubric 版本、实际执行状态、评分与 Critical Gate 结果，以及原始证据位置；关键原始文件记录校验指纹。未测能力、未知 Usage / Cost 与已接受质量偏差保持明确，不把运行完成解释为验收通过。
+- 原始 Request / Response、HTTP 日志与用户状态不因位于测试目录就可信或适合公开。提交前检查 Secret、鉴权信息、账户及持仓等敏感内容；必要时只提交脱敏摘要，不自动复制完整原文。
+- `.gitignore` 不等于备份、脱敏或删除授权。正式验收的唯一原始证据必须保留，并在清理或解除追踪前确认已有可恢复归档及有效引用；在线模型输出不能保证重跑得到相同证据，不得为补证擅自追加在线请求。
+- 可按需提出独立存储、CI Artifact 或 Git LFS 归档方案，但不得未经授权上传数据、购买服务或引入新 Infrastructure；未确认归档时明确标注“仅本地保存、未备份”，不得宣称已长期归档。
+- 新增 ignore 规则不自动解除既有文件追踪。先检查 Git 跟踪状态及历史验收引用；未经明确授权，不执行 `git rm --cached`、删除原始证据或改写已冻结 Artifact / 历史结论。
+
 ## 12. Git Workflow
 
 一个 Commit 对应一个独立、完整、可解释且可验证的 Logical Change。一个 Commit 可以修改多个强相关文件，但不得混入无关 Feature、顺手重构或全仓库格式化；一个 Feature 或 Milestone Workstream 可以包含多个 Atomic Commits。

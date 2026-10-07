@@ -30,6 +30,9 @@ dist/
 .nox/
 .hypothesis/
 
+# Eval、Provider Smoke 与在线回归的原始运行产物；长期证据另行筛选归档。
+/artifacts/
+
 # 本地运行日志
 *.log
 
