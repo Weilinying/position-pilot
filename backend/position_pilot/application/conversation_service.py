@@ -15,6 +15,7 @@ from typing import Protocol, Self
 from urllib.parse import urlsplit
 from uuid import UUID, uuid4
 
+from position_pilot.application.agent_runtime import DEFAULT_WALL_CLOCK_BUDGET_SECONDS
 from position_pilot.application.conversation_citations import (
     CitationValidationError,
     validate_citations,
@@ -31,7 +32,9 @@ MAX_MESSAGE_LENGTH = 4_000
 DEFAULT_HISTORY_LIMIT = 20
 MAX_HISTORY_SERIALIZED_CHARS = 20_000
 DEFAULT_PAGE_LIMIT = 20
-DEFAULT_RUN_TIMEOUT = timedelta(seconds=30)
+# Turn 租约覆盖 Native 总预算及准备/收尾余量；不延长 Runtime 或 Provider 的执行预算。
+RUN_COMPLETION_GRACE = timedelta(seconds=5)
+DEFAULT_RUN_TIMEOUT = timedelta(seconds=DEFAULT_WALL_CLOCK_BUDGET_SECONDS) + RUN_COMPLETION_GRACE
 
 
 class ConversationError(Exception):

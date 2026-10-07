@@ -16,6 +16,8 @@ from position_pilot.application.llm import (
 from position_pilot.application.tool_catalog import ToolExecutor
 from position_pilot.domain.strategy import StrategyDraft
 
+DEFAULT_WALL_CLOCK_BUDGET_SECONDS = 60.0
+
 
 class AgentToolBudgetExceeded(RuntimeError):
     """Application Tool Session 在执行前拒绝超过本轮预算的调用。"""

@@ -487,7 +487,8 @@ LLM_INVALID_PROVIDER_RESPONSE
 Turn 与 Source。失败 Run 不产生虚构的 Assistant Answer。Production Composition Root 使用
 `NativeInvestmentAgent` + `PydanticAIRuntime`。2026-10-05 独立批准的 Gemini Final 整合只扩展
 Provider factory：默认 Google 官方 API + NativeOutput，包括当前 4B Candidate Schema；当前
-Runtime / Prompt / 工具预算与 Strategy 实现不替换。此改动的在线验收尚未执行，不改写既有 Eval。
+Runtime / Prompt / 工具预算与 Strategy 实现不替换。2026-10-06 的有限 Provider 在线回归已获
+Human 接受，AQ06 / AQ13 质量偏差保留；不代表全面 Production Quality Acceptance，不改写既有 Eval。
 Gemini 只读 `GEMINI_API_KEY`；Aliyun OCR 用独立 `VISION_API_KEY`，仅显式 Aliyun Final 下保留
 `LLM_API_KEY` fallback。开放 Research 仍为 DEFERRED，没有 Production Search 装配 / 启用开关。
 
@@ -511,6 +512,9 @@ Thread 删除取消来源 Pending，Confirmed Intent 保留；所有查询与操
 4B Candidate 是单独的可选输出字段；既有 FinalAnswer source/citation 验证继续执行。未启用该字段的
 4A Runtime / Schema 保持原样。新增能力不增加 Mutation Tool。继承的 Tool attempt / Model request
 额度为 7 / 8、Native wall-clock 为 60s；框架 retry、repair 与 Eval transport retry 策略没有改变。
+Conversation Turn 的默认及 Production 租约为同一 Native 总预算加 5s 准备/收尾余量（当前 65s），
+不从单次 Provider HTTP Timeout 推导，也不延长 Agent 的 60s 执行预算。租约到期后仍在锁内
+收敛为 `AGENT_RUN_ABANDONED`，拒绝迟到的 Answer / Sources / Candidate。
 Memory 通过 Conversation Adapter 的既有只读 Reader 检索，在进入 Native Context 前筛选 Owner、
 scope、confirmed 和有效期；Production 默认 NoOp。Fixture 可显式给定检索 scope，非空结果仅作为
 非权威背景注入，不能覆盖 Ledger、Confirmed Intent 或当前用户指令。未接入真实 Memory 服务、

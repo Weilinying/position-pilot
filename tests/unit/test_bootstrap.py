@@ -1,11 +1,13 @@
 """M9 Provider 运行时依赖装配测试。"""
 
 from collections.abc import Iterator
+from datetime import timedelta
 
 import pytest
 from pydantic import AnyHttpUrl, PostgresDsn, SecretStr
 
 from position_pilot import bootstrap
+from position_pilot.application.agent_runtime import DEFAULT_WALL_CLOCK_BUDGET_SECONDS
 from position_pilot.application.asset_metadata_service import AssetMetadataService
 from position_pilot.application.conversation_agent import ConversationInvestmentAgent
 from position_pilot.application.conversation_service import ConversationService
@@ -219,18 +221,27 @@ def test_investment_agent_bootstrap_uses_only_pydantic_ai_runtime(
     }
 
 
+@pytest.mark.parametrize("http_timeout_seconds", [10.0, 60.0])
 def test_conversation_service_reuses_production_agent_and_database_factory(
     monkeypatch: pytest.MonkeyPatch,
+    http_timeout_seconds: float,
 ) -> None:
-    """Conversation 装配复用同一 Agent，并保持独立 UoW。"""
+    """Turn 租约覆盖正式总预算，不随单次 HTTP Timeout 缩短。"""
 
     investment_agent = object()
     session_factory = object()
+    settings = make_settings().model_copy(
+        update={"native_llm_request_timeout_seconds": http_timeout_seconds}
+    )
+    monkeypatch.setattr(bootstrap, "get_settings", lambda: settings)
     monkeypatch.setattr(bootstrap, "get_investment_agent", lambda: investment_agent)
     monkeypatch.setattr(bootstrap, "get_session_factory", lambda: session_factory)
+    monkeypatch.setattr(bootstrap, "get_strategy_service", lambda: object())
 
     service = bootstrap.get_conversation_service()
 
     assert isinstance(service, ConversationService)
     assert isinstance(service._agent, ConversationInvestmentAgent)
     assert service._agent._agent is investment_agent
+    assert DEFAULT_WALL_CLOCK_BUDGET_SECONDS == 60
+    assert service._run_timeout == timedelta(seconds=65)

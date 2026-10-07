@@ -9,6 +9,7 @@ from threading import Lock
 from uuid import UUID, uuid4
 
 from position_pilot.application.agent_runtime import (
+    DEFAULT_WALL_CLOCK_BUDGET_SECONDS,
     AgentRunBudget,
     AgentRunRequest,
     AgentRunResult,
@@ -83,7 +84,6 @@ from position_pilot.domain.news import NewsResult
 from position_pilot.domain.strategy import PositionPlanPayload, StrategyVersion
 
 LOGGER = logging.getLogger(__name__)
-DEFAULT_WALL_CLOCK_BUDGET_SECONDS = 60.0
 
 
 AMOUNT_ANALYSIS_PROMPT = (

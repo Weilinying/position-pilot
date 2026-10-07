@@ -313,6 +313,123 @@ class RecordingAgent:
         )
 
 
+@pytest.mark.parametrize("elapsed_seconds", [35.0, 57.32, 60.0, 64.99])
+def test_default_deadline_preserves_slow_success_with_advancing_clock(
+    elapsed_seconds: float,
+) -> None:
+    """推进业务时钟复现慢请求；到期前的读取与并发请求不能丢弃成功结果。"""
+
+    current_time = NOW
+    store = FakeConversationStore()
+
+    class SlowAgent(RecordingAgent):
+        def answer(
+            self,
+            *,
+            account_id: UUID,
+            portfolio_user_id: UUID,
+            question: str,
+            history: tuple[ConversationHistoryMessage, ...],
+        ) -> ConversationAgentResult:
+            nonlocal current_time
+            current_time += timedelta(seconds=elapsed_seconds)
+            snapshot = service.get_thread(account_id, thread.id)
+            assert snapshot.active_turn is not None
+            assert snapshot.active_turn.status is ConversationTurnStatus.RUNNING
+            with pytest.raises(ConversationTurnInProgress):
+                service.start_turn(
+                    account_id,
+                    thread.id,
+                    portfolio_user_id=portfolio_user_id,
+                    question="并发提问",
+                    client_request_id=uuid4(),
+                    expected_thread_revision=1,
+                )
+            return super().answer(
+                account_id=account_id,
+                portfolio_user_id=portfolio_user_id,
+                question=question,
+                history=history,
+            )
+
+    agent = SlowAgent(store)
+    # 不使用 make_service 的显式 30 秒测试覆盖，验证真实构造默认值。
+    service = ConversationService(
+        lambda: FakeConversationUnitOfWork(store),
+        agent=agent,
+        clock=lambda: current_time,
+    )
+    thread = service.start_thread(ACCOUNT_ID)
+    request_id = uuid4()
+    result = service.ask(
+        ACCOUNT_ID,
+        thread.id,
+        portfolio_user_id=PORTFOLIO_USER_ID,
+        question="GOOG 可以继续观察吗？",
+        client_request_id=request_id,
+        expected_thread_revision=0,
+    )
+
+    assert result.turn.run_deadline_at == NOW + timedelta(seconds=65)
+    assert result.turn.status is ConversationTurnStatus.COMPLETED
+    assert result.turn.failure_code is None
+    assert result.turn.completed_at == current_time
+    assert result.assistant_message is not None
+    assert result.assistant_message.id in store.messages
+    assert len(result.sources) == len(store.sources) == 1
+    assert len(store.messages) == 2
+    assert (
+        service.ask(
+            ACCOUNT_ID,
+            thread.id,
+            portfolio_user_id=PORTFOLIO_USER_ID,
+            question="GOOG 可以继续观察吗？",
+            client_request_id=request_id,
+            expected_thread_revision=0,
+        )
+        == result
+    )
+    assert len(agent.calls) == 1
+
+
+@pytest.mark.parametrize("elapsed_seconds", [65.0, 65.01])
+def test_default_deadline_still_rejects_late_answer(elapsed_seconds: float) -> None:
+    """租约边界仍收敛中断请求，不持久化迟到的成功 Answer 或 Sources。"""
+
+    current_time = NOW
+    store = FakeConversationStore()
+    service = ConversationService(
+        lambda: FakeConversationUnitOfWork(store),
+        clock=lambda: current_time,
+    )
+    thread = service.start_thread(ACCOUNT_ID)
+    started = service.start_turn(
+        ACCOUNT_ID,
+        thread.id,
+        portfolio_user_id=PORTFOLIO_USER_ID,
+        question="会过期的请求",
+        client_request_id=uuid4(),
+        expected_thread_revision=0,
+    )
+    current_time += timedelta(seconds=elapsed_seconds)
+
+    with pytest.raises(ConversationRunExpired):
+        service.complete_turn(
+            ACCOUNT_ID,
+            thread.id,
+            started.turn.id,
+            answer="迟到的回答",
+            sources=(ConversationSourceInput("CURRENT_QUOTE", "fixture"),),
+        )
+
+    failed = store.turns[started.turn.id]
+    assert failed.status is ConversationTurnStatus.FAILED
+    assert failed.failure_code == "AGENT_RUN_ABANDONED"
+    assert len(store.messages) == 1
+    assert store.sources == {}
+    assert service.get_thread(ACCOUNT_ID, thread.id).active_turn is None
+
+
 def test_start_turn_commits_before_agent_and_passes_bounded_history() -> None:
     """Agent 收到 portfolio_user_id 与历史，且不会在数据库事务中执行。"""
 

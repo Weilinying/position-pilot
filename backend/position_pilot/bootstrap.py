@@ -1,14 +1,19 @@
 """应用依赖装配入口。"""
 
+from datetime import timedelta
 from functools import lru_cache
 
 from pydantic import SecretStr
 from sqlalchemy.orm import Session, sessionmaker
 
+from position_pilot.application.agent_runtime import DEFAULT_WALL_CLOCK_BUDGET_SECONDS
 from position_pilot.application.asset_metadata_service import AssetMetadataService
 from position_pilot.application.auth_service import AuthService
 from position_pilot.application.conversation_agent import ConversationInvestmentAgent
-from position_pilot.application.conversation_service import ConversationService
+from position_pilot.application.conversation_service import (
+    RUN_COMPLETION_GRACE,
+    ConversationService,
+)
 from position_pilot.application.market_context_service import MarketContextService
 from position_pilot.application.market_data_service import MarketDataService
 from position_pilot.application.native_investment_agent import NativeInvestmentAgent
@@ -151,6 +156,7 @@ def get_conversation_service() -> ConversationService:
         SqlAlchemyConversationUnitOfWorkFactory(get_session_factory()),
         agent=ConversationInvestmentAgent(get_investment_agent(), get_strategy_service()),
         strategy_repository_factory=conversation_strategy_repository,
+        run_timeout=timedelta(seconds=DEFAULT_WALL_CLOCK_BUDGET_SECONDS) + RUN_COMPLETION_GRACE,
     )
 
 
